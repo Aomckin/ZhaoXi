@@ -67,3 +67,35 @@ class PlannerTaskNotFoundError(PlannerError):
 
 class PlannerTaskCancelledError(PlannerError):
     """A planned task was cancelled."""
+
+
+class PermissionError(ZhaoxiError):
+    """A tool invocation could not pass the permission boundary."""
+
+
+class PermissionDeniedError(PermissionError):
+    """A permission policy or user denied an invocation."""
+
+
+class ConfirmationRequiredError(PermissionError):
+    """An invocation is waiting for explicit user confirmation."""
+
+
+class ConfirmationExpiredError(PermissionError):
+    """A pending confirmation has expired."""
+
+
+class InvalidGrantError(PermissionError):
+    """A grant does not match the invocation it was used for."""
+
+
+class GrantRevokedError(PermissionError):
+    """A revoked grant was used."""
+
+
+class AuditWriteError(PermissionError):
+    """A required permission audit event could not be persisted."""
+
+
+class RollbackError(PermissionError):
+    """A tool rollback hook failed."""

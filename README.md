@@ -1,6 +1,6 @@
 # Zhaoxi / 朝汐
 
-Zhaoxi 是一个可扩展的个人 Agent Core。v0.3.2 · Memory Lifecycle 在自然认知路由之上加入记忆的活跃、冷却、归档、重新激活、压缩与遗忘，让长期 Memory 不再是只增不减的数据库。
+Zhaoxi 是一个可扩展的个人 Agent Core。v0.4 · Permission 为 Agent、Planner 与 Tool 之间增加统一权限执行门、显式确认和脱敏审计，让模型可以提出动作，但不能自行授予权限。
 
 ## Architecture
 
@@ -11,6 +11,8 @@ CLI / future interfaces
  Cognitive Router → Conversation / Tools / Planner
                           ↓
               Auto Memory + Lifecycle
+                          ↓
+              Permission Gateway + Audit
           ↓
    Model Provider  ←→  Tool Registry
                          ↓
@@ -45,9 +47,25 @@ python main.py
 python -m pytest
 ```
 
-CLI 支持 `/tools`、`/clear` 和 `/exit`。缺少关键模型配置时会显示可操作的提示，不会输出 traceback 或密钥。
+CLI 支持 `/tools`、`/permissions`、`/approve`、`/deny`、`/revoke`、`/audit`、`/clear` 和 `/exit`。缺少关键模型配置时会显示可操作的提示，不会输出 traceback 或密钥。
 
-## v0.3.2 capabilities
+## v0.4 capabilities
+
+- `READ / WRITE / DELETE / EXTERNAL_ACTION / DANGEROUS` 权限等级
+- Tool 权限、资源范围与副作用声明
+- Agent 与 Planner 共用 `ToolExecutor` 和 `PermissionGateway`
+- READ 默认自动允许，WRITE / DELETE 默认确认，DANGEROUS 默认拒绝
+- 用户明确的同范围记住/忘记命令可作为窄范围本轮授权
+- 确认绑定原始 Tool、参数摘要、资源范围和 invocation ID
+- 单个待确认操作支持自然语言“允许/确认/执行”和“拒绝/不要/取消”，回复在进入模型前处理
+- 批准或拒绝都会为原 `tool_call_id` 写入 Tool Message，再恢复 Agent Loop
+- 同一模型响应中连续、同 Tool/同权限的调用合并为一次批量确认，并展示冻结的资源范围；不同 Tool 不合并
+- 批次可部分批准，例如“只删12，保留34”或“允许1、2，拒绝3、4”；每项仍保留原参数和 `tool_call_id`
+- 参数变化不能复用旧授权，授权单次消费并支持撤销
+- Planner 可进入 `waiting_for_permission` 并在同一 Goal 上批准、拒绝或取消
+- 权限判断、确认、执行和拒绝写入追加式脱敏审计
+- ToolResult 标记为不可信外部数据并限制进入上下文的长度
+- 后台 Auto Memory 不允许模型自行执行归档、遗忘或整合
 
 - 短期 Conversation 与上下文裁剪
 - YAML 版本化人格
@@ -106,8 +124,24 @@ CLI 可直接检查记忆：
 
 普通聊天与简单 Tool Call 不会被强制套入 Planner。Auto Memory 使用单次、无 Tool Choice 的 JSON 决策请求，并对身份、命名缘由和稳定偏好提供保守的本地兜底；用户明确禁止时不会保存。Memory maintenance 当前按检索或 `/memory maintain` 执行，不包含后台定时任务。日志只显示 `auto_memory action=...`，不输出记忆正文。规划任务当前保存在进程内，退出程序后不会恢复；持久化与崩溃恢复留给 Reliability 版本。
 
+权限命令：
+
+```text
+/permissions
+/approve <confirmation_id>
+/deny <confirmation_id>
+/revoke <grant_id>
+/audit [limit]
+```
+
+只有一个待确认操作或一个已合并批次时，也可以直接回复“允许”或“拒绝”。存在多个独立待确认操作时必须使用带 ID 的开发者命令，避免授权错位。
+
+批量确认会按 `1.资源范围、2.资源范围……` 编号。1–9 项的小批次允许用“12”简写第 1、2 项；10 项以上请使用明确序号和分隔符，例如“允许 1、2，保留 12”。
+
+默认策略可通过 `.env` 分级收紧。审计以脱敏 JSONL 写入 `.zhaoxi/audit/permission.jsonl`，不会记录 Tool 原始参数、Memory 正文或模型完整上下文。
+
 备份时退出正在运行的 Zhaoxi，再复制 `.zhaoxi/memory.db`。删除该文件会清空全部长期记忆，操作前请先备份。
 
 ## Roadmap
 
-当前版本要求见 [v0.3.2 Memory Lifecycle 任务书](docs/Zhaoxi_v0.3.2_Memory_Lifecycle_Task.md)，认知整合见 [v0.3.1 任务书](docs/Zhaoxi_v0.3.1_Cognitive_Integration_Task.md)。后续按 [总开发计划](docs/Zhaoxi_v0.1-v1.0_Development_Plan.md) 推进 v0.4 Permission。本版不接入 Life HUD、GitHub 等外部 Tool，也不包含后台定时任务、向量数据库或 RAG。
+当前版本要求见 [v0.4 Permission 开发计划](docs/Zhaoxi_v0.4_Permission_Development_Plan.md)，记忆生命周期见 [v0.3.2 任务书](docs/Zhaoxi_v0.3.2_Memory_Lifecycle_Task.md)。后续按 [总开发计划](docs/Zhaoxi_v0.1-v1.0_Development_Plan.md) 推进 v0.5 Workflow。本版不接入 Life HUD、GitHub 等外部 Tool，也不包含后台定时任务、向量数据库或 RAG。

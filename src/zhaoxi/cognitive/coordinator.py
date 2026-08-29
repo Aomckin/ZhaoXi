@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from zhaoxi.cognitive.memory_decision import AutoMemory, MemoryAction
 from zhaoxi.cognitive.router import CognitiveRoute, CognitiveRouter
 from zhaoxi.core.agent import ZhaoxiAgent
+from zhaoxi.permission.models import PendingConfirmation
 
 logger = logging.getLogger("COGNITIVE")
 
@@ -16,6 +17,7 @@ class CognitiveResponse:
     route: CognitiveRoute
     goal_id: str | None = None
     memory_action: MemoryAction = MemoryAction.IGNORE
+    permission_confirmation: PendingConfirmation | None = None
 
 
 class CognitiveCoordinator:
@@ -61,4 +63,5 @@ class CognitiveCoordinator:
             route=decision.route,
             goal_id=goal_id,
             memory_action=memory_action,
+            permission_confirmation=getattr(result, "permission_confirmation", None),
         )

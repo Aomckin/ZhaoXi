@@ -8,6 +8,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from zhaoxi.errors import InvalidStateTransitionError
+from zhaoxi.permission.models import PendingConfirmation
 
 
 def utc_now() -> datetime:
@@ -19,6 +20,7 @@ class GoalStatus(StrEnum):
     PLANNING = "planning"
     RUNNING = "running"
     WAITING_FOR_USER = "waiting_for_user"
+    WAITING_FOR_PERMISSION = "waiting_for_permission"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -37,9 +39,10 @@ TERMINAL_GOAL_STATUSES = {GoalStatus.COMPLETED, GoalStatus.FAILED, GoalStatus.CA
 
 GOAL_TRANSITIONS = {
     GoalStatus.PENDING: {GoalStatus.PLANNING, GoalStatus.CANCELLED},
-    GoalStatus.PLANNING: {GoalStatus.RUNNING, GoalStatus.WAITING_FOR_USER, GoalStatus.FAILED, GoalStatus.CANCELLED},
-    GoalStatus.RUNNING: {GoalStatus.PLANNING, GoalStatus.WAITING_FOR_USER, GoalStatus.COMPLETED, GoalStatus.FAILED, GoalStatus.CANCELLED},
+    GoalStatus.PLANNING: {GoalStatus.RUNNING, GoalStatus.WAITING_FOR_USER, GoalStatus.WAITING_FOR_PERMISSION, GoalStatus.FAILED, GoalStatus.CANCELLED},
+    GoalStatus.RUNNING: {GoalStatus.PLANNING, GoalStatus.WAITING_FOR_USER, GoalStatus.WAITING_FOR_PERMISSION, GoalStatus.COMPLETED, GoalStatus.FAILED, GoalStatus.CANCELLED},
     GoalStatus.WAITING_FOR_USER: {GoalStatus.PLANNING, GoalStatus.RUNNING, GoalStatus.CANCELLED},
+    GoalStatus.WAITING_FOR_PERMISSION: {GoalStatus.RUNNING, GoalStatus.FAILED, GoalStatus.CANCELLED},
 }
 
 STEP_TRANSITIONS = {
@@ -99,6 +102,7 @@ class Goal(BaseModel):
     plans: list[Plan] = Field(default_factory=list)
     observations: list[Observation] = Field(default_factory=list)
     input_request: InputRequest | None = None
+    permission_confirmation: PendingConfirmation | None = None
     final_content: str | None = None
     replan_count: int = Field(default=0, ge=0)
     created_at: datetime = Field(default_factory=utc_now)

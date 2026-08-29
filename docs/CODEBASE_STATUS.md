@@ -1,18 +1,25 @@
 # 朝汐 ZhaoXi 代码现状与交接说明
 
-> **当前开发基线：v0.3.2「Memory Lifecycle」**。项目已经形成“认知路由 → 对话/工具/规划执行 → 自动记忆”的主链路，并在 v0.3.2 为长期记忆加入重要性、相关性、冷热分层、归档、固定、再激活、整合和来源证据。当前仍是本地单用户 CLI Agent；外部数据源、权限审计、持久化计划和图形界面尚未实现。
+> **当前开发基线：v0.4「Permission」**。项目已经形成“认知路由 → 权限判断 → 对话/工具/规划执行 → 自动记忆”的主链路，并为 Tool 调用加入权限等级、确认恢复、单次授权、撤销、脱敏审计和不可信输出标记。当前仍是本地单用户 CLI Agent；外部数据源、持久化计划和图形界面尚未实现。
 
 本文是后续开发的首要交接入口。版本、架构、数据结构、测试数量或关键限制发生变化时，应在同一提交中更新本文。
 
 ## 当前能力
 
-- Python 3.11+、异步运行时和 OpenAI-compatible Provider；通过环境变量可接入兼容 Chat Completions 的模型服务。
+- Python 3.12+、异步运行时和 OpenAI-compatible Provider；通过环境变量可接入兼容 Chat Completions 的模型服务。
 - `Conversation`、`ContextBuilder`、人格提示词和会话管理组成基础对话上下文。
 - `CognitiveRouter` 将输入分为 `DIRECT`、`TOOL`、`PLAN`：直接对话不携带工具 schema，工具任务进入 Agent 循环，复杂任务进入 Planner。
 - `ZhaoxiAgent` 支持多轮工具调用；内置 echo、计算器、当前时间和记忆工具，工具由统一 Registry 注册。
 - Planner 支持 Goal / Plan / Step、线性执行、重试、fallback、版本化 replan、等待用户、恢复、取消和 trace；当前计划仅保存在进程内。
 - SQLite 长期记忆支持跨会话检索和上下文注入，以及显式记住、搜索、更新、忘记、归档、再激活、固定和整合。
 - `AutoMemory` 在每轮回复后独立判断 `CREATE / UPDATE / MERGE / CONFLICT / REACTIVATE / ARCHIVE / FORGET / CONSOLIDATE / IGNORE`；稳定身份和偏好另有保守的确定性兜底。
+- Agent 与 Planner 通过同一 `ToolExecutor` / `PermissionGateway` 执行工具；READ 默认允许，WRITE/DELETE 默认确认，DANGEROUS 默认拒绝。
+- 确认绑定原始 invocation、参数摘要和资源范围；Planner 可在 `WAITING_FOR_PERMISSION` 暂停并恢复同一个 Goal。
+- 单个 Pending Permission 会在 Cognitive Router 与模型调用前拦截自然语言允许/拒绝；无论批准还是拒绝都会补齐原 `tool_call_id` 的 Tool Message 后再恢复 Agent Loop。
+- 同一 assistant 响应中连续、同 Tool/同权限的冻结调用会合并成一次批量确认；确认展示数量与资源范围，不跨 Tool 或跨模型响应合并。
+- 合并批次支持按编号部分批准/保留；每个成员独立执行或写入拒绝 Tool Message，原参数与 `tool_call_id` 不变。
+- 权限事件写入 `.zhaoxi/audit/permission.jsonl`，审计仅保存摘要、ID、范围和结果，不保存原始参数或正文。
+- ToolResult 带不可信来源元数据；后台 Auto Memory 不接受模型自行发起的归档、遗忘和整合。
 - 自动记忆不再依赖强制 `tool_choice`，使用一次普通 JSON 响应，避免部分兼容服务因工具参数组合持续返回 HTTP 400。
 - 可重新查询的工具结果默认不沉淀为长期记忆；显式记忆、拒绝记忆和忘记请求优先于普通自动判断。
 
@@ -32,7 +39,8 @@
 
 - 尚无 Life HUD、GitHub、日历、文件系统等真实业务工具；来源权威边界只有可扩展接口，没有在线集成。
 - Planner Store 是内存实现，进程退出后不能恢复计划、暂停点或 trace。
-- 尚未实现 v0.4 Permission Layer：授权、审批、审计、撤销和危险动作防护仍是后续重点。
+- Permission 当前为本地单用户、进程内 pending/grant；尚无账号体系、OAuth、跨进程恢复、永久策略或操作系统沙箱。
+- Undo / rollback 仅保留设计边界，当前内置 Tool 尚未实现回滚 hook。
 - 尚无 Workflow、主动唤醒/定时执行、外部 UI、语音、RAG 或向量数据库。
 - “忘记”是软状态迁移，不是物理清除；尚无带审计的硬删除流程。
 - 自动记忆依赖模型语义判断，确定性兜底只覆盖有限的稳定身份与偏好表达。
@@ -46,6 +54,7 @@ src/zhaoxi/
   cognitive/     认知协调器、路由和自动记忆决策
   memory/        领域模型、SQLite、仓储、检索、服务和生命周期策略
   planner/       Goal/Plan/Step、运行时、Store 和 Trace
+  permission/    权限模型、策略、确认、Grant、统一执行门和审计
   models/        Provider 抽象、OpenAI-compatible 实现和响应类型
   tools/         工具基类、Registry 和内置工具
   config/        环境变量与设置
@@ -54,7 +63,7 @@ src/zhaoxi/
   cli.py         命令行入口
 tests/
   cognitive/ config/ core/ integration/ memory/
-  models/ planner/ session/ tools/
+  models/ permission/ planner/ session/ tools/
 docs/            版本任务书与本交接文档
 ```
 
@@ -68,6 +77,10 @@ User
   -> DIRECT: run_direct
      TOOL: ZhaoxiAgent.run
      PLAN: PlannerRuntime
+  -> ToolExecutor / PermissionGateway
+     -> ALLOW: Tool.run
+        CONFIRM: Pending Permission -> approve / deny -> resume
+        DENY: permission_denied ToolResult
   -> 最终回复
   -> AutoMemory.process
   -> MemoryService
@@ -102,6 +115,10 @@ ContextBuilder / MemoryRetriever
 
 - `/plan <目标>`：创建并执行规划任务。
 - `/tools`：查看当前注册工具。
+- `/permissions`：查看待确认权限操作。
+- `/approve <confirmation_id>`、`/deny <confirmation_id>`：开发者方式处理待确认操作；单个 pending 也可自然语言允许或拒绝。
+- `/revoke <grant_id>`：撤销仍有效的授权。
+- `/audit [limit]`：查看脱敏权限审计摘要。
 - `/memory maintain`：执行一次生命周期维护。
 - `/memory history <query>`：检索历史状态记忆且不自动再激活。
 - `/clear`：清空当前会话；不会物理删除长期记忆。
@@ -119,7 +136,7 @@ ContextBuilder / MemoryRetriever
 
 ## 关键配置
 
-模型、日志、上下文、记忆、Planner 和 Cognitive Router 的常规设置均从环境变量读取。v0.3.2 新增生命周期参数：
+模型、日志、上下文、记忆、Planner、Cognitive Router 和 Permission 的常规设置均从环境变量读取。记忆生命周期参数：
 
 ```dotenv
 ZHAOXI_MEMORY_IMPORTANCE_KEEP_THRESHOLD=0.75
@@ -129,6 +146,19 @@ ZHAOXI_MEMORY_RELEVANCE_FORGET_THRESHOLD=0.20
 ZHAOXI_MEMORY_RELEVANCE_DECAY_PER_DAY=0.01
 ZHAOXI_MEMORY_RELEVANCE_ACCESS_BOOST=0.15
 ZHAOXI_MEMORY_COLD_ARCHIVE_AFTER_DAYS=30
+```
+
+v0.4 权限参数：
+
+```dotenv
+ZHAOXI_PERMISSION_READ_POLICY=allow
+ZHAOXI_PERMISSION_WRITE_POLICY=confirm
+ZHAOXI_PERMISSION_DELETE_POLICY=confirm
+ZHAOXI_PERMISSION_EXTERNAL_ACTION_POLICY=confirm
+ZHAOXI_PERMISSION_DANGEROUS_POLICY=deny
+ZHAOXI_PERMISSION_CONFIRMATION_TTL_SECONDS=300
+ZHAOXI_PERMISSION_AUDIT_PATH=.zhaoxi/audit/permission.jsonl
+ZHAOXI_PERMISSION_MAX_TOOL_OUTPUT_CHARS=12000
 ```
 
 默认值和类型以 `src/zhaoxi/config/settings.py` 为准；新增配置时同步更新 `.env.example` 和配置测试。
@@ -142,7 +172,7 @@ python main.py
 git diff --check
 ```
 
-当前自动化测试基线：**55 项通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
+当前自动化测试基线：**69 项通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
 
 ## 接手建议
 
@@ -154,7 +184,7 @@ git diff --check
 
 ## Git 基线
 
-- 当前开发分支：`v0.3.2`
+- 当前开发分支：`v0.4`
 - v0.3.1 基线：`9f4424c feat: integrate v0.3.1 cognitive routing and memory`
 - v0.3 Planner：`613859d feat: implement v0.3 planner`
 - v0.2 Memory：`b1d0bcc feat: implement v0.2 persistent memory`

@@ -21,6 +21,11 @@ from zhaoxi.personality.loader import PersonalityLoader
 from zhaoxi.planner.runtime import PlannerRuntime
 from zhaoxi.planner.store import InMemoryPlanStore
 from zhaoxi.planner.trace import TraceRecorder
+from zhaoxi.permission.audit import JsonlAuditSink
+from zhaoxi.permission.executor import ToolExecutor
+from zhaoxi.permission.gateway import PermissionGateway
+from zhaoxi.permission.models import PermissionLevel, PermissionStatus
+from zhaoxi.permission.policy import DefaultPermissionPolicy
 from zhaoxi.tools.builtin import create_builtin_tools
 from zhaoxi.tools.registry import ToolRegistry
 
@@ -56,6 +61,27 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     registry = ToolRegistry()
     for tool in create_builtin_tools(memory_service):
         registry.register(tool)
+    policy_values = {
+        PermissionLevel.READ: settings.permission_read_policy,
+        PermissionLevel.WRITE: settings.permission_write_policy,
+        PermissionLevel.DELETE: settings.permission_delete_policy,
+        PermissionLevel.EXTERNAL_ACTION: settings.permission_external_action_policy,
+        PermissionLevel.DANGEROUS: settings.permission_dangerous_policy,
+    }
+    policy = DefaultPermissionPolicy({
+        level: PermissionStatus.REQUIRE_CONFIRMATION if value == "confirm" else PermissionStatus(value)
+        for level, value in policy_values.items()
+    })
+    gateway = PermissionGateway(
+        policy=policy,
+        audit=JsonlAuditSink(settings.permission_audit_path),
+        confirmation_ttl_seconds=settings.permission_confirmation_ttl_seconds,
+    )
+    tool_executor = ToolExecutor(
+        registry,
+        gateway,
+        max_output_chars=settings.permission_max_tool_output_chars,
+    )
     conversation = Conversation(max_messages=settings.max_context_messages)
     context_builder = ContextBuilder(
         PersonalityLoader.load_prompt(), memory_retriever=memory_retriever
@@ -74,6 +100,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
             max_attempts_per_step=settings.planner_max_attempts_per_step,
             step_timeout_seconds=settings.planner_step_timeout_seconds,
             total_timeout_seconds=settings.planner_total_timeout_seconds,
+            tool_executor=tool_executor,
         )
     agent = ZhaoxiAgent(
         provider=provider,
@@ -83,6 +110,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         max_steps=settings.max_agent_steps,
         timeout_seconds=settings.request_timeout_seconds,
         planner=planner,
+        tool_executor=tool_executor,
     )
     if settings.cognitive_router_enabled:
         agent.cognitive = CognitiveCoordinator(
@@ -103,8 +131,8 @@ async def interactive() -> None:
         return
 
     print(
-        "Zhaoxi v0.3.2 · Memory Lifecycle\n"
-        "输入 /plan <目标> 执行规划任务，/tools 查看工具，/clear 清空会话，/exit 退出。"
+        "Zhaoxi v0.4 · Permission\n"
+        "输入 /plan <目标> 执行规划任务，/permissions 查看权限，/tools 查看工具，/exit 退出。"
     )
     while True:
         try:
@@ -122,7 +150,15 @@ async def interactive() -> None:
             print("朝汐 > 当前会话已清空。")
             continue
         if text == "/tools":
-            print("可用工具：" + "、".join(tool.name for tool in agent.registry.list()))
+            print("可用工具：" + "、".join(
+                f"{tool.name}[{tool.permission.value}]" for tool in agent.registry.list()
+            ))
+            continue
+        if text.startswith(("/permissions", "/approve", "/deny", "/revoke", "/audit")):
+            try:
+                await handle_permission_command(agent, text)
+            except ZhaoxiError as exc:
+                print(f"朝汐 > 权限操作失败：{exc}")
             continue
         if text.startswith("/plan") or text.startswith("/resume") or text.startswith("/cancel") or text.startswith("/trace"):
             try:
@@ -241,3 +277,61 @@ async def handle_planner_command(agent: ZhaoxiAgent, text: str) -> None:
 
 def main() -> None:
     asyncio.run(interactive())
+
+
+async def handle_permission_command(agent: ZhaoxiAgent, text: str) -> None:
+    """Inspect and resolve the shared Agent/Planner permission gateway."""
+    command, _, value = text.partition(" ")
+    value = value.strip()
+    gateway = agent.tool_executor.gateway
+    if command == "/permissions":
+        items = [item for item in gateway.store.pending.values() if not item.resolved]
+        if not items:
+            print("朝汐 > 当前没有待确认操作。")
+            return
+        for item in items:
+            print(
+                f"{item.confirmation_id} [{item.request.permission.value}] "
+                f"{item.request.action_summary} scope={item.request.resource_scope}"
+            )
+        return
+    if command == "/approve" and value:
+        if value in agent._pending_permissions:
+            response = await agent.approve_permission(value)
+        elif agent.planner and value in agent.planner._pending_permissions:
+            response = await agent.planner.approve_permission(value)
+        else:
+            gateway.approve(value)
+            print("朝汐 > 已批准该操作；等待对应任务恢复。")
+            return
+        print(f"朝汐 > {response.content}")
+        return
+    if command == "/deny" and value:
+        if value in agent._pending_permissions:
+            response = await agent.deny_permission(value)
+        elif agent.planner and value in agent.planner._pending_permissions:
+            response = await agent.planner.deny_permission(value)
+        else:
+            gateway.deny(value)
+            print("朝汐 > 已拒绝该操作。")
+            return
+        print(f"朝汐 > {response.content}")
+        return
+    if command == "/revoke" and value:
+        gateway.revoke(value)
+        print("朝汐 > 已撤销该授权。")
+        return
+    if command == "/audit":
+        limit = int(value) if value.isdigit() else 20
+        events = (
+            gateway.audit.read(limit)
+            if hasattr(gateway.audit, "read")
+            else getattr(gateway.audit, "events", [])[-limit:]
+        )
+        if not events:
+            print(f"朝汐 > 审计记录保存在 {getattr(gateway.audit, 'path', '配置的审计存储')}。")
+            return
+        for event in events:
+            print(f"{event.timestamp.isoformat()} {event.event_type} {event.tool_name}")
+        return
+    print("用法：/permissions、/approve <id>、/deny <id>、/revoke <grant_id>、/audit [limit]")

@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from zhaoxi.memory.models import MemoryCreate, MemoryKind, MemoryQuery, MemoryStatus, MemoryUpdate
 from zhaoxi.memory.service import MemoryService
+from zhaoxi.permission.models import PermissionLevel, SideEffect
 from zhaoxi.tools.base import Tool, ToolResult
 
 
@@ -66,7 +67,8 @@ class RememberMemoryTool(Tool):
     name = "remember_memory"
     description = "仅在用户明确要求记住长期信息时使用。保存事实、偏好或事件并返回记忆 ID。"
     input_model = RememberInput
-    mutates_state = True
+    permission = PermissionLevel.WRITE
+    side_effects = frozenset({SideEffect.LOCAL_STATE})
 
     def __init__(self, service: MemoryService) -> None:
         self.service = service
@@ -124,7 +126,8 @@ class UpdateMemoryTool(Tool):
     name = "update_memory"
     description = "按记忆 ID 修正一条长期记忆。若用户想用新事实替换旧事实，优先明确确认。"
     input_model = UpdateMemoryInput
-    mutates_state = True
+    permission = PermissionLevel.WRITE
+    side_effects = frozenset({SideEffect.LOCAL_STATE})
 
     def __init__(self, service: MemoryService) -> None:
         self.service = service
@@ -139,7 +142,8 @@ class ForgetMemoryTool(Tool):
     name = "forget_memory"
     description = "按记忆 ID 遗忘长期记忆；遗忘后它不会再被正常检索或注入上下文。"
     input_model = ForgetMemoryInput
-    mutates_state = True
+    permission = PermissionLevel.DELETE
+    side_effects = frozenset({SideEffect.DATA_DELETION})
 
     def __init__(self, service: MemoryService) -> None:
         self.service = service
@@ -153,7 +157,8 @@ class ArchiveMemoryTool(Tool):
     name = "archive_memory"
     description = "将不再活跃但仍有历史价值的长期记忆归档；Pinned 记忆不会被自动归档。"
     input_model = LifecycleMemoryInput
-    mutates_state = True
+    permission = PermissionLevel.WRITE
+    side_effects = frozenset({SideEffect.LOCAL_STATE})
 
     def __init__(self, service: MemoryService) -> None:
         self.service = service
@@ -168,7 +173,8 @@ class ReactivateMemoryTool(Tool):
     name = "reactivate_memory"
     description = "重新激活一条 COLD 或 ARCHIVED 记忆并提高其 relevance。"
     input_model = LifecycleMemoryInput
-    mutates_state = True
+    permission = PermissionLevel.WRITE
+    side_effects = frozenset({SideEffect.LOCAL_STATE})
 
     def __init__(self, service: MemoryService) -> None:
         self.service = service
@@ -182,7 +188,8 @@ class PinMemoryTool(Tool):
     name = "pin_memory"
     description = "固定或取消固定关键长期记忆；Pinned 记忆不参与自动遗忘。"
     input_model = PinMemoryInput
-    mutates_state = True
+    permission = PermissionLevel.WRITE
+    side_effects = frozenset({SideEffect.LOCAL_STATE})
 
     def __init__(self, service: MemoryService) -> None:
         self.service = service
@@ -196,7 +203,8 @@ class ConsolidateMemoriesTool(Tool):
     name = "consolidate_memories"
     description = "将至少两条相关记忆压缩为一条稳定 Semantic Memory，并归档旧细节。"
     input_model = ConsolidateMemoriesInput
-    mutates_state = True
+    permission = PermissionLevel.WRITE
+    side_effects = frozenset({SideEffect.LOCAL_STATE})
 
     def __init__(self, service: MemoryService) -> None:
         self.service = service

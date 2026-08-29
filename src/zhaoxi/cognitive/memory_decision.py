@@ -136,6 +136,15 @@ class AutoMemory:
             )
         elif decision is None:
             decision = MemoryDecision(action=MemoryAction.IGNORE, reason="invalid decision fallback")
+        if decision.action in {
+            MemoryAction.ARCHIVE,
+            MemoryAction.FORGET,
+            MemoryAction.CONSOLIDATE,
+        }:
+            decision = MemoryDecision(
+                action=MemoryAction.IGNORE,
+                reason="background lifecycle mutation requires explicit permissioned tool",
+            )
         decision.action = await self.apply(
             decision,
             source_name=source_name,

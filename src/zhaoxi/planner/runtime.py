@@ -1,6 +1,7 @@
 """Deterministic control loop for explicit multi-step tasks."""
 
 import asyncio
+import copy
 import json
 from dataclasses import dataclass
 from typing import Any
@@ -29,6 +30,8 @@ from zhaoxi.planner.models import (
 )
 from zhaoxi.planner.store import InMemoryPlanStore, PlanStore
 from zhaoxi.planner.trace import TraceRecorder
+from zhaoxi.permission.executor import ToolExecutor
+from zhaoxi.permission.models import InvocationOrigin, PendingConfirmation
 from zhaoxi.tools.base import ToolResult
 from zhaoxi.tools.registry import ToolRegistry
 
@@ -89,6 +92,17 @@ class PlannerResponse:
     trace_id: str
     steps: int
     input_request: InputRequest | None = None
+    permission_confirmation: PendingConfirmation | None = None
+
+
+@dataclass(slots=True)
+class PendingPlannerInvocation:
+    goal_id: str
+    step_id: str
+    tool_call_id: str
+    name: str
+    arguments: dict[str, object]
+    invocation_id: str
 
 
 class PlannerRuntime:
@@ -108,6 +122,7 @@ class PlannerRuntime:
         max_attempts_per_step: int = 2,
         step_timeout_seconds: float = 30,
         total_timeout_seconds: float = 180,
+        tool_executor: ToolExecutor | None = None,
     ) -> None:
         self.provider = provider
         self.registry = registry
@@ -120,6 +135,8 @@ class PlannerRuntime:
         self.max_attempts_per_step = max_attempts_per_step
         self.step_timeout_seconds = step_timeout_seconds
         self.total_timeout_seconds = total_timeout_seconds
+        self.tool_executor = tool_executor or ToolExecutor(registry)
+        self._pending_permissions: dict[str, PendingPlannerInvocation] = {}
         self._cancelled: set[str] = set()
 
     async def run(self, description: str) -> PlannerResponse:
@@ -144,11 +161,74 @@ class PlannerRuntime:
         self.trace.record(goal, "task_resumed")
         return await self._execute_with_timeout(goal)
 
+    async def approve_permission(self, confirmation_id: str) -> PlannerResponse:
+        pending = self._pending_permissions[confirmation_id]
+        goal = await self._require(pending.goal_id)
+        if goal.status != GoalStatus.WAITING_FOR_PERMISSION:
+            raise PlanValidationError("该任务当前不在等待权限确认。")
+        self.tool_executor.gateway.approve(confirmation_id)
+        execution = await self.tool_executor.execute(
+            pending.name,
+            pending.arguments,
+            request_id=goal.id,
+            origin=InvocationOrigin.PLANNER,
+            user_intent=goal.description,
+            invocation_id=pending.invocation_id,
+            goal_id=goal.id,
+            step_id=pending.step_id,
+        )
+        if execution.result is None:
+            raise PlanValidationError("授权未能匹配原始工具调用。")
+        step = next(item for item in goal.current_plan.steps if item.id == pending.step_id)
+        self._record_observation(goal, step, pending.name, execution.result)
+        if execution.result.success:
+            step.result_summary = execution.result.content
+            step.transition(StepStatus.COMPLETED)
+            self.trace.record(goal, "step_completed", step_id=step.id)
+        else:
+            step.transition(StepStatus.FAILED)
+        goal.permission_confirmation = None
+        goal.transition(GoalStatus.RUNNING)
+        self.conversation.add_tool(
+            json.dumps(execution.result.model_dump(mode="json"), ensure_ascii=False),
+            tool_call_id=pending.tool_call_id,
+            name=pending.name,
+        )
+        del self._pending_permissions[confirmation_id]
+        await self.store.save(goal)
+        return await self._execute_with_timeout(goal)
+
+    async def deny_permission(self, confirmation_id: str) -> PlannerResponse:
+        pending = self._pending_permissions.pop(confirmation_id)
+        goal = await self._require(pending.goal_id)
+        self.tool_executor.gateway.deny(confirmation_id)
+        step = next(item for item in goal.current_plan.steps if item.id == pending.step_id)
+        result = ToolResult(success=False, content="用户拒绝了该操作。", error="permission_denied")
+        self._record_observation(goal, step, pending.name, result)
+        step.transition(StepStatus.FAILED)
+        goal.permission_confirmation = None
+        goal.transition(GoalStatus.RUNNING)
+        self.conversation.add_tool(
+            json.dumps(result.model_dump(mode="json"), ensure_ascii=False),
+            tool_call_id=pending.tool_call_id,
+            name=pending.name,
+        )
+        await self.store.save(goal)
+        return await self._execute_with_timeout(goal)
+
     async def cancel(self, goal_id: str) -> Goal:
         goal = await self._require(goal_id)
         if goal.status in TERMINAL_GOAL_STATUSES:
             return goal
         self._cancelled.add(goal_id)
+        for confirmation_id, pending in list(self._pending_permissions.items()):
+            if pending.goal_id != goal_id:
+                continue
+            confirmation = self.tool_executor.gateway.store.pending.get(confirmation_id)
+            if confirmation is not None and not confirmation.resolved:
+                self.tool_executor.gateway.deny(confirmation_id)
+            del self._pending_permissions[confirmation_id]
+        goal.permission_confirmation = None
         goal.transition(GoalStatus.CANCELLED)
         if goal.current_plan:
             for step in goal.current_plan.steps:
@@ -170,7 +250,7 @@ class PlannerRuntime:
                 memories = []
         schemas = [
             *control_schemas(),
-            *(tool.schema() for tool in self.registry.list() if self._tool_allowed(goal, tool)),
+            *(tool.schema() for tool in self.registry.list()),
         ]
         for action_index in range(1, self.max_steps + 1):
             self._check_cancelled(goal)
@@ -193,14 +273,24 @@ class PlannerRuntime:
             self.conversation.add_assistant(response.content, tool_calls=response.tool_calls)
             for call in response.tool_calls:
                 result = await self._handle_call(goal, call)
+                if goal.status == GoalStatus.WAITING_FOR_USER:
+                    self.conversation.add_tool(
+                        json.dumps(result.model_dump(mode="json"), ensure_ascii=False),
+                        tool_call_id=call.id,
+                        name=call.name,
+                    )
+                    await self.store.save(goal)
+                    return self._response(goal, goal.input_request.question, action_index)
+                if goal.status == GoalStatus.WAITING_FOR_PERMISSION:
+                    await self.store.save(goal)
+                    return self._response(
+                        goal, goal.permission_confirmation.question, action_index
+                    )
                 self.conversation.add_tool(
                     json.dumps(result.model_dump(mode="json"), ensure_ascii=False),
                     tool_call_id=call.id,
                     name=call.name,
                 )
-                if goal.status == GoalStatus.WAITING_FOR_USER:
-                    await self.store.save(goal)
-                    return self._response(goal, goal.input_request.question, action_index)
                 if goal.status == GoalStatus.COMPLETED:
                     return self._response(goal, goal.final_content or "任务已完成。", action_index)
             await self.store.save(goal)
@@ -267,7 +357,26 @@ class PlannerRuntime:
                 step_id=step.id,
                 metadata={"tool": call.name, "attempt": step.attempt_count},
             )
-            last_result = await self._execute_tool(goal, call.name, call.arguments)
+            execution = await self._execute_tool(goal, call)
+            if execution.waiting_for_permission:
+                confirmation = execution.confirmation
+                goal.permission_confirmation = confirmation
+                goal.transition(GoalStatus.WAITING_FOR_PERMISSION)
+                self._pending_permissions[confirmation.confirmation_id] = PendingPlannerInvocation(
+                    goal_id=goal.id,
+                    step_id=step.id,
+                    tool_call_id=call.id,
+                    name=call.name,
+                    arguments=copy.deepcopy(call.arguments),
+                    invocation_id=execution.request.invocation_id,
+                )
+                self.trace.record(goal, "permission_requested", step_id=step.id)
+                return ToolResult(
+                    success=False,
+                    content=confirmation.question,
+                    error="confirmation_required",
+                )
+            last_result = execution.result
             retryable = bool(last_result.metadata.get("retryable", False))
             observation = Observation(
                 step_id=step.id,
@@ -295,6 +404,26 @@ class PlannerRuntime:
                 break
             self.trace.record(goal, "step_retried", step_id=step.id)
         return last_result
+
+    def _record_observation(
+        self, goal: Goal, step: PlanStep, tool_name: str, result: ToolResult
+    ) -> None:
+        retryable = bool(result.metadata.get("retryable", False))
+        goal.observations.append(Observation(
+            step_id=step.id,
+            tool_name=tool_name,
+            success=result.success,
+            content=result.content,
+            data=result.data,
+            error=result.error,
+            retryable=retryable,
+        ))
+        self.trace.record(
+            goal,
+            "observation_received",
+            step_id=step.id,
+            metadata={"tool": tool_name, "success": result.success, "retryable": retryable},
+        )
 
     async def _handle_control(self, goal: Goal, call: ToolCall) -> ToolResult:
         try:
@@ -375,27 +504,29 @@ class PlannerRuntime:
             raise PlanValidationError(result.content)
         return self._response(goal, content, steps)
 
-    async def _execute_tool(
-        self, goal: Goal, name: str, arguments: dict[str, object]
-    ) -> ToolResult:
+    async def _execute_tool(self, goal: Goal, call: ToolCall):
         try:
-            tool = self.registry.get(name)
-        except Exception as exc:
-            return ToolResult(success=False, content="请求的工具不存在。", error=str(exc))
-        if not self._tool_allowed(goal, tool):
-            return ToolResult(
-                success=False,
-                content="当前任务被用户限定为只读，已阻止会修改状态的工具。",
-                error="read_only_task",
+            return await asyncio.wait_for(
+                self.tool_executor.execute(
+                    call.name,
+                    call.arguments,
+                    request_id=goal.id,
+                    origin=InvocationOrigin.PLANNER,
+                    user_intent=goal.description,
+                    goal_id=goal.id,
+                    step_id=self._current_step(goal).id if self._current_step(goal) else None,
+                ),
+                timeout=self.step_timeout_seconds,
             )
-        try:
-            return await asyncio.wait_for(tool.run(arguments), timeout=self.step_timeout_seconds)
         except TimeoutError:
-            return ToolResult(
-                success=False,
-                content="工具执行超时。",
-                error="step_timeout",
-                metadata={"retryable": True},
+            from zhaoxi.permission.executor import ToolExecution
+            return ToolExecution(
+                ToolResult(
+                    success=False,
+                    content="工具执行超时。",
+                    error="step_timeout",
+                    metadata={"retryable": True},
+                )
             )
 
     def _current_step(self, goal: Goal) -> PlanStep | None:
@@ -416,13 +547,6 @@ class PlannerRuntime:
             "信息不足用 request_user_input；所有步骤完成后用 finish_task。"
         )
         return json.dumps(state, ensure_ascii=False)
-
-    @staticmethod
-    def _is_read_only_description(description: str) -> bool:
-        return any(marker in description for marker in ("只读", "不要修改", "别修改", "不修改"))
-
-    def _tool_allowed(self, goal: Goal, tool: Any) -> bool:
-        return not (self._is_read_only_description(goal.description) and tool.mutates_state)
 
     def _check_cancelled(self, goal: Goal) -> None:
         if goal.id in self._cancelled or goal.status == GoalStatus.CANCELLED:
@@ -446,4 +570,5 @@ class PlannerRuntime:
             trace_id=self.trace.trace_id_for(goal.id),
             steps=steps,
             input_request=goal.input_request,
+            permission_confirmation=goal.permission_confirmation,
         )

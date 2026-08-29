@@ -41,9 +41,27 @@ class Settings(BaseSettings):
     memory_relevance_decay_per_day: float = Field(default=0.01, ge=0, le=1)
     memory_relevance_access_boost: float = Field(default=0.15, ge=0, le=1)
     memory_cold_archive_after_days: float = Field(default=30, ge=0)
+    permission_read_policy: str = "allow"
+    permission_write_policy: str = "confirm"
+    permission_delete_policy: str = "confirm"
+    permission_external_action_policy: str = "confirm"
+    permission_dangerous_policy: str = "deny"
+    permission_confirmation_ttl_seconds: float = Field(default=300, gt=0)
+    permission_audit_path: str = ".zhaoxi/audit/permission.jsonl"
+    permission_max_tool_output_chars: int = Field(default=12_000, ge=200, le=100_000)
 
     @model_validator(mode="after")
     def validate_planner_limits(self) -> "Settings":
+        valid_permission_policies = {"allow", "confirm", "deny"}
+        configured_policies = {
+            self.permission_read_policy,
+            self.permission_write_policy,
+            self.permission_delete_policy,
+            self.permission_external_action_policy,
+            self.permission_dangerous_policy,
+        }
+        if not configured_policies <= valid_permission_policies:
+            raise ValueError("permission policy 必须是 allow、confirm 或 deny")
         if self.planner_step_timeout_seconds > self.planner_total_timeout_seconds:
             raise ValueError("planner step timeout 不能大于 total timeout")
         if self.planner_max_attempts_per_step > self.planner_max_steps:

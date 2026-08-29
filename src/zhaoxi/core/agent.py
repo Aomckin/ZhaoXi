@@ -1,17 +1,22 @@
 """The minimal extensible Zhaoxi agent loop."""
 
 import asyncio
+import copy
 import json
 import logging
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from zhaoxi.core.context import ContextBuilder
 from zhaoxi.core.conversation import Conversation
-from zhaoxi.errors import AgentLoopError, ProviderError, ToolNotFoundError
+from zhaoxi.errors import AgentLoopError, ProviderError
 from zhaoxi.models.base import ModelProvider
+from zhaoxi.models.types import ToolCall
 from zhaoxi.memory.models import MemorySearchResult
+from zhaoxi.permission.executor import ToolExecutor
+from zhaoxi.permission.models import InvocationOrigin, PendingConfirmation
 from zhaoxi.tools.base import ToolResult
 from zhaoxi.tools.registry import ToolRegistry
 
@@ -31,6 +36,19 @@ class AgentResponse:
     content: str
     request_id: str
     steps: int
+    permission_confirmation: PendingConfirmation | None = None
+
+
+@dataclass(slots=True)
+class PendingAgentInvocation:
+    request_id: str
+    name: str
+    arguments: dict[str, object]
+    invocation_id: str
+    tool_call_id: str
+    user_intent: str
+    remaining_calls: list[ToolCall]
+    batch_call_count: int = 1
 
 
 class ZhaoxiAgent:
@@ -46,6 +64,7 @@ class ZhaoxiAgent:
         max_steps: int = 8,
         timeout_seconds: float = 60,
         planner: "PlannerRuntime | None" = None,
+        tool_executor: ToolExecutor | None = None,
     ) -> None:
         self.provider = provider
         self.registry = registry
@@ -54,6 +73,8 @@ class ZhaoxiAgent:
         self.max_steps = max_steps
         self.timeout_seconds = timeout_seconds
         self.planner = planner
+        self.tool_executor = tool_executor or ToolExecutor(registry)
+        self._pending_permissions: dict[str, PendingAgentInvocation] = {}
         self.cognitive: "CognitiveCoordinator | None" = None
 
     async def run_planned(self, goal: str) -> "PlannerResponse":
@@ -64,9 +85,116 @@ class ZhaoxiAgent:
 
     async def run_natural(self, user_message: str) -> "CognitiveResponse | AgentResponse":
         """Use cognitive integration when configured, otherwise preserve v0.3 behavior."""
+        pending_response = await self._handle_pending_permission_input(user_message)
+        if pending_response is not None:
+            return pending_response
         if self.cognitive is None:
             return await self.run(user_message)
         return await self.cognitive.run(user_message)
+
+    async def _handle_pending_permission_input(
+        self, user_message: str
+    ) -> "AgentResponse | PlannerResponse | None":
+        """Consume permission replies before routing or invoking any model."""
+        agent_ids = list(self._pending_permissions)
+        planner_ids = list(self.planner._pending_permissions) if self.planner else []
+        pending_ids = [
+            *(("agent", item) for item in agent_ids),
+            *(("planner", item) for item in planner_ids),
+        ]
+        if not pending_ids:
+            return None
+        if len(pending_ids) != 1:
+            return AgentResponse(
+                content="当前有多个待确认操作，请使用 /permissions 查看并通过 /approve <id> 或 /deny <id> 处理。",
+                request_id=uuid4().hex,
+                steps=0,
+            )
+        owner, confirmation_id = pending_ids[0]
+        if owner == "agent":
+            pending_invocation = self._pending_permissions[confirmation_id]
+            selection = self._permission_selection(
+                user_message, pending_invocation.batch_call_count
+            )
+            if selection is not None:
+                return await self.resolve_permission_batch(confirmation_id, selection)
+        decision = self._permission_reply(user_message)
+        if decision == "approve":
+            if owner == "planner":
+                return await self.planner.approve_permission(confirmation_id)
+            return await self.approve_permission(confirmation_id)
+        if decision == "deny":
+            if owner == "planner":
+                return await self.planner.deny_permission(confirmation_id)
+            return await self.deny_permission(confirmation_id)
+        pending = self.tool_executor.gateway.store.pending[confirmation_id]
+        return AgentResponse(
+            content=(
+                f"有一项操作正在等待确认：{pending.request.action_summary}。"
+                "请回复“允许/确认/执行”或“拒绝/不要/取消”。"
+            ),
+            request_id=pending.request.request_id,
+            steps=0,
+            permission_confirmation=pending,
+        )
+
+    @staticmethod
+    def _permission_reply(value: str) -> str | None:
+        normalized = re.sub(r"[\s，,。.!！?？、]", "", value.strip().lower())
+        approve_values = {"允许", "确认", "执行", "允许执行", "确认执行", "可以", "同意"}
+        deny_values = {"拒绝", "不要", "取消", "不允许", "不要执行", "拒绝执行"}
+        if normalized in approve_values:
+            return "approve"
+        if normalized in deny_values:
+            return "deny"
+        return None
+
+    @classmethod
+    def _permission_selection(cls, value: str, batch_size: int) -> set[int] | None:
+        """Parse a conservative 1-based partial selection for one pending batch."""
+        if batch_size <= 1:
+            return None
+        compact = value.strip().lower()
+        if not any(marker in compact for marker in ("删", "执行", "允许", "保留", "拒绝", "取消")):
+            return None
+        approve_match = re.search(
+            r"(?:只?(?:删(?:除)?|执行|允许))(.+?)(?=保留|不删|拒绝|取消|$)", compact
+        )
+        keep_match = re.search(r"(?:保留|不删|拒绝|取消)(.+)$", compact)
+        approved = cls._parse_positions(approve_match.group(1), batch_size) if approve_match else None
+        kept = cls._parse_positions(keep_match.group(1), batch_size) if keep_match else None
+        if approved is None and kept is None:
+            return None
+        all_positions = set(range(1, batch_size + 1))
+        if approved is None:
+            approved = all_positions - kept
+        if kept is not None and approved & kept:
+            return None
+        return approved if approved <= all_positions else None
+
+    @staticmethod
+    def _parse_positions(segment: str, batch_size: int) -> set[int] | None:
+        value = segment.strip(" ：:，,。.!！、")
+        if not value:
+            return None
+        tokens = re.findall(r"\d+", value)
+        if not tokens:
+            return None
+        has_separator = bool(re.search(r"[、,，\s和与]", value))
+        if len(tokens) == 1 and not has_separator:
+            token = tokens[0]
+            number = int(token)
+            if number <= batch_size:
+                positions = {number}
+            elif batch_size <= 9 and all(1 <= int(char) <= batch_size for char in token):
+                positions = {int(char) for char in token}
+            else:
+                return None
+        else:
+            positions = {int(token) for token in tokens}
+        if not positions or any(position < 1 or position > batch_size for position in positions):
+            return None
+        return positions
 
     async def run(self, user_message: str) -> AgentResponse:
         """Accept one user turn and return a final natural-language response."""
@@ -84,7 +212,7 @@ class ZhaoxiAgent:
                 logger.exception("request=%s memory retrieval failed; continuing without memory", request_id)
         try:
             return await asyncio.wait_for(
-                self._run_loop(request_id, memories), timeout=self.timeout_seconds
+                self._run_loop(request_id, memories, user_message.strip()), timeout=self.timeout_seconds
             )
         except TimeoutError as exc:
             logger.error("request=%s timed out", request_id)
@@ -115,7 +243,10 @@ class ZhaoxiAgent:
         return AgentResponse(content=content, request_id=request_id, steps=1)
 
     async def _run_loop(
-        self, request_id: str, memories: list[MemorySearchResult] | None = None
+        self,
+        request_id: str,
+        memories: list[MemorySearchResult] | None = None,
+        user_intent: str = "",
     ) -> AgentResponse:
         schemas = self.registry.schemas()
         for step in range(1, self.max_steps + 1):
@@ -135,9 +266,45 @@ class ZhaoxiAgent:
                 return AgentResponse(content=content, request_id=request_id, steps=step)
 
             self.conversation.add_assistant(response.content, tool_calls=response.tool_calls)
-            for call in response.tool_calls:
-                tool_logger.info("request=%s tool=%s arguments=%s", request_id, call.name, call.arguments)
-                result = await self._execute_tool(call.name, call.arguments)
+            for call_index, call in enumerate(response.tool_calls):
+                tool_logger.info(
+                    "request=%s tool=%s argument_keys=%s",
+                    request_id,
+                    call.name,
+                    sorted(call.arguments),
+                )
+                execution = await self.tool_executor.execute(
+                    call.name,
+                    call.arguments,
+                    request_id=request_id,
+                    origin=InvocationOrigin.AGENT,
+                    user_intent=user_intent,
+                )
+                if execution.waiting_for_permission:
+                    confirmation = execution.confirmation
+                    remaining_calls = copy.deepcopy(response.tool_calls[call_index + 1:])
+                    batch_call_count = self._mergeable_batch_count(call, remaining_calls)
+                    self._describe_batch_confirmation(
+                        confirmation,
+                        [call, *remaining_calls[: batch_call_count - 1]],
+                    )
+                    self._pending_permissions[confirmation.confirmation_id] = PendingAgentInvocation(
+                        request_id=request_id,
+                        name=call.name,
+                        arguments=copy.deepcopy(call.arguments),
+                        invocation_id=execution.request.invocation_id,
+                        tool_call_id=call.id,
+                        user_intent=user_intent,
+                        remaining_calls=remaining_calls,
+                        batch_call_count=batch_call_count,
+                    )
+                    return AgentResponse(
+                        content=confirmation.question,
+                        request_id=request_id,
+                        steps=step,
+                        permission_confirmation=confirmation,
+                    )
+                result = execution.result
                 self.conversation.add_tool(
                     json.dumps(result.model_dump(mode="json"), ensure_ascii=False),
                     tool_call_id=call.id,
@@ -148,9 +315,147 @@ class ZhaoxiAgent:
         logger.error("request=%s reached max steps=%d", request_id, self.max_steps)
         raise AgentLoopError(f"已达到最大执行步数（{self.max_steps}），为避免无限循环已停止。")
 
-    async def _execute_tool(self, name: str, arguments: dict[str, object]) -> ToolResult:
-        try:
-            tool = self.registry.get(name)
-        except ToolNotFoundError as exc:
-            return ToolResult(success=False, content="请求的工具不存在。", error=str(exc))
-        return await tool.run(arguments)
+    async def approve_permission(self, confirmation_id: str) -> AgentResponse:
+        """Approve and resume the exact immutable Tool Call that was paused."""
+        pending = self._pending_permissions[confirmation_id]
+        return await self.resolve_permission_batch(
+            confirmation_id, set(range(1, pending.batch_call_count + 1))
+        )
+
+    async def resolve_permission_batch(
+        self, confirmation_id: str, approved_positions: set[int]
+    ) -> AgentResponse:
+        """Resolve every frozen member, approving only selected 1-based positions."""
+        pending = self._pending_permissions[confirmation_id]
+        batch_calls = [
+            ToolCall(id=pending.tool_call_id, name=pending.name, arguments=pending.arguments),
+            *pending.remaining_calls[: pending.batch_call_count - 1],
+        ]
+        valid_positions = set(range(1, len(batch_calls) + 1))
+        if not approved_positions <= valid_positions:
+            raise AgentLoopError("批量权限选择包含无效序号。")
+        if approved_positions:
+            self.tool_executor.gateway.approve(confirmation_id)
+        else:
+            self.tool_executor.gateway.deny(confirmation_id)
+
+        for position, call in enumerate(batch_calls, start=1):
+            if position in approved_positions:
+                execution = await self.tool_executor.execute(
+                    call.name,
+                    call.arguments,
+                    request_id=pending.request_id,
+                    origin=InvocationOrigin.AGENT,
+                    user_intent=pending.user_intent,
+                    invocation_id=pending.invocation_id if position == 1 else None,
+                    approved_batch_confirmation_id=(
+                        confirmation_id if position > 1 else None
+                    ),
+                )
+                if execution.result is None:
+                    raise AgentLoopError("授权未能匹配批量工具调用。")
+                result = execution.result
+            else:
+                result = ToolResult(
+                    success=False,
+                    content="用户选择保留该项，工具没有执行。",
+                    error="permission_denied",
+                )
+            self.conversation.add_tool(
+                json.dumps(result.model_dump(mode="json"), ensure_ascii=False),
+                tool_call_id=call.id,
+                name=call.name,
+            )
+        del self._pending_permissions[confirmation_id]
+        tail_pending = PendingAgentInvocation(
+            request_id=pending.request_id,
+            name=pending.name,
+            arguments=pending.arguments,
+            invocation_id=pending.invocation_id,
+            tool_call_id=pending.tool_call_id,
+            user_intent=pending.user_intent,
+            remaining_calls=copy.deepcopy(
+                pending.remaining_calls[pending.batch_call_count - 1:]
+            ),
+            batch_call_count=1,
+        )
+        continued = await self._execute_remaining_calls(tail_pending)
+        if continued is not None:
+            return continued
+        return await self._run_loop(pending.request_id, user_intent=pending.user_intent)
+
+    async def _execute_remaining_calls(
+        self,
+        pending: PendingAgentInvocation,
+    ) -> AgentResponse | None:
+        """Finish the untouched tail of a multi-call model response after approval."""
+        for index, call in enumerate(pending.remaining_calls):
+            execution = await self.tool_executor.execute(
+                call.name,
+                call.arguments,
+                request_id=pending.request_id,
+                origin=InvocationOrigin.AGENT,
+                user_intent=pending.user_intent,
+            )
+            if execution.waiting_for_permission:
+                confirmation = execution.confirmation
+                remaining_calls = copy.deepcopy(pending.remaining_calls[index + 1:])
+                batch_call_count = self._mergeable_batch_count(call, remaining_calls)
+                self._describe_batch_confirmation(
+                    confirmation,
+                    [call, *remaining_calls[: batch_call_count - 1]],
+                )
+                self._pending_permissions[confirmation.confirmation_id] = PendingAgentInvocation(
+                    request_id=pending.request_id,
+                    name=call.name,
+                    arguments=copy.deepcopy(call.arguments),
+                    invocation_id=execution.request.invocation_id,
+                    tool_call_id=call.id,
+                    user_intent=pending.user_intent,
+                    remaining_calls=remaining_calls,
+                    batch_call_count=batch_call_count,
+                )
+                return AgentResponse(
+                    content=confirmation.question,
+                    request_id=pending.request_id,
+                    steps=0,
+                    permission_confirmation=confirmation,
+                )
+            self.conversation.add_tool(
+                json.dumps(execution.result.model_dump(mode="json"), ensure_ascii=False),
+                tool_call_id=call.id,
+                name=call.name,
+            )
+        return None
+
+    @staticmethod
+    def _mergeable_batch_count(first: ToolCall, remaining: list[ToolCall]) -> int:
+        """Merge only the consecutive same-Tool calls from one model response."""
+        count = 1
+        for call in remaining:
+            if call.name != first.name:
+                break
+            count += 1
+        return count
+
+    def _describe_batch_confirmation(
+        self, confirmation: PendingConfirmation, batch_calls: list[ToolCall]
+    ) -> None:
+        batch_call_count = len(batch_calls)
+        if batch_call_count <= 1:
+            return
+        tool = self.registry.get(batch_calls[0].name)
+        scopes = [tool.resource_scope(call.arguments) for call in batch_calls]
+        scope_summary = "、".join(
+            f"{index}.{scope}" for index, scope in enumerate(scopes[:6], start=1)
+        )
+        if len(scopes) > 6:
+            scope_summary += f" 等 {len(scopes)} 项"
+        confirmation.question = (
+            f"是否允许朝汐批量执行 {batch_call_count} 项同类操作："
+            f"{confirmation.request.action_summary}？范围：{scope_summary}。"
+        )
+        confirmation.risk_summary += f" 本次批准仅覆盖当前模型响应中冻结的 {batch_call_count} 个调用。"
+
+    async def deny_permission(self, confirmation_id: str) -> AgentResponse:
+        return await self.resolve_permission_batch(confirmation_id, set())

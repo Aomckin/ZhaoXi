@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
+from zhaoxi.permission.models import PermissionLevel, SideEffect
+
 
 class ToolResult(BaseModel):
     """Normalized outcome of a tool invocation."""
@@ -22,7 +24,25 @@ class Tool(ABC):
     name: str
     description: str
     input_model: type[BaseModel]
-    mutates_state: bool = False
+    permission: PermissionLevel = PermissionLevel.READ
+    side_effects: frozenset[SideEffect] = frozenset({SideEffect.NONE})
+
+    @property
+    def mutates_state(self) -> bool:
+        """Compatibility view for v0.3 callers."""
+        return self.permission != PermissionLevel.READ
+
+    def resource_scope(self, arguments: dict[str, Any]) -> str:
+        """Return a redacted scope, never raw content."""
+        for key in ("memory_id", "path", "event_id", "message_id"):
+            if value := arguments.get(key):
+                return f"{key}:{value}"
+        if values := arguments.get("memory_ids"):
+            return f"memory_ids:{','.join(str(item) for item in values)}"
+        return self.name
+
+    def confirmation_description(self, arguments: dict[str, Any]) -> str:
+        return self.description.split("。", 1)[0]
 
     def schema(self) -> dict[str, Any]:
         return {
