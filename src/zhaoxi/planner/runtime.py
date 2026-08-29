@@ -1,0 +1,431 @@
+"""Deterministic control loop for explicit multi-step tasks."""
+
+import asyncio
+import json
+from dataclasses import dataclass
+from typing import Any
+
+from pydantic import BaseModel, Field, ValidationError
+
+from zhaoxi.core.context import ContextBuilder
+from zhaoxi.core.conversation import Conversation
+from zhaoxi.errors import (
+    PlanValidationError,
+    PlannerLimitError,
+    PlannerTaskCancelledError,
+    PlannerTimeoutError,
+)
+from zhaoxi.models.base import ModelProvider
+from zhaoxi.models.types import ToolCall
+from zhaoxi.planner.models import (
+    Goal,
+    GoalStatus,
+    InputRequest,
+    Observation,
+    Plan,
+    PlanStep,
+    StepStatus,
+    TERMINAL_GOAL_STATUSES,
+)
+from zhaoxi.planner.store import InMemoryPlanStore, PlanStore
+from zhaoxi.planner.trace import TraceRecorder
+from zhaoxi.tools.base import ToolResult
+from zhaoxi.tools.registry import ToolRegistry
+
+
+class CreatePlanInput(BaseModel):
+    steps: list[str] = Field(min_length=1)
+    reason: str = "initial plan"
+
+
+class ReplanInput(BaseModel):
+    steps: list[str] = Field(min_length=1)
+    reason: str = Field(min_length=1)
+
+
+class RequestInputInput(BaseModel):
+    question: str = Field(min_length=1)
+    missing_fields: list[str] = Field(default_factory=list)
+
+
+class FinishTaskInput(BaseModel):
+    summary: str = Field(min_length=1)
+
+
+CONTROL_MODELS = {
+    "create_plan": CreatePlanInput,
+    "replan": ReplanInput,
+    "request_user_input": RequestInputInput,
+    "finish_task": FinishTaskInput,
+}
+
+CONTROL_DESCRIPTIONS = {
+    "create_plan": "为当前目标创建初始的有序多步计划；开始执行前必须调用一次。",
+    "replan": "观察结果使当前计划不再适用时，创建完整的新修订计划。",
+    "request_user_input": "缺少继续执行所必需的信息时暂停任务并询问用户。",
+    "finish_task": "所有必要步骤完成后，提交最终结果并结束任务。",
+}
+
+
+def control_schemas() -> list[dict[str, Any]]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": CONTROL_DESCRIPTIONS[name],
+                "parameters": model.model_json_schema(),
+            },
+        }
+        for name, model in CONTROL_MODELS.items()
+    ]
+
+
+@dataclass(slots=True)
+class PlannerResponse:
+    content: str
+    goal_id: str
+    status: GoalStatus
+    trace_id: str
+    steps: int
+    input_request: InputRequest | None = None
+
+
+class PlannerRuntime:
+    """Execute explicit planned tasks while enforcing deterministic limits."""
+
+    def __init__(
+        self,
+        *,
+        provider: ModelProvider,
+        registry: ToolRegistry,
+        context_builder: ContextBuilder,
+        conversation: Conversation | None = None,
+        store: PlanStore | None = None,
+        trace: TraceRecorder | None = None,
+        max_steps: int = 12,
+        max_replans: int = 3,
+        max_attempts_per_step: int = 2,
+        step_timeout_seconds: float = 30,
+        total_timeout_seconds: float = 180,
+    ) -> None:
+        self.provider = provider
+        self.registry = registry
+        self.context_builder = context_builder
+        self.conversation = conversation or Conversation()
+        self.store = store or InMemoryPlanStore()
+        self.trace = trace or TraceRecorder()
+        self.max_steps = max_steps
+        self.max_replans = max_replans
+        self.max_attempts_per_step = max_attempts_per_step
+        self.step_timeout_seconds = step_timeout_seconds
+        self.total_timeout_seconds = total_timeout_seconds
+        self._cancelled: set[str] = set()
+
+    async def run(self, description: str) -> PlannerResponse:
+        if not description.strip():
+            raise ValueError("任务目标不能为空。")
+        goal = Goal(description=description.strip())
+        await self.store.save(goal)
+        self.trace.record(goal, "goal_created")
+        self.conversation.add_user(description.strip())
+        return await self._execute_with_timeout(goal)
+
+    async def resume(self, goal_id: str, answer: str, resume_token: str | None = None) -> PlannerResponse:
+        goal = await self._require(goal_id)
+        if goal.status != GoalStatus.WAITING_FOR_USER or goal.input_request is None:
+            raise PlanValidationError("该任务当前不在等待用户补充信息。")
+        if resume_token and resume_token != goal.input_request.resume_token:
+            raise PlanValidationError("恢复令牌无效。")
+        goal.input_request = None
+        goal.transition(GoalStatus.RUNNING if goal.plans else GoalStatus.PLANNING)
+        await self.store.save(goal)
+        self.conversation.add_user(answer.strip())
+        self.trace.record(goal, "task_resumed")
+        return await self._execute_with_timeout(goal)
+
+    async def cancel(self, goal_id: str) -> Goal:
+        goal = await self._require(goal_id)
+        if goal.status in TERMINAL_GOAL_STATUSES:
+            return goal
+        self._cancelled.add(goal_id)
+        goal.transition(GoalStatus.CANCELLED)
+        if goal.current_plan:
+            for step in goal.current_plan.steps:
+                if step.status in {StepStatus.PENDING, StepStatus.RUNNING, StepStatus.FAILED}:
+                    step.transition(StepStatus.CANCELLED)
+        await self.store.save(goal)
+        self.trace.record(goal, "task_cancelled")
+        return goal
+
+    async def _execute(self, goal: Goal) -> PlannerResponse:
+        if goal.status == GoalStatus.PENDING:
+            goal.transition(GoalStatus.PLANNING)
+            await self.store.save(goal)
+        memories = []
+        if self.context_builder.memory_retriever:
+            try:
+                memories = await self.context_builder.memory_retriever.retrieve(goal.description)
+            except Exception:
+                memories = []
+        schemas = [*control_schemas(), *self.registry.schemas()]
+        for action_index in range(1, self.max_steps + 1):
+            self._check_cancelled(goal)
+            messages = self.context_builder.build(
+                self.conversation,
+                memories,
+                planner_context=self._format_state(goal),
+            )
+            response = await self.provider.generate(messages, schemas)
+            self._check_cancelled(goal)
+            if not response.tool_calls:
+                self.conversation.add_assistant(response.content)
+                if goal.current_plan and all(
+                    step.status in {StepStatus.COMPLETED, StepStatus.SKIPPED}
+                    for step in goal.current_plan.steps
+                ):
+                    return await self._finish(goal, response.content or "任务已完成。", action_index)
+                continue
+
+            self.conversation.add_assistant(response.content, tool_calls=response.tool_calls)
+            for call in response.tool_calls:
+                result = await self._handle_call(goal, call)
+                self.conversation.add_tool(
+                    json.dumps(result.model_dump(mode="json"), ensure_ascii=False),
+                    tool_call_id=call.id,
+                    name=call.name,
+                )
+                if goal.status == GoalStatus.WAITING_FOR_USER:
+                    await self.store.save(goal)
+                    return self._response(goal, goal.input_request.question, action_index)
+                if goal.status == GoalStatus.COMPLETED:
+                    return self._response(goal, goal.final_content or "任务已完成。", action_index)
+            await self.store.save(goal)
+        goal = await self._require(goal.id)
+        if goal.status not in TERMINAL_GOAL_STATUSES:
+            goal.transition(GoalStatus.FAILED)
+            await self.store.save(goal)
+            self.trace.record(goal, "task_failed", metadata={"reason": "max_steps"})
+        raise PlannerLimitError(f"已达到规划任务最大执行步数（{self.max_steps}）。")
+
+    async def _execute_with_timeout(self, goal: Goal) -> PlannerResponse:
+        try:
+            return await asyncio.wait_for(self._execute(goal), timeout=self.total_timeout_seconds)
+        except TimeoutError as exc:
+            await self._fail_if_active(goal.id, "total_timeout")
+            raise PlannerTimeoutError(
+                f"规划任务超过 {self.total_timeout_seconds:g} 秒，已停止。"
+            ) from exc
+        except PlannerTaskCancelledError:
+            raise
+        except Exception as exc:
+            await self._fail_if_active(goal.id, type(exc).__name__)
+            raise
+
+    async def _fail_if_active(self, goal_id: str, reason: str) -> None:
+        goal = await self._require(goal_id)
+        if goal.status not in TERMINAL_GOAL_STATUSES:
+            goal.transition(GoalStatus.FAILED)
+            await self.store.save(goal)
+            self.trace.record(goal, "task_failed", metadata={"reason": reason})
+
+    async def _handle_call(self, goal: Goal, call: ToolCall) -> ToolResult:
+        if call.name in CONTROL_MODELS:
+            return await self._handle_control(goal, call)
+        if not goal.current_plan:
+            return ToolResult(success=False, content="必须先创建计划。", error="plan_required")
+        if goal.status == GoalStatus.PLANNING:
+            goal.transition(GoalStatus.RUNNING)
+        step = self._current_step(goal)
+        if step is None:
+            return ToolResult(success=False, content="计划步骤已全部处理，请结束任务。", error="finish_required")
+        if step.status == StepStatus.FAILED and step.tool_attempts and call.name not in step.tool_attempts:
+            self.trace.record(
+                goal,
+                "fallback_selected",
+                step_id=step.id,
+                metadata={"tool": call.name},
+            )
+        if step.status == StepStatus.FAILED:
+            step.transition(StepStatus.PENDING)
+        if step.status == StepStatus.PENDING:
+            step.transition(StepStatus.RUNNING)
+        self.trace.record(goal, "step_started", step_id=step.id)
+        last_result = ToolResult(success=False, content="工具尚未执行。")
+        tool_attempts = step.tool_attempts.get(call.name, 0)
+        while tool_attempts < self.max_attempts_per_step:
+            self._check_cancelled(goal)
+            tool_attempts += 1
+            step.attempt_count += 1
+            step.tool_attempts[call.name] = tool_attempts
+            self.trace.record(
+                goal,
+                "tool_called",
+                step_id=step.id,
+                metadata={"tool": call.name, "attempt": step.attempt_count},
+            )
+            last_result = await self._execute_tool(call.name, call.arguments)
+            retryable = bool(last_result.metadata.get("retryable", False))
+            observation = Observation(
+                step_id=step.id,
+                tool_name=call.name,
+                success=last_result.success,
+                content=last_result.content,
+                data=last_result.data,
+                error=last_result.error,
+                retryable=retryable,
+            )
+            goal.observations.append(observation)
+            self.trace.record(
+                goal,
+                "observation_received",
+                step_id=step.id,
+                metadata={"tool": call.name, "success": last_result.success, "retryable": retryable},
+            )
+            if last_result.success:
+                step.result_summary = last_result.content
+                step.transition(StepStatus.COMPLETED)
+                self.trace.record(goal, "step_completed", step_id=step.id)
+                break
+            if not retryable or tool_attempts >= self.max_attempts_per_step:
+                step.transition(StepStatus.FAILED)
+                break
+            self.trace.record(goal, "step_retried", step_id=step.id)
+        return last_result
+
+    async def _handle_control(self, goal: Goal, call: ToolCall) -> ToolResult:
+        try:
+            arguments = CONTROL_MODELS[call.name].model_validate(call.arguments)
+        except ValidationError as exc:
+            return ToolResult(success=False, content="规划控制参数无效。", error=str(exc))
+        if call.name == "create_plan":
+            if goal.plans:
+                return ToolResult(success=False, content="初始计划已存在，请使用 replan。", error="plan_exists")
+            value = arguments
+            plan = Plan(
+                goal_id=goal.id,
+                revision=1,
+                steps=[PlanStep(description=item) for item in value.steps],
+                reason=value.reason,
+            )
+            goal.plans.append(plan)
+            goal.transition(GoalStatus.RUNNING)
+            self.trace.record(goal, "plan_created", metadata={"step_count": len(plan.steps)})
+            return ToolResult(success=True, content="计划已创建。", data=plan.model_dump(mode="json"))
+        if call.name == "replan":
+            if not goal.plans:
+                return ToolResult(success=False, content="尚无初始计划。", error="plan_required")
+            if goal.replan_count >= self.max_replans:
+                return ToolResult(success=False, content="已达到重新规划次数上限。", error="replan_limit")
+            value = arguments
+            for step in goal.current_plan.steps:
+                if step.status in {StepStatus.PENDING, StepStatus.FAILED}:
+                    step.transition(StepStatus.SKIPPED)
+            goal.replan_count += 1
+            plan = Plan(
+                goal_id=goal.id,
+                revision=goal.current_plan.revision + 1,
+                steps=[PlanStep(description=item) for item in value.steps],
+                reason=value.reason,
+            )
+            goal.plans.append(plan)
+            self.trace.record(goal, "plan_revised", metadata={"reason": value.reason})
+            return ToolResult(success=True, content="计划已重新修订。", data=plan.model_dump(mode="json"))
+        if call.name == "request_user_input":
+            value = arguments
+            request = InputRequest(
+                goal_id=goal.id,
+                question=value.question,
+                missing_fields=value.missing_fields,
+            )
+            goal.input_request = request
+            goal.transition(GoalStatus.WAITING_FOR_USER)
+            self.trace.record(goal, "input_requested", metadata={"missing_fields": value.missing_fields})
+            return ToolResult(success=True, content=value.question, data=request.model_dump(mode="json"))
+        value = arguments
+        return await self._finish_result(goal, value.summary)
+
+    async def _finish_result(self, goal: Goal, summary: str) -> ToolResult:
+        incomplete = []
+        if goal.current_plan:
+            incomplete = [
+                step.description
+                for step in goal.current_plan.steps
+                if step.status not in {StepStatus.COMPLETED, StepStatus.SKIPPED}
+            ]
+        if incomplete:
+            return ToolResult(
+                success=False,
+                content="仍有未完成步骤，不能结束任务。",
+                error="incomplete_steps",
+                data={"steps": incomplete},
+            )
+        goal.final_content = summary
+        goal.transition(GoalStatus.COMPLETED)
+        self.trace.record(goal, "task_completed")
+        await self.store.save(goal)
+        return ToolResult(success=True, content=summary)
+
+    async def _finish(self, goal: Goal, content: str, steps: int) -> PlannerResponse:
+        result = await self._finish_result(goal, content)
+        if not result.success:
+            raise PlanValidationError(result.content)
+        return self._response(goal, content, steps)
+
+    async def _execute_tool(self, name: str, arguments: dict[str, object]) -> ToolResult:
+        try:
+            tool = self.registry.get(name)
+        except Exception as exc:
+            return ToolResult(success=False, content="请求的工具不存在。", error=str(exc))
+        try:
+            return await asyncio.wait_for(tool.run(arguments), timeout=self.step_timeout_seconds)
+        except TimeoutError:
+            return ToolResult(
+                success=False,
+                content="工具执行超时。",
+                error="step_timeout",
+                metadata={"retryable": True},
+            )
+
+    def _current_step(self, goal: Goal) -> PlanStep | None:
+        if not goal.current_plan:
+            return None
+        return next(
+            (step for step in goal.current_plan.steps if step.status in {StepStatus.PENDING, StepStatus.RUNNING, StepStatus.FAILED}),
+            None,
+        )
+
+    def _format_state(self, goal: Goal) -> str:
+        state = goal.model_dump(mode="json", exclude={"observations": True})
+        state["recent_observations"] = [
+            item.model_dump(mode="json") for item in goal.observations[-6:]
+        ]
+        state["rules"] = (
+            "先 create_plan；每个业务工具调用对应当前步骤；失败后可换用已注册工具或 replan；"
+            "信息不足用 request_user_input；所有步骤完成后用 finish_task。"
+        )
+        return json.dumps(state, ensure_ascii=False)
+
+    def _check_cancelled(self, goal: Goal) -> None:
+        if goal.id in self._cancelled or goal.status == GoalStatus.CANCELLED:
+            raise PlannerTaskCancelledError("任务已取消。")
+
+    async def _require(self, goal_id: str) -> Goal:
+        if isinstance(self.store, InMemoryPlanStore):
+            return await self.store.require(goal_id)
+        goal = await self.store.get(goal_id)
+        if goal is None:
+            from zhaoxi.errors import PlannerTaskNotFoundError
+
+            raise PlannerTaskNotFoundError(f"没有找到任务 {goal_id}。")
+        return goal
+
+    def _response(self, goal: Goal, content: str, steps: int) -> PlannerResponse:
+        return PlannerResponse(
+            content=content,
+            goal_id=goal.id,
+            status=goal.status,
+            trace_id=self.trace.trace_id_for(goal.id),
+            steps=steps,
+            input_request=goal.input_request,
+        )

@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from zhaoxi.core.context import ContextBuilder
@@ -13,6 +14,9 @@ from zhaoxi.models.base import ModelProvider
 from zhaoxi.memory.models import MemorySearchResult
 from zhaoxi.tools.base import ToolResult
 from zhaoxi.tools.registry import ToolRegistry
+
+if TYPE_CHECKING:
+    from zhaoxi.planner.runtime import PlannerResponse, PlannerRuntime
 
 logger = logging.getLogger("AGENT")
 tool_logger = logging.getLogger("TOOL")
@@ -40,6 +44,7 @@ class ZhaoxiAgent:
         conversation: Conversation | None = None,
         max_steps: int = 8,
         timeout_seconds: float = 60,
+        planner: "PlannerRuntime | None" = None,
     ) -> None:
         self.provider = provider
         self.registry = registry
@@ -47,6 +52,13 @@ class ZhaoxiAgent:
         self.conversation = conversation or Conversation()
         self.max_steps = max_steps
         self.timeout_seconds = timeout_seconds
+        self.planner = planner
+
+    async def run_planned(self, goal: str) -> "PlannerResponse":
+        """Run an explicit multi-step task through the optional planner."""
+        if self.planner is None:
+            raise AgentLoopError("Planner 未启用。")
+        return await self.planner.run(goal)
 
     async def run(self, user_message: str) -> AgentResponse:
         """Accept one user turn and return a final natural-language response."""

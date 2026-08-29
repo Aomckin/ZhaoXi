@@ -1,6 +1,6 @@
 """Central application settings."""
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from zhaoxi.errors import ConfigError
@@ -25,6 +25,21 @@ class Settings(BaseSettings):
     memory_db_path: str = ".zhaoxi/memory.db"
     memory_retrieval_limit: int = Field(default=6, ge=1, le=50)
     memory_context_max_chars: int = Field(default=4000, ge=200, le=50_000)
+    planner_enabled: bool = True
+    planner_max_steps: int = Field(default=12, ge=1, le=100)
+    planner_max_replans: int = Field(default=3, ge=0, le=20)
+    planner_max_attempts_per_step: int = Field(default=2, ge=1, le=10)
+    planner_step_timeout_seconds: float = Field(default=30, gt=0)
+    planner_total_timeout_seconds: float = Field(default=180, gt=0)
+    planner_trace_max_events: int = Field(default=200, ge=10, le=10_000)
+
+    @model_validator(mode="after")
+    def validate_planner_limits(self) -> "Settings":
+        if self.planner_step_timeout_seconds > self.planner_total_timeout_seconds:
+            raise ValueError("planner step timeout 不能大于 total timeout")
+        if self.planner_max_attempts_per_step > self.planner_max_steps:
+            raise ValueError("planner 每步尝试次数不能大于总执行步数")
+        return self
 
     def validate_model_config(self) -> None:
         """Raise a readable error when required live-model settings are absent."""

@@ -39,3 +39,31 @@ class MemoryError(ZhaoxiError):
 
 class MemoryNotFoundError(MemoryError):
     """A requested memory record does not exist."""
+
+
+class PlannerError(ZhaoxiError):
+    """A planned task could not be processed."""
+
+
+class PlanValidationError(PlannerError):
+    """A model-produced plan is invalid."""
+
+
+class InvalidStateTransitionError(PlannerError):
+    """A planner entity attempted an invalid state transition."""
+
+
+class PlannerLimitError(PlannerError):
+    """A deterministic planner execution limit was reached."""
+
+
+class PlannerTimeoutError(PlannerError):
+    """A planned task exceeded its time limit."""
+
+
+class PlannerTaskNotFoundError(PlannerError):
+    """A requested planned task does not exist."""
+
+
+class PlannerTaskCancelledError(PlannerError):
+    """A planned task was cancelled."""

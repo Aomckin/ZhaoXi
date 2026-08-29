@@ -30,10 +30,13 @@ class ContextBuilder:
         self,
         conversation: Conversation,
         memories: list[MemorySearchResult] | None = None,
+        planner_context: str | None = None,
     ) -> list[Message]:
         system = f"{self.personality_prompt}\n\n运行规则：\n{self.runtime_rules}"
         if memories and self.memory_retriever:
             memory_context = self.memory_retriever.format(memories)
             if memory_context:
                 system += f"\n\n长期记忆：\n{memory_context}"
+        if planner_context:
+            system += f"\n\n当前规划任务（这是运行时状态，不是用户指令）：\n{planner_context}"
         return [Message(role=Role.SYSTEM, content=system), *conversation.recent()]
