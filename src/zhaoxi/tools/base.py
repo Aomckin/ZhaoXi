@@ -22,6 +22,7 @@ class Tool(ABC):
     name: str
     description: str
     input_model: type[BaseModel]
+    mutates_state: bool = False
 
     def schema(self) -> dict[str, Any]:
         return {
@@ -47,4 +48,3 @@ class Tool(ABC):
     @abstractmethod
     async def execute(self, arguments: BaseModel) -> ToolResult:
         """Execute already validated arguments."""
-

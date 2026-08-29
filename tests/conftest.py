@@ -27,11 +27,13 @@ class FakeProvider(ModelProvider):
     def __init__(self, responses: list[ModelResponse]) -> None:
         self.responses = deque(responses)
         self.calls: list[list[Message]] = []
+        self.tool_schemas: list[list[dict[str, Any]] | None] = []
 
     async def generate(
         self, messages: Sequence[Message], tools: list[dict[str, Any]] | None = None, **kwargs: Any
     ) -> ModelResponse:
         self.calls.append(list(messages))
+        self.tool_schemas.append(tools)
         if len(self.responses) == 1:
             return self.responses[0]
         return self.responses.popleft()

@@ -4,6 +4,9 @@ import asyncio
 
 from zhaoxi.config.logging import configure_logging
 from zhaoxi.config.settings import Settings
+from zhaoxi.cognitive.coordinator import CognitiveCoordinator
+from zhaoxi.cognitive.memory_decision import AutoMemory
+from zhaoxi.cognitive.router import CognitiveRouter
 from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.core.context import ContextBuilder
 from zhaoxi.core.conversation import Conversation
@@ -60,7 +63,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
             step_timeout_seconds=settings.planner_step_timeout_seconds,
             total_timeout_seconds=settings.planner_total_timeout_seconds,
         )
-    return ZhaoxiAgent(
+    agent = ZhaoxiAgent(
         provider=provider,
         registry=registry,
         context_builder=context_builder,
@@ -69,6 +72,13 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         timeout_seconds=settings.request_timeout_seconds,
         planner=planner,
     )
+    if settings.cognitive_router_enabled:
+        agent.cognitive = CognitiveCoordinator(
+            agent=agent,
+            router=CognitiveRouter(provider),
+            auto_memory=AutoMemory(provider, memory_service) if settings.auto_memory_enabled else None,
+        )
+    return agent
 
 
 async def interactive() -> None:
@@ -81,7 +91,7 @@ async def interactive() -> None:
         return
 
     print(
-        "Zhaoxi v0.3 · Planner\n"
+        "Zhaoxi v0.3.1 · Cognitive Integration\n"
         "输入 /plan <目标> 执行规划任务，/tools 查看工具，/clear 清空会话，/exit 退出。"
     )
     while True:
@@ -115,7 +125,7 @@ async def interactive() -> None:
                 print(f"朝汐 > 记忆操作失败：{exc}")
             continue
         try:
-            response = await agent.run(text)
+            response = await agent.run_natural(text)
             print(f"朝汐 > {response.content}")
         except ZhaoxiError as exc:
             print(f"朝汐 > 这次没有顺利完成：{exc}")

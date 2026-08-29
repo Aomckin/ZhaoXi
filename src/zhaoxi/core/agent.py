@@ -16,6 +16,7 @@ from zhaoxi.tools.base import ToolResult
 from zhaoxi.tools.registry import ToolRegistry
 
 if TYPE_CHECKING:
+    from zhaoxi.cognitive.coordinator import CognitiveCoordinator, CognitiveResponse
     from zhaoxi.planner.runtime import PlannerResponse, PlannerRuntime
 
 logger = logging.getLogger("AGENT")
@@ -53,12 +54,19 @@ class ZhaoxiAgent:
         self.max_steps = max_steps
         self.timeout_seconds = timeout_seconds
         self.planner = planner
+        self.cognitive: "CognitiveCoordinator | None" = None
 
     async def run_planned(self, goal: str) -> "PlannerResponse":
         """Run an explicit multi-step task through the optional planner."""
         if self.planner is None:
             raise AgentLoopError("Planner 未启用。")
         return await self.planner.run(goal)
+
+    async def run_natural(self, user_message: str) -> "CognitiveResponse | AgentResponse":
+        """Use cognitive integration when configured, otherwise preserve v0.3 behavior."""
+        if self.cognitive is None:
+            return await self.run(user_message)
+        return await self.cognitive.run(user_message)
 
     async def run(self, user_message: str) -> AgentResponse:
         """Accept one user turn and return a final natural-language response."""
@@ -81,6 +89,30 @@ class ZhaoxiAgent:
         except TimeoutError as exc:
             logger.error("request=%s timed out", request_id)
             raise AgentLoopError(f"请求超过 {self.timeout_seconds:g} 秒，已停止。") from exc
+
+    async def run_direct(self, user_message: str) -> AgentResponse:
+        """Answer without exposing tools, for turns classified as DIRECT."""
+        if not user_message.strip():
+            raise ValueError("消息不能为空。")
+        request_id = uuid4().hex
+        clean_message = user_message.strip()
+        self.conversation.add_user(clean_message)
+        memories = []
+        if self.context_builder.memory_retriever:
+            try:
+                memories = await self.context_builder.memory_retriever.retrieve(clean_message)
+            except Exception:
+                logger.exception("request=%s memory retrieval failed; continuing without memory", request_id)
+        try:
+            response = await asyncio.wait_for(
+                self.provider.generate(self.context_builder.build(self.conversation, memories), None),
+                timeout=self.timeout_seconds,
+            )
+        except TimeoutError as exc:
+            raise AgentLoopError(f"请求超过 {self.timeout_seconds:g} 秒，已停止。") from exc
+        content = response.content or "模型没有返回可显示的内容。"
+        self.conversation.add_assistant(content)
+        return AgentResponse(content=content, request_id=request_id, steps=1)
 
     async def _run_loop(
         self, request_id: str, memories: list[MemorySearchResult] | None = None

@@ -44,6 +44,7 @@ class RememberMemoryTool(Tool):
     name = "remember_memory"
     description = "仅在用户明确要求记住长期信息时使用。保存事实、偏好或事件并返回记忆 ID。"
     input_model = RememberInput
+    mutates_state = True
 
     def __init__(self, service: MemoryService) -> None:
         self.service = service
@@ -95,6 +96,7 @@ class UpdateMemoryTool(Tool):
     name = "update_memory"
     description = "按记忆 ID 修正一条长期记忆。若用户想用新事实替换旧事实，优先明确确认。"
     input_model = UpdateMemoryInput
+    mutates_state = True
 
     def __init__(self, service: MemoryService) -> None:
         self.service = service
@@ -109,6 +111,7 @@ class ForgetMemoryTool(Tool):
     name = "forget_memory"
     description = "按记忆 ID 遗忘长期记忆；遗忘后它不会再被正常检索或注入上下文。"
     input_model = ForgetMemoryInput
+    mutates_state = True
 
     def __init__(self, service: MemoryService) -> None:
         self.service = service

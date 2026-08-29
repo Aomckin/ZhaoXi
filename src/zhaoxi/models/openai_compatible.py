@@ -49,6 +49,12 @@ class OpenAICompatibleProvider(ModelProvider):
             payload["max_tokens"] = max_tokens
         if tools:
             payload["tools"] = tools
+        tool_choice = kwargs.get("tool_choice")
+        if tool_choice is not None:
+            payload["tool_choice"] = tool_choice
+        response_format = kwargs.get("response_format")
+        if response_format is not None:
+            payload["response_format"] = response_format
 
         owns_client = self._client is None
         client = self._client or httpx.AsyncClient(timeout=self.timeout)
@@ -80,9 +86,13 @@ class OpenAICompatibleProvider(ModelProvider):
             )
         except ProviderError:
             raise
+        except httpx.HTTPStatusError as exc:
+            detail = exc.response.text.strip().replace("\n", " ")[:500]
+            raise ProviderError(
+                f"模型请求失败：HTTP {exc.response.status_code} {detail or exc.response.reason_phrase}"
+            ) from exc
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
             raise ProviderError(f"模型请求失败：{exc}") from exc
         finally:
             if owns_client:
                 await client.aclose()
-

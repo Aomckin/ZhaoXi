@@ -168,7 +168,10 @@ class PlannerRuntime:
                 memories = await self.context_builder.memory_retriever.retrieve(goal.description)
             except Exception:
                 memories = []
-        schemas = [*control_schemas(), *self.registry.schemas()]
+        schemas = [
+            *control_schemas(),
+            *(tool.schema() for tool in self.registry.list() if self._tool_allowed(goal, tool)),
+        ]
         for action_index in range(1, self.max_steps + 1):
             self._check_cancelled(goal)
             messages = self.context_builder.build(
@@ -264,7 +267,7 @@ class PlannerRuntime:
                 step_id=step.id,
                 metadata={"tool": call.name, "attempt": step.attempt_count},
             )
-            last_result = await self._execute_tool(call.name, call.arguments)
+            last_result = await self._execute_tool(goal, call.name, call.arguments)
             retryable = bool(last_result.metadata.get("retryable", False))
             observation = Observation(
                 step_id=step.id,
@@ -372,11 +375,19 @@ class PlannerRuntime:
             raise PlanValidationError(result.content)
         return self._response(goal, content, steps)
 
-    async def _execute_tool(self, name: str, arguments: dict[str, object]) -> ToolResult:
+    async def _execute_tool(
+        self, goal: Goal, name: str, arguments: dict[str, object]
+    ) -> ToolResult:
         try:
             tool = self.registry.get(name)
         except Exception as exc:
             return ToolResult(success=False, content="请求的工具不存在。", error=str(exc))
+        if not self._tool_allowed(goal, tool):
+            return ToolResult(
+                success=False,
+                content="当前任务被用户限定为只读，已阻止会修改状态的工具。",
+                error="read_only_task",
+            )
         try:
             return await asyncio.wait_for(tool.run(arguments), timeout=self.step_timeout_seconds)
         except TimeoutError:
@@ -405,6 +416,13 @@ class PlannerRuntime:
             "信息不足用 request_user_input；所有步骤完成后用 finish_task。"
         )
         return json.dumps(state, ensure_ascii=False)
+
+    @staticmethod
+    def _is_read_only_description(description: str) -> bool:
+        return any(marker in description for marker in ("只读", "不要修改", "别修改", "不修改"))
+
+    def _tool_allowed(self, goal: Goal, tool: Any) -> bool:
+        return not (self._is_read_only_description(goal.description) and tool.mutates_state)
 
     def _check_cancelled(self, goal: Goal) -> None:
         if goal.id in self._cancelled or goal.status == GoalStatus.CANCELLED:

@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     planner_step_timeout_seconds: float = Field(default=30, gt=0)
     planner_total_timeout_seconds: float = Field(default=180, gt=0)
     planner_trace_max_events: int = Field(default=200, ge=10, le=10_000)
+    cognitive_router_enabled: bool = True
+    auto_memory_enabled: bool = True
 
     @model_validator(mode="after")
     def validate_planner_limits(self) -> "Settings":
