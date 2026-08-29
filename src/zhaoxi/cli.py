@@ -12,7 +12,8 @@ from zhaoxi.core.context import ContextBuilder
 from zhaoxi.core.conversation import Conversation
 from zhaoxi.errors import ZhaoxiError
 from zhaoxi.models.openai_compatible import OpenAICompatibleProvider
-from zhaoxi.memory.models import MemoryQuery
+from zhaoxi.memory.models import MemoryQuery, MemoryStatus
+from zhaoxi.memory.lifecycle import MemoryLifecyclePolicy
 from zhaoxi.memory.retrieval import MemoryRetriever
 from zhaoxi.memory.service import MemoryService
 from zhaoxi.memory.sqlite import SQLiteMemoryRepository
@@ -35,7 +36,18 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         temperature=settings.temperature,
         max_tokens=settings.max_tokens,
     )
-    memory_service = MemoryService(SQLiteMemoryRepository(settings.memory_db_path))
+    memory_service = MemoryService(
+        SQLiteMemoryRepository(settings.memory_db_path),
+        MemoryLifecyclePolicy(
+            importance_keep_threshold=settings.memory_importance_keep_threshold,
+            relevance_active_threshold=settings.memory_relevance_active_threshold,
+            importance_forget_threshold=settings.memory_importance_forget_threshold,
+            relevance_forget_threshold=settings.memory_relevance_forget_threshold,
+            relevance_decay_per_day=settings.memory_relevance_decay_per_day,
+            relevance_access_boost=settings.memory_relevance_access_boost,
+            cold_archive_after_days=settings.memory_cold_archive_after_days,
+        ),
+    )
     memory_retriever = MemoryRetriever(
         memory_service,
         limit=settings.memory_retrieval_limit,
@@ -91,7 +103,7 @@ async def interactive() -> None:
         return
 
     print(
-        "Zhaoxi v0.3.1 · Cognitive Integration\n"
+        "Zhaoxi v0.3.2 · Memory Lifecycle\n"
         "输入 /plan <目标> 执行规划任务，/tools 查看工具，/clear 清空会话，/exit 退出。"
     )
     while True:
@@ -143,6 +155,10 @@ async def handle_memory_command(agent: ZhaoxiAgent, text: str) -> None:
         print("朝汐 > 长期记忆未启用。")
         return
     parts = text.split(maxsplit=2)
+    if len(parts) == 2 and parts[1] == "maintain":
+        changed = await retriever.service.maintain()
+        print(f"朝汐 > Memory maintenance 完成，更新了 {len(changed)} 条记忆。")
+        return
     if len(parts) == 3 and parts[1] == "search":
         results = await retriever.service.search(MemoryQuery(text=parts[2], limit=20))
         if not results:
@@ -159,7 +175,25 @@ async def handle_memory_command(agent: ZhaoxiAgent, text: str) -> None:
         else:
             print(record.model_dump_json(indent=2))
         return
-    print("用法：/memory search <关键词> 或 /memory get <memory_id>")
+    if len(parts) == 3 and parts[1] == "history":
+        results = await retriever.service.search(
+            MemoryQuery(
+                text=parts[2],
+                limit=20,
+                statuses=[MemoryStatus.COLD, MemoryStatus.ARCHIVED, MemoryStatus.SUPERSEDED],
+            )
+        )
+        if not results:
+            print("朝汐 > 没有找到相关历史记忆。")
+            return
+        for item in results:
+            record = item.record
+            print(f"{record.id} [{record.status.value}] {record.updated_at.isoformat()} {record.content}")
+        return
+    print(
+        "用法：/memory search <关键词>、/memory history <关键词>、"
+        "/memory get <memory_id> 或 /memory maintain"
+    )
 
 
 async def handle_planner_command(agent: ZhaoxiAgent, text: str) -> None:

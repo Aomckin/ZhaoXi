@@ -28,7 +28,9 @@ class MemoryRetriever:
             record = item.record
             line = (
                 f'<memory id="{escape(record.id)}" kind="{record.kind.value}" '
-                f'time="{record.created_at.isoformat()}" confidence="{record.confidence:g}">'
+                f'time="{record.created_at.isoformat()}" confidence="{record.confidence:g}" '
+                f'importance="{record.importance:g}" relevance="{record.relevance:g}" '
+                f'source="{escape(record.source_name or record.source_type.value)}">'
                 f"{escape(record.content)}</memory>\n"
             )
             if used + len(line) > self.max_chars:

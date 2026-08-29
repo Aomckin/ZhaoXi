@@ -13,3 +13,18 @@ def test_planner_timeout_and_attempt_limits_are_cross_validated():
         )
     with pytest.raises(ValidationError, match="尝试次数"):
         Settings(_env_file=None, planner_max_attempts_per_step=3, planner_max_steps=2)
+
+
+def test_memory_lifecycle_thresholds_are_ordered():
+    with pytest.raises(ValidationError, match="importance"):
+        Settings(
+            _env_file=None,
+            memory_importance_forget_threshold=0.8,
+            memory_importance_keep_threshold=0.7,
+        )
+    with pytest.raises(ValidationError, match="relevance"):
+        Settings(
+            _env_file=None,
+            memory_relevance_forget_threshold=0.7,
+            memory_relevance_active_threshold=0.6,
+        )

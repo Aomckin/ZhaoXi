@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     planner_trace_max_events: int = Field(default=200, ge=10, le=10_000)
     cognitive_router_enabled: bool = True
     auto_memory_enabled: bool = True
+    memory_importance_keep_threshold: float = Field(default=0.75, ge=0, le=1)
+    memory_relevance_active_threshold: float = Field(default=0.60, ge=0, le=1)
+    memory_importance_forget_threshold: float = Field(default=0.30, ge=0, le=1)
+    memory_relevance_forget_threshold: float = Field(default=0.20, ge=0, le=1)
+    memory_relevance_decay_per_day: float = Field(default=0.01, ge=0, le=1)
+    memory_relevance_access_boost: float = Field(default=0.15, ge=0, le=1)
+    memory_cold_archive_after_days: float = Field(default=30, ge=0)
 
     @model_validator(mode="after")
     def validate_planner_limits(self) -> "Settings":
@@ -41,6 +48,10 @@ class Settings(BaseSettings):
             raise ValueError("planner step timeout 不能大于 total timeout")
         if self.planner_max_attempts_per_step > self.planner_max_steps:
             raise ValueError("planner 每步尝试次数不能大于总执行步数")
+        if self.memory_importance_forget_threshold >= self.memory_importance_keep_threshold:
+            raise ValueError("memory importance 遗忘阈值必须低于保留阈值")
+        if self.memory_relevance_forget_threshold >= self.memory_relevance_active_threshold:
+            raise ValueError("memory relevance 遗忘阈值必须低于活跃阈值")
         return self
 
     def validate_model_config(self) -> None:

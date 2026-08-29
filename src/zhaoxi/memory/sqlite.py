@@ -31,11 +31,21 @@ CREATE TABLE IF NOT EXISTS memories (
     source_type TEXT NOT NULL,
     source_ref TEXT,
     confidence REAL NOT NULL,
+    importance REAL NOT NULL DEFAULT 0.6,
+    relevance REAL NOT NULL DEFAULT 0.7,
+    pinned INTEGER NOT NULL DEFAULT 0,
     status TEXT NOT NULL,
     supersedes_id TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     accessed_at TEXT,
+    access_count INTEGER NOT NULL DEFAULT 0,
+    source_message_id TEXT,
+    source_name TEXT,
+    evidence_reference TEXT,
+    source_requeryable INTEGER NOT NULL DEFAULT 0,
+    valid_from TEXT,
+    valid_until TEXT,
     metadata_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_memories_status_kind ON memories(status, kind);
@@ -65,7 +75,8 @@ class SQLiteMemoryRepository(MemoryRepository):
                 connection.executescript(SCHEMA)
                 row = connection.execute("SELECT version FROM schema_version LIMIT 1").fetchone()
                 if row is None:
-                    connection.execute("INSERT INTO schema_version(version) VALUES (1)")
+                    connection.execute("INSERT INTO schema_version(version) VALUES (2)")
+                self._migrate_v2(connection)
                 try:
                     connection.execute(
                         "CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(memory_id UNINDEXED, content, summary)"
@@ -85,9 +96,11 @@ class SQLiteMemoryRepository(MemoryRepository):
                 connection.execute(
                     """INSERT INTO memories (
                     id, kind, content, normalized_content, summary, tags_json,
-                    source_type, source_ref, confidence, status, supersedes_id,
-                    created_at, updated_at, accessed_at, metadata_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    source_type, source_ref, confidence, importance, relevance, pinned,
+                    status, supersedes_id, created_at, updated_at, accessed_at, access_count,
+                    source_message_id, source_name, evidence_reference, source_requeryable,
+                    valid_from, valid_until, metadata_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     self._values(record),
                 )
                 self._sync_fts(connection, record)
@@ -115,8 +128,10 @@ class SQLiteMemoryRepository(MemoryRepository):
                 cursor = connection.execute(
                     """UPDATE memories SET
                     kind=?, content=?, normalized_content=?, summary=?, tags_json=?,
-                    source_type=?, source_ref=?, confidence=?, status=?, supersedes_id=?,
-                    created_at=?, updated_at=?, accessed_at=?, metadata_json=? WHERE id=?""",
+                    source_type=?, source_ref=?, confidence=?, importance=?, relevance=?, pinned=?,
+                    status=?, supersedes_id=?, created_at=?, updated_at=?, accessed_at=?, access_count=?,
+                    source_message_id=?, source_name=?, evidence_reference=?, source_requeryable=?,
+                    valid_from=?, valid_until=?, metadata_json=? WHERE id=?""",
                     (*self._values(record)[1:], record.id),
                 )
                 if cursor.rowcount == 0:
@@ -174,12 +189,6 @@ class SQLiteMemoryRepository(MemoryRepository):
                     ranked = [item for item in ranked if item.score > item.record.confidence * 0.2]
                     ranked.sort(key=lambda item: (item.score, item.record.updated_at), reverse=True)
                 ranked = ranked[: query.limit]
-                now = utc_now().isoformat()
-                if ranked:
-                    connection.executemany(
-                        "UPDATE memories SET accessed_at=? WHERE id=?",
-                        [(now, item.record.id) for item in ranked],
-                    )
             return ranked
         except sqlite3.Error as exc:
             raise MemoryError(f"无法搜索记忆：{exc}") from exc
@@ -200,7 +209,13 @@ class SQLiteMemoryRepository(MemoryRepository):
             reason = "character/keyword overlap"
         return MemorySearchResult(
             record=record,
-            score=round(relevance * 0.8 + record.confidence * 0.2, 4),
+            score=round(
+                relevance * 0.65
+                + record.confidence * 0.15
+                + record.relevance * 0.15
+                + record.importance * 0.05,
+                4,
+            ),
             match_reason=reason,
         )
 
@@ -233,11 +248,21 @@ class SQLiteMemoryRepository(MemoryRepository):
             record.source_type.value,
             record.source_ref,
             record.confidence,
+            record.importance,
+            record.relevance,
+            int(record.pinned),
             record.status.value,
             record.supersedes_id,
             record.created_at.isoformat(),
             record.updated_at.isoformat(),
             record.accessed_at.isoformat() if record.accessed_at else None,
+            record.access_count,
+            record.source_message_id,
+            record.source_name,
+            record.evidence_reference,
+            int(record.source_requeryable),
+            record.valid_from.isoformat() if record.valid_from else None,
+            record.valid_until.isoformat() if record.valid_until else None,
             json.dumps(record.metadata, ensure_ascii=False),
         )
 
@@ -253,10 +278,40 @@ class SQLiteMemoryRepository(MemoryRepository):
             source_type=row["source_type"],
             source_ref=row["source_ref"],
             confidence=row["confidence"],
+            importance=row["importance"],
+            relevance=row["relevance"],
+            pinned=bool(row["pinned"]),
             status=row["status"],
             supersedes_id=row["supersedes_id"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             accessed_at=row["accessed_at"],
+            access_count=row["access_count"],
+            source_message_id=row["source_message_id"],
+            source_name=row["source_name"],
+            evidence_reference=row["evidence_reference"],
+            source_requeryable=bool(row["source_requeryable"]),
+            valid_from=row["valid_from"],
+            valid_until=row["valid_until"],
             metadata=json.loads(row["metadata_json"]),
         )
+
+    @staticmethod
+    def _migrate_v2(connection: sqlite3.Connection) -> None:
+        columns = {row["name"] for row in connection.execute("PRAGMA table_info(memories)")}
+        additions = {
+            "importance": "REAL NOT NULL DEFAULT 0.6",
+            "relevance": "REAL NOT NULL DEFAULT 0.7",
+            "pinned": "INTEGER NOT NULL DEFAULT 0",
+            "access_count": "INTEGER NOT NULL DEFAULT 0",
+            "source_message_id": "TEXT",
+            "source_name": "TEXT",
+            "evidence_reference": "TEXT",
+            "source_requeryable": "INTEGER NOT NULL DEFAULT 0",
+            "valid_from": "TEXT",
+            "valid_until": "TEXT",
+        }
+        for name, definition in additions.items():
+            if name not in columns:
+                connection.execute(f"ALTER TABLE memories ADD COLUMN {name} {definition}")
+        connection.execute("UPDATE schema_version SET version=2")

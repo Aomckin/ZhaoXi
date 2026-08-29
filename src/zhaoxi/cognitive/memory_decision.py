@@ -26,15 +26,23 @@ class MemoryAction(StrEnum):
     UPDATE = "update"
     MERGE = "merge"
     CONFLICT = "conflict"
+    REACTIVATE = "reactivate"
+    ARCHIVE = "archive"
+    FORGET = "forget"
+    CONSOLIDATE = "consolidate"
 
 
 class MemoryDecision(BaseModel):
     action: MemoryAction
     content: str | None = None
     target_memory_id: str | None = None
+    target_memory_ids: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     confidence: float = Field(default=0.85, ge=0, le=1)
     reason: str = ""
+    importance: float = Field(default=0.6, ge=0, le=1)
+    relevance: float = Field(default=0.7, ge=0, le=1)
+    pinned: bool = False
 
 
 class MemoryDecisionInput(MemoryDecision):
@@ -46,8 +54,9 @@ class AutoMemory:
 
     SYSTEM_PROMPT = (
         "你是 Zhaoxi 的长期记忆决策器。只输出一个合法 JSON 对象，不要输出 Markdown。"
-        "JSON 字段为 action、content、target_memory_id、tags、confidence、reason；"
-        "action 只能是 ignore/create/update/merge/conflict。"
+        "JSON 字段为 action、content、target_memory_id、target_memory_ids、tags、confidence、"
+        "importance、relevance、pinned、reason；"
+        "action 只能是 ignore/create/update/merge/conflict/reactivate/archive/forget/consolidate。"
         "只保存长期偏好、稳定习惯、明确项目状态变化、长期目标、重要关系或未来很可能复用的信息。"
         "身份、自我定位、名字或称呼的来源、稳定审美与长期选择理由也值得保存。"
         "一次性闲聊、短暂情绪、工具结果和低价值碎片选择 IGNORE。"
@@ -59,17 +68,28 @@ class AutoMemory:
     )
     DENY_MARKERS = ("不要记", "别记", "不要保存", "不要记住")
     FORCE_MARKERS = ("记住", "记一下", "以后记得")
+    PIN_MARKERS = ("别忘了", "永远记住", "一直记住")
     FORGET_MARKERS = ("忘掉", "遗忘")
 
     def __init__(self, provider: ModelProvider, service: MemoryService) -> None:
         self.provider = provider
         self.service = service
 
-    async def process(self, user_message: str, assistant_response: str) -> MemoryDecision:
+    async def process(
+        self,
+        user_message: str,
+        assistant_response: str,
+        *,
+        source_name: str | None = None,
+        source_requeryable: bool = False,
+        evidence_reference: str | None = None,
+    ) -> MemoryDecision:
         if any(marker in user_message for marker in self.DENY_MARKERS):
             return MemoryDecision(action=MemoryAction.IGNORE, reason="user denied memory")
         if any(marker in user_message for marker in self.FORGET_MARKERS):
             return MemoryDecision(action=MemoryAction.IGNORE, reason="forget intent handled by tool")
+        if source_requeryable and not self._is_explicit_remember(user_message):
+            return MemoryDecision(action=MemoryAction.IGNORE, reason="requeryable tool fact")
         candidates = await self.service.search(MemoryQuery(text=user_message, limit=5))
         candidate_data = [
             {
@@ -103,6 +123,8 @@ class AutoMemory:
                 content=self._strip_force_marker(user_message),
                 reason="explicit remember fallback",
                 confidence=1.0,
+                importance=0.9,
+                pinned=any(marker in user_message for marker in self.PIN_MARKERS),
             )
         elif (decision is None or decision.action == MemoryAction.IGNORE) and deterministic:
             decision = MemoryDecision(
@@ -110,10 +132,16 @@ class AutoMemory:
                 content=deterministic,
                 reason="deterministic durable-fact fallback",
                 confidence=0.8,
+                importance=0.7,
             )
         elif decision is None:
             decision = MemoryDecision(action=MemoryAction.IGNORE, reason="invalid decision fallback")
-        decision.action = await self.apply(decision)
+        decision.action = await self.apply(
+            decision,
+            source_name=source_name,
+            source_requeryable=source_requeryable,
+            evidence_reference=evidence_reference,
+        )
         return decision
 
     async def _request_decision(self, messages: list[Message]) -> MemoryDecision | None:
@@ -128,9 +156,33 @@ class AutoMemory:
             return None
         return self._parse_content(response.content)
 
-    async def apply(self, decision: MemoryDecision) -> MemoryAction:
+    async def apply(
+        self,
+        decision: MemoryDecision,
+        *,
+        source_name: str | None = None,
+        source_requeryable: bool = False,
+        evidence_reference: str | None = None,
+    ) -> MemoryAction:
         if decision.action == MemoryAction.IGNORE:
             return MemoryAction.IGNORE
+        if decision.action == MemoryAction.CONSOLIDATE:
+            ids = decision.target_memory_ids or (
+                [decision.target_memory_id] if decision.target_memory_id else []
+            )
+            if len(ids) < 2 or not decision.content:
+                return MemoryAction.IGNORE
+            await self.service.consolidate(ids, decision.content, tags=decision.tags)
+            return MemoryAction.CONSOLIDATE
+        if decision.target_memory_id and decision.action == MemoryAction.ARCHIVE:
+            await self.service.archive(decision.target_memory_id)
+            return MemoryAction.ARCHIVE
+        if decision.target_memory_id and decision.action == MemoryAction.FORGET:
+            await self.service.forget(decision.target_memory_id)
+            return MemoryAction.FORGET
+        if decision.target_memory_id and decision.action == MemoryAction.REACTIVATE:
+            await self.service.reactivate(decision.target_memory_id)
+            return MemoryAction.REACTIVATE
         if not decision.content:
             return MemoryAction.IGNORE
         if decision.action == MemoryAction.CREATE:
@@ -140,8 +192,14 @@ class AutoMemory:
                     kind=MemoryKind.SEMANTIC,
                     tags=decision.tags,
                     confidence=decision.confidence,
+                    importance=decision.importance,
+                    relevance=decision.relevance,
+                    pinned=decision.pinned,
                     source_type=MemorySourceType.CONVERSATION,
                     source_ref="auto_memory",
+                    source_name=source_name,
+                    source_requeryable=source_requeryable,
+                    evidence_reference=evidence_reference,
                     metadata={"decision": decision.action.value, "reason": decision.reason},
                 )
             )
@@ -161,6 +219,9 @@ class AutoMemory:
                     content=decision.content,
                     tags=tags,
                     confidence=decision.confidence,
+                    importance=max(current.importance, decision.importance),
+                    relevance=max(current.relevance, decision.relevance),
+                    pinned=current.pinned or decision.pinned,
                     metadata={**current.metadata, "auto_memory_action": decision.action.value},
                 ),
             )
@@ -171,6 +232,9 @@ class AutoMemory:
                 kind=MemoryKind.SEMANTIC,
                 tags=decision.tags,
                 confidence=decision.confidence,
+                importance=decision.importance,
+                relevance=decision.relevance,
+                pinned=decision.pinned,
                 source_type=MemorySourceType.CONVERSATION,
                 source_ref="auto_memory",
                 supersedes_id=decision.target_memory_id,
@@ -211,7 +275,7 @@ class AutoMemory:
         normalized = text.strip()
         return bool(
             re.match(
-                r"^(?:请|麻烦你|帮我|朝汐[，,:： ]*)?(?:记住|记一下|以后记得)(?:[：,:， ]|我|这|以下)",
+                r"^(?:请|麻烦你|帮我|朝汐[，,:： ]*)?(?:记住|记一下|以后记得|别忘了|永远记住|一直记住)(?:[：,:， ]|我|这|以下)",
                 normalized,
             )
         )
@@ -239,7 +303,7 @@ class AutoMemory:
     @classmethod
     def _strip_force_marker(cls, text: str) -> str:
         value = re.sub(
-            r"^(?:请|麻烦你|帮我|朝汐[，,:： ]*)?(?:记住|记一下|以后记得)[：,:， ]*",
+            r"^(?:请|麻烦你|帮我|朝汐[，,:： ]*)?(?:记住|记一下|以后记得|别忘了|永远记住|一直记住)[：,:， ]*",
             "",
             text.strip(),
             count=1,
