@@ -1,6 +1,8 @@
 # 朝汐 ZhaoXi 代码现状与交接说明
 
-> **当前开发基线：v0.5.1.2「Tool Call Normalization」**。structured 与受支持的 DSML 文本工具调用在 Provider 边界统一正规化为内部 `ToolCall`；模型内部协议不可进入用户可见回复。
+> **当前开发基线：v0.6.1「Local Interaction Shell」**。本地 FastAPI + 原生 Web UI 已接到同一 Zhaoxi Core，默认监听 `127.0.0.1:4913`；前端不直接访问 Tool、Memory 或 Life HUD。
+
+> **v0.6 开发中**：已建立 Proactive Event / Schedule / Delivery 领域模型、SQLite Store、once / interval Scheduler、安全 Condition DSL、基础 Interrupt Policy、Inbox Sink 和 CLI / Web 可视化入口；持久化 Quiet 状态、完整限频与延期重投仍待后续阶段完成。
 
 Life HUD 原始时间字段继续按带时区的 UTC Instant 解析；仅在生成 Tool observation 时转换到配置的展示时区（默认 `Asia/Shanghai`），不回写源数据。
 
@@ -8,6 +10,7 @@ Life HUD 原始时间字段继续按带时区的 UTC Instant 解析；仅在生�
 
 ## 当前能力
 
+- `python main.py --web` 启动只监听本机的 Local Interaction Shell；Web Adapter 复用同一 Agent 实例，提供聊天、Permission Card、Session 清空、Activity 元数据和 Proactive SSE 通道。
 - Python 3.12+、异步运行时和 OpenAI-compatible Provider；通过环境变量可接入兼容 Chat Completions 的模型服务。
 - `Conversation`、`ContextBuilder`、人格提示词和会话管理组成基础对话上下文。
 - `CognitiveRouter` 将输入分为 `DIRECT`、`TOOL`、`PLAN`、`WORKFLOW`：稳定流程进入确定性 Workflow Runtime，开放复杂目标仍进入 Planner。
@@ -213,7 +216,7 @@ python main.py
 git diff --check
 ```
 
-当前自动化测试基线：**107 项通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
+当前自动化测试基线：**122 项通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
 
 ## 接手建议
 
@@ -225,7 +228,7 @@ git diff --check
 
 ## Git 基线
 
-- 当前开发分支：`v0.5.1.2`
+- 当前开发分支：`v0.6.1`
 - v0.5.1.2 工作区基线：基于 `3f3f13a` 与未提交的 v0.5/v0.5.1/v0.5.1.1 纵向切片继续修补
 - v0.3.1 基线：`9f4424c feat: integrate v0.3.1 cognitive routing and memory`
 - v0.3 Planner：`613859d feat: implement v0.3 planner`

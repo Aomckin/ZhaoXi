@@ -61,6 +61,15 @@ class Settings(BaseSettings):
     lifehud_timeout_seconds: float = Field(default=10, gt=0, le=120)
     lifehud_max_retries: int = Field(default=2, ge=0, le=5)
     lifehud_display_timezone: str = "Asia/Shanghai"
+    proactive_enabled: bool = True
+    proactive_db_path: str = ".zhaoxi/proactive.db"
+    proactive_timezone: str = "Asia/Shanghai"
+    proactive_max_events_per_tick: int = Field(default=50, ge=1, le=1000)
+    proactive_misfire_grace_seconds: int = Field(default=3600, ge=0, le=604800)
+    proactive_night_start_hour: int = Field(default=23, ge=0, le=23)
+    proactive_night_end_hour: int = Field(default=8, ge=0, le=23)
+    web_host: str = "127.0.0.1"
+    web_port: int = Field(default=4913, ge=1, le=65535)
 
     @model_validator(mode="after")
     def validate_planner_limits(self) -> "Settings":
@@ -82,6 +91,8 @@ class Settings(BaseSettings):
             raise ValueError("memory importance 遗忘阈值必须低于保留阈值")
         if self.memory_relevance_forget_threshold >= self.memory_relevance_active_threshold:
             raise ValueError("memory relevance 遗忘阈值必须低于活跃阈值")
+        if self.proactive_night_start_hour == self.proactive_night_end_hour:
+            raise ValueError("proactive night 起止小时不能相同")
         return self
 
     def validate_model_config(self) -> None:

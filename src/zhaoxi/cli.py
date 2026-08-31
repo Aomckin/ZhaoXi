@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from datetime import UTC, datetime, time, timedelta
 from uuid import uuid4
 
 from zhaoxi.config.logging import configure_logging
@@ -28,6 +29,18 @@ from zhaoxi.permission.executor import ToolExecutor
 from zhaoxi.permission.gateway import PermissionGateway
 from zhaoxi.permission.models import PermissionLevel, PermissionStatus
 from zhaoxi.permission.policy import DefaultPermissionPolicy
+from zhaoxi.proactive import (
+    InboxNotificationSink,
+    InterruptPolicy,
+    PolicyState,
+    Priority,
+    ProactiveRuntime,
+    Schedule,
+    ScheduleKind,
+    Scheduler,
+    SQLiteProactiveStore,
+    Subscription,
+)
 from zhaoxi.tools.builtin import create_builtin_tools
 from zhaoxi.tools.registry import ToolRegistry
 from zhaoxi.tools.integrations.lifehud import (
@@ -139,6 +152,31 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
             max_steps=settings.workflow_max_steps,
             max_events=settings.workflow_max_events,
         )
+    proactive = None
+    proactive_scheduler = None
+    proactive_state = None
+    if settings.proactive_enabled:
+        proactive_store = SQLiteProactiveStore(settings.proactive_db_path)
+        proactive_state = PolicyState(enabled=True)
+        proactive = ProactiveRuntime(
+            proactive_store,
+            InboxNotificationSink(proactive_store),
+            InterruptPolicy(
+                night_start=time(settings.proactive_night_start_hour),
+                night_end=time(settings.proactive_night_end_hour),
+            ),
+            [Subscription(
+                subscription_id="builtin.reminder",
+                event_type="reminder.due",
+                notification_template="提醒：{payload[text]}",
+                default_priority=Priority.NOTICE,
+            )],
+        )
+        proactive_scheduler = Scheduler(
+            proactive_store,
+            max_per_tick=settings.proactive_max_events_per_tick,
+            misfire_grace_seconds=settings.proactive_misfire_grace_seconds,
+        )
     agent = ZhaoxiAgent(
         provider=provider,
         registry=registry,
@@ -149,6 +187,9 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         planner=planner,
         tool_executor=tool_executor,
         workflow=workflow,
+        proactive=proactive,
+        proactive_scheduler=proactive_scheduler,
+        proactive_state=proactive_state,
     )
     if settings.cognitive_router_enabled:
         agent.cognitive = CognitiveCoordinator(
@@ -169,7 +210,7 @@ async def interactive() -> None:
         return
 
     print(
-        "Zhaoxi v0.5.1.2 · Tool Call Normalization\n"
+        "Zhaoxi v0.6.1 · Local Interaction Shell\n"
         "输入 /workflow 查看流程，/plan <目标> 执行规划任务，/permissions 查看权限，/exit 退出。"
     )
     while True:
@@ -215,6 +256,12 @@ async def interactive() -> None:
                 await handle_workflow_command(agent, text)
             except (ZhaoxiError, ValueError, KeyError) as exc:
                 print(f"朝汐 > Workflow 操作失败：{exc}")
+            continue
+        if text.startswith("/proactive"):
+            try:
+                await handle_proactive_command(agent, text)
+            except (ZhaoxiError, ValueError, KeyError) as exc:
+                print(f"朝汐 > 主动任务操作失败：{exc}")
             continue
         try:
             response = await agent.run_natural(text)
@@ -366,7 +413,73 @@ async def handle_planner_command(agent: ZhaoxiAgent, text: str) -> None:
 
 
 def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="zhaoxi")
+    parser.add_argument("--web", action="store_true", help="启动本地 Web 交互界面")
+    args = parser.parse_args()
+    if args.web:
+        from zhaoxi.web import run_web
+
+        run_web()
+        return
     asyncio.run(interactive())
+
+
+async def handle_proactive_command(agent: ZhaoxiAgent, text: str) -> None:
+    runtime = agent.proactive
+    scheduler = agent.proactive_scheduler
+    state = agent.proactive_state
+    if runtime is None or scheduler is None or state is None:
+        print("朝汐 > Proactive Agent 未启用。")
+        return
+    parts = text.split(maxsplit=3)
+    command = parts[1] if len(parts) > 1 else "status"
+    if command == "status":
+        quiet = state.quiet_until.isoformat() if state.quiet_until else "off"
+        print(f"朝汐 > proactive={'on' if state.enabled else 'off'} quiet={quiet}")
+        return
+    if command in {"on", "off"}:
+        state.enabled = command == "on"
+        print(f"朝汐 > 主动能力已{('开启' if state.enabled else '关闭')}。")
+        return
+    if command == "quiet":
+        if len(parts) > 2 and parts[2] == "off":
+            state.quiet_until = None
+        else:
+            minutes = int(parts[2]) if len(parts) > 2 else 60
+            state.quiet_until = datetime.now(UTC) + timedelta(minutes=minutes)
+        print("朝汐 > Quiet Mode 已更新。")
+        return
+    if command == "remind" and len(parts) == 4:
+        minutes = int(parts[2])
+        if minutes < 1 or minutes > 525600:
+            raise ValueError("提醒分钟数必须在 1 到 525600 之间")
+        schedule = Schedule(
+            event_type="reminder.due",
+            kind=ScheduleKind.ONCE,
+            next_fire_at=datetime.now(UTC) + timedelta(minutes=minutes),
+            payload={"text": parts[3]},
+        )
+        await runtime.store.save_schedule(schedule)
+        print(f"朝汐 > 已创建提醒 {schedule.schedule_id}。")
+        return
+    if command == "tick":
+        events = await scheduler.tick()
+        for event in events:
+            await runtime.process(event, datetime.now(UTC), state)
+        print(f"朝汐 > 已处理 {len(events)} 个到期事件。")
+        return
+    if command == "schedules":
+        for item in await runtime.store.list_schedules():
+            print(f"{item.schedule_id} [{'on' if item.enabled else 'off'}] {item.next_fire_at.isoformat()} {item.event_type}")
+        return
+    if command in {"inbox", "history"}:
+        items = await runtime.store.list_deliveries()
+        for item in items:
+            print(f"{item.delivery_id} [{item.status.value}] {item.content} reason={item.decision_reason}")
+        return
+    print("用法：/proactive [status|on|off|quiet [分钟|off]|remind <分钟> <内容>|tick|schedules|inbox|history]")
 
 
 async def handle_permission_command(agent: ZhaoxiAgent, text: str) -> None:

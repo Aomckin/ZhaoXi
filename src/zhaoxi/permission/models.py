@@ -36,6 +36,7 @@ class InvocationOrigin(StrEnum):
     WORKFLOW = "workflow"
     AUTO_MEMORY = "auto_memory"
     USER_COMMAND = "user_command"
+    PROACTIVE = "proactive"
 
 
 class PermissionRequest(BaseModel):

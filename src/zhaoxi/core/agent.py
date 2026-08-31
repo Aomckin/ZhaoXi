@@ -75,6 +75,9 @@ class ZhaoxiAgent:
         planner: "PlannerRuntime | None" = None,
         tool_executor: ToolExecutor | None = None,
         workflow: "WorkflowRuntime | None" = None,
+        proactive=None,
+        proactive_scheduler=None,
+        proactive_state=None,
     ) -> None:
         self.provider = provider
         self.registry = registry
@@ -85,6 +88,9 @@ class ZhaoxiAgent:
         self.planner = planner
         self.tool_executor = tool_executor or ToolExecutor(registry)
         self.workflow = workflow
+        self.proactive = proactive
+        self.proactive_scheduler = proactive_scheduler
+        self.proactive_state = proactive_state
         self._pending_permissions: dict[str, PendingAgentInvocation] = {}
         self.cognitive: "CognitiveCoordinator | None" = None
 

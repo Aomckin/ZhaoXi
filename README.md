@@ -1,6 +1,6 @@
 # Zhaoxi / 朝汐
 
-Zhaoxi 是一个可扩展的个人 Agent Core。v0.5.1.2 · Tool Call Normalization 将 structured 与受支持的 DSML 文本工具调用统一正规化为内部 `ToolCall`，模型协议不会进入用户可见回复。
+Zhaoxi 是一个可扩展的个人 Agent Core。v0.6.1 · Local Interaction Shell 提供默认仅监听本机的轻量 Web 聊天界面，并继续复用同一套 Agent、Planner、Workflow、Permission、Proactive 与 Tool Core。
 
 Life HUD API 的时间戳按原始 UTC 契约读取且不改写；发送给模型的 Tool observation 默认转换为 `Asia/Shanghai`，可通过 `ZHAOXI_LIFEHUD_DISPLAY_TIMEZONE` 配置。
 
@@ -48,8 +48,21 @@ ZHAOXI_MODEL_NAME=your-model
 
 ```bash
 python main.py
+python main.py --web
 python -m pytest
 ```
+
+Web 模式默认打开在 `http://127.0.0.1:4913`。可通过 `ZHAOXI_WEB_HOST` 和 `ZHAOXI_WEB_PORT` 调整；如无明确需要，不要把 Host 改为公网地址。
+
+## v0.6.1 Local Interaction Shell
+
+- 原生 HTML / CSS / JS 本地聊天界面，无前端构建链；
+- 多轮消息、Enter 发送、Shift+Enter 换行、请求中防重复发送；
+- Permission Card 展示操作、权限和资源范围，批准或拒绝后恢复原 Core 流程；
+- 折叠 Debug 面板只展示 route、goal、workflow、request 等安全元数据；
+- SSE Activity / Proactive 事件通道，主动消息与普通回复分开展示；
+- 当前 Session 查看与清空；
+- Provider / Tool / Workflow 异常在 API 边界转换为可继续使用的错误，不向聊天区透传 traceback 或内部对象。
 
 CLI 支持 `/tools`、`/permissions`、`/approve`、`/deny`、`/revoke`、`/audit`、`/clear` 和 `/exit`。缺少关键模型配置时会显示可操作的提示，不会输出 traceback 或密钥。
 
