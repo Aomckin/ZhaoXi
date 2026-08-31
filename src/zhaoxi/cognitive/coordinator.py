@@ -7,6 +7,7 @@ from zhaoxi.cognitive.memory_decision import AutoMemory, MemoryAction
 from zhaoxi.cognitive.router import CognitiveRoute, CognitiveRouter
 from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.permission.models import PendingConfirmation
+from zhaoxi.workflow.runtime import WorkflowRuntimeError
 
 logger = logging.getLogger("COGNITIVE")
 
@@ -18,6 +19,7 @@ class CognitiveResponse:
     goal_id: str | None = None
     memory_action: MemoryAction = MemoryAction.IGNORE
     permission_confirmation: PendingConfirmation | None = None
+    workflow_run_id: str | None = None
 
 
 class CognitiveCoordinator:
@@ -36,7 +38,24 @@ class CognitiveCoordinator:
 
     async def run(self, user_message: str) -> CognitiveResponse:
         decision = await self.router.route(user_message)
-        if decision.route == CognitiveRoute.PLAN and self.agent.planner is not None:
+        workflow_run_id = None
+        if decision.route == CognitiveRoute.WORKFLOW and self.agent.workflow is not None and decision.workflow_id:
+            self.agent.conversation.add_user(user_message.strip())
+            try:
+                workflow_run = await self.agent.workflow.start(
+                    decision.workflow_id,
+                    decision.workflow_inputs,
+                    user_intent=user_message,
+                )
+                workflow_run_id = workflow_run.id
+                result = await self.agent.finalize_workflow(workflow_run)
+            except WorkflowRuntimeError as exc:
+                logger.warning("workflow rejected trace_id=%s error=%s", exc.trace_id, str(exc))
+                result = self.agent._workflow_response_error(exc.user_message, exc.trace_id)
+                self.agent.conversation.add_assistant(result.content)
+            content = result.content
+            goal_id = None
+        elif decision.route == CognitiveRoute.PLAN and self.agent.planner is not None:
             result = await self.agent.run_planned(user_message)
             content = result.content
             goal_id = result.goal_id
@@ -47,7 +66,9 @@ class CognitiveCoordinator:
         else:
             if decision.route == CognitiveRoute.PLAN:
                 decision.route = CognitiveRoute.TOOL
-            result = await self.agent.run(user_message)
+            result = await self.agent.run(
+                user_message, require_tool_call=decision.requires_tool_call
+            )
             content = result.content
             goal_id = None
         memory_action = MemoryAction.IGNORE
@@ -64,4 +85,5 @@ class CognitiveCoordinator:
             goal_id=goal_id,
             memory_action=memory_action,
             permission_confirmation=getattr(result, "permission_confirmation", None),
+            workflow_run_id=workflow_run_id,
         )

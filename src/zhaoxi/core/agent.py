@@ -23,10 +23,19 @@ from zhaoxi.tools.registry import ToolRegistry
 if TYPE_CHECKING:
     from zhaoxi.cognitive.coordinator import CognitiveCoordinator, CognitiveResponse
     from zhaoxi.planner.runtime import PlannerResponse, PlannerRuntime
+    from zhaoxi.workflow.runtime import WorkflowRuntime
 
 logger = logging.getLogger("AGENT")
 tool_logger = logging.getLogger("TOOL")
 model_logger = logging.getLogger("MODEL")
+
+
+def log_internal_failure(message: str, *args, exc: Exception) -> None:
+    """Keep tracebacks out of the normal CLI while retaining them in DEBUG."""
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.exception(message, *args)
+    else:
+        logger.warning(message + " type=%s", *args, type(exc).__name__)
 
 
 @dataclass(slots=True)
@@ -65,6 +74,7 @@ class ZhaoxiAgent:
         timeout_seconds: float = 60,
         planner: "PlannerRuntime | None" = None,
         tool_executor: ToolExecutor | None = None,
+        workflow: "WorkflowRuntime | None" = None,
     ) -> None:
         self.provider = provider
         self.registry = registry
@@ -74,6 +84,7 @@ class ZhaoxiAgent:
         self.timeout_seconds = timeout_seconds
         self.planner = planner
         self.tool_executor = tool_executor or ToolExecutor(registry)
+        self.workflow = workflow
         self._pending_permissions: dict[str, PendingAgentInvocation] = {}
         self.cognitive: "CognitiveCoordinator | None" = None
 
@@ -98,9 +109,14 @@ class ZhaoxiAgent:
         """Consume permission replies before routing or invoking any model."""
         agent_ids = list(self._pending_permissions)
         planner_ids = list(self.planner._pending_permissions) if self.planner else []
+        workflow_runs = await self.workflow.history() if self.workflow else []
+        workflow_ids = [
+            item.id for item in workflow_runs if item.status.value == "waiting_for_permission"
+        ]
         pending_ids = [
             *(("agent", item) for item in agent_ids),
             *(("planner", item) for item in planner_ids),
+            *(("workflow", item) for item in workflow_ids),
         ]
         if not pending_ids:
             return None
@@ -120,14 +136,27 @@ class ZhaoxiAgent:
                 return await self.resolve_permission_batch(confirmation_id, selection)
         decision = self._permission_reply(user_message)
         if decision == "approve":
+            if owner == "workflow":
+                self.conversation.add_user(user_message.strip())
+                run = await self.workflow.approve(confirmation_id)
+                return await self.finalize_workflow(run)
             if owner == "planner":
                 return await self.planner.approve_permission(confirmation_id)
             return await self.approve_permission(confirmation_id)
         if decision == "deny":
+            if owner == "workflow":
+                self.conversation.add_user(user_message.strip())
+                run = await self.workflow.deny(confirmation_id)
+                return await self.finalize_workflow(run)
             if owner == "planner":
                 return await self.planner.deny_permission(confirmation_id)
             return await self.deny_permission(confirmation_id)
-        pending = self.tool_executor.gateway.store.pending[confirmation_id]
+        if owner == "workflow":
+            run = await self.workflow.get(confirmation_id)
+            step_run = run.step_run(run.current_step_id)
+            pending = self.tool_executor.gateway.store.pending[step_run.confirmation_id]
+        else:
+            pending = self.tool_executor.gateway.store.pending[confirmation_id]
         return AgentResponse(
             content=(
                 f"有一项操作正在等待确认：{pending.request.action_summary}。"
@@ -137,6 +166,83 @@ class ZhaoxiAgent:
             steps=0,
             permission_confirmation=pending,
         )
+
+    def _workflow_response(self, run) -> AgentResponse:
+        if run.status.value == "waiting_for_permission":
+            content = "这个操作需要你的确认。请回复“确认”继续，或回复“取消”。"
+        elif run.status.value == "waiting_for_input":
+            content = run.pending_question or "还需要补充一些信息才能继续。"
+        elif run.status.value == "completed":
+            content = self._workflow_fallback(run)
+        else:
+            content = self._workflow_fallback(run)
+        confirmation = None
+        if run.status.value == "waiting_for_permission" and run.current_step_id:
+            step_run = run.step_run(run.current_step_id)
+            if step_run.confirmation_id:
+                confirmation = self.tool_executor.gateway.store.pending.get(step_run.confirmation_id)
+        return AgentResponse(content=content, request_id=run.id, steps=0, permission_confirmation=confirmation)
+
+    async def finalize_workflow(self, run) -> AgentResponse:
+        """Turn an internal Workflow observation into a normal assistant reply."""
+        if run.status.value in {"waiting_for_permission", "waiting_for_input"}:
+            response = self._workflow_response(run)
+            self.conversation.add_assistant(response.content)
+            return response
+        observation = {
+            "workflow_id": run.workflow_id,
+            "status": run.status.value,
+            "result": run.result,
+            "error": run.error,
+        }
+        messages = self.context_builder.build(self.conversation)
+        messages[0].content = (
+            (messages[0].content or "")
+            + "\n\n内部 Workflow 执行结果（只作为事实，不得原样输出 JSON、字段名或内部对象）：\n"
+            + json.dumps(observation, ensure_ascii=False, default=str)
+            + "\n请结合用户原意，用自然、简洁的中文给出最终回复；失败时如实说明，不猜测成功。"
+        )
+        content = ""
+        try:
+            model_response = await asyncio.wait_for(
+                self.provider.generate(messages, None), timeout=self.timeout_seconds
+            )
+            content = (model_response.content or "").strip()
+        except Exception as exc:
+            logger.warning("workflow final response fallback run=%s error=%s", run.id, type(exc).__name__)
+        if not content:
+            content = self._workflow_fallback(run)
+        self.conversation.add_assistant(content)
+        return AgentResponse(content=content, request_id=run.id, steps=0)
+
+    @staticmethod
+    def _workflow_response_error(content: str, trace_id: str) -> AgentResponse:
+        return AgentResponse(content=content, request_id=trace_id, steps=0)
+
+    @staticmethod
+    def _workflow_fallback(run) -> str:
+        outcome = run.result.get("outcome") if isinstance(run.result, dict) else None
+        if outcome == "opened":
+            session = run.result.get("session") or {}
+            title = session.get("title")
+            return f"铁幕已经开幕。现在专注于“{title}”。" if title else "铁幕已经开幕。"
+        if outcome == "already_running":
+            current = run.result.get("current") or {}
+            title = current.get("title")
+            return f"铁幕已经开着，当前专注于“{title}”。" if title else "当前已经有专注正在进行。"
+        if outcome == "closed":
+            return "铁幕已经落幕，这段专注已记录到 Life HUD。"
+        if outcome == "no_current":
+            return "当前没有正在进行的铁幕。"
+        if outcome == "wrong_mode":
+            return "当前进行的不是铁幕，我没有替你结束它。"
+        if outcome == "verification_failed":
+            return "操作已经提交，但我暂时无法从 Life HUD 确认最终状态，请先不要重复操作。"
+        if run.status.value == "cancelled":
+            return "已取消，这次没有继续执行。"
+        if run.status.value == "failed":
+            return "这次流程没有顺利完成，Life HUD 的状态没有被我当作成功处理。"
+        return "流程已经处理完成。"
 
     @staticmethod
     def _permission_reply(value: str) -> str | None:
@@ -196,7 +302,7 @@ class ZhaoxiAgent:
             return None
         return positions
 
-    async def run(self, user_message: str) -> AgentResponse:
+    async def run(self, user_message: str, *, require_tool_call: bool = False) -> AgentResponse:
         """Accept one user turn and return a final natural-language response."""
         if not user_message.strip():
             raise ValueError("消息不能为空。")
@@ -208,11 +314,21 @@ class ZhaoxiAgent:
             try:
                 memories = await self.context_builder.memory_retriever.retrieve(user_message.strip())
                 logger.info("request=%s memory_hits=%d", request_id, len(memories))
-            except Exception:
-                logger.exception("request=%s memory retrieval failed; continuing without memory", request_id)
+            except Exception as exc:
+                log_internal_failure(
+                    "request=%s memory retrieval failed; continuing without memory",
+                    request_id,
+                    exc=exc,
+                )
         try:
             return await asyncio.wait_for(
-                self._run_loop(request_id, memories, user_message.strip()), timeout=self.timeout_seconds
+                self._run_loop(
+                    request_id,
+                    memories,
+                    user_message.strip(),
+                    require_tool_call=require_tool_call,
+                ),
+                timeout=self.timeout_seconds,
             )
         except TimeoutError as exc:
             logger.error("request=%s timed out", request_id)
@@ -229,8 +345,12 @@ class ZhaoxiAgent:
         if self.context_builder.memory_retriever:
             try:
                 memories = await self.context_builder.memory_retriever.retrieve(clean_message)
-            except Exception:
-                logger.exception("request=%s memory retrieval failed; continuing without memory", request_id)
+            except Exception as exc:
+                log_internal_failure(
+                    "request=%s memory retrieval failed; continuing without memory",
+                    request_id,
+                    exc=exc,
+                )
         try:
             response = await asyncio.wait_for(
                 self.provider.generate(self.context_builder.build(self.conversation, memories), None),
@@ -238,6 +358,9 @@ class ZhaoxiAgent:
             )
         except TimeoutError as exc:
             raise AgentLoopError(f"请求超过 {self.timeout_seconds:g} 秒，已停止。") from exc
+        except ProviderError as exc:
+            log_internal_failure("request=%s provider error", request_id, exc=exc)
+            raise AgentLoopError("模型服务当前不可访问，请稍后重试。") from exc
         content = response.content or "模型没有返回可显示的内容。"
         self.conversation.add_assistant(content)
         return AgentResponse(content=content, request_id=request_id, steps=1)
@@ -247,25 +370,42 @@ class ZhaoxiAgent:
         request_id: str,
         memories: list[MemorySearchResult] | None = None,
         user_intent: str = "",
+        require_tool_call: bool = False,
     ) -> AgentResponse:
         schemas = self.registry.schemas()
+        tool_called = False
+        corrective_retry = False
         for step in range(1, self.max_steps + 1):
             model_logger.info("request=%s step=%d calling model", request_id, step)
             try:
-                response = await self.provider.generate(
-                    self.context_builder.build(self.conversation, memories), schemas
-                )
-            except ProviderError:
-                logger.exception("request=%s provider error", request_id)
-                raise
+                messages = self.context_builder.build(self.conversation, memories)
+                if corrective_retry and not tool_called:
+                    messages[0].content = (
+                        (messages[0].content or "")
+                        + "\n本轮用户明确要求真实查询或检查。你上一尝试没有调用工具；"
+                        "现在必须调用一个最相关的可用工具，不得只描述将要检查。"
+                    )
+                response = await self.provider.generate(messages, schemas)
+            except ProviderError as exc:
+                log_internal_failure("request=%s provider error", request_id, exc=exc)
+                raise AgentLoopError(
+                    "模型服务当前不可访问，请稍后重试；这次没有执行任何新的工具操作。"
+                ) from exc
 
             if not response.tool_calls:
+                if require_tool_call and not tool_called and not corrective_retry:
+                    corrective_retry = True
+                    logger.warning("request=%s required tool call missing; retrying once", request_id)
+                    continue
+                if require_tool_call and not tool_called:
+                    raise AgentLoopError("这次没有实际完成工具查询，请换一种更明确的说法重试。")
                 content = response.content or "模型没有返回可显示的内容。"
                 self.conversation.add_assistant(content)
                 logger.info("request=%s final response step=%d", request_id, step)
                 return AgentResponse(content=content, request_id=request_id, steps=step)
 
             self.conversation.add_assistant(response.content, tool_calls=response.tool_calls)
+            tool_called = True
             for call_index, call in enumerate(response.tool_calls):
                 tool_logger.info(
                     "request=%s tool=%s argument_keys=%s",

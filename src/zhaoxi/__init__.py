@@ -1,3 +1,3 @@
 """Zhaoxi personal agent core."""
 
-__version__ = "0.3.2"
+__version__ = "0.5.1.2"

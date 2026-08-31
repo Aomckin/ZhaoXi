@@ -33,6 +33,7 @@ class PermissionStatus(StrEnum):
 class InvocationOrigin(StrEnum):
     AGENT = "agent"
     PLANNER = "planner"
+    WORKFLOW = "workflow"
     AUTO_MEMORY = "auto_memory"
     USER_COMMAND = "user_command"
 

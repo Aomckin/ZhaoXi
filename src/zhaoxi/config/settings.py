@@ -49,6 +49,18 @@ class Settings(BaseSettings):
     permission_confirmation_ttl_seconds: float = Field(default=300, gt=0)
     permission_audit_path: str = ".zhaoxi/audit/permission.jsonl"
     permission_max_tool_output_chars: int = Field(default=12_000, ge=200, le=100_000)
+    workflow_enabled: bool = True
+    workflow_directory: str = "workflows"
+    workflow_db_path: str = ".zhaoxi/workflow.db"
+    workflow_history_limit: int = Field(default=100, ge=1, le=1000)
+    workflow_max_steps: int = Field(default=50, ge=1, le=500)
+    workflow_max_events: int = Field(default=200, ge=10, le=10_000)
+    lifehud_base_url: str = "http://127.0.0.1:8025"
+    lifehud_context_path: str = "/api/agent/context"
+    lifehud_schema_version: str = "1"
+    lifehud_timeout_seconds: float = Field(default=10, gt=0, le=120)
+    lifehud_max_retries: int = Field(default=2, ge=0, le=5)
+    lifehud_display_timezone: str = "Asia/Shanghai"
 
     @model_validator(mode="after")
     def validate_planner_limits(self) -> "Settings":

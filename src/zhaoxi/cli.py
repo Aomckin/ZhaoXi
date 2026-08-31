@@ -1,6 +1,8 @@
 """Thin interactive command-line interface."""
 
 import asyncio
+import logging
+from uuid import uuid4
 
 from zhaoxi.config.logging import configure_logging
 from zhaoxi.config.settings import Settings
@@ -28,6 +30,15 @@ from zhaoxi.permission.models import PermissionLevel, PermissionStatus
 from zhaoxi.permission.policy import DefaultPermissionPolicy
 from zhaoxi.tools.builtin import create_builtin_tools
 from zhaoxi.tools.registry import ToolRegistry
+from zhaoxi.tools.integrations.lifehud import (
+    LifeHudClient,
+    create_lifehud_context_tools,
+    create_lifehud_focus_tools,
+)
+from zhaoxi.workflow.loader import WorkflowLoader
+from zhaoxi.workflow.registry import WorkflowRegistry
+from zhaoxi.workflow.runtime import WorkflowRuntime
+from zhaoxi.workflow.sqlite import SQLiteWorkflowStore
 
 
 def build_agent(settings: Settings) -> ZhaoxiAgent:
@@ -61,6 +72,20 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     registry = ToolRegistry()
     for tool in create_builtin_tools(memory_service):
         registry.register(tool)
+    if settings.workflow_enabled:
+        lifehud_client = LifeHudClient(
+            settings.lifehud_base_url,
+            context_path=settings.lifehud_context_path,
+            schema_version=settings.lifehud_schema_version,
+            timeout=settings.lifehud_timeout_seconds,
+            max_retries=settings.lifehud_max_retries,
+            display_timezone=settings.lifehud_display_timezone,
+        )
+        for tool in [
+            *create_lifehud_context_tools(lifehud_client),
+            *create_lifehud_focus_tools(lifehud_client),
+        ]:
+            registry.register(tool)
     policy_values = {
         PermissionLevel.READ: settings.permission_read_policy,
         PermissionLevel.WRITE: settings.permission_write_policy,
@@ -102,6 +127,18 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
             total_timeout_seconds=settings.planner_total_timeout_seconds,
             tool_executor=tool_executor,
         )
+    workflow = None
+    if settings.workflow_enabled:
+        workflow_registry = WorkflowRegistry(registry)
+        for definition in WorkflowLoader().load_directory(settings.workflow_directory):
+            workflow_registry.register(definition)
+        workflow = WorkflowRuntime(
+            workflow_registry,
+            tool_executor,
+            SQLiteWorkflowStore(settings.workflow_db_path),
+            max_steps=settings.workflow_max_steps,
+            max_events=settings.workflow_max_events,
+        )
     agent = ZhaoxiAgent(
         provider=provider,
         registry=registry,
@@ -111,6 +148,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         timeout_seconds=settings.request_timeout_seconds,
         planner=planner,
         tool_executor=tool_executor,
+        workflow=workflow,
     )
     if settings.cognitive_router_enabled:
         agent.cognitive = CognitiveCoordinator(
@@ -131,8 +169,8 @@ async def interactive() -> None:
         return
 
     print(
-        "Zhaoxi v0.4 · Permission\n"
-        "输入 /plan <目标> 执行规划任务，/permissions 查看权限，/tools 查看工具，/exit 退出。"
+        "Zhaoxi v0.5.1.2 · Tool Call Normalization\n"
+        "输入 /workflow 查看流程，/plan <目标> 执行规划任务，/permissions 查看权限，/exit 退出。"
     )
     while True:
         try:
@@ -172,16 +210,68 @@ async def interactive() -> None:
             except ZhaoxiError as exc:
                 print(f"朝汐 > 记忆操作失败：{exc}")
             continue
+        if text.startswith("/workflow"):
+            try:
+                await handle_workflow_command(agent, text)
+            except (ZhaoxiError, ValueError, KeyError) as exc:
+                print(f"朝汐 > Workflow 操作失败：{exc}")
+            continue
         try:
             response = await agent.run_natural(text)
             print(f"朝汐 > {response.content}")
         except ZhaoxiError as exc:
             print(f"朝汐 > 这次没有顺利完成：{exc}")
-        except Exception:
-            import logging
+        except Exception as exc:
+            trace_id = uuid4().hex
+            error_logger = logging.getLogger("ERROR")
+            if error_logger.isEnabledFor(logging.DEBUG):
+                error_logger.exception("unexpected CLI failure trace_id=%s", trace_id)
+            else:
+                error_logger.error(
+                    "unexpected CLI failure trace_id=%s type=%s",
+                    trace_id,
+                    type(exc).__name__,
+                )
+            print(f"朝汐 > 遇到了未预期的内部错误，请稍后重试。（追踪号：{trace_id}）")
 
-            logging.getLogger("ERROR").exception("unexpected CLI failure")
-            print("朝汐 > 遇到了未预期的内部错误，请查看日志。")
+
+async def handle_workflow_command(agent: ZhaoxiAgent, text: str) -> None:
+    runtime = agent.workflow
+    if runtime is None:
+        print("朝汐 > Workflow 未启用。")
+        return
+    import json
+
+    parts = text.split(maxsplit=3)
+    if len(parts) == 1:
+        for definition in runtime.registry.list():
+            print(f"{definition.id}@{definition.version} {definition.name}")
+        return
+    command = parts[1]
+    if command == "show" and len(parts) >= 3:
+        print(runtime.registry.get(parts[2]).model_dump_json(indent=2))
+        return
+    if command == "run" and len(parts) >= 3:
+        inputs = json.loads(parts[3]) if len(parts) == 4 else {}
+        run = await runtime.start(parts[2], inputs)
+        print(f"朝汐 > [{run.id}] {run.status.value} {json.dumps(run.result, ensure_ascii=False)}")
+        return
+    if command == "status" and len(parts) >= 3:
+        print((await runtime.get(parts[2])).model_dump_json(indent=2))
+        return
+    if command in {"approve", "deny", "pause", "resume", "cancel"} and len(parts) >= 3:
+        run = await getattr(runtime, command)(parts[2])
+        print(f"朝汐 > [{run.id}] {run.status.value}")
+        return
+    if command == "input" and len(parts) == 4:
+        run = await runtime.provide_input(parts[2], json.loads(parts[3]))
+        print(f"朝汐 > [{run.id}] {run.status.value}")
+        return
+    if command == "history":
+        for run in await runtime.history():
+            print(f"{run.id} [{run.status.value}] {run.workflow_id}@{run.workflow_version}")
+        return
+    print("用法：/workflow [show|run|status|input|approve|deny|pause|resume|cancel|history] ...")
 
 
 async def handle_memory_command(agent: ZhaoxiAgent, text: str) -> None:

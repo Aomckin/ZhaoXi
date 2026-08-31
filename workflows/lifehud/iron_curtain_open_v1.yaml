@@ -1,0 +1,73 @@
+id: lifehud.iron_curtain.open
+version: 1
+name: 铁幕开幕
+description: 查询 Life HUD 当前状态，并在没有活动 Focus 时开启铁幕。
+aliases:
+  - 朝汐，开幕
+  - 开始铁幕
+tags: [lifehud, focus, iron-curtain]
+inputs:
+  title:
+    type: string
+    required: true
+    description: 当前铁幕的主要目标
+  related_task_ids:
+    type: array
+    required: false
+    default: []
+steps:
+  - id: current
+    type: tool
+    tool: lifehud_focus
+    arguments: {}
+    output_mapping:
+      current: $.steps.current.output.data.focus.active
+    next: has_current
+  - id: has_current
+    type: condition
+    expression:
+      exists: $.variables.current
+    on_true: already_running
+    on_false: start
+  - id: already_running
+    type: end
+    result:
+      outcome: already_running
+      current: $.variables.current
+  - id: start
+    type: tool
+    tool: lifehud_focus_start
+    arguments:
+      title: $.inputs.title
+      related_task_ids: $.inputs.related_task_ids
+    output_mapping:
+      session: $.steps.start.output.data
+    next: verify
+  - id: verify
+    type: tool
+    tool: lifehud_focus
+    arguments: {}
+    output_mapping:
+      verified_current: $.steps.verify.output.data.focus.active
+    next: verify_started
+  - id: verify_started
+    type: condition
+    expression:
+      and:
+        - exists: $.variables.verified_current
+        - eq: [$.variables.verified_current.id, $.variables.session.id]
+        - eq: [$.variables.verified_current.mode, IRON_CURTAIN]
+        - in: [$.variables.verified_current.status, [RUNNING, PAUSED]]
+    on_true: opened
+    on_false: verification_failed
+  - id: verification_failed
+    type: end
+    result:
+      outcome: verification_failed
+      submitted_session: $.variables.session
+      current: $.variables.verified_current
+  - id: opened
+    type: end
+    result:
+      outcome: opened
+      session: $.variables.verified_current

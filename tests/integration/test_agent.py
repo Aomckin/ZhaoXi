@@ -1,10 +1,12 @@
 import json
 
+import httpx
 import pytest
 
 from conftest import FakeProvider
 from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.errors import AgentLoopError
+from zhaoxi.models.openai_compatible import OpenAICompatibleProvider
 from zhaoxi.models.types import ModelResponse, ToolCall
 
 
@@ -37,6 +39,42 @@ async def test_tool_call_result_is_returned_to_model(registry, context_builder, 
     tool_message = provider.calls[1][-1]
     assert tool_message.name == "calculator"
     assert json.loads(tool_message.content)["data"]["result"] == 391
+
+
+@pytest.mark.asyncio
+async def test_dsml_tool_call_enters_the_same_agent_runtime(
+    registry, context_builder, conversation
+):
+    responses = iter([
+        {
+            "id": "dsml-call",
+            "choices": [{"message": {"content": (
+                '<|DSML|tool_calls><|DSML|invoke name="echo">'
+                '<|DSML|parameter name="message" string="true">hi</|DSML|parameter>'
+                '</|DSML|invoke></|DSML|tool_calls>'
+            )}}],
+        },
+        {
+            "id": "final-answer",
+            "choices": [{"message": {"content": "工具已正常执行。"}}],
+        },
+    ])
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=next(responses))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = OpenAICompatibleProvider(
+            base_url="https://example.test/v1", api_key="secret", model="test-model", client=client
+        )
+        response = await make_agent(
+            provider, registry, context_builder, conversation
+        ).run("回显 hi")
+
+    assert response.content == "工具已正常执行。"
+    assert "DSML" not in response.content
+    tool_messages = [message for message in conversation.messages if message.name == "echo"]
+    assert json.loads(tool_messages[0].content)["data"]["message"] == "hi"
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,76 @@
+id: lifehud.iron_curtain.close
+version: 1
+name: 铁幕落幕
+description: 查询 Life HUD 当前状态，并只结束当前铁幕 Focus。
+aliases:
+  - 朝汐，落幕
+  - 结束铁幕
+tags: [lifehud, focus, iron-curtain]
+inputs:
+  note:
+    type: string
+    required: false
+    default: null
+    description: 本轮铁幕的完成总结
+steps:
+  - id: current
+    type: tool
+    tool: lifehud_focus
+    arguments: {}
+    output_mapping:
+      current: $.steps.current.output.data.focus.active
+    next: has_current
+  - id: has_current
+    type: condition
+    expression:
+      exists: $.variables.current
+    on_true: is_iron_curtain
+    on_false: no_current
+  - id: no_current
+    type: end
+    result:
+      outcome: no_current
+  - id: is_iron_curtain
+    type: condition
+    expression:
+      eq: [$.variables.current.mode, IRON_CURTAIN]
+    on_true: complete
+    on_false: wrong_mode
+  - id: wrong_mode
+    type: end
+    result:
+      outcome: wrong_mode
+      current: $.variables.current
+  - id: complete
+    type: tool
+    tool: lifehud_focus_complete
+    arguments:
+      session_id: $.variables.current.id
+      note: $.inputs.note
+    output_mapping:
+      session: $.steps.complete.output.data
+    next: verify
+  - id: verify
+    type: tool
+    tool: lifehud_focus
+    arguments: {}
+    output_mapping:
+      verified_current: $.steps.verify.output.data.focus.active
+    next: verify_closed
+  - id: verify_closed
+    type: condition
+    expression:
+      exists: $.variables.verified_current
+    on_true: verification_failed
+    on_false: closed
+  - id: verification_failed
+    type: end
+    result:
+      outcome: verification_failed
+      completed_session: $.variables.session
+      current: $.variables.verified_current
+  - id: closed
+    type: end
+    result:
+      outcome: closed
+      session: $.variables.session

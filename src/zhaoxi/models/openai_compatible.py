@@ -8,6 +8,7 @@ import httpx
 from zhaoxi.core.message import Message
 from zhaoxi.errors import ProviderError
 from zhaoxi.models.base import ModelProvider
+from zhaoxi.models.text_tool_calls import normalize_text_tool_calls
 from zhaoxi.models.types import ModelResponse, ToolCall
 
 
@@ -77,8 +78,13 @@ class OpenAICompatibleProvider(ModelProvider):
                 except json.JSONDecodeError as exc:
                     raise ProviderError(f"模型返回了无效的工具参数 JSON：{exc}") from exc
                 calls.append(ToolCall(id=call["id"], name=function["name"], arguments=arguments))
+            content, text_calls = normalize_text_tool_calls(
+                message.get("content"), id_prefix=f"text-{data.get('id') or 'response'}"
+            )
+            if not calls:
+                calls = text_calls
             return ModelResponse(
-                content=message.get("content"),
+                content=content,
                 tool_calls=calls,
                 finish_reason=choice.get("finish_reason"),
                 usage=data.get("usage", {}),

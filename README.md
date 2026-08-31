@@ -1,6 +1,8 @@
 # Zhaoxi / 朝汐
 
-Zhaoxi 是一个可扩展的个人 Agent Core。v0.4 · Permission 为 Agent、Planner 与 Tool 之间增加统一权限执行门、显式确认和脱敏审计，让模型可以提出动作，但不能自行授予权限。
+Zhaoxi 是一个可扩展的个人 Agent Core。v0.5.1.2 · Tool Call Normalization 将 structured 与受支持的 DSML 文本工具调用统一正规化为内部 `ToolCall`，模型协议不会进入用户可见回复。
+
+Life HUD API 的时间戳按原始 UTC 契约读取且不改写；发送给模型的 Tool observation 默认转换为 `Asia/Shanghai`，可通过 `ZHAOXI_LIFEHUD_DISPLAY_TIMEZONE` 配置。
 
 ## Architecture
 
@@ -14,7 +16,9 @@ CLI / future interfaces
                           ↓
               Permission Gateway + Audit
           ↓
-   Model Provider  ←→  Tool Registry
+   Model Provider  ←→  Workflow Runtime
+                         ↓
+                    Tool Registry
                          ↓
                  independently registered Tools
 ```
@@ -48,6 +52,29 @@ python -m pytest
 ```
 
 CLI 支持 `/tools`、`/permissions`、`/approve`、`/deny`、`/revoke`、`/audit`、`/clear` 和 `/exit`。缺少关键模型配置时会显示可操作的提示，不会输出 traceback 或密钥。
+
+## v0.5 capabilities
+
+- Workflow 输入按定义归一化，无害未知字段被忽略并进入 Run 事件
+- Permission Resume 后继续原 Workflow，再由模型生成自然语言最终回复
+- 普通模式禁止输出 raw WorkflowResult、Pydantic DTO、JSON 或 traceback
+- Life HUD 查询与工具检查路由补强，避免“声称检查但未调用”
+- Workflow 参数错误和意外 CLI 错误转换为带追踪号的可继续回复
+
+- Life HUD v0.8 Agent Context `/today /recent /status /focus /tasks /dreams /life /journal /media /growth`
+- schemaVersion 1 校验、强类型 ISO 8601 时间、null/空集合和未知字段前向兼容
+- Agent Context GET 对网络/5xx 有限退避，400 返回业务 detail，写操作不自动重放
+- 铁幕 Workflow 使用 `/api/agent/context/focus` 判断状态，并在 start/complete 后重新读取事实源确认
+
+- YAML 版本化 Workflow Definition、Loader 与 Registry
+- 受限 `tool / condition / ask / set / end` DSL，不执行任意代码
+- 参数校验、条件分支、输出绑定、有限重试和有界运行事件
+- Workflow 暂停、输入恢复、权限恢复、取消与 SQLite 运行历史
+- `DIRECT / TOOL / PLAN / WORKFLOW` 认知路由
+- `/workflow` CLI 检查、启动、恢复、批准、拒绝、暂停和取消
+- Life HUD Focus HTTP Tool：current、start、complete
+- “朝汐，开幕 / 落幕”流程，避免重复开幕或误结束非铁幕 Focus
+- 所有 Workflow Tool Step 复用 v0.4 `ToolExecutor / PermissionGateway`
 
 ## v0.4 capabilities
 
@@ -144,4 +171,4 @@ CLI 可直接检查记忆：
 
 ## Roadmap
 
-当前版本要求见 [v0.4 Permission 开发计划](docs/Zhaoxi_v0.4_Permission_Development_Plan.md)，记忆生命周期见 [v0.3.2 任务书](docs/Zhaoxi_v0.3.2_Memory_Lifecycle_Task.md)。后续按 [总开发计划](docs/Zhaoxi_v0.1-v1.0_Development_Plan.md) 推进 v0.5 Workflow。本版不接入 Life HUD、GitHub 等外部 Tool，也不包含后台定时任务、向量数据库或 RAG。
+当前版本要求见 [v0.5 Workflow 开发任务书](docs/Zhaoxi_v0.5_Workflow_Development_Task.md)，权限基线见 [v0.4 Permission 开发计划](docs/Zhaoxi_v0.4_Permission_Development_Plan.md)。本版只接入 Life HUD Focus 的最小 HTTP Tool，不修改或复制 Life HUD 业务逻辑；后台定时任务、主动唤醒、向量数据库和 RAG 仍不在本版范围。
