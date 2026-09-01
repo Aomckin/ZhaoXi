@@ -61,6 +61,19 @@ class Settings(BaseSettings):
     lifehud_timeout_seconds: float = Field(default=10, gt=0, le=120)
     lifehud_max_retries: int = Field(default=2, ge=0, le=5)
     lifehud_display_timezone: str = "Asia/Shanghai"
+    reflection_enabled: bool = True
+    reflection_db_path: str = ".zhaoxi/reflection.db"
+    reflection_timezone: str = "Asia/Shanghai"
+    reflection_max_evidence: int = Field(default=200, ge=1, le=5000)
+    reflection_max_evidence_chars: int = Field(default=40_000, ge=1000, le=1_000_000)
+    reflection_max_excerpt_chars: int = Field(default=800, ge=50, le=2000)
+    reflection_prompt_version: int = Field(default=1, ge=1)
+    reflection_pattern_min_evidence: int = Field(default=3, ge=2, le=100)
+    reflection_pattern_min_days: int = Field(default=2, ge=2, le=365)
+    reflection_auto_daily: bool = False
+    reflection_auto_weekly: bool = False
+    reflection_auto_monthly: bool = False
+    reflection_notify: bool = False
     proactive_enabled: bool = True
     proactive_db_path: str = ".zhaoxi/proactive.db"
     proactive_timezone: str = "Asia/Shanghai"
@@ -70,6 +83,30 @@ class Settings(BaseSettings):
     proactive_night_end_hour: int = Field(default=8, ge=0, le=23)
     web_host: str = "127.0.0.1"
     web_port: int = Field(default=4913, ge=1, le=65535)
+    desktop_enabled: bool = True
+    desktop_instance_path: str = ".zhaoxi/desktop-instance.json"
+    desktop_activation_port: int = Field(default=4914, ge=1, le=65535)
+    desktop_hotkey: str = "ctrl+alt+space"
+    desktop_window_width: int = Field(default=1080, ge=720, le=7680)
+    desktop_window_height: int = Field(default=760, ge=520, le=4320)
+    voice_enabled: bool = False
+    voice_auto_send: bool = False
+    voice_auto_speak: bool = False
+    voice_language: str = "zh-CN"
+    voice_max_seconds: float = Field(default=60, gt=0, le=300)
+    voice_max_bytes: int = Field(default=4_194_304, ge=1024, le=100_000_000)
+    voice_temp_dir: str = ".zhaoxi/tmp/voice"
+    voice_device_name: str = ""
+    stt_provider: str = "disabled"
+    stt_base_url: str = ""
+    stt_api_key: str = ""
+    stt_model: str = ""
+    stt_timeout_seconds: float = Field(default=45, gt=0, le=300)
+    tts_provider: str = "windows"
+    tts_voice: str = ""
+    tts_rate: int = Field(default=0, ge=-10, le=10)
+    tts_volume: int = Field(default=100, ge=0, le=100)
+    tts_max_chars: int = Field(default=1200, ge=50, le=10_000)
 
     @model_validator(mode="after")
     def validate_planner_limits(self) -> "Settings":
@@ -93,6 +130,15 @@ class Settings(BaseSettings):
             raise ValueError("memory relevance 遗忘阈值必须低于活跃阈值")
         if self.proactive_night_start_hour == self.proactive_night_end_hour:
             raise ValueError("proactive night 起止小时不能相同")
+        if self.desktop_activation_port == self.web_port:
+            raise ValueError("desktop activation port 不能与 web port 相同")
+        from zhaoxi.desktop.hotkey import parse_hotkey
+
+        parse_hotkey(self.desktop_hotkey)
+        if self.stt_provider not in {"disabled", "openai-compatible"}:
+            raise ValueError("stt provider 必须是 disabled 或 openai-compatible")
+        if self.tts_provider not in {"disabled", "windows"}:
+            raise ValueError("tts provider 必须是 disabled 或 windows")
         return self
 
     def validate_model_config(self) -> None:

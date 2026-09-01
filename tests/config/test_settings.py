@@ -37,3 +37,35 @@ def test_proactive_night_window_must_have_duration():
             memory_relevance_forget_threshold=0.7,
             memory_relevance_active_threshold=0.6,
         )
+
+
+def test_voice_provider_and_audio_limits_are_validated():
+    with pytest.raises(ValidationError, match="stt provider"):
+        Settings(_env_file=None, stt_provider="unknown")
+    with pytest.raises(ValidationError, match="tts provider"):
+        Settings(_env_file=None, tts_provider="unknown")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, voice_max_seconds=0)
+    configured = Settings(
+        _env_file=None,
+        voice_enabled=True,
+        stt_provider="openai-compatible",
+        tts_provider="windows",
+    )
+    assert configured.voice_language == "zh-CN"
+    assert not configured.voice_auto_send
+
+
+def test_reflection_defaults_are_bounded_and_automatic_delivery_is_opt_in():
+    settings = Settings(_env_file=None)
+    assert settings.reflection_enabled
+    assert settings.reflection_db_path == ".zhaoxi/reflection.db"
+    assert settings.reflection_timezone == "Asia/Shanghai"
+    assert settings.reflection_max_evidence == 200
+    assert not settings.reflection_auto_daily
+    assert not settings.reflection_auto_weekly
+    assert not settings.reflection_auto_monthly
+    assert not settings.reflection_notify
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, reflection_max_evidence=0)

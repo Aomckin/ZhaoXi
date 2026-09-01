@@ -5,44 +5,93 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import secrets
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from zhaoxi.cli import build_agent
+from zhaoxi import __version__
 from zhaoxi.config.settings import Settings
 from zhaoxi.errors import ZhaoxiError
 from zhaoxi.web.adapter import WebInterfaceAdapter, WebResult
 from zhaoxi.web.events import EventBroadcaster
+from zhaoxi.voice.policy import SpeechAction, SpeechContext, SpeechPolicy
 
 logger = logging.getLogger("WEB")
 
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=20_000)
+    request_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class ChatResponse(BaseModel):
     content: str
     activity: dict[str, Any] = Field(default_factory=dict)
     permission: dict[str, Any] | None = None
+    request_id: str | None = None
+    trace_id: str | None = None
+    status: str = "completed"
+
+
+class VoiceConfirmRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=20_000)
+    request_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class VoiceSpeakRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=20_000)
 
 
 def _response(result: WebResult) -> ChatResponse:
-    return ChatResponse(content=result.content, activity=result.activity, permission=result.permission)
+    return ChatResponse(
+        content=result.content,
+        activity=result.activity,
+        permission=result.permission,
+        request_id=result.request_id,
+        trace_id=result.trace_id,
+        status=result.status,
+    )
 
 
-def create_app(*, agent=None, settings: Settings | None = None) -> FastAPI:
+def create_app(
+    *,
+    agent=None,
+    settings: Settings | None = None,
+    api_token: str | None = None,
+    voice_runtime=None,
+) -> FastAPI:
     configured = settings or Settings()
     core = agent or build_agent(configured)
     adapter = WebInterfaceAdapter(core)
     events = EventBroadcaster()
     static_dir = Path(__file__).with_name("static")
+    speech_policy = SpeechPolicy()
+
+    def voice_policy(*, text: str, explicit: bool, permission_pending: bool = False):
+        state = getattr(core, "proactive_state", None)
+        quiet = bool(state and state.quiet_until and state.quiet_until > datetime.now(UTC))
+        hour = datetime.now().hour
+        start = configured.proactive_night_start_hour
+        end = configured.proactive_night_end_hour
+        night = start <= hour < end if start < end else hour >= start or hour < end
+        return speech_policy.decide(SpeechContext(
+            voice_enabled=voice_runtime is not None,
+            auto_speak=configured.voice_auto_speak,
+            explicit_user_action=explicit,
+            response_from_voice=not explicit,
+            quiet=quiet,
+            night=night,
+            recording=bool(voice_runtime and voice_runtime.status.value == "recording"),
+            permission_pending=permission_pending,
+            text_length=len(text),
+        ))
 
     async def proactive_loop() -> None:
         while True:
@@ -70,25 +119,56 @@ def create_app(*, agent=None, settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            if voice_runtime is not None:
+                await voice_runtime.cancel("application_shutdown")
             task.cancel()
             with suppress(asyncio.CancelledError):
                 await task
 
     app = FastAPI(title="Zhaoxi Local Shell", docs_url="/api/docs", lifespan=lifespan)
 
+    if api_token:
+        @app.middleware("http")
+        async def require_local_token(request: Request, call_next):
+            if request.url.path.startswith("/api/") and request.url.path != "/api/bootstrap":
+                supplied = request.headers.get("X-Zhaoxi-Token") or request.cookies.get(
+                    "zhaoxi_session", ""
+                )
+                if not secrets.compare_digest(supplied, api_token):
+                    return JSONResponse(status_code=401, content={"detail": "本地 Desktop 会话令牌无效。"})
+            return await call_next(request)
+
     @app.get("/", include_in_schema=False)
     async def index():
         return FileResponse(static_dir / "index.html")
 
+    @app.post("/api/bootstrap", include_in_schema=False)
+    async def bootstrap(request: Request):
+        if not api_token:
+            return {"status": "not_required"}
+        supplied = request.headers.get("X-Zhaoxi-Token", "")
+        if not secrets.compare_digest(supplied, api_token):
+            raise HTTPException(status_code=401, detail="本地 Desktop 启动令牌无效。")
+        response = JSONResponse({"status": "ready"})
+        response.set_cookie(
+            "zhaoxi_session",
+            api_token,
+            httponly=True,
+            secure=False,
+            samesite="strict",
+            path="/",
+        )
+        return response
+
     @app.get("/api/health")
     async def health():
-        return {"status": "ok", "version": "0.6.1"}
+        return {"status": "ok", "version": __version__}
 
     @app.post("/api/chat", response_model=ChatResponse)
     async def chat(request: ChatRequest):
         await events.publish({"type": "activity", "label": "正在思考…"})
         try:
-            result = await adapter.chat(request.message.strip())
+            result = await adapter.chat(request.message.strip(), request_id=request.request_id)
         except ZhaoxiError as exc:
             logger.warning("web chat core error type=%s", type(exc).__name__)
             raise HTTPException(status_code=422, detail=f"这次操作没成功：{exc}") from exc
@@ -129,6 +209,89 @@ def create_app(*, agent=None, settings: Settings | None = None) -> FastAPI:
         deliveries = await runtime.store.list_deliveries()
         return {"deliveries": [item.model_dump(mode="json") for item in deliveries]}
 
+    @app.get("/api/voice/status")
+    async def voice_status():
+        if voice_runtime is None:
+            return {"enabled": False, "status": "disabled"}
+        return {"enabled": True, "status": voice_runtime.status.value}
+
+    @app.post("/api/voice/record/start")
+    async def voice_record_start():
+        if voice_runtime is None:
+            raise HTTPException(status_code=409, detail="Voice 未启用或配置不可用。")
+        try:
+            await voice_runtime.start_recording(device_name=configured.voice_device_name or None)
+        except Exception as exc:
+            logger.warning("voice record start failed type=%s", type(exc).__name__)
+            raise HTTPException(status_code=422, detail=f"无法开始录音：{exc}") from exc
+        return {"status": voice_runtime.status.value}
+
+    @app.post("/api/voice/record/stop")
+    async def voice_record_stop():
+        if voice_runtime is None:
+            raise HTTPException(status_code=409, detail="Voice 未启用或配置不可用。")
+        try:
+            transcript = await voice_runtime.stop_recording()
+        except Exception as exc:
+            logger.warning("voice transcription failed type=%s", type(exc).__name__)
+            raise HTTPException(status_code=422, detail=f"语音识别失败：{exc}") from exc
+        return {
+            "status": voice_runtime.status.value,
+            "transcript_id": transcript.transcript_id,
+            "text": transcript.text,
+            "language": transcript.language,
+            "provider": transcript.provider,
+        }
+
+    @app.post("/api/voice/transcript/confirm", response_model=ChatResponse)
+    async def voice_confirm(request: VoiceConfirmRequest):
+        if voice_runtime is None:
+            raise HTTPException(status_code=409, detail="Voice 未启用或配置不可用。")
+        try:
+            result = await voice_runtime.confirm_transcript(
+                request.text,
+                gateway=adapter.gateway,
+                request_id=request.request_id,
+            )
+        except Exception as exc:
+            logger.warning("voice transcript confirm failed type=%s", type(exc).__name__)
+            raise HTTPException(status_code=422, detail=f"语音消息发送失败：{exc}") from exc
+        web_result = adapter._result(result)
+        action, _ = voice_policy(
+            text=web_result.content,
+            explicit=False,
+            permission_pending=web_result.permission is not None,
+        )
+        if action is SpeechAction.SPEAK_NOW:
+            await voice_runtime.speak(web_result.content, max_chars=configured.tts_max_chars)
+        return _response(web_result)
+
+    @app.post("/api/voice/cancel")
+    async def voice_cancel():
+        if voice_runtime is not None:
+            await voice_runtime.cancel()
+        return {"status": "idle"}
+
+    @app.post("/api/voice/speak")
+    async def voice_speak(request: VoiceSpeakRequest):
+        if voice_runtime is None:
+            raise HTTPException(status_code=409, detail="Voice 未启用或配置不可用。")
+        action, reason = voice_policy(text=request.text, explicit=True)
+        if action is not SpeechAction.SPEAK_NOW:
+            return {"status": voice_runtime.status.value, "started": False, "reason": reason}
+        try:
+            started = await voice_runtime.speak(request.text, max_chars=configured.tts_max_chars)
+        except Exception as exc:
+            logger.warning("voice speak failed type=%s", type(exc).__name__)
+            raise HTTPException(status_code=422, detail=f"无法朗读：{exc}") from exc
+        return {"status": voice_runtime.status.value, "started": started, "reason": "explicit_user_action"}
+
+    @app.post("/api/voice/speak/stop")
+    async def voice_speak_stop():
+        if voice_runtime is not None:
+            await voice_runtime.stop_speaking()
+        return {"status": "idle"}
+
     @app.get("/api/events")
     async def event_stream():
         async def stream():
@@ -154,4 +317,3 @@ def run_web(settings: Settings | None = None) -> None:
         port=configured.web_port,
         log_level=configured.log_level.lower(),
     )
-

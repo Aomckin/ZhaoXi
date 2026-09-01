@@ -1,6 +1,6 @@
 # 朝汐 ZhaoXi 代码现状与交接说明
 
-> **当前开发基线：v0.6.1「Local Interaction Shell」**。本地 FastAPI + 原生 Web UI 已接到同一 Zhaoxi Core，默认监听 `127.0.0.1:4913`；前端不直接访问 Tool、Memory 或 Life HUD。
+> **当前开发基线：v0.7.1「Voice」**。以 Windows 10 为主平台的 Desktop Host 已接入可取消的 Push-to-talk、转写复核、OpenAI-compatible STT 和 Windows SAPI5 TTS；Voice 继续通过统一 Interface Gateway 复用同一 Zhaoxi Core，默认仍只监听 `127.0.0.1:4913`。
 
 > **v0.6 开发中**：已建立 Proactive Event / Schedule / Delivery 领域模型、SQLite Store、once / interval Scheduler、安全 Condition DSL、基础 Interrupt Policy、Inbox Sink 和 CLI / Web 可视化入口；持久化 Quiet 状态、完整限频与延期重投仍待后续阶段完成。
 
@@ -11,6 +11,13 @@ Life HUD 原始时间字段继续按带时区的 UTC Instant 解析；仅在生�
 ## 当前能力
 
 - `python main.py --web` 启动只监听本机的 Local Interaction Shell；Web Adapter 复用同一 Agent 实例，提供聊天、Permission Card、Session 清空、Activity 元数据和 Proactive SSE 通道。
+- `python main.py --desktop` 启动 Windows 10 主平台 Desktop Host；重复启动通过带随机令牌的 loopback 激活通道呼出已有窗口，不重复创建 Core、Scheduler、端口或托盘。
+- Voice 输入默认先录音、转写和人工复核，再以 `InterfaceChannel.VOICE` 进入统一 Gateway；自动发送与自动朗读默认关闭。
+- Voice 输出使用 Windows 10 SAPI5，支持显式停止和自然结束复位；Quiet、Night、Permission 等待与录音中状态由确定性策略阻止播报。
+- Desktop 使用 pywebview 承载现有 Web Shell，pystray 提供打开、快速输入、状态、Quiet Mode 与退出；默认 `Ctrl+Alt+Space` 使用 Win32 `RegisterHotKey`，冲突时保留托盘降级入口。
+- `InterfaceGateway` 统一 Web / Desktop 的消息、响应、Permission View、Session 串行与 request ID 幂等；非 user origin 不得进入用户认知链路。
+- Desktop 本地 API 使用每次启动随机令牌；令牌通过 URL fragment 交给内嵌页，再以不记入访问日志的请求头交换为 `HttpOnly`、`SameSite=Strict` Cookie，随后立即清除 fragment；SSE query 和访问日志不包含令牌，服务仍只监听 loopback。
+- Proactive Delivery 先持久化 Inbox，再按 Priority 映射到 Windows Toast；INFO 不弹窗，NOTICE / IMPORTANT / URGENT 可显示，点击激活现有桌面窗口。
 - Python 3.12+、异步运行时和 OpenAI-compatible Provider；通过环境变量可接入兼容 Chat Completions 的模型服务。
 - `Conversation`、`ContextBuilder`、人格提示词和会话管理组成基础对话上下文。
 - `CognitiveRouter` 将输入分为 `DIRECT`、`TOOL`、`PLAN`、`WORKFLOW`：稳定流程进入确定性 Workflow Runtime，开放复杂目标仍进入 Planner。
@@ -55,7 +62,9 @@ Life HUD 原始时间字段继续按带时区的 UTC Instant 解析；仅在生�
 - Planner Store 是内存实现，进程退出后不能恢复计划、暂停点或 trace。
 - Permission 当前为本地单用户、进程内 pending/grant；尚无账号体系、OAuth、跨进程恢复、永久策略或操作系统沙箱。
 - Undo / rollback 仅保留设计边界，当前内置 Tool 尚未实现回滚 hook。
-- 尚无主动唤醒/定时执行、外部 UI、语音、RAG 或向量数据库。
+- Voice 的 P0 主链路已实现；独立 Push-to-talk 全局快捷键、音量指示、本地 STT 和多候选转写仍为后续体验项。RAG 与向量数据库尚未实现。
+- 安装、升级、卸载、开机自启、签名和干净 Windows 环境发布硬化不属于 v0.7，统一留给 v0.9。
+- 当前 Toast 点击会激活单一桌面 Session，尚未实现多 Session 下的 Delivery 深链接；当前默认快捷键若被占用会降级到托盘，不自动抢占或注册键盘钩子。
 - Workflow 首版不支持 DAG、并行调度、任意循环、图形编辑器或通用跨系统事务回滚。
 - “忘记”是软状态迁移，不是物理清除；尚无带审计的硬删除流程。
 - 自动记忆依赖模型语义判断，确定性兜底只覆盖有限的稳定身份与偏好表达。
@@ -76,10 +85,13 @@ src/zhaoxi/
   config/        环境变量与设置
   personality/   人格提示词
   session/       会话组合
+  interfaces/    Web / Desktop 统一消息、响应、权限视图和串行 Gateway
+  desktop/       单实例、pywebview、托盘、快捷键和 Windows Toast
+  web/           FastAPI、本地 Web Shell、SSE 与 Desktop token 边界
   cli.py         命令行入口
 tests/
-  cognitive/ config/ core/ integration/ memory/
-  models/ permission/ planner/ session/ tools/ workflow/
+  cognitive/ config/ core/ desktop/ integration/ interfaces/ memory/
+  models/ permission/ planner/ session/ tools/ web/ workflow/
 workflows/       版本化内置 Workflow YAML
 docs/            版本任务书与本交接文档
 ```
@@ -216,7 +228,7 @@ python main.py
 git diff --check
 ```
 
-当前自动化测试基线：**122 项通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
+当前自动化测试基线：**167 项通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
 
 ## 接手建议
 
@@ -228,7 +240,7 @@ git diff --check
 
 ## Git 基线
 
-- 当前开发分支：`v0.6.1`
+- 当前开发分支：`v0.7`
 - v0.5.1.2 工作区基线：基于 `3f3f13a` 与未提交的 v0.5/v0.5.1/v0.5.1.1 纵向切片继续修补
 - v0.3.1 基线：`9f4424c feat: integrate v0.3.1 cognitive routing and memory`
 - v0.3 Planner：`613859d feat: implement v0.3 planner`

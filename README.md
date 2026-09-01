@@ -1,13 +1,15 @@
 # Zhaoxi / 朝汐
 
-Zhaoxi 是一个可扩展的个人 Agent Core。v0.6.1 · Local Interaction Shell 提供默认仅监听本机的轻量 Web 聊天界面，并继续复用同一套 Agent、Planner、Workflow、Permission、Proactive 与 Tool Core。
+Zhaoxi 是一个可扩展的个人 Agent Core。v0.7.1 · Voice 在 Windows 10 主平台的单实例桌面宿主中加入可取消的按键说话、转写复核和系统语音朗读，并继续复用同一套 Agent、Planner、Workflow、Permission、Proactive 与 Tool Core。
 
 Life HUD API 的时间戳按原始 UTC 契约读取且不改写；发送给模型的 Tool observation 默认转换为 `Asia/Shanghai`，可通过 `ZHAOXI_LIFEHUD_DISPLAY_TIMEZONE` 配置。
 
 ## Architecture
 
 ```text
-CLI / future interfaces
+CLI / Web / Desktop
+          ↓
+   Interface Gateway
           ↓
      Zhaoxi Core
  Cognitive Router → Conversation / Tools / Planner
@@ -33,6 +35,8 @@ Core 使用内部消息和响应类型，不依赖厂商对象；新增工具只
 python -m venv .venv
 # Windows: .venv\Scripts\activate
 python -m pip install -e ".[dev]"
+# Windows Desktop Presence
+python -m pip install -e ".[dev,desktop,voice]"
 copy .env.example .env
 ```
 
@@ -49,10 +53,32 @@ ZHAOXI_MODEL_NAME=your-model
 ```bash
 python main.py
 python main.py --web
+python main.py --desktop
 python -m pytest
 ```
 
 Web 模式默认打开在 `http://127.0.0.1:4913`。可通过 `ZHAOXI_WEB_HOST` 和 `ZHAOXI_WEB_PORT` 调整；如无明确需要，不要把 Host 改为公网地址。
+
+## v0.7.1 Voice
+
+- 输入区麦克风按钮明确开始和停止录音，录音后必须先复核、编辑或重录，再进入同一个 Core；
+- OpenAI-compatible STT 通过独立配置接入，默认关闭且失败时始终保留文字交互；
+- Windows 10 使用系统 SAPI5 朗读，可随时停止，自然播放结束后自动回到空闲状态；
+- Quiet、Night 与 Permission 等待由确定性策略禁止自动朗读，自动发送和自动朗读默认关闭；
+- WAV 临时文件有大小与时长上限，在确认、取消、失败和退出时清理；
+- 安装器、卸载器、开机自启和干净环境发布硬化仍留给 v0.9。
+
+## v0.7 Presence
+
+- `python main.py --desktop` 启动以 Windows 10 为主平台的 Desktop Host；
+- 用户级单实例协调：重复启动只激活已有窗口，不创建第二套 Core 或 Scheduler；
+- pywebview 复用现有 Web Shell，关闭窗口后隐藏到托盘；
+- 托盘提供打开、快速输入、运行状态、Quiet Mode 与安全退出；
+- `Ctrl+Alt+Space` 默认全局呼出，冲突时降级为托盘入口；
+- Windows Toast 消费 Core 已裁决的 Delivery，INFO 只进入 Inbox，点击通知激活窗口；
+- Desktop API 使用每次启动随机令牌，继续只监听 `127.0.0.1`；
+- Web、Desktop 通过统一 Interface Gateway 串行进入同一 Conversation，并按 request ID 幂等；
+- Voice 已在 v0.7.1 实现；安装器、卸载器、开机自启和干净环境发布硬化留给 v0.9。
 
 ## v0.6.1 Local Interaction Shell
 

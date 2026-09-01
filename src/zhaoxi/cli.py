@@ -210,7 +210,7 @@ async def interactive() -> None:
         return
 
     print(
-        "Zhaoxi v0.6.1 · Local Interaction Shell\n"
+        "Zhaoxi v0.7 · Presence\n"
         "输入 /workflow 查看流程，/plan <目标> 执行规划任务，/permissions 查看权限，/exit 退出。"
     )
     while True:
@@ -417,7 +417,13 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(prog="zhaoxi")
     parser.add_argument("--web", action="store_true", help="启动本地 Web 交互界面")
+    parser.add_argument("--desktop", action="store_true", help="启动本地桌面常驻界面")
     args = parser.parse_args()
+    if args.desktop:
+        from zhaoxi.desktop import run_desktop
+
+        run_desktop()
+        return
     if args.web:
         from zhaoxi.web import run_web
 
