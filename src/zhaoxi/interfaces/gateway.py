@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import OrderedDict
+from time import monotonic
 from typing import Any
 
 from zhaoxi.core.agent import ZhaoxiAgent
@@ -13,31 +14,70 @@ from zhaoxi.interfaces.models import (
     UnifiedMessage,
     UnifiedResponse,
 )
+from zhaoxi.reliability import (
+    CorrelationContext,
+    MetricRegistry,
+    correlation_scope,
+    provider_budget_scope,
+)
 
 
 class InterfaceGateway:
     """Serialize Core access and expose only safe, transport-neutral views."""
 
-    def __init__(self, agent: ZhaoxiAgent, *, response_cache_size: int = 100) -> None:
+    def __init__(
+        self,
+        agent: ZhaoxiAgent,
+        *,
+        response_cache_size: int = 100,
+        metrics: MetricRegistry | None = None,
+    ) -> None:
         self.agent = agent
+        self.metrics = metrics or getattr(agent, "metrics", None) or MetricRegistry()
         self._lock = asyncio.Lock()
         self._responses: OrderedDict[str, UnifiedResponse] = OrderedDict()
         self._response_cache_size = response_cache_size
 
     async def chat(self, message: UnifiedMessage) -> UnifiedResponse:
         if message.origin is not MessageOrigin.USER:
+            self.metrics.increment("interface.chat.rejected")
             raise ValueError("只有 user origin 可以进入对话认知链路")
         cached = self._responses.get(message.request_id)
         if cached is not None:
+            self.metrics.increment("interface.chat.cache_hit")
             return cached.model_copy(deep=True)
         async with self._lock:
             cached = self._responses.get(message.request_id)
             if cached is not None:
+                self.metrics.increment("interface.chat.cache_hit")
                 return cached.model_copy(deep=True)
-            response = await self.agent.run_natural(message.content)
-            result = self._result(response, request_id=message.request_id, session_id=message.session_id)
-            self._cache(result)
-            return result
+            started = monotonic()
+            self.metrics.increment("interface.chat.started")
+            context = CorrelationContext(
+                trace_id=message.request_id,
+                request_id=message.request_id,
+                session_id=message.session_id,
+            )
+            try:
+                provider = getattr(self.agent, "provider", None)
+                max_calls = getattr(provider, "max_calls", 12)
+                max_total_tokens = getattr(provider, "max_total_tokens", 100_000)
+                with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens):
+                    response = await self.agent.run_natural(message.content)
+                    result = self._result(
+                        response,
+                        request_id=message.request_id,
+                        session_id=message.session_id,
+                    )
+                self._cache(result)
+                await self._persist_session()
+                self.metrics.increment("interface.chat.completed")
+                return result
+            except Exception:
+                self.metrics.increment("interface.chat.failed")
+                raise
+            finally:
+                self.metrics.observe_duration("interface.chat", monotonic() - started)
 
     async def resolve_permission(
         self,
@@ -87,6 +127,19 @@ class InterfaceGateway:
     def clear(self) -> None:
         self.agent.conversation.clear()
         self._responses.clear()
+        session = getattr(self.agent, "session_record", None)
+        store = getattr(self.agent, "session_store", None)
+        if session is not None and store is not None:
+            session.conversation = self.agent.conversation
+            store.save_sync(session)
+
+    async def _persist_session(self) -> None:
+        session = getattr(self.agent, "session_record", None)
+        store = getattr(self.agent, "session_store", None)
+        if session is None or store is None:
+            return
+        session.conversation = self.agent.conversation
+        await store.save(session)
 
     def _cache(self, response: UnifiedResponse) -> None:
         self._responses[response.request_id] = response.model_copy(deep=True)
@@ -129,4 +182,3 @@ class InterfaceGateway:
             activity={key: value for key, value in activity.items() if value is not None},
             permission=permission_view,
         )
-

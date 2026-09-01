@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "zhaoxi"
-version = "0.7.1"
+version = "0.9.0"
 description = "Zhaoxi personal agent core"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -35,8 +35,11 @@ voice = [
 [project.scripts]
 zhaoxi = "zhaoxi.cli:main"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/zhaoxi"]
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+zhaoxi = ["personality/*.yaml", "web/static/*.html"]
 
 [tool.pytest.ini_options]
 addopts = "-q --basetemp=.pytest-tmp"

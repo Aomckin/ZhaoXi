@@ -12,6 +12,17 @@ class ConfigError(ZhaoxiError):
 class ProviderError(ZhaoxiError):
     """A model provider request failed."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "provider_error",
+        retryable: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.retryable = retryable
+
 
 class ToolError(ZhaoxiError):
     """A tool failed."""

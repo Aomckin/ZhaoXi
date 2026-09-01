@@ -40,6 +40,17 @@ class OtherWriteTool(WriteTool):
     description = "写入另一类测试值。"
 
 
+class UncertainWriteTool(WriteTool):
+    name = "uncertain_write"
+
+    async def execute(self, arguments):
+        return ToolResult(
+            success=False,
+            content="连接中断。",
+            metadata={"retryable": True},
+        )
+
+
 def permission_runtime():
     registry = ToolRegistry()
     tool = WriteTool()
@@ -77,6 +88,26 @@ async def test_write_waits_for_confirmation_and_executes_exactly_once():
         "tool_execution_started",
         "tool_execution_succeeded",
     ]
+
+
+async def test_uncertain_write_is_not_automatically_replayable():
+    registry = ToolRegistry()
+    registry.register(UncertainWriteTool())
+    executor = ToolExecutor(registry, PermissionGateway())
+    waiting = await executor.execute(
+        "uncertain_write", {"value": "x"}, request_id="r", origin=InvocationOrigin.AGENT
+    )
+    executor.gateway.approve(waiting.confirmation.confirmation_id)
+    completed = await executor.execute(
+        "uncertain_write",
+        {"value": "x"},
+        request_id="r",
+        origin=InvocationOrigin.AGENT,
+        invocation_id=waiting.request.invocation_id,
+    )
+    assert completed.result.metadata["retryable"] is False
+    assert completed.result.metadata["unknown_outcome"] is True
+    assert completed.result.error == "needs_reconciliation"
 
 
 async def test_changed_arguments_cannot_reuse_grant():

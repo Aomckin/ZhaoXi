@@ -103,6 +103,7 @@ class PendingPlannerInvocation:
     name: str
     arguments: dict[str, object]
     invocation_id: str
+    recovered: bool = False
 
 
 class PlannerRuntime:
@@ -138,6 +139,33 @@ class PlannerRuntime:
         self.tool_executor = tool_executor or ToolExecutor(registry)
         self._pending_permissions: dict[str, PendingPlannerInvocation] = {}
         self._cancelled: set[str] = set()
+        self._restore_pending_permissions()
+
+    def _restore_pending_permissions(self) -> None:
+        """Rebuild resumable permission waits from a persistent PlanStore."""
+        list_sync = getattr(self.store, "_list", None)
+        if list_sync is None:
+            return
+        for goal in list_sync():
+            confirmation = goal.permission_confirmation
+            request = confirmation.request if confirmation is not None else None
+            if (
+                goal.status is not GoalStatus.WAITING_FOR_PERMISSION
+                or confirmation is None
+                or confirmation.resolved
+                or request is None
+                or request.step_id is None
+            ):
+                continue
+            self._pending_permissions[confirmation.confirmation_id] = PendingPlannerInvocation(
+                goal_id=goal.id,
+                step_id=request.step_id,
+                tool_call_id=request.invocation_id,
+                name=request.tool_name,
+                arguments=copy.deepcopy(request.arguments),
+                invocation_id=request.invocation_id,
+                recovered=True,
+            )
 
     async def run(self, description: str) -> PlannerResponse:
         if not description.strip():
@@ -189,11 +217,12 @@ class PlannerRuntime:
             step.transition(StepStatus.FAILED)
         goal.permission_confirmation = None
         goal.transition(GoalStatus.RUNNING)
-        self.conversation.add_tool(
-            json.dumps(execution.result.model_dump(mode="json"), ensure_ascii=False),
-            tool_call_id=pending.tool_call_id,
-            name=pending.name,
-        )
+        if not pending.recovered:
+            self.conversation.add_tool(
+                json.dumps(execution.result.model_dump(mode="json"), ensure_ascii=False),
+                tool_call_id=pending.tool_call_id,
+                name=pending.name,
+            )
         del self._pending_permissions[confirmation_id]
         await self.store.save(goal)
         return await self._execute_with_timeout(goal)
@@ -208,11 +237,12 @@ class PlannerRuntime:
         step.transition(StepStatus.FAILED)
         goal.permission_confirmation = None
         goal.transition(GoalStatus.RUNNING)
-        self.conversation.add_tool(
-            json.dumps(result.model_dump(mode="json"), ensure_ascii=False),
-            tool_call_id=pending.tool_call_id,
-            name=pending.name,
-        )
+        if not pending.recovered:
+            self.conversation.add_tool(
+                json.dumps(result.model_dump(mode="json"), ensure_ascii=False),
+                tool_call_id=pending.tool_call_id,
+                name=pending.name,
+            )
         await self.store.save(goal)
         return await self._execute_with_timeout(goal)
 

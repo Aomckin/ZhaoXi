@@ -135,6 +135,18 @@ def test_web_chat_session_and_clear():
         assert client.get("/api/session").json()["messages"] == []
 
 
+def test_diagnostics_exposes_content_free_metrics():
+    app = create_app(agent=FakeAgent())
+    with TestClient(app) as client:
+        client.post("/api/chat", json={"message": "private canary"})
+        payload = client.get("/api/diagnostics").json()
+
+    assert payload["status"] == "ok"
+    assert payload["metrics"]["counters"]["interface.chat.completed"] == 1
+    assert payload["components"]["voice"] is False
+    assert "private canary" not in str(payload)
+
+
 def test_web_request_id_is_idempotent():
     app = create_app(agent=FakeAgent())
     with TestClient(app) as client:

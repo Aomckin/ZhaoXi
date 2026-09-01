@@ -11,6 +11,7 @@ from zhaoxi.interfaces import (
     MessageOrigin,
     UnifiedMessage,
 )
+from zhaoxi.reliability import current_correlation
 
 
 class FakeAgent:
@@ -30,6 +31,15 @@ class FakeAgent:
         self.conversation.add_user(content)
         self.conversation.add_assistant(f"回复：{content}")
         return AgentResponse(content=f"回复：{content}", request_id=f"core-{self.calls}", steps=1)
+
+
+class CorrelationAgent(FakeAgent):
+    async def run_natural(self, content: str):
+        context = current_correlation()
+        assert context is not None
+        assert context.request_id == "correlated-request"
+        assert context.session_id == "session-1"
+        return await super().run_natural(content)
 
 
 async def test_gateway_is_idempotent_by_request_id():
@@ -86,3 +96,23 @@ def test_message_rejects_blank_and_oversized_metadata():
             metadata={str(index): index for index in range(21)},
         )
 
+
+async def test_gateway_records_metrics_and_propagates_correlation():
+    gateway = InterfaceGateway(CorrelationAgent())
+    message = UnifiedMessage(
+        request_id="correlated-request",
+        session_id="session-1",
+        channel="web",
+        content="你好",
+    )
+
+    await gateway.chat(message)
+    await gateway.chat(message)
+
+    snapshot = gateway.metrics.snapshot()
+    assert snapshot["counters"] == {
+        "interface.chat.cache_hit": 1,
+        "interface.chat.completed": 1,
+        "interface.chat.started": 1,
+    }
+    assert snapshot["durations"]["interface.chat"]["count"] == 1

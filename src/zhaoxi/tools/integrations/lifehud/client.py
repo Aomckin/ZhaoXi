@@ -1,6 +1,5 @@
 """Unified HTTP boundary for Life HUD Agent Context and Focus writes."""
 
-import asyncio
 from typing import Any, TypeVar
 
 import httpx
@@ -22,6 +21,7 @@ from zhaoxi.tools.integrations.lifehud.models import (
     TodayContext,
 )
 from zhaoxi.tools.integrations.lifehud.time_display import LifeHudTimeDisplay
+from zhaoxi.reliability.retry import RetryPolicy, retry_async
 
 ContextModel = TypeVar("ContextModel", bound=AgentEnvelope)
 
@@ -147,7 +147,7 @@ class LifeHudClient:
         self, method: str, path: str, *, retry_read: bool, **kwargs: Any
     ) -> httpx.Response:
         retries = self.max_retries if retry_read and method == "GET" else 0
-        for attempt in range(retries + 1):
+        async def operation() -> httpx.Response:
             try:
                 async with httpx.AsyncClient(
                     base_url=self.base_url,
@@ -156,24 +156,23 @@ class LifeHudClient:
                 ) as client:
                     response = await client.request(method, path, **kwargs)
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
-                if attempt < retries:
-                    await self._backoff(attempt)
-                    continue
                 raise LifeHudError(
                     "Life HUD 当前不可访问。",
                     code="lifehud_unavailable",
                     retryable=retry_read,
                 ) from exc
-            if response.status_code >= 500 and attempt < retries:
-                await self._backoff(attempt)
-                continue
             return self._validate_status(response, retry_read=retry_read)
-        raise AssertionError("unreachable")
 
-    async def _backoff(self, attempt: int) -> None:
-        delay = self.retry_backoff_seconds * (2**attempt)
-        if delay:
-            await asyncio.sleep(delay)
+        return await retry_async(
+            operation,
+            policy=RetryPolicy(
+                max_attempts=retries + 1,
+                base_delay_seconds=self.retry_backoff_seconds,
+                max_delay_seconds=self.retry_backoff_seconds * (2 ** max(0, retries - 1)),
+                jitter_ratio=0,
+            ),
+            should_retry=lambda exc: isinstance(exc, LifeHudError) and exc.retryable,
+        )
 
     @staticmethod
     def _validate_status(response: httpx.Response, *, retry_read: bool) -> httpx.Response:

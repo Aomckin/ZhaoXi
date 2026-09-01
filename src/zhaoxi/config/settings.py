@@ -16,9 +16,23 @@ class Settings(BaseSettings):
     model_base_url: str = "https://api.openai.com/v1"
     model_api_key: str = ""
     model_name: str = ""
+    model_fallback_base_url: str = ""
+    model_fallback_api_key: str = ""
+    model_fallback_name: str = ""
     log_level: str = "INFO"
+    log_path: str = ".zhaoxi/logs/zhaoxi.log"
+    log_max_bytes: int = Field(default=10_485_760, ge=1024, le=1_000_000_000)
+    log_backup_count: int = Field(default=5, ge=1, le=100)
+    shutdown_grace_seconds: float = Field(default=15, gt=0, le=300)
     max_agent_steps: int = Field(default=8, ge=1, le=100)
     request_timeout_seconds: float = Field(default=60, gt=0)
+    retry_max_attempts: int = Field(default=3, ge=1, le=10)
+    retry_base_delay_seconds: float = Field(default=0.5, ge=0, le=60)
+    retry_max_delay_seconds: float = Field(default=8, ge=0, le=300)
+    provider_failure_threshold: int = Field(default=5, ge=1, le=100)
+    provider_cooldown_seconds: float = Field(default=60, ge=0, le=3600)
+    request_max_model_calls: int = Field(default=12, ge=1, le=100)
+    request_max_total_tokens: int = Field(default=100_000, ge=1_000, le=10_000_000)
     max_context_messages: int = Field(default=40, ge=1)
     temperature: float = Field(default=0.7, ge=0, le=2)
     max_tokens: int | None = Field(default=None, ge=1)
@@ -26,6 +40,7 @@ class Settings(BaseSettings):
     memory_retrieval_limit: int = Field(default=6, ge=1, le=50)
     memory_context_max_chars: int = Field(default=4000, ge=200, le=50_000)
     planner_enabled: bool = True
+    planner_db_path: str = ".zhaoxi/planner.db"
     planner_max_steps: int = Field(default=12, ge=1, le=100)
     planner_max_replans: int = Field(default=3, ge=0, le=20)
     planner_max_attempts_per_step: int = Field(default=2, ge=1, le=10)
@@ -48,6 +63,9 @@ class Settings(BaseSettings):
     permission_dangerous_policy: str = "deny"
     permission_confirmation_ttl_seconds: float = Field(default=300, gt=0)
     permission_audit_path: str = ".zhaoxi/audit/permission.jsonl"
+    permission_audit_max_bytes: int = Field(default=10_485_760, ge=1024, le=1_000_000_000)
+    permission_audit_backup_count: int = Field(default=5, ge=1, le=100)
+    permission_db_path: str = ".zhaoxi/permission.db"
     permission_max_tool_output_chars: int = Field(default=12_000, ge=200, le=100_000)
     workflow_enabled: bool = True
     workflow_directory: str = "workflows"
@@ -83,6 +101,9 @@ class Settings(BaseSettings):
     proactive_night_end_hour: int = Field(default=8, ge=0, le=23)
     web_host: str = "127.0.0.1"
     web_port: int = Field(default=4913, ge=1, le=65535)
+    session_db_path: str = ".zhaoxi/session.db"
+    backup_directory: str = ".zhaoxi/backups"
+    backup_retention_count: int = Field(default=14, ge=1, le=365)
     desktop_enabled: bool = True
     desktop_instance_path: str = ".zhaoxi/desktop-instance.json"
     desktop_activation_port: int = Field(default=4914, ge=1, le=65535)
@@ -122,6 +143,15 @@ class Settings(BaseSettings):
             raise ValueError("permission policy 必须是 allow、confirm 或 deny")
         if self.planner_step_timeout_seconds > self.planner_total_timeout_seconds:
             raise ValueError("planner step timeout 不能大于 total timeout")
+        if self.retry_base_delay_seconds > self.retry_max_delay_seconds:
+            raise ValueError("retry base delay 不能大于 max delay")
+        fallback_values = {
+            self.model_fallback_base_url,
+            self.model_fallback_api_key,
+            self.model_fallback_name,
+        }
+        if any(fallback_values) and not all(fallback_values):
+            raise ValueError("fallback Provider 的 URL、API Key 和 Model 必须同时配置")
         if self.planner_max_attempts_per_step > self.planner_max_steps:
             raise ValueError("planner 每步尝试次数不能大于总执行步数")
         if self.memory_importance_forget_threshold >= self.memory_importance_keep_threshold:

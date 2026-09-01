@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from datetime import UTC, datetime, time, timedelta
+from pathlib import Path
 from uuid import uuid4
 
 from zhaoxi.config.logging import configure_logging
@@ -13,8 +14,9 @@ from zhaoxi.cognitive.router import CognitiveRouter
 from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.core.context import ContextBuilder
 from zhaoxi.core.conversation import Conversation
-from zhaoxi.errors import ZhaoxiError
+from zhaoxi.errors import ConfigError, ZhaoxiError
 from zhaoxi.models.openai_compatible import OpenAICompatibleProvider
+from zhaoxi.models.resilient import ResilientProvider
 from zhaoxi.memory.models import MemoryQuery, MemoryStatus
 from zhaoxi.memory.lifecycle import MemoryLifecyclePolicy
 from zhaoxi.memory.retrieval import MemoryRetriever
@@ -22,13 +24,14 @@ from zhaoxi.memory.service import MemoryService
 from zhaoxi.memory.sqlite import SQLiteMemoryRepository
 from zhaoxi.personality.loader import PersonalityLoader
 from zhaoxi.planner.runtime import PlannerRuntime
-from zhaoxi.planner.store import InMemoryPlanStore
+from zhaoxi.planner.sqlite import SQLitePlanStore
 from zhaoxi.planner.trace import TraceRecorder
 from zhaoxi.permission.audit import JsonlAuditSink
 from zhaoxi.permission.executor import ToolExecutor
 from zhaoxi.permission.gateway import PermissionGateway
 from zhaoxi.permission.models import PermissionLevel, PermissionStatus
 from zhaoxi.permission.policy import DefaultPermissionPolicy
+from zhaoxi.permission.sqlite import SQLitePermissionStore
 from zhaoxi.proactive import (
     InboxNotificationSink,
     InterruptPolicy,
@@ -52,18 +55,43 @@ from zhaoxi.workflow.loader import WorkflowLoader
 from zhaoxi.workflow.registry import WorkflowRegistry
 from zhaoxi.workflow.runtime import WorkflowRuntime
 from zhaoxi.workflow.sqlite import SQLiteWorkflowStore
+from zhaoxi.session.base import Session
+from zhaoxi.session.sqlite import SQLiteSessionStore
+from zhaoxi.reliability import BackupManager, DataStoreSpec, RetryPolicy
 
 
 def build_agent(settings: Settings) -> ZhaoxiAgent:
     """Wire v0.2 dependencies at the application boundary."""
     settings.validate_model_config()
-    provider = OpenAICompatibleProvider(
+    primary_provider = OpenAICompatibleProvider(
         base_url=settings.model_base_url,
         api_key=settings.model_api_key,
         model=settings.model_name,
         timeout=settings.request_timeout_seconds,
         temperature=settings.temperature,
         max_tokens=settings.max_tokens,
+    )
+    providers = [primary_provider]
+    if settings.model_fallback_name:
+        providers.append(OpenAICompatibleProvider(
+            base_url=settings.model_fallback_base_url,
+            api_key=settings.model_fallback_api_key,
+            model=settings.model_fallback_name,
+            timeout=settings.request_timeout_seconds,
+            temperature=settings.temperature,
+            max_tokens=settings.max_tokens,
+        ))
+    provider = ResilientProvider(
+        providers,
+        retry_policy=RetryPolicy(
+            max_attempts=settings.retry_max_attempts,
+            base_delay_seconds=settings.retry_base_delay_seconds,
+            max_delay_seconds=settings.retry_max_delay_seconds,
+        ),
+        failure_threshold=settings.provider_failure_threshold,
+        cooldown_seconds=settings.provider_cooldown_seconds,
+        max_calls=settings.request_max_model_calls,
+        max_total_tokens=settings.request_max_total_tokens,
     )
     memory_service = MemoryService(
         SQLiteMemoryRepository(settings.memory_db_path),
@@ -112,7 +140,12 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     })
     gateway = PermissionGateway(
         policy=policy,
-        audit=JsonlAuditSink(settings.permission_audit_path),
+        store=SQLitePermissionStore(settings.permission_db_path),
+        audit=JsonlAuditSink(
+            settings.permission_audit_path,
+            max_bytes=settings.permission_audit_max_bytes,
+            backup_count=settings.permission_audit_backup_count,
+        ),
         confirmation_ttl_seconds=settings.permission_confirmation_ttl_seconds,
     )
     tool_executor = ToolExecutor(
@@ -120,7 +153,17 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         gateway,
         max_output_chars=settings.permission_max_tool_output_chars,
     )
-    conversation = Conversation(max_messages=settings.max_context_messages)
+    session_store = SQLiteSessionStore(
+        settings.session_db_path, max_messages=settings.max_context_messages
+    )
+    session_record = session_store.get_sync("local")
+    if session_record is None:
+        session_record = Session(
+            id="local",
+            conversation=Conversation(max_messages=settings.max_context_messages),
+        )
+        session_store.save_sync(session_record)
+    conversation = session_record.conversation
     context_builder = ContextBuilder(
         PersonalityLoader.load_prompt(), memory_retriever=memory_retriever
     )
@@ -131,7 +174,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
             registry=registry,
             context_builder=context_builder,
             conversation=conversation,
-            store=InMemoryPlanStore(),
+            store=SQLitePlanStore(settings.planner_db_path),
             trace=TraceRecorder(settings.planner_trace_max_events),
             max_steps=settings.planner_max_steps,
             max_replans=settings.planner_max_replans,
@@ -191,6 +234,36 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         proactive_scheduler=proactive_scheduler,
         proactive_state=proactive_state,
     )
+    agent.session_store = session_store
+    agent.session_record = session_record
+    agent.metrics = provider.metrics
+    agent.backup_manager = BackupManager(
+        settings.backup_directory,
+        [
+            DataStoreSpec("memory", Path(settings.memory_db_path)),
+            DataStoreSpec("planner", Path(settings.planner_db_path)),
+            DataStoreSpec("session", Path(settings.session_db_path)),
+            DataStoreSpec("permission", Path(settings.permission_db_path)),
+            DataStoreSpec("workflow", Path(settings.workflow_db_path)),
+            DataStoreSpec("proactive", Path(settings.proactive_db_path)),
+            DataStoreSpec("reflection", Path(settings.reflection_db_path)),
+            DataStoreSpec("permission_audit", Path(settings.permission_audit_path), kind="file"),
+        ],
+        retention_count=settings.backup_retention_count,
+    )
+    unhealthy = [
+        name for name, status in agent.backup_manager.health().items()
+        if status["exists"] and not status["healthy"]
+    ]
+    if unhealthy:
+        raise ConfigError(f"数据健康检查失败：{', '.join(unhealthy)}。请从已验证备份恢复。")
+    # Ad-hoc Agent waits cannot safely reconstruct the exact provider tool-call
+    # transcript after a crash. Fail them closed; Planner and Workflow waits
+    # retain their own recoverable state.
+    for confirmation_id, pending in list(gateway.store.pending.items()):
+        if pending.resolved or pending.request.origin is not InvocationOrigin.AGENT:
+            continue
+        gateway.deny(confirmation_id)
     if settings.cognitive_router_enabled:
         agent.cognitive = CognitiveCoordinator(
             agent=agent,
@@ -202,7 +275,15 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
 
 async def interactive() -> None:
     settings = Settings()
-    configure_logging(settings.log_level)
+    if hasattr(settings, "log_path"):
+        configure_logging(
+            settings.log_level,
+            path=settings.log_path,
+            max_bytes=settings.log_max_bytes,
+            backup_count=settings.log_backup_count,
+        )
+    else:
+        configure_logging(settings.log_level)
     try:
         agent = build_agent(settings)
     except ZhaoxiError as exc:
@@ -210,8 +291,8 @@ async def interactive() -> None:
         return
 
     print(
-        "Zhaoxi v0.7 · Presence\n"
-        "输入 /workflow 查看流程，/plan <目标> 执行规划任务，/permissions 查看权限，/exit 退出。"
+        "Zhaoxi v0.9 · Reliability\n"
+        "输入 /diagnostics 检查运行状态，/backup 创建备份，/exit 退出。"
     )
     while True:
         try:
@@ -226,7 +307,45 @@ async def interactive() -> None:
             return
         if text == "/clear":
             agent.conversation.clear()
+            agent.session_record.conversation = agent.conversation
+            await agent.session_store.save(agent.session_record)
             print("朝汐 > 当前会话已清空。")
+            continue
+        if text == "/diagnostics":
+            print({
+                "version": __import__("zhaoxi").__version__,
+                "storage": agent.backup_manager.health(),
+            })
+            continue
+        if text == "/backup":
+            try:
+                backup = await asyncio.to_thread(agent.backup_manager.create)
+                print(f"朝汐 > 备份已完成并验证：{backup.name}")
+            except Exception as exc:
+                print(f"朝汐 > 备份失败：{exc}")
+            continue
+        if text.startswith("/backup verify "):
+            backup_id = text.removeprefix("/backup verify ").strip()
+            try:
+                await asyncio.to_thread(
+                    agent.backup_manager.verify,
+                    Path(agent.backup_manager.backup_directory) / backup_id,
+                )
+                print(f"朝汐 > 备份校验通过：{backup_id}")
+            except Exception as exc:
+                print(f"朝汐 > 备份校验失败：{exc}")
+            continue
+        if text.startswith("/restore "):
+            backup_id = text.removeprefix("/restore ").strip()
+            try:
+                safeguard = await asyncio.to_thread(
+                    agent.backup_manager.restore,
+                    Path(agent.backup_manager.backup_directory) / backup_id,
+                )
+                print(f"朝汐 > 恢复完成；恢复前保护备份：{safeguard.name}。请重启朝汐。")
+                return
+            except Exception as exc:
+                print(f"朝汐 > 恢复失败：{exc}")
             continue
         if text == "/tools":
             print("可用工具：" + "、".join(

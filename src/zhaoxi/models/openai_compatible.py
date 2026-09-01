@@ -94,11 +94,19 @@ class OpenAICompatibleProvider(ModelProvider):
             raise
         except httpx.HTTPStatusError as exc:
             detail = exc.response.text.strip().replace("\n", " ")[:500]
+            status = exc.response.status_code
             raise ProviderError(
-                f"模型请求失败：HTTP {exc.response.status_code} {detail or exc.response.reason_phrase}"
+                f"模型请求失败：HTTP {status} {detail or exc.response.reason_phrase}",
+                code=f"provider_http_{status}",
+                retryable=status in {408, 429, 502, 503, 504},
             ) from exc
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
-            raise ProviderError(f"模型请求失败：{exc}") from exc
+            retryable = isinstance(exc, httpx.HTTPError)
+            raise ProviderError(
+                f"模型请求失败：{exc}",
+                code="provider_transport_error" if retryable else "provider_response_invalid",
+                retryable=retryable,
+            ) from exc
         finally:
             if owns_client:
                 await client.aclose()

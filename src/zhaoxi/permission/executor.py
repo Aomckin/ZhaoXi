@@ -10,12 +10,14 @@ from zhaoxi.permission.gateway import PermissionGateway
 from zhaoxi.permission.models import (
     InvocationOrigin,
     PendingConfirmation,
+    PermissionLevel,
     PermissionRequest,
     PermissionStatus,
 )
 from zhaoxi.tools.base import ToolResult
 from zhaoxi.tools.registry import ToolRegistry
 from pydantic import ValidationError
+from zhaoxi.reliability.security import UnsafeToolArgument, validate_tool_arguments
 
 
 @dataclass(slots=True)
@@ -65,6 +67,12 @@ class ToolExecutor:
                 ToolResult(success=False, content="工具参数无效。", error=str(exc))
             )
         arguments = normalized_arguments
+        try:
+            validate_tool_arguments(arguments)
+        except UnsafeToolArgument as exc:
+            return ToolExecution(
+                ToolResult(success=False, content="工具参数触发安全限制。", error=str(exc))
+            )
         canonical = json.dumps(arguments, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
         digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         request = PermissionRequest(
@@ -105,6 +113,14 @@ class ToolExecutor:
             )
         self.gateway.record_execution(request, "tool_execution_started", "started")
         result = await tool.run(arguments)
+        if (
+            tool.permission is not PermissionLevel.READ
+            and result.metadata.get("retryable")
+            and not result.metadata.get("safe_to_replay")
+        ):
+            result.metadata["retryable"] = False
+            result.metadata["unknown_outcome"] = True
+            result.error = result.error or "needs_reconciliation"
         result.content = result.content[: self.max_output_chars]
         if result.data is not None:
             serialized_data = json.dumps(result.data, ensure_ascii=False, default=str)

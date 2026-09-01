@@ -1,6 +1,6 @@
 # Zhaoxi / 朝汐
 
-Zhaoxi 是一个可扩展的个人 Agent Core。v0.7.1 · Voice 在 Windows 10 主平台的单实例桌面宿主中加入可取消的按键说话、转写复核和系统语音朗读，并继续复用同一套 Agent、Planner、Workflow、Permission、Proactive 与 Tool Core。
+Zhaoxi 是一个可扩展的个人 Agent Core。当前版本是 v0.9 · Reliability：已建立统一错误契约、异步安全的请求关联上下文、低基数进程内指标与本地脱敏诊断入口，并继续复用同一套 Agent、Planner、Workflow、Permission、Proactive、Reflection 与 Tool Core。
 
 Life HUD API 的时间戳按原始 UTC 契约读取且不改写；发送给模型的 Tool observation 默认转换为 `Asia/Shanghai`，可通过 `ZHAOXI_LIFEHUD_DISPLAY_TIMEZONE` 配置。
 
@@ -26,6 +26,21 @@ CLI / Web / Desktop
 ```
 
 Core 使用内部消息和响应类型，不依赖厂商对象；新增工具只需实现 `Tool` 并注册，无需修改 Agent 循环。
+
+## v0.9 Reliability
+
+- 修复 v0.8 Reflection SQLite 类作用域类型注解遮蔽，恢复全量测试基线；
+- `ReliabilityError` 明确错误机器码、分类、是否可重试及是否可安全重放；
+- Interface Gateway 为每次用户请求建立 `trace_id / request_id / session_id` 关联上下文；
+- 成功、失败、缓存命中和耗时进入不含用户正文的进程内指标；
+- `GET /api/diagnostics` 返回版本、组件开关和脱敏指标快照；
+- Planner、Session 与 Permission 使用 SQLite 持久化；Planner 权限等待可在重启后重建，无法安全重建的临时 Agent 写操作失败关闭；
+- Provider 与 Life HUD 只读调用复用有界重试策略，Provider 支持 fallback、熔断、调用与 Token 硬预算；
+- 写操作没有稳定重放声明时不会自动重试，不确定结果进入 `needs_reconciliation`；
+- 多数据库在线备份提供 manifest、SHA-256、SQLite integrity、恢复前 safeguard 和目录逃逸防护；
+- Tool 参数限制大小、深度、集合与 URL 目标；日志和权限审计按大小轮转；
+- 后台任务受统一 supervisor 管理，关闭时有界取消；
+- Windows wheel、构建/安装/卸载脚本和运维恢复手册已提供，卸载默认保留用户数据。
 
 ## Quick start
 

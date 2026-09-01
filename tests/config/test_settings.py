@@ -15,6 +15,16 @@ def test_planner_timeout_and_attempt_limits_are_cross_validated():
         Settings(_env_file=None, planner_max_attempts_per_step=3, planner_max_steps=2)
 
 
+def test_fallback_provider_requires_complete_tuple():
+    with pytest.raises(ValidationError, match="fallback Provider"):
+        Settings(model_fallback_name="backup-only")
+
+
+def test_retry_delay_bounds_are_cross_validated():
+    with pytest.raises(ValidationError, match="retry base delay"):
+        Settings(retry_base_delay_seconds=10, retry_max_delay_seconds=1)
+
+
 def test_memory_lifecycle_thresholds_are_ordered():
     with pytest.raises(ValidationError, match="importance"):
         Settings(

@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 import secrets
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -22,6 +22,7 @@ from zhaoxi.errors import ZhaoxiError
 from zhaoxi.web.adapter import WebInterfaceAdapter, WebResult
 from zhaoxi.web.events import EventBroadcaster
 from zhaoxi.voice.policy import SpeechAction, SpeechContext, SpeechPolicy
+from zhaoxi.reliability import TaskSupervisor
 
 logger = logging.getLogger("WEB")
 
@@ -73,6 +74,7 @@ def create_app(
     events = EventBroadcaster()
     static_dir = Path(__file__).with_name("static")
     speech_policy = SpeechPolicy()
+    supervisor = TaskSupervisor()
 
     def voice_policy(*, text: str, explicit: bool, permission_pending: bool = False):
         state = getattr(core, "proactive_state", None)
@@ -115,15 +117,21 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        task = asyncio.create_task(proactive_loop(), name="zhaoxi-proactive-web")
+        supervisor.start()
+        supervisor.create(proactive_loop(), name="zhaoxi-proactive-web")
         try:
             yield
         finally:
             if voice_runtime is not None:
                 await voice_runtime.cancel("application_shutdown")
-            task.cancel()
-            with suppress(asyncio.CancelledError):
-                await task
+            result = await supervisor.shutdown(
+                configured.shutdown_grace_seconds, cancel_immediately=True
+            )
+            logger.info(
+                "runtime shutdown completed=%s cancelled=%s",
+                result["completed"],
+                result["cancelled"],
+            )
 
     app = FastAPI(title="Zhaoxi Local Shell", docs_url="/api/docs", lifespan=lifespan)
 
@@ -163,6 +171,24 @@ def create_app(
     @app.get("/api/health")
     async def health():
         return {"status": "ok", "version": __version__}
+
+    @app.get("/api/diagnostics")
+    async def diagnostics():
+        """Return a bounded, content-free local runtime snapshot."""
+        backup_manager = getattr(core, "backup_manager", None)
+        return {
+            "status": "ok",
+            "version": __version__,
+            "metrics": adapter.gateway.metrics.snapshot(),
+            "components": {
+                "planner": getattr(core, "planner", None) is not None,
+                "workflow": getattr(core, "workflow", None) is not None,
+                "proactive": getattr(core, "proactive", None) is not None,
+                "voice": voice_runtime is not None,
+                "background_tasks": supervisor.active_count,
+            },
+            "storage": backup_manager.health() if backup_manager is not None else {},
+        }
 
     @app.post("/api/chat", response_model=ChatResponse)
     async def chat(request: ChatRequest):

@@ -1,12 +1,27 @@
 # 朝汐 ZhaoXi 代码现状与交接说明
 
-> **当前开发基线：v0.7.1「Voice」**。以 Windows 10 为主平台的 Desktop Host 已接入可取消的 Push-to-talk、转写复核、OpenAI-compatible STT 和 Windows SAPI5 TTS；Voice 继续通过统一 Interface Gateway 复用同一 Zhaoxi Core，默认仍只监听 `127.0.0.1:4913`。
+> **当前开发基线：v0.9「Reliability」（`0.9.0`）**。v0.8 Reflection 基线已恢复全绿；可靠性错误契约、关联日志与指标、Planner/Session/Permission 持久恢复、Provider fallback/熔断/预算、验证式备份恢复、安全边界、后台关闭和 Windows wheel 发布链路均已交付。
 
 > **v0.6 开发中**：已建立 Proactive Event / Schedule / Delivery 领域模型、SQLite Store、once / interval Scheduler、安全 Condition DSL、基础 Interrupt Policy、Inbox Sink 和 CLI / Web 可视化入口；持久化 Quiet 状态、完整限频与延期重投仍待后续阶段完成。
 
 Life HUD 原始时间字段继续按带时区的 UTC Instant 解析；仅在生成 Tool observation 时转换到配置的展示时区（默认 `Asia/Shanghai`），不回写源数据。
 
 本文是后续开发的首要交接入口。版本、架构、数据结构、测试数量或关键限制发生变化时，应在同一提交中更新本文。
+
+## v0.9 Reliability
+
+- `src/zhaoxi/reliability/` 提供稳定错误分类、retry/replay 语义、ContextVar 关联上下文和线程安全的进程内指标。
+- Interface Gateway 使用外部 `request_id` 作为入口 trace，在异步 Core 调用期间传播 `request_id / session_id`，并记录 started/completed/failed/cache-hit 与耗时聚合。
+- `GET /api/diagnostics` 只返回版本、组件可用性和无用户内容的指标快照；Desktop token 边界仍覆盖该 API。
+- v0.8 基线导入错误已修复：Reflection SQLite 启用 postponed annotations，避免 `_list` 遮蔽内建 `list` 后破坏返回类型解析。
+- Planner、Session 和 Permission 新增独立 SQLite schema；Session 只保存有界 user/assistant 文本，排除 Tool payload 与 metadata。
+- Planner 会从持久 Goal 重建权限等待；临时 Agent 权限等待因缺少完整 Provider transcript，在重启时失败关闭而不重放。
+- Provider 对 transient 错误有限重试并支持 fallback 与熔断；认证、校验和安全错误不 fallback；请求有模型调用数与 Token 硬预算。
+- Life HUD GET 使用同一 retry primitive；写操作保持不自动重放。任何未声明 `safe_to_replay` 的可重试写失败都会转为 `needs_reconciliation`。
+- `BackupManager` 统一管理 Memory、Planner、Session、Permission、Workflow、Proactive、Reflection 和审计数据；SQLite 使用 Online Backup API，恢复前验证并创建 safeguard。
+- Tool 参数实施大小、深度、集合和 URL 安全限制；日志与审计可轮转，后台任务通过 supervisor 有界关闭。
+- `scripts/` 提供 wheel 构建、当前用户安装、可选自启和保留用户数据的卸载脚本；运维说明见 `docs/Zhaoxi_v0.9_Operations_Runbook.md`。
+- 当前测试基线：**225 项通过**；加速 soak 覆盖 500 次请求，响应缓存和会话均保持上限。
 
 ## 当前能力
 
@@ -22,7 +37,7 @@ Life HUD 原始时间字段继续按带时区的 UTC Instant 解析；仅在生�
 - `Conversation`、`ContextBuilder`、人格提示词和会话管理组成基础对话上下文。
 - `CognitiveRouter` 将输入分为 `DIRECT`、`TOOL`、`PLAN`、`WORKFLOW`：稳定流程进入确定性 Workflow Runtime，开放复杂目标仍进入 Planner。
 - `ZhaoxiAgent` 支持多轮工具调用；内置 echo、计算器、当前时间和记忆工具，工具由统一 Registry 注册。
-- Planner 支持 Goal / Plan / Step、线性执行、重试、fallback、版本化 replan、等待用户、恢复、取消和 trace；当前计划仅保存在进程内。
+- Planner 支持 Goal / Plan / Step、线性执行、重试、fallback、版本化 replan、等待用户、恢复、取消和 trace；当前 Goal/Plan/等待状态保存在 SQLite。
 - SQLite 长期记忆支持跨会话检索和上下文注入，以及显式记住、搜索、更新、忘记、归档、再激活、固定和整合。
 - `AutoMemory` 在每轮回复后独立判断 `CREATE / UPDATE / MERGE / CONFLICT / REACTIVATE / ARCHIVE / FORGET / CONSOLIDATE / IGNORE`；稳定身份和偏好另有保守的确定性兜底。
 - Agent 与 Planner 通过同一 `ToolExecutor` / `PermissionGateway` 执行工具；READ 默认允许，WRITE/DELETE 默认确认，DANGEROUS 默认拒绝。
