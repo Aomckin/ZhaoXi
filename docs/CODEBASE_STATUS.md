@@ -1,6 +1,6 @@
 # 朝汐 ZhaoXi 代码现状与交接说明
 
-> **当前发布候选基线：v1.0「Zhaoxi」，运行时版本 `1.0.0`**。v0.9 Reliability 与 LifeHUD-Tool 前置解耦基线均已纳入正式版。
+> **当前正式版本：v1.0「Zhaoxi」，运行时版本 `1.0.0`**。v0.9 Reliability 与 LifeHUD-Tool 前置解耦基线均已纳入正式版。
 
 Life HUD 原始时间字段继续按带时区的 UTC Instant 解析；仅在生成 Tool observation 时转换到配置的展示时区（默认 `Asia/Shanghai`），不回写源数据。
 
@@ -22,7 +22,7 @@ v1.0 前置解耦已完成：Life HUD 实现与铁幕 Workflow 位于独立 `too
 - Life HUD GET 使用同一 retry primitive；写操作保持不自动重放。任何未声明 `safe_to_replay` 的可重试写失败都会转为 `needs_reconciliation`。
 - `BackupManager` 统一管理 Memory、Planner、Session、Permission、Workflow、Proactive、Reflection 和审计数据；SQLite 使用 Online Backup API，恢复前验证并创建 safeguard。
 - Tool 参数实施大小、深度、集合和 URL 安全限制；日志与审计可轮转，后台任务通过 supervisor 有界关闭。
-- `scripts/` 提供 wheel 构建、当前用户安装、可选自启和保留用户数据的卸载脚本；运维说明见 `docs/Zhaoxi_v0.9_Operations_Runbook.md`。
+- `scripts/` 提供 wheel 构建、当前用户安装、可选自启和保留用户数据的卸载脚本；运维说明见 `docs/Zhaoxi_v1.0_Operations_Runbook.md`。
 - 当前测试基线：**240 项通过**；加速 soak 覆盖 500 次请求，响应缓存和会话均保持上限。
 
 ## v1.0 当前切片
@@ -81,7 +81,7 @@ v1.0 前置解耦已完成：Life HUD 实现与铁幕 Workflow 位于独立 `too
 - 整合会生成一条语义记忆并记录证据引用，旧的非固定细节转为归档。
 - 生命周期维护当前由检索过程或 CLI 命令 `/memory maintain` 触发，没有后台定时任务。
 
-## 明确尚未完成
+## 已知限制与 P2
 
 - Life HUD Agent Context 只读域已接入；写能力仍只覆盖铁幕 start/complete，暂停、恢复、Segment 切换和其他业务写入尚未实现。GitHub、日历和文件系统等真实业务工具仍未实现。
 - Planner、Session 与 Permission 已使用 SQLite 持久化；临时 Agent 调用缺少完整模型 transcript 时会在重启后失败关闭。账号体系、OAuth、永久授权策略和操作系统沙箱仍未实现。
@@ -267,7 +267,7 @@ git diff --check
 
 - 当前开发分支：`v1.0`
 - v1.0 起点：`87eb9c6 feat: complete v0.9 reliability hardening`
-- v1.0 当前工作区：LifeHUD-Tool 解耦、Voice Night Mode 确定性修复与首次启动 `--doctor` 诊断纵向切片
+- v1.0 正式版：`51cf34b docs(v1.0): record release evidence`（功能 RC：`2e4db8f`）
 - v0.5.1.2 工作区基线：基于 `3f3f13a` 与未提交的 v0.5/v0.5.1/v0.5.1.1 纵向切片继续修补
 - v0.3.1 基线：`9f4424c feat: integrate v0.3.1 cognitive routing and memory`
 - v0.3 Planner：`613859d feat: implement v0.3 planner`

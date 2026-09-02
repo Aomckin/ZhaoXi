@@ -361,22 +361,17 @@ Workflow 仍执行“写前读 → 写 → 写后读”，不得因合并为单 
 
 ---
 
-## 7. 迁移兼容策略
+## 7. 一次性切换策略
 
-### 7.1 Tool 名迁移
+### 7.1 Tool 名切换
 
 内部 Workflow 与测试一次性迁移到 `lifehud` + `operation`。
 
-不建议长期注册旧 Tool alias，因为这会违反“Registry 中只有一个 Life HUD Tool”。如果需要兼容历史持久化 Workflow：
+不注册旧 Tool alias，因为这会违反“Registry 中只有一个 Life HUD Tool”。早期版本仅产生人工测试数据，v1.0 允许重置旧 Workflow/Planner/Permission 状态；旧写 Step 不在新版本中自动重放。
 
-- 在加载旧 Workflow definition 时做数据迁移；或
-- 在 Workflow Store 恢复层把旧 tool name 转换为新 operation；
-- 转换结果写入新 Plan/Run 版本并保留审计；
-- 不把 alias 暴露给模型 Schema 或 Registry。
+### 7.2 旧人工测试状态
 
-### 7.2 持久任务
-
-必须检查 v0.9 中以下持久状态：
+若检测到以下旧人工测试状态，应失败关闭或提示重置，不做原位迁移：
 
 - 等待权限的 `lifehud_focus_start/complete` invocation；
 - 未完成的铁幕 Workflow Run；
@@ -386,15 +381,15 @@ Workflow 仍执行“写前读 → 写 → 写后读”，不得因合并为单 
 安全规则：
 
 - 已冻结的旧写请求不得自动改写后直接执行。
-- 等待权限的旧请求应失效关闭，提示用户重新发起；或经过明确、可证明等价的迁移后重新确认。
+- 等待权限的旧请求应失效关闭，提示用户重新发起。
 - 未知写结果保持对账状态，不自动重放。
-- 已完成历史只读展示，不要求重写。
+- 旧历史不属于 v1.0 兼容承诺，可通过移动旧 `.zhaoxi` 目录保留副本。
 
-### 7.3 配置迁移
+### 7.3 配置切换
 
-- 新旧配置同时存在时，以新命名空间为准并记录一次脱敏警告。
-- 只存在旧配置时兼容启动一个版本。
-- v1.0 发布说明明确弃用窗口和移除版本。
+- v1.0 只以新 Tool namespace 为配置契约。
+- 旧配置不作为 v1.0 发布兼容承诺；用户按 `.env.example` 重新配置。
+- 发布说明明确全新安装与旧测试目录重置策略。
 
 ---
 
@@ -455,15 +450,15 @@ Workflow 仍执行“写前读 → 写 → 写后读”，不得因合并为单 
 
 退出条件：未安装 LifeHUD-Tool 时，Core 源码、Router 和启动入口均不引用 Life HUD。
 
-### 阶段 5：状态与配置迁移
+### 阶段 5：状态与配置切换
 
 任务：
 
-- 处理旧 Workflow definition、等待权限、Planner trace 和对账状态。
-- 兼容旧 `ZHAOXI_LIFEHUD_*` 配置并输出弃用提示。
-- 验证升级不自动执行旧写请求、不扩大权限、不丢历史。
+- 对旧 Workflow definition、等待权限、Planner trace 和对账状态失败关闭。
+- 明确旧 `ZHAOXI_LIFEHUD_*` 不属于 v1.0 配置契约，按新 Tool namespace 重新配置。
+- 验证旧状态不自动执行写请求、不扩大权限。
 
-退出条件：v0.9 数据升级安全；Registry 仍只出现一个 Life HUD Tool。
+退出条件：旧人工测试状态不会自动重放；Registry 仍只出现一个 Life HUD Tool。
 
 ### 阶段 6：删除旧实现与全量验证
 
@@ -548,9 +543,9 @@ Workflow 仍执行“写前读 → 写 → 写后读”，不得因合并为单 
 
 禁用 LifeHUD-Tool 后，基础对话、Memory、Planner 和其他 Tool 正常启动；相关请求明确提示能力未安装或未启用。
 
-### Case E：v0.9 状态升级
+### Case E：旧人工测试状态
 
-准备包含旧 Tool 名、等待权限和未知写结果的 v0.9 fixture。升级后不重复写、不扩大权限，历史可读，需要重发的请求给出说明。
+准备包含旧 Tool 名、等待权限和未知写结果的 fixture。v1.0 不读取或迁移旧状态，不重复写、不扩大权限，需要重发的请求给出说明。
 
 ### Case F：Life HUD 离线
 
@@ -564,12 +559,12 @@ Workflow 仍执行“写前读 → 写 → 写后读”，不得因合并为单 
 
 ## 11. 交付物
 
-- 通用动态权限 Tool 契约及迁移测试。
+- 通用动态权限 Tool 契约及切换测试。
 - 通用 ToolPackage、发现器、配置命名空间和诊断。
 - 独立 `tools/lifehud-tool/` Python 包。
 - 唯一 `lifehud` Tool 与封闭 operation 集。
 - 随包交付的铁幕 Workflow 与 routing hints。
-- v0.9 旧 Tool 名、配置和持久状态迁移策略。
+- 旧人工测试状态重置与失败关闭策略。
 - LifeHUD-Tool README、版本路线、安装和故障排查说明。
 - Core 与 Tool 包各自的测试报告。
 - 更新后的 v1.0 正式版任务书、README 和 CODEBASE_STATUS。
@@ -578,19 +573,19 @@ Workflow 仍执行“写前读 → 写 → 写后读”，不得因合并为单 
 
 ## 12. Definition of Done
 
-- [ ] Life HUD 项目保持只读，零源码、数据和配置修改。
-- [ ] Core Registry 中 Life HUD 只注册为一个 `lifehud` Tool。
-- [ ] READ/WRITE 权限按已验证 operation 动态解析并冻结。
-- [ ] Core 启动入口不 import 或构造 LifeHudClient。
-- [ ] Core Settings 不声明 Life HUD 专用字段。
-- [ ] Core Router 不硬编码 Life HUD、铁幕或专用 Workflow ID。
-- [ ] Core Agent 不包含 Life HUD 专用结果文案。
-- [ ] Life HUD Client、schema、Workflow、routing hints 和测试位于独立 Tool 包。
-- [ ] 未安装 LifeHUD-Tool 时 Core 仍可启动和使用。
-- [ ] v0.9 旧持久状态升级后不重复写、不扩大权限。
-- [ ] 所有操作只能调用已声明的公开 HTTP API，不直读 Life HUD 内部数据。
-- [ ] Core 全量测试、LifeHUD-Tool 测试、compileall、build 与 diff check 全绿。
-- [ ] v1.0 正式版任务书已更新为新的解耦基线。
+- [x] Life HUD 项目保持只读，零源码、数据和配置修改。
+- [x] Core Registry 中 Life HUD 只注册为一个 `lifehud` Tool。
+- [x] READ/WRITE 权限按已验证 operation 动态解析并冻结。
+- [x] Core 启动入口不 import 或构造 LifeHudClient。
+- [x] Core Settings 不声明 Life HUD 专用字段。
+- [x] Core Router 不硬编码 Life HUD、铁幕或专用 Workflow ID。
+- [x] Core Agent 不包含 Life HUD 专用结果文案。
+- [x] Life HUD Client、schema、Workflow、routing hints 和测试位于独立 Tool 包。
+- [x] 未安装 LifeHUD-Tool 时 Core 仍可启动和使用。
+- [x] 旧人工测试状态不迁移、不自动重放，也不扩大权限。
+- [x] 所有操作只能调用已声明的公开 HTTP API，不直读 Life HUD 内部数据。
+- [x] Core 全量测试、LifeHUD-Tool 测试、compileall、build 与 diff check 全绿。
+- [x] v1.0 正式版任务书已更新为新的解耦基线。
 
 ---
 
@@ -604,30 +599,30 @@ build(lifehud-tool): scaffold independent tool package
 refactor(lifehud): expose one operation-based tool
 refactor(workflow): move iron curtain flows into lifehud-tool
 refactor(router): remove lifehud-specific core routing
-feat(migration): translate legacy lifehud workflow state safely
+docs(lifehud): define legacy test-state reset policy
 refactor(config): move lifehud settings into tool namespace
 test(lifehud): certify package boundary and read-only source access
 docs(tools): document independent lifehud-tool lifecycle
 ```
 
-每个切片都必须保持 Core 可启动。动态权限、旧状态迁移和写操作的提交必须同时包含失败关闭与“不自动重放”测试。
+每个切片都必须保持 Core 可启动。动态权限、旧状态失败关闭和写操作的提交必须同时包含“不自动重放”测试。
 
 ---
 
 ## 14. 与 v1.0 正式版路线的关系
 
-本任务是 v1.0 阶段 0 之前的前置门：
+本任务原为 v1.0 阶段 0 之前的前置门，现已完成：
 
 ```text
 冻结现有 Life HUD 契约
 → Core 支持通用 Tool Package 与动态权限
 → LifeHUD-Tool 独立成包
-→ 迁移 Workflow / Router / 配置 / 状态
+→ 移动 Workflow / Router / 配置并重置旧人工测试状态
 → 删除 Core 业务耦合
 → 回到 v1.0 正式版阶段 0
 ```
 
-在本任务完成前，不继续扩展 Life HUD 新业务操作；否则会把更多耦合带入迁移。
+执行期间没有扩展新的 Life HUD 写业务；完成后新增能力仍必须只通过独立 Tool Package 与公开 HTTP 契约进入。
 
 ---
 

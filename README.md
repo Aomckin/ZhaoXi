@@ -101,7 +101,7 @@ Web 模式默认打开在 `http://127.0.0.1:4913`。可通过 `ZHAOXI_WEB_HOST` 
 - Windows 10 使用系统 SAPI5 朗读，可随时停止，自然播放结束后自动回到空闲状态；
 - Quiet、Night 与 Permission 等待由确定性策略禁止自动朗读，自动发送和自动朗读默认关闭；
 - WAV 临时文件有大小与时长上限，在确认、取消、失败和退出时清理；
-- 安装器、卸载器、开机自启和干净环境发布硬化仍留给 v0.9。
+- 后续 v0.9 已完成安装器、卸载器、可选开机自启和发布构建硬化。
 
 ## v0.7 Presence
 
@@ -113,7 +113,7 @@ Web 模式默认打开在 `http://127.0.0.1:4913`。可通过 `ZHAOXI_WEB_HOST` 
 - Windows Toast 消费 Core 已裁决的 Delivery，INFO 只进入 Inbox，点击通知激活窗口；
 - Desktop API 使用每次启动随机令牌，继续只监听 `127.0.0.1`；
 - Web、Desktop 通过统一 Interface Gateway 串行进入同一 Conversation，并按 request ID 幂等；
-- Voice 已在 v0.7.1 实现；安装器、卸载器、开机自启和干净环境发布硬化留给 v0.9。
+- Voice 已在 v0.7.1 实现；后续 v0.9 已完成安装、卸载与发布工程。
 
 ## v0.6.1 Local Interaction Shell
 
@@ -223,7 +223,7 @@ CLI 可直接检查记忆：
 /cancel <goal_id>
 ```
 
-普通聊天与简单 Tool Call 不会被强制套入 Planner。Auto Memory 使用单次、无 Tool Choice 的 JSON 决策请求，并对身份、命名缘由和稳定偏好提供保守的本地兜底；用户明确禁止时不会保存。Memory maintenance 当前按检索或 `/memory maintain` 执行，不包含后台定时任务。日志只显示 `auto_memory action=...`，不输出记忆正文。规划任务当前保存在进程内，退出程序后不会恢复；持久化与崩溃恢复留给 Reliability 版本。
+普通聊天与简单 Tool Call 不会被强制套入 Planner。Auto Memory 使用单次、无 Tool Choice 的 JSON 决策请求，并对身份、命名缘由和稳定偏好提供保守的本地兜底；用户明确禁止时不会保存。Memory maintenance 当前按检索或 `/memory maintain` 执行，不包含后台定时任务。日志只显示 `auto_memory action=...`，不输出记忆正文。Planner、Session 与 Permission 状态使用 SQLite 持久化；可安全恢复的等待状态会在重启后重建，无法证明可安全重放的临时写操作会失败关闭。
 
 权限命令：
 
@@ -245,6 +245,8 @@ CLI 可直接检查记忆：
 
 数据备份使用内置验证式备份入口 `/backup`，不要在服务写入期间直接复制 SQLite 文件。删除 `.zhaoxi` 内数据库会清空对应数据，操作前必须先生成并验证备份。
 
+安装、卸载、备份和恢复细节见 [v1.0 运维与恢复手册](docs/Zhaoxi_v1.0_Operations_Runbook.md)。
+
 ## Roadmap
 
-v1.0 范围见 [正式版任务书](docs/Zhaoxi_v1.0_Release_Development_Task.md)；Life HUD 边界见 [LifeHUD-Tool 解耦任务书](docs/Zhaoxi_v1.0_Prerequisite_LifeHUD_Tool_Decoupling_Task.md)。v1.0 按全新安装交付，不承诺迁移早期人工测试数据；卸载仍默认保留当前用户数据。
+当前与历史文档的权威范围见 [文档索引](docs/README.md)。v1.0 范围见 [正式版任务书](docs/Zhaoxi_v1.0_Release_Development_Task.md)；Life HUD 边界见 [LifeHUD-Tool 解耦任务书](docs/Zhaoxi_v1.0_Prerequisite_LifeHUD_Tool_Decoupling_Task.md)。v1.0 按全新安装交付，不承诺迁移早期人工测试数据；卸载仍默认保留当前用户数据。

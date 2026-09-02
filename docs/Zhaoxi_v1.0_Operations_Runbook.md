@@ -1,13 +1,15 @@
-# Zhaoxi v0.9 运维与恢复手册
+# Zhaoxi v1.0 运维与恢复手册
 
 ## 构建与安装
 
-在干净的 Python 3.12+ Windows 10/11 环境中：
+在 Python 3.12+ Windows 环境中：
 
 ```powershell
 python -m pip install -e ".[dev]"
 .\scripts\build_release.ps1
-.\scripts\install_windows.ps1 -Wheel .\dist\zhaoxi-0.9.0-py3-none-any.whl
+.\scripts\install_windows.ps1 `
+  -Wheel .\dist\zhaoxi-1.0.0-py3-none-any.whl `
+  -LifeHudToolWheel .\dist\zhaoxi_lifehud_tool-1.0.0-py3-none-any.whl
 ```
 
 需要当前用户开机自启时额外传入 `-EnableAutoStart`。安装脚本只修改当前用户环境；不会复制 `.env`、数据库或密钥。
@@ -20,8 +22,11 @@ python -m pip install -e ".[dev]"
 
 卸载默认保留 `.zhaoxi` 中的数据库、备份、配置和日志。删除用户数据不属于卸载脚本职责，必须由用户另行明确执行。
 
+v1.0 按全新安装交付，不迁移早期人工测试数据。若旧 `.zhaoxi` 导致 schema 或健康检查失败，先停止朝汐并将旧目录移动到安全位置，再重新启动；确认新环境可用前不要删除旧目录。
+
 ## 启动诊断
 
+- `python main.py --doctor`：不启动 Agent，检查 Python、模型配置、数据目录、Tool Package 与可选依赖。
 - `GET /api/health`：仅检查进程和版本。
 - `GET /api/diagnostics`：查看组件开关、进程指标和数据库健康摘要，不包含用户正文。
 - 日志默认位于 `.zhaoxi/logs/zhaoxi.log`，按大小轮转。
