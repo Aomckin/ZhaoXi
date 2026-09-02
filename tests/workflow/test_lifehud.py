@@ -13,11 +13,10 @@ from zhaoxi.core.context import ContextBuilder
 from zhaoxi.core.conversation import Conversation
 from zhaoxi.models.types import ModelResponse, ToolCall
 from zhaoxi.permission.executor import ToolExecutor
-from zhaoxi.tools.integrations.lifehud import (
+from tools.lifehud_tool import (
     LifeHudClient,
     LifeHudError,
-    create_lifehud_context_tools,
-    create_lifehud_focus_tools,
+    LifeHudTool,
 )
 from zhaoxi.tools.registry import ToolRegistry
 from zhaoxi.workflow.loader import WorkflowLoader
@@ -88,10 +87,9 @@ def runtime_for(handler):
         "http://lifehud.test", transport=transport, retry_backoff_seconds=0
     )
     tools = ToolRegistry()
-    for tool in [*create_lifehud_context_tools(client), *create_lifehud_focus_tools(client)]:
-        tools.register(tool)
+    tools.register(LifeHudTool(client))
     workflows = WorkflowRegistry(tools)
-    root = Path(__file__).parents[2] / "workflows" / "lifehud"
+    root = Path(__file__).parents[2] / "tools" / "lifehud_tool" / "workflows"
     for definition in WorkflowLoader().load_directory(root):
         workflows.register(definition)
     return WorkflowRuntime(workflows, ToolExecutor(tools))
@@ -118,8 +116,8 @@ async def test_lifehud_tool_converts_utc_for_display_without_mutating_source():
     )
 
     source = await client.focus()
-    tool = next(tool for tool in create_lifehud_context_tools(client) if tool.name == "lifehud_focus")
-    result = await tool.run({})
+    tool = LifeHudTool(client)
+    result = await tool.run({"operation": "focus.current", "arguments": {}})
 
     assert source.focus.active.startedAt.isoformat() == "2026-08-31T02:00:00+00:00"
     assert result.data["focus"]["active"]["startedAt"] == "2026-08-31T10:00:00+08:00"
@@ -132,15 +130,12 @@ def test_lifehud_display_timezone_rejects_unknown_zone():
         LifeHudClient("http://lifehud.test", display_timezone="Mars/Olympus")
 
 
-def test_all_agent_context_tools_are_read_only_and_described():
+def test_lifehud_is_one_tool_with_invocation_scoped_permissions():
     client = LifeHudClient("http://lifehud.test")
-    tools = create_lifehud_context_tools(client)
-    assert {tool.name for tool in tools} == {
-        "lifehud_today", "lifehud_recent", "lifehud_status", "lifehud_focus",
-        "lifehud_tasks", "lifehud_dreams", "lifehud_life", "lifehud_journal",
-        "lifehud_media", "lifehud_growth",
-    }
-    assert all(not tool.mutates_state and tool.description for tool in tools)
+    tool = LifeHudTool(client)
+    assert tool.name == "lifehud" and tool.description
+    assert tool.permission_for({"operation": "context.today"}).value == "read"
+    assert tool.permission_for({"operation": "focus.start"}).value == "write"
 
 
 async def test_all_agent_context_endpoints_parse_schema_one():
@@ -340,7 +335,8 @@ async def test_natural_open_and_approval_use_same_workflow_run():
         tool_executor=workflow.tool_executor,
         workflow=workflow,
     )
-    agent.cognitive = CognitiveCoordinator(agent=agent, router=CognitiveRouter(provider))
+    hints = __import__("tools.lifehud_tool.package", fromlist=["create_package"]).create_package().routing_hints()
+    agent.cognitive = CognitiveCoordinator(agent=agent, router=CognitiveRouter(provider, routing_hints=hints))
     waiting = await agent.run_natural("朝汐，开幕，开发 v0.5.1")
     assert waiting.route == CognitiveRoute.WORKFLOW and waiting.permission_confirmation
     completed = await agent.run_natural("允许")
@@ -453,14 +449,16 @@ async def test_natural_lifehud_query_really_calls_read_tool_and_returns_prose():
 
     client = LifeHudClient("http://lifehud.test", transport=httpx.MockTransport(handler))
     registry = ToolRegistry()
-    for tool in create_lifehud_context_tools(client):
-        registry.register(tool)
+    registry.register(LifeHudTool(client))
     provider = FakeProvider([
         ModelResponse(tool_calls=[ToolCall(
             id="route", name="route_cognition", arguments={"route": "tool", "reason": "查询 Life HUD"}
         )]),
         ModelResponse(content="我先检查一下 Life HUD。"),
-        ModelResponse(tool_calls=[ToolCall(id="status", name="lifehud_status", arguments={})]),
+        ModelResponse(tool_calls=[ToolCall(
+            id="status", name="lifehud",
+            arguments={"operation": "context.status", "arguments": {}},
+        )]),
         ModelResponse(content="Life HUD 当前连接正常，你现在是 17 级，Energy 122。"),
     ])
     agent = ZhaoxiAgent(
@@ -469,7 +467,8 @@ async def test_natural_lifehud_query_really_calls_read_tool_and_returns_prose():
         context_builder=ContextBuilder("你是朝汐。"),
         conversation=Conversation(),
     )
-    agent.cognitive = CognitiveCoordinator(agent=agent, router=CognitiveRouter(provider))
+    hints = __import__("tools.lifehud_tool.package", fromlist=["create_package"]).create_package().routing_hints()
+    agent.cognitive = CognitiveCoordinator(agent=agent, router=CognitiveRouter(provider, routing_hints=hints))
     response = await agent.run_natural("随便用 LifeHUD 查点啥")
     assert response.content == "Life HUD 当前连接正常，你现在是 17 级，Energy 122。"
     assert [item.url.path for item in requests] == ["/api/agent/context/status"]

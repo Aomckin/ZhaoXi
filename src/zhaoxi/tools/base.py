@@ -32,6 +32,18 @@ class Tool(ABC):
         """Compatibility view for v0.3 callers."""
         return self.permission != PermissionLevel.READ
 
+    def permission_for(self, arguments: dict[str, Any]) -> PermissionLevel:
+        """Resolve permission after input validation for this invocation."""
+        return self.permission
+
+    def side_effects_for(self, arguments: dict[str, Any]) -> frozenset[SideEffect]:
+        """Resolve side effects after input validation for this invocation."""
+        return self.side_effects
+
+    def safe_to_replay(self, arguments: dict[str, Any]) -> bool:
+        """Whether an invocation can be repeated after an uncertain failure."""
+        return self.permission_for(arguments) is PermissionLevel.READ
+
     def resource_scope(self, arguments: dict[str, Any]) -> str:
         """Return a redacted scope, never raw content."""
         for key in ("memory_id", "path", "event_id", "message_id"):

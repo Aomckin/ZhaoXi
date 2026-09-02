@@ -73,12 +73,6 @@ class Settings(BaseSettings):
     workflow_history_limit: int = Field(default=100, ge=1, le=1000)
     workflow_max_steps: int = Field(default=50, ge=1, le=500)
     workflow_max_events: int = Field(default=200, ge=10, le=10_000)
-    lifehud_base_url: str = "http://127.0.0.1:8025"
-    lifehud_context_path: str = "/api/agent/context"
-    lifehud_schema_version: str = "1"
-    lifehud_timeout_seconds: float = Field(default=10, gt=0, le=120)
-    lifehud_max_retries: int = Field(default=2, ge=0, le=5)
-    lifehud_display_timezone: str = "Asia/Shanghai"
     reflection_enabled: bool = True
     reflection_db_path: str = ".zhaoxi/reflection.db"
     reflection_timezone: str = "Asia/Shanghai"

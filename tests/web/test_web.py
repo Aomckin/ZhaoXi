@@ -12,10 +12,20 @@ from zhaoxi.permission.models import (
     PermissionLevel,
     PermissionRequest,
 )
+from zhaoxi.reflection.models import (
+    EvidenceRef,
+    ReflectionKind,
+    ReflectionPeriod,
+    ReflectionRecord,
+    ReflectionStatus,
+    SourceSnapshot,
+    SourceStatus,
+)
 from zhaoxi.web.app import create_app
 from zhaoxi.web.events import EventBroadcaster
 from zhaoxi.interfaces.models import UnifiedResponse
 from zhaoxi.voice.models import Transcript, VoiceStatus
+from zhaoxi.config.settings import Settings
 
 
 class FakeAgent:
@@ -124,6 +134,55 @@ class FakeVoiceRuntime:
         self.status = VoiceStatus.IDLE
 
 
+def _reflection_record():
+    period = ReflectionPeriod(
+        start_at=datetime(2026, 9, 1, tzinfo=UTC),
+        end_at=datetime(2026, 9, 2, tzinfo=UTC),
+        timezone="Asia/Shanghai",
+        label="2026-09-01",
+    )
+    evidence = EvidenceRef(
+        source_type="test",
+        source_name="private-source",
+        occurred_at=datetime(2026, 9, 1, 12, tzinfo=UTC),
+        title="private title",
+        excerpt="reflection-private-canary",
+        content_hash="12345678",
+    )
+    return ReflectionRecord(
+        reflection_id="reflection-1",
+        kind=ReflectionKind.DAILY,
+        period=period,
+        status=ReflectionStatus.COMPLETED,
+        source_snapshots=[SourceSnapshot(
+            source="private-source",
+            status=SourceStatus.AVAILABLE,
+            period=period,
+            evidence=[evidence],
+        )],
+        summary="今日完成核心接线。",
+        source_fingerprint="12345678",
+    )
+
+
+class FakeReflectionService:
+    def __init__(self):
+        self.record = _reflection_record()
+        self.repository = SimpleNamespace(list=self.list)
+
+    async def list(self, limit):
+        return [self.record]
+
+    async def generate(self, kind, period, *, regenerate=False):
+        assert kind is ReflectionKind.DAILY
+        return self.record
+
+
+class FakePeriods:
+    def resolve(self, kind):
+        return _reflection_record().period
+
+
 def test_web_chat_session_and_clear():
     app = create_app(agent=FakeAgent())
     with TestClient(app) as client:
@@ -144,7 +203,67 @@ def test_diagnostics_exposes_content_free_metrics():
     assert payload["status"] == "ok"
     assert payload["metrics"]["counters"]["interface.chat.completed"] == 1
     assert payload["components"]["voice"] is False
+    assert payload["tool_packages"] == []
     assert "private canary" not in str(payload)
+
+
+def test_web_stays_available_in_first_run_setup_mode(tmp_path):
+    settings = Settings(
+        model_api_key="",
+        model_name="",
+        memory_db_path=str(tmp_path / "memory.db"),
+    )
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        diagnostics = client.get("/api/diagnostics")
+        capabilities = client.get("/api/capabilities")
+        response = client.post("/api/chat", json={"message": "你好"})
+
+    assert diagnostics.status_code == 200
+    assert diagnostics.json()["startup"]["status"] == "needs_configuration"
+    assert capabilities.json()["status"] == "setup_required"
+    assert "python main.py --doctor" in capabilities.json()["examples"][0]
+    assert response.status_code == 200
+    assert "ZHAOXI_MODEL_API_KEY" in response.json()["content"]
+    assert "Traceback" not in response.text
+
+
+def test_capabilities_endpoint_is_content_free_for_regular_core():
+    app = create_app(agent=FakeAgent())
+    with TestClient(app) as client:
+        payload = client.get("/api/capabilities").json()
+    assert payload == {
+        "status": "ready",
+        "tools": [],
+        "workflows": [],
+        "packages": [],
+        "examples": [],
+    }
+
+
+def test_reflection_endpoints_return_safe_content_without_raw_evidence():
+    agent = FakeAgent()
+    agent.reflection = FakeReflectionService()
+    agent.reflection_periods = FakePeriods()
+    app = create_app(agent=agent)
+    with TestClient(app) as client:
+        generated = client.post("/api/reflections/daily").json()
+        listed = client.get("/api/reflections").json()
+
+    assert generated["summary"] == "今日完成核心接线。"
+    assert generated["evidence_count"] == 1
+    assert listed["reflections"][0]["reflection_id"] == "reflection-1"
+    assert "reflection-private-canary" not in str(generated)
+    assert "reflection-private-canary" not in str(listed)
+
+
+def test_reflection_endpoint_is_unavailable_in_setup_mode():
+    app = create_app(agent=FakeAgent())
+    with TestClient(app) as client:
+        generated = client.post("/api/reflections/daily")
+        listed = client.get("/api/reflections")
+    assert generated.status_code == 409
+    assert listed.status_code == 409
 
 
 def test_web_request_id_is_idempotent():
@@ -191,6 +310,16 @@ def test_core_error_is_sanitized_and_page_remains_available():
         assert "secret traceback" not in failed.text
         assert client.get("/api/health").status_code == 200
         assert "朝汐" in client.get("/").text
+
+
+def test_web_shell_has_keyboard_and_live_status_accessibility_baseline():
+    app = create_app(agent=FakeAgent())
+    with TestClient(app) as client:
+        page = client.get("/").text
+    assert 'aria-label="发送给朝汐的消息"' in page
+    assert 'id="activity" class="activity" role="status" aria-live="polite"' in page
+    assert 'id="connection" role="status" aria-live="polite"' in page
+    assert "if(e.key==='Enter'&&!e.shiftKey)" in page
 
 
 def test_desktop_api_token_guards_local_core_routes():
@@ -240,6 +369,21 @@ def test_voice_api_exposes_review_confirm_and_stoppable_speech():
         assert client.post("/api/voice/speak", json={"text": "朗读我"}).json()["started"]
         assert voice.spoken == [("朗读我", 1200)]
         assert client.post("/api/voice/speak/stop").json() == {"status": "idle"}
+
+
+def test_explicit_speech_is_deterministic_at_night_with_injected_clock():
+    voice = FakeVoiceRuntime()
+    settings = Settings(proactive_night_start_hour=23, proactive_night_end_hour=8)
+    app = create_app(
+        agent=FakeAgent(),
+        settings=settings,
+        voice_runtime=voice,
+        now_provider=lambda: datetime(2026, 9, 1, 23, 30, tzinfo=UTC),
+    )
+    with TestClient(app) as client:
+        response = client.post("/api/voice/speak", json={"text": "夜间显式朗读"}).json()
+    assert response["started"] is True
+    assert response["reason"] == "explicit_user_action"
 
 
 def test_voice_api_is_disabled_without_runtime():

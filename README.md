@@ -1,8 +1,8 @@
 # Zhaoxi / 朝汐
 
-Zhaoxi 是一个可扩展的个人 Agent Core。当前版本是 v0.9 · Reliability：已建立统一错误契约、异步安全的请求关联上下文、低基数进程内指标与本地脱敏诊断入口，并继续复用同一套 Agent、Planner、Workflow、Permission、Proactive、Reflection 与 Tool Core。
+Zhaoxi 1.0 是一个可扩展的本地个人 Agent Core，提供对话、记忆、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与独立 Tool Package 能力。
 
-Life HUD API 的时间戳按原始 UTC 契约读取且不改写；发送给模型的 Tool observation 默认转换为 `Asia/Shanghai`，可通过 `ZHAOXI_LIFEHUD_DISPLAY_TIMEZONE` 配置。
+Life HUD 通过独立的 `tools/lifehud_tool` 包接入，Core Registry 只注册一个 `lifehud` Tool；各能力由封闭 `operation` 区分，并按调用动态解析 READ/WRITE 权限。Life HUD API 的时间戳按原始 UTC 契约读取且不改写；发送给模型的 Tool observation 默认转换为 `Asia/Shanghai`，可通过 `ZHAOXI_TOOL_LIFEHUD_DISPLAY_TIMEZONE` 配置。
 
 ## Architecture
 
@@ -42,6 +42,24 @@ Core 使用内部消息和响应类型，不依赖厂商对象；新增工具只
 - 后台任务受统一 supervisor 管理，关闭时有界取消；
 - Windows wheel、构建/安装/卸载脚本和运维恢复手册已提供，卸载默认保留用户数据。
 
+## v1.0 prerequisite · LifeHUD-Tool decoupling
+
+- Life HUD Client、schema、错误、时区展示与铁幕 Workflow 已移出 Core，归属独立 `tools/lifehud_tool` 包；
+- Zhaoxi 通过通用 Tool Package discovery 和 entry point 加载外部 Tool；
+- Registry 与模型只看到一个 `lifehud` Tool，旧的 13 个 `lifehud_*` Tool 不再注册；
+- `context.*` 与 `focus.current` 为 READ，`focus.start/complete` 为 WRITE 并继续经过 PermissionGateway；
+- Core Settings、启动装配、Router 与 Workflow 不再直接 import Life HUD 业务实现；
+- Life HUD 项目保持只读，集成只调用公开 HTTP API，不读取其数据库或内部文件；
+- Voice 显式朗读不再被当前真实小时导致的 Night Mode 测试干扰；Web Voice policy 支持注入时钟，Quiet 仍优先禁止朗读。
+
+## v1.0 development
+
+- 缺少模型配置时 Web/Desktop 进入可诊断的 Setup Mode，不因单个 Tool Package 加载失败而整体退出；
+- `python main.py --doctor` 输出无密钥、无用户正文的启动检查，Web 提供同样受本地令牌保护的诊断与能力目录；
+- CLI 提供 `/reflection`、`/reflections`，Web 提供生成与历史接口；Reflection 现已组合 Memory 与独立 Tool Package 的只读证据源；
+- LifeHUD-Tool 通过公开 Agent Context API 提供 Reflection 证据，Core 不读取 Life HUD 项目文件或数据库；
+- Reflection API 默认只返回结论、引用 ID 和证据数量，不暴露原始证据摘录或模型元数据。
+
 ## Quick start
 
 需要 Python 3.12 或更新版本。
@@ -50,6 +68,7 @@ Core 使用内部消息和响应类型，不依赖厂商对象；新增工具只
 python -m venv .venv
 # Windows: .venv\Scripts\activate
 python -m pip install -e ".[dev]"
+python -m pip install -e .\tools\lifehud_tool --no-deps
 # Windows Desktop Presence
 python -m pip install -e ".[dev,desktop,voice]"
 copy .env.example .env
@@ -66,6 +85,7 @@ ZHAOXI_MODEL_NAME=your-model
 运行与测试：
 
 ```bash
+python main.py --doctor
 python main.py
 python main.py --web
 python main.py --desktop
@@ -221,8 +241,10 @@ CLI 可直接检查记忆：
 
 默认策略可通过 `.env` 分级收紧。审计以脱敏 JSONL 写入 `.zhaoxi/audit/permission.jsonl`，不会记录 Tool 原始参数、Memory 正文或模型完整上下文。
 
-备份时退出正在运行的 Zhaoxi，再复制 `.zhaoxi/memory.db`。删除该文件会清空全部长期记忆，操作前请先备份。
+首次运行前可执行 `python main.py --doctor`，它不会启动 Agent，也不要求模型调用；会检查 Python、模型配置、数据目录、Tool Package 和 Desktop/Voice 可选依赖。诊断不输出密钥或用户正文。
+
+数据备份使用内置验证式备份入口 `/backup`，不要在服务写入期间直接复制 SQLite 文件。删除 `.zhaoxi` 内数据库会清空对应数据，操作前必须先生成并验证备份。
 
 ## Roadmap
 
-当前版本要求见 [v0.5 Workflow 开发任务书](docs/Zhaoxi_v0.5_Workflow_Development_Task.md)，权限基线见 [v0.4 Permission 开发计划](docs/Zhaoxi_v0.4_Permission_Development_Plan.md)。本版只接入 Life HUD Focus 的最小 HTTP Tool，不修改或复制 Life HUD 业务逻辑；后台定时任务、主动唤醒、向量数据库和 RAG 仍不在本版范围。
+v1.0 范围见 [正式版任务书](docs/Zhaoxi_v1.0_Release_Development_Task.md)；Life HUD 边界见 [LifeHUD-Tool 解耦任务书](docs/Zhaoxi_v1.0_Prerequisite_LifeHUD_Tool_Decoupling_Task.md)。v1.0 按全新安装交付，不承诺迁移早期人工测试数据；卸载仍默认保留当前用户数据。

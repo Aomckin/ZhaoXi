@@ -1,4 +1,4 @@
-"""Normalized Life HUD integration failures."""
+"""Normalized LifeHUD-Tool failures."""
 
 
 class LifeHudError(RuntimeError):

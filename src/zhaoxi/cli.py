@@ -46,18 +46,27 @@ from zhaoxi.proactive import (
 )
 from zhaoxi.tools.builtin import create_builtin_tools
 from zhaoxi.tools.registry import ToolRegistry
-from zhaoxi.tools.integrations.lifehud import (
-    LifeHudClient,
-    create_lifehud_context_tools,
-    create_lifehud_focus_tools,
-)
+from zhaoxi.tools.packages import create_package_tools, discover_tool_packages
 from zhaoxi.workflow.loader import WorkflowLoader
 from zhaoxi.workflow.registry import WorkflowRegistry
 from zhaoxi.workflow.runtime import WorkflowRuntime
 from zhaoxi.workflow.sqlite import SQLiteWorkflowStore
 from zhaoxi.session.base import Session
 from zhaoxi.session.sqlite import SQLiteSessionStore
-from zhaoxi.reliability import BackupManager, DataStoreSpec, RetryPolicy
+from zhaoxi.reliability import (
+    BackupManager,
+    DataStoreSpec,
+    RetryPolicy,
+    provider_budget_scope,
+    startup_diagnostics,
+)
+from zhaoxi.reflection.collector import ReflectionCollector
+from zhaoxi.reflection.generator import ModelReflectionGenerator
+from zhaoxi.reflection.models import ReflectionKind
+from zhaoxi.reflection.periods import PeriodResolver
+from zhaoxi.reflection.service import ReflectionService
+from zhaoxi.reflection.sources import MemoryReflectionSource
+from zhaoxi.reflection.sqlite import SQLiteReflectionRepository
 
 
 def build_agent(settings: Settings) -> ZhaoxiAgent:
@@ -113,20 +122,45 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     registry = ToolRegistry()
     for tool in create_builtin_tools(memory_service):
         registry.register(tool)
-    if settings.workflow_enabled:
-        lifehud_client = LifeHudClient(
-            settings.lifehud_base_url,
-            context_path=settings.lifehud_context_path,
-            schema_version=settings.lifehud_schema_version,
-            timeout=settings.lifehud_timeout_seconds,
-            max_retries=settings.lifehud_max_retries,
-            display_timezone=settings.lifehud_display_timezone,
+    tool_package_errors: list[dict[str, str]] = []
+    discovered_packages = discover_tool_packages(errors=tool_package_errors)
+    tool_packages = []
+    for package in discovered_packages:
+        try:
+            for tool in create_package_tools(package):
+                registry.register(tool)
+            tool_packages.append(package)
+        except Exception as exc:
+            tool_package_errors.append({"source": package.package_id, "error": type(exc).__name__})
+            logging.getLogger("TOOLS").warning(
+                "tool package unavailable id=%s error=%s",
+                package.package_id,
+                type(exc).__name__,
+            )
+    reflection_service = None
+    reflection_periods = None
+    if settings.reflection_enabled:
+        reflection_sources = [
+            MemoryReflectionSource(
+                memory_service,
+                limit=settings.reflection_max_evidence,
+                max_excerpt_chars=settings.reflection_max_excerpt_chars,
+            )
+        ]
+        for package in tool_packages:
+            if hasattr(package, "reflection_sources"):
+                reflection_sources.extend(package.reflection_sources())
+        reflection_service = ReflectionService(
+            SQLiteReflectionRepository(settings.reflection_db_path),
+            ReflectionCollector(
+                reflection_sources,
+                max_evidence=settings.reflection_max_evidence,
+                max_evidence_chars=settings.reflection_max_evidence_chars,
+            ),
+            ModelReflectionGenerator(provider),
+            prompt_version=settings.reflection_prompt_version,
         )
-        for tool in [
-            *create_lifehud_context_tools(lifehud_client),
-            *create_lifehud_focus_tools(lifehud_client),
-        ]:
-            registry.register(tool)
+        reflection_periods = PeriodResolver(settings.reflection_timezone)
     policy_values = {
         PermissionLevel.READ: settings.permission_read_policy,
         PermissionLevel.WRITE: settings.permission_write_policy,
@@ -184,10 +218,15 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
             tool_executor=tool_executor,
         )
     workflow = None
+    registered_workflows = []
     if settings.workflow_enabled:
         workflow_registry = WorkflowRegistry(registry)
         for definition in WorkflowLoader().load_directory(settings.workflow_directory):
             workflow_registry.register(definition)
+        for package in tool_packages:
+            for workflow_path in package.workflow_paths():
+                for definition in WorkflowLoader().load_directory(workflow_path):
+                    workflow_registry.register(definition)
         workflow = WorkflowRuntime(
             workflow_registry,
             tool_executor,
@@ -195,6 +234,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
             max_steps=settings.workflow_max_steps,
             max_events=settings.workflow_max_events,
         )
+        registered_workflows = workflow_registry.list()
     proactive = None
     proactive_scheduler = None
     proactive_state = None
@@ -236,6 +276,35 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     )
     agent.session_store = session_store
     agent.session_record = session_record
+    agent.tool_packages = [
+        {"id": package.package_id, "version": package.package_version}
+        for package in tool_packages
+    ]
+    agent.tool_package_errors = tool_package_errors
+    agent.reflection = reflection_service
+    agent.reflection_periods = reflection_periods
+    agent.capability_catalog = {
+        "status": "ready",
+        "tools": [
+            {"name": tool.name, "description": tool.description}
+            for tool in registry.list()
+        ],
+        "workflows": [
+            {"id": definition.id, "name": definition.name, "aliases": definition.aliases}
+            for definition in registered_workflows
+        ],
+        "packages": [
+            package.capabilities()
+            for package in tool_packages
+            if hasattr(package, "capabilities")
+        ],
+        "examples": [
+            "记住我偏好晚上进行深度开发。",
+            "帮我分步骤准备明天下午的任务。",
+            "提醒我 30 分钟后休息。",
+            "生成今天的回顾。",
+        ],
+    }
     agent.metrics = provider.metrics
     agent.backup_manager = BackupManager(
         settings.backup_directory,
@@ -265,9 +334,12 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
             continue
         gateway.deny(confirmation_id)
     if settings.cognitive_router_enabled:
+        routing_hints = [
+            hint for package in tool_packages for hint in package.routing_hints()
+        ]
         agent.cognitive = CognitiveCoordinator(
             agent=agent,
-            router=CognitiveRouter(provider),
+            router=CognitiveRouter(provider, routing_hints=routing_hints),
             auto_memory=AutoMemory(provider, memory_service) if settings.auto_memory_enabled else None,
         )
     return agent
@@ -291,8 +363,9 @@ async def interactive() -> None:
         return
 
     print(
-        "Zhaoxi v0.9 · Reliability\n"
-        "输入 /diagnostics 检查运行状态，/backup 创建备份，/exit 退出。"
+        "Zhaoxi v1.0 · Development\n"
+        "输入 /diagnostics 检查运行状态，/capabilities 查看能力，"
+        "/reflection 生成回顾，/exit 退出。"
     )
     while True:
         try:
@@ -316,6 +389,54 @@ async def interactive() -> None:
                 "version": __import__("zhaoxi").__version__,
                 "storage": agent.backup_manager.health(),
             })
+            continue
+        if text == "/capabilities":
+            print(agent.capability_catalog)
+            continue
+        if text == "/reflections":
+            if agent.reflection is None:
+                print("朝汐 > Reflection 未启用。")
+                continue
+            records = await agent.reflection.repository.list(20)
+            if not records:
+                print("朝汐 > 暂无回顾记录。")
+            for record in records:
+                print(
+                    f"{record.kind.value} {record.period.label} "
+                    f"[{record.status.value}] r{record.revision} · {record.summary}"
+                )
+            continue
+        if text.startswith("/reflection"):
+            parts = text.split()
+            if len(parts) < 2 or parts[1] not in {"daily", "weekly", "monthly", "seasonal"}:
+                print("朝汐 > 用法：/reflection <daily|weekly|monthly|seasonal> [--regenerate]")
+                continue
+            if agent.reflection is None or agent.reflection_periods is None:
+                print("朝汐 > Reflection 未启用。")
+                continue
+            kind = ReflectionKind(parts[1])
+            try:
+                with provider_budget_scope(
+                    settings.request_max_model_calls,
+                    settings.request_max_total_tokens,
+                ):
+                    record = await agent.reflection.generate(
+                        kind,
+                        agent.reflection_periods.resolve(kind),
+                        regenerate="--regenerate" in parts[2:],
+                    )
+                print(f"朝汐 > {record.summary}")
+                for section in record.sections:
+                    print(f"\n{section.name}")
+                    for point in section.points:
+                        print(f"- {point.text}")
+                for uncertainty in record.uncertainties:
+                    print(f"- 待确认：{uncertainty}")
+            except Exception as exc:
+                logging.getLogger("REFLECTION").warning(
+                    "reflection generation failed type=%s", type(exc).__name__
+                )
+                print("朝汐 > 回顾生成失败，请稍后重试或检查数据来源。")
             continue
         if text == "/backup":
             try:
@@ -537,7 +658,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="zhaoxi")
     parser.add_argument("--web", action="store_true", help="启动本地 Web 交互界面")
     parser.add_argument("--desktop", action="store_true", help="启动本地桌面常驻界面")
+    parser.add_argument("--doctor", action="store_true", help="检查首次启动配置与可选能力，不启动 Agent")
     args = parser.parse_args()
+    if args.doctor:
+        import json
+
+        print(json.dumps(startup_diagnostics(Settings()), ensure_ascii=False, indent=2))
+        return
     if args.desktop:
         from zhaoxi.desktop import run_desktop
 

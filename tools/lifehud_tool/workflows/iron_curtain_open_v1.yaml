@@ -18,8 +18,10 @@ inputs:
 steps:
   - id: current
     type: tool
-    tool: lifehud_focus
-    arguments: {}
+    tool: lifehud
+    arguments:
+      operation: focus.current
+      arguments: {}
     output_mapping:
       current: $.steps.current.output.data.focus.active
     next: has_current
@@ -33,20 +35,25 @@ steps:
     type: end
     result:
       outcome: already_running
+      message: 当前已经有专注正在进行。
       current: $.variables.current
   - id: start
     type: tool
-    tool: lifehud_focus_start
+    tool: lifehud
     arguments:
-      title: $.inputs.title
-      related_task_ids: $.inputs.related_task_ids
+      operation: focus.start
+      arguments:
+        title: $.inputs.title
+        related_task_ids: $.inputs.related_task_ids
     output_mapping:
       session: $.steps.start.output.data
     next: verify
   - id: verify
     type: tool
-    tool: lifehud_focus
-    arguments: {}
+    tool: lifehud
+    arguments:
+      operation: focus.current
+      arguments: {}
     output_mapping:
       verified_current: $.steps.verify.output.data.focus.active
     next: verify_started
@@ -64,10 +71,12 @@ steps:
     type: end
     result:
       outcome: verification_failed
+      message: 操作已经提交，但暂时无法从事实源确认最终状态，请先不要重复操作。
       submitted_session: $.variables.session
       current: $.variables.verified_current
   - id: opened
     type: end
     result:
       outcome: opened
+      message: 铁幕已经开幕。
       session: $.variables.verified_current

@@ -1,4 +1,4 @@
-"""Presentation-only timezone conversion for Life HUD payloads."""
+"""Presentation-only timezone conversion owned by LifeHUD-Tool."""
 
 from datetime import datetime
 from typing import Any

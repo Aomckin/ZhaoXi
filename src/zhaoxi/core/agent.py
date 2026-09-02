@@ -227,27 +227,13 @@ class ZhaoxiAgent:
 
     @staticmethod
     def _workflow_fallback(run) -> str:
-        outcome = run.result.get("outcome") if isinstance(run.result, dict) else None
-        if outcome == "opened":
-            session = run.result.get("session") or {}
-            title = session.get("title")
-            return f"铁幕已经开幕。现在专注于“{title}”。" if title else "铁幕已经开幕。"
-        if outcome == "already_running":
-            current = run.result.get("current") or {}
-            title = current.get("title")
-            return f"铁幕已经开着，当前专注于“{title}”。" if title else "当前已经有专注正在进行。"
-        if outcome == "closed":
-            return "铁幕已经落幕，这段专注已记录到 Life HUD。"
-        if outcome == "no_current":
-            return "当前没有正在进行的铁幕。"
-        if outcome == "wrong_mode":
-            return "当前进行的不是铁幕，我没有替你结束它。"
-        if outcome == "verification_failed":
-            return "操作已经提交，但我暂时无法从 Life HUD 确认最终状态，请先不要重复操作。"
+        message = run.result.get("message") if isinstance(run.result, dict) else None
+        if isinstance(message, str) and message.strip():
+            return message.strip()
         if run.status.value == "cancelled":
             return "已取消，这次没有继续执行。"
         if run.status.value == "failed":
-            return "这次流程没有顺利完成，Life HUD 的状态没有被我当作成功处理。"
+            return "这次流程没有顺利完成，相关状态没有被当作成功处理。"
         return "流程已经处理完成。"
 
     @staticmethod

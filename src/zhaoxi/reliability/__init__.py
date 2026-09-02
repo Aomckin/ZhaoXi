@@ -5,6 +5,7 @@ from zhaoxi.reliability.metrics import MetricRegistry
 from zhaoxi.reliability.models import ErrorCategory, ReliabilityError
 from zhaoxi.reliability.retry import CircuitBreaker, RetryPolicy, provider_budget_scope, retry_async
 from zhaoxi.reliability.storage import BackupError, BackupManager, DataStoreSpec
+from zhaoxi.reliability.startup import startup_diagnostics
 from zhaoxi.reliability.lifecycle import TaskSupervisor
 
 __all__ = [
@@ -14,6 +15,7 @@ __all__ = [
     "BackupManager",
     "ErrorCategory",
     "DataStoreSpec",
+    "startup_diagnostics",
     "MetricRegistry",
     "ReliabilityError",
     "RetryPolicy",

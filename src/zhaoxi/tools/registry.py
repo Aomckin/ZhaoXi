@@ -20,9 +20,9 @@ class ToolRegistry:
             raise ToolValidationError(f"工具已注册：{tool.name}")
         if not isinstance(tool.permission, PermissionLevel):
             raise ToolValidationError(f"工具 {tool.name} 缺少有效权限声明")
-        if tool.permission == PermissionLevel.READ and tool.side_effects != frozenset({SideEffect.NONE}):
+        if tool.__class__.permission_for is Tool.permission_for and tool.permission == PermissionLevel.READ and tool.side_effects != frozenset({SideEffect.NONE}):
             raise ToolValidationError(f"READ 工具 {tool.name} 不能声明副作用")
-        if tool.permission != PermissionLevel.READ and tool.side_effects == frozenset({SideEffect.NONE}):
+        if tool.__class__.permission_for is Tool.permission_for and tool.permission != PermissionLevel.READ and tool.side_effects == frozenset({SideEffect.NONE}):
             raise ToolValidationError(f"非 READ 工具 {tool.name} 必须声明副作用")
         self._tools[tool.name] = tool
         return tool

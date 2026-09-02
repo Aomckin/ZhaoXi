@@ -13,6 +13,7 @@ from zhaoxi.permission.models import (
     PermissionLevel,
     PermissionRequest,
     PermissionStatus,
+    SideEffect,
 )
 from zhaoxi.tools.base import ToolResult
 from zhaoxi.tools.registry import ToolRegistry
@@ -67,6 +68,12 @@ class ToolExecutor:
                 ToolResult(success=False, content="工具参数无效。", error=str(exc))
             )
         arguments = normalized_arguments
+        permission = tool.permission_for(arguments)
+        side_effects = tool.side_effects_for(arguments)
+        if permission is PermissionLevel.READ and side_effects != frozenset({SideEffect.NONE}):
+            return ToolExecution(ToolResult(success=False, content="工具权限声明无效。", error="invalid_tool_policy"))
+        if permission is not PermissionLevel.READ and side_effects == frozenset({SideEffect.NONE}):
+            return ToolExecution(ToolResult(success=False, content="工具权限声明无效。", error="invalid_tool_policy"))
         try:
             validate_tool_arguments(arguments)
         except UnsafeToolArgument as exc:
@@ -79,7 +86,7 @@ class ToolExecutor:
             invocation_id=invocation_id or "",
             request_id=request_id,
             tool_name=name,
-            permission=tool.permission,
+            permission=permission,
             arguments=arguments,
             arguments_digest=digest,
             resource_scope=tool.resource_scope(arguments),
@@ -91,7 +98,7 @@ class ToolExecutor:
         ) if invocation_id else PermissionRequest(
             request_id=request_id,
             tool_name=name,
-            permission=tool.permission,
+            permission=permission,
             arguments=arguments,
             arguments_digest=digest,
             resource_scope=tool.resource_scope(arguments),
@@ -114,7 +121,7 @@ class ToolExecutor:
         self.gateway.record_execution(request, "tool_execution_started", "started")
         result = await tool.run(arguments)
         if (
-            tool.permission is not PermissionLevel.READ
+            permission is not PermissionLevel.READ
             and result.metadata.get("retryable")
             and not result.metadata.get("safe_to_replay")
         ):

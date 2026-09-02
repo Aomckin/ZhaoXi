@@ -1,4 +1,4 @@
-"""Strongly typed Life HUD v0.8 Agent Context schema 1 contracts."""
+"""LifeHUD-Tool contracts for Agent Context schema 1."""
 
 from datetime import date, datetime
 from typing import Any, Literal

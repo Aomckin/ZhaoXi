@@ -20,8 +20,10 @@ from zhaoxi.tools.registry import ToolRegistry
 
 
 def test_router_fallback_recognizes_iron_curtain_workflows():
-    opened = CognitiveRouter._fallback("朝汐，开幕，开发 v0.5")
-    closed = CognitiveRouter._fallback("朝汐，落幕，完成 Workflow")
+    hints = __import__("tools.lifehud_tool.package", fromlist=["create_package"]).create_package().routing_hints()
+    router = CognitiveRouter(FakeProvider([]), routing_hints=hints)
+    opened = router._fallback("朝汐，开幕，开发 v0.5")
+    closed = router._fallback("朝汐，落幕，完成 Workflow")
     assert opened.route == CognitiveRoute.WORKFLOW
     assert opened.workflow_id == "lifehud.iron_curtain.open"
     assert opened.workflow_inputs["title"] == "开发 v0.5"
@@ -30,8 +32,10 @@ def test_router_fallback_recognizes_iron_curtain_workflows():
 
 
 def test_router_fallback_sends_lifehud_and_tool_inspection_to_tools():
-    assert CognitiveRouter._fallback("随便用 LifeHUD 查点啥").route == CognitiveRoute.TOOL
-    assert CognitiveRouter._fallback("你检查下工具看看？").route == CognitiveRoute.TOOL
+    hints = __import__("tools.lifehud_tool.package", fromlist=["create_package"]).create_package().routing_hints()
+    router = CognitiveRouter(FakeProvider([]), routing_hints=hints)
+    assert router._fallback("随便用 LifeHUD 查点啥").route == CognitiveRoute.TOOL
+    assert router._fallback("你检查下工具看看？").route == CognitiveRoute.TOOL
 
 
 def control(name, arguments):

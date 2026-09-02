@@ -5,8 +5,8 @@ from typing import Any, TypeVar
 import httpx
 from pydantic import ValidationError
 
-from zhaoxi.tools.integrations.lifehud.errors import LifeHudError, UnsupportedSchemaVersion
-from zhaoxi.tools.integrations.lifehud.models import (
+from tools.lifehud_tool.errors import LifeHudError, UnsupportedSchemaVersion
+from tools.lifehud_tool.models import (
     AgentEnvelope,
     DreamsContext,
     FocusContext,
@@ -20,7 +20,7 @@ from zhaoxi.tools.integrations.lifehud.models import (
     TasksContext,
     TodayContext,
 )
-from zhaoxi.tools.integrations.lifehud.time_display import LifeHudTimeDisplay
+from tools.lifehud_tool.time_display import LifeHudTimeDisplay
 from zhaoxi.reliability.retry import RetryPolicy, retry_async
 
 ContextModel = TypeVar("ContextModel", bound=AgentEnvelope)

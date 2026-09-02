@@ -33,15 +33,14 @@ class SpeechPolicy:
             return SpeechAction.TEXT_ONLY, "voice_disabled"
         if context.quiet:
             return SpeechAction.TEXT_ONLY, "quiet_mode"
+        if context.explicit_user_action:
+            return SpeechAction.SPEAK_NOW, "explicit_user_action"
         if context.night:
             return SpeechAction.TEXT_ONLY, "night_mode"
         if context.permission_pending:
             return SpeechAction.TEXT_ONLY, "permission_pending"
-        if context.explicit_user_action:
-            return SpeechAction.SPEAK_NOW, "explicit_user_action"
         if not context.auto_speak or not context.response_from_voice:
             return SpeechAction.TEXT_ONLY, "auto_speak_disabled"
         if context.text_length > context.max_auto_chars:
             return SpeechAction.REQUIRE_CLICK, "response_too_long"
         return SpeechAction.SPEAK_NOW, "voice_response"
-

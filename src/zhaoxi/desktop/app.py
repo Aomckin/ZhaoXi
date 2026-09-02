@@ -17,6 +17,9 @@ from zhaoxi.desktop.tray import TrayIcon
 from zhaoxi.desktop.window import DesktopWindow
 from zhaoxi.proactive.notifications import InboxNotificationSink
 from zhaoxi.web.app import create_app
+from zhaoxi.errors import ZhaoxiError
+from zhaoxi.interfaces.setup import StartupUnavailableAgent
+from zhaoxi.reliability.startup import startup_diagnostics
 
 logger = logging.getLogger("DESKTOP")
 
@@ -86,7 +89,10 @@ class DesktopHost:
         if agent is None:
             from zhaoxi.cli import build_agent
 
-            agent = build_agent(settings)
+            try:
+                agent = build_agent(settings)
+            except ZhaoxiError as exc:
+                agent = StartupUnavailableAgent(startup_diagnostics(settings), str(exc))
         self.agent = agent
         self.voice = None
         try:

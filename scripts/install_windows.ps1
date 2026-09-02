@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Wheel,
+    [string]$LifeHudToolWheel,
     [switch]$EnableAutoStart
 )
 
@@ -11,6 +12,12 @@ $pythonCommand = Get-Command python -ErrorAction Stop
 
 & $pythonCommand.Source -m pip install --user --upgrade $wheelPath
 if ($LASTEXITCODE -ne 0) { throw "Zhaoxi installation failed." }
+if ($LifeHudToolWheel) {
+    $toolWheelPath = (Resolve-Path -LiteralPath $LifeHudToolWheel).Path
+    if ([IO.Path]::GetExtension($toolWheelPath) -ne '.whl') { throw "LifeHUD-Tool wheel must be a .whl file." }
+    & $pythonCommand.Source -m pip install --user --upgrade $toolWheelPath
+    if ($LASTEXITCODE -ne 0) { throw "LifeHUD-Tool installation failed." }
+}
 
 if ($EnableAutoStart) {
     $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'

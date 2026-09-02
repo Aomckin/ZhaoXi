@@ -1,10 +1,12 @@
 # 朝汐 ZhaoXi 代码现状与交接说明
 
-> **当前开发基线：v0.9「Reliability」（`0.9.0`）**。v0.8 Reflection 基线已恢复全绿；可靠性错误契约、关联日志与指标、Planner/Session/Permission 持久恢复、Provider fallback/熔断/预算、验证式备份恢复、安全边界、后台关闭和 Windows wheel 发布链路均已交付。
-
-> **v0.6 开发中**：已建立 Proactive Event / Schedule / Delivery 领域模型、SQLite Store、once / interval Scheduler、安全 Condition DSL、基础 Interrupt Policy、Inbox Sink 和 CLI / Web 可视化入口；持久化 Quiet 状态、完整限频与延期重投仍待后续阶段完成。
+> **当前发布候选基线：v1.0「Zhaoxi」，运行时版本 `1.0.0`**。v0.9 Reliability 与 LifeHUD-Tool 前置解耦基线均已纳入正式版。
 
 Life HUD 原始时间字段继续按带时区的 UTC Instant 解析；仅在生成 Tool observation 时转换到配置的展示时区（默认 `Asia/Shanghai`），不回写源数据。
+
+v1.0 采用全新安装策略，不提供早期人工测试数据的 v0.9 原位迁移保证。用户可移走或删除旧 `.zhaoxi` 测试目录后重新配置；安装和卸载脚本不会自动删除用户数据。
+
+v1.0 前置解耦已完成：Life HUD 实现与铁幕 Workflow 位于独立 `tools/lifehud_tool` 包，Core 通过通用 Tool Package discovery 加载；Registry 只暴露一个 `lifehud` Tool，并根据封闭 operation 动态解析 READ/WRITE 权限。Life HUD 项目本体保持只读。
 
 本文是后续开发的首要交接入口。版本、架构、数据结构、测试数量或关键限制发生变化时，应在同一提交中更新本文。
 
@@ -21,7 +23,15 @@ Life HUD 原始时间字段继续按带时区的 UTC Instant 解析；仅在生�
 - `BackupManager` 统一管理 Memory、Planner、Session、Permission、Workflow、Proactive、Reflection 和审计数据；SQLite 使用 Online Backup API，恢复前验证并创建 safeguard。
 - Tool 参数实施大小、深度、集合和 URL 安全限制；日志与审计可轮转，后台任务通过 supervisor 有界关闭。
 - `scripts/` 提供 wheel 构建、当前用户安装、可选自启和保留用户数据的卸载脚本；运维说明见 `docs/Zhaoxi_v0.9_Operations_Runbook.md`。
-- 当前测试基线：**225 项通过**；加速 soak 覆盖 500 次请求，响应缓存和会话均保持上限。
+- 当前测试基线：**240 项通过**；加速 soak 覆盖 500 次请求，响应缓存和会话均保持上限。
+
+## v1.0 当前切片
+
+- 启动诊断支持 CLI `--doctor`、Web diagnostics 和 Setup Mode；模型配置缺失或可选 Tool Package 加载失败时仍保留可操作界面。
+- Core 通过通用 package discovery 组合 Tool、Workflow、routing hints、能力目录与 Reflection source；LifeHUD-Tool 不再由 Core 特判。
+- Reflection 已在启动装配中接入 Memory 与 package source，CLI/Web 支持 Daily、Weekly、Monthly、Seasonal 生成和历史查询。
+- Reflection Web 输出默认排除原始 Evidence excerpt 与 model metadata，只暴露结论、citation id 和 evidence count。
+- Voice Night Mode 使用可注入时钟；用户显式朗读不依赖真实时间，Quiet 仍具最高优先级。
 
 ## 当前能力
 
@@ -51,9 +61,9 @@ Life HUD 原始时间字段继续按带时区的 UTC Instant 解析；仅在生�
 - 可重新查询的工具结果默认不沉淀为长期记忆；显式记忆、拒绝记忆和忘记请求优先于普通自动判断。
 - Workflow Definition 支持 `tool / condition / ask / set / end`，Loader/Registry 会拒绝未知 Tool、非法表达式、错误跳转、重复步骤和循环。
 - Workflow Run 支持参数补充、条件分支、有限重试、权限等待、暂停、恢复、取消、有界事件和 SQLite 持久化；重启后可重建冻结的权限请求。
-- Life HUD READ Tools 覆盖 `today / recent / status / focus / tasks / dreams / life / journal / media / growth`；schemaVersion 不匹配时拒绝把响应当事实。
+- 单一 `lifehud` Tool 的 READ operations 覆盖 `today / recent / status / focus / tasks / dreams / life / journal / media / growth`；schemaVersion 不匹配时拒绝把响应当事实。
 - Agent Context DTO 使用强类型 ISO 时间并允许业务 `null`、空集合和 schema 1 新增未知字段；400 参数错误不重试，GET 网络/5xx 使用有限退避。
-- Life HUD Focus 写 Tool 当前提供 `start / complete`；写操作不自动重放，继续经过 Permission Gateway。
+- 同一 `lifehud` Tool 的 Focus WRITE operations 提供 `start / complete`；权限按 invocation 解析，写操作不自动重放并继续经过 Permission Gateway。
 - 内置 `lifehud.iron_curtain.open@1` 与 `close@1` 在写入前后读取 `/api/agent/context/focus`，避免重复、误结束及仅凭 HTTP 200 宣称成功。
 - Workflow 会忽略模型生成的无害未知输入并记录 `unknown_inputs_ignored`；类型错误以自然语言返回，不穿透 CLI。
 - 权限恢复后的 WorkflowResult 作为内部 Observation 重新进入模型，普通用户只看到自然语言；模型不可用时使用不含内部字段的确定性回退话术。
@@ -74,11 +84,10 @@ Life HUD 原始时间字段继续按带时区的 UTC Instant 解析；仅在生�
 ## 明确尚未完成
 
 - Life HUD Agent Context 只读域已接入；写能力仍只覆盖铁幕 start/complete，暂停、恢复、Segment 切换和其他业务写入尚未实现。GitHub、日历和文件系统等真实业务工具仍未实现。
-- Planner Store 是内存实现，进程退出后不能恢复计划、暂停点或 trace。
-- Permission 当前为本地单用户、进程内 pending/grant；尚无账号体系、OAuth、跨进程恢复、永久策略或操作系统沙箱。
+- Planner、Session 与 Permission 已使用 SQLite 持久化；临时 Agent 调用缺少完整模型 transcript 时会在重启后失败关闭。账号体系、OAuth、永久授权策略和操作系统沙箱仍未实现。
 - Undo / rollback 仅保留设计边界，当前内置 Tool 尚未实现回滚 hook。
 - Voice 的 P0 主链路已实现；独立 Push-to-talk 全局快捷键、音量指示、本地 STT 和多候选转写仍为后续体验项。RAG 与向量数据库尚未实现。
-- 安装、升级、卸载、开机自启、签名和干净 Windows 环境发布硬化不属于 v0.7，统一留给 v0.9。
+- wheel、当前用户安装、可选开机自启和保留数据卸载脚本已完成；代码签名、自动更新及 Windows 11 实机认证仍未完成。
 - 当前 Toast 点击会激活单一桌面 Session，尚未实现多 Session 下的 Delivery 深链接；当前默认快捷键若被占用会降级到托盘，不自动抢占或注册键盘钩子。
 - Workflow 首版不支持 DAG、并行调度、任意循环、图形编辑器或通用跨系统事务回滚。
 - “忘记”是软状态迁移，不是物理清除；尚无带审计的硬删除流程。
@@ -216,7 +225,7 @@ ZHAOXI_PERMISSION_AUDIT_PATH=.zhaoxi/audit/permission.jsonl
 ZHAOXI_PERMISSION_MAX_TOOL_OUTPUT_CHARS=12000
 ```
 
-v0.5.1 Workflow 与 Life HUD 参数：
+Workflow 与独立 LifeHUD-Tool 参数：
 
 ```dotenv
 ZHAOXI_WORKFLOW_ENABLED=true
@@ -225,14 +234,15 @@ ZHAOXI_WORKFLOW_DB_PATH=.zhaoxi/workflow.db
 ZHAOXI_WORKFLOW_HISTORY_LIMIT=100
 ZHAOXI_WORKFLOW_MAX_STEPS=50
 ZHAOXI_WORKFLOW_MAX_EVENTS=200
-ZHAOXI_LIFEHUD_BASE_URL=http://127.0.0.1:8025
-ZHAOXI_LIFEHUD_CONTEXT_PATH=/api/agent/context
-ZHAOXI_LIFEHUD_SCHEMA_VERSION=1
-ZHAOXI_LIFEHUD_TIMEOUT_SECONDS=10
-ZHAOXI_LIFEHUD_MAX_RETRIES=2
+ZHAOXI_TOOL_LIFEHUD_BASE_URL=http://127.0.0.1:8025
+ZHAOXI_TOOL_LIFEHUD_CONTEXT_PATH=/api/agent/context
+ZHAOXI_TOOL_LIFEHUD_SCHEMA_VERSION=1
+ZHAOXI_TOOL_LIFEHUD_TIMEOUT_SECONDS=10
+ZHAOXI_TOOL_LIFEHUD_MAX_RETRIES=2
 ```
 
 默认值和类型以 `src/zhaoxi/config/settings.py` 为准；新增配置时同步更新 `.env.example` 和配置测试。
+LifeHUD-Tool 的具体配置校验归独立 Tool 包所有；旧 `ZHAOXI_LIFEHUD_*` 名称仅保留一个兼容周期。
 
 ## 启动与验证
 
@@ -243,7 +253,7 @@ python main.py
 git diff --check
 ```
 
-当前自动化测试基线：**167 项通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
+当前自动化测试基线：**240 项通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
 
 ## 接手建议
 
@@ -255,7 +265,9 @@ git diff --check
 
 ## Git 基线
 
-- 当前开发分支：`v0.7`
+- 当前开发分支：`v1.0`
+- v1.0 起点：`87eb9c6 feat: complete v0.9 reliability hardening`
+- v1.0 当前工作区：LifeHUD-Tool 解耦、Voice Night Mode 确定性修复与首次启动 `--doctor` 诊断纵向切片
 - v0.5.1.2 工作区基线：基于 `3f3f13a` 与未提交的 v0.5/v0.5.1/v0.5.1.1 纵向切片继续修补
 - v0.3.1 基线：`9f4424c feat: integrate v0.3.1 cognitive routing and memory`
 - v0.3 Planner：`613859d feat: implement v0.3 planner`

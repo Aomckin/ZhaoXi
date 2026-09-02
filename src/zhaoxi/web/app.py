@@ -19,6 +19,10 @@ from zhaoxi.cli import build_agent
 from zhaoxi import __version__
 from zhaoxi.config.settings import Settings
 from zhaoxi.errors import ZhaoxiError
+from zhaoxi.interfaces.setup import StartupUnavailableAgent
+from zhaoxi.reflection.models import ReflectionKind, ReflectionRecord
+from zhaoxi.reliability import provider_budget_scope
+from zhaoxi.reliability.startup import startup_diagnostics
 from zhaoxi.web.adapter import WebInterfaceAdapter, WebResult
 from zhaoxi.web.events import EventBroadcaster
 from zhaoxi.voice.policy import SpeechAction, SpeechContext, SpeechPolicy
@@ -61,25 +65,52 @@ def _response(result: WebResult) -> ChatResponse:
     )
 
 
+def _safe_reflection(record: ReflectionRecord) -> dict[str, Any]:
+    """Expose conclusions and citation ids, never raw evidence or model metadata."""
+    return {
+        "reflection_id": record.reflection_id,
+        "kind": record.kind.value,
+        "period": record.period.model_dump(mode="json"),
+        "status": record.status.value,
+        "revision": record.revision,
+        "summary": record.summary,
+        "sections": [section.model_dump(mode="json") for section in record.sections],
+        "uncertainties": record.uncertainties,
+        "evidence_count": len(record.evidence),
+        "created_at": record.created_at.isoformat(),
+        "updated_at": record.updated_at.isoformat(),
+    }
+
+
 def create_app(
     *,
     agent=None,
     settings: Settings | None = None,
     api_token: str | None = None,
     voice_runtime=None,
+    now_provider=None,
 ) -> FastAPI:
     configured = settings or Settings()
-    core = agent or build_agent(configured)
+    if agent is not None:
+        core = agent
+    else:
+        try:
+            core = build_agent(configured)
+        except ZhaoxiError as exc:
+            core = StartupUnavailableAgent(startup_diagnostics(configured), str(exc))
     adapter = WebInterfaceAdapter(core)
     events = EventBroadcaster()
     static_dir = Path(__file__).with_name("static")
     speech_policy = SpeechPolicy()
     supervisor = TaskSupervisor()
+    current_time = now_provider or (lambda: datetime.now().astimezone())
 
     def voice_policy(*, text: str, explicit: bool, permission_pending: bool = False):
+        now = current_time()
+        now_utc = now.astimezone(UTC) if now.tzinfo is not None else now.replace(tzinfo=UTC)
         state = getattr(core, "proactive_state", None)
-        quiet = bool(state and state.quiet_until and state.quiet_until > datetime.now(UTC))
-        hour = datetime.now().hour
+        quiet = bool(state and state.quiet_until and state.quiet_until > now_utc)
+        hour = now.hour
         start = configured.proactive_night_start_hour
         end = configured.proactive_night_end_hour
         night = start <= hour < end if start < end else hour >= start or hour < end
@@ -184,11 +215,64 @@ def create_app(
                 "planner": getattr(core, "planner", None) is not None,
                 "workflow": getattr(core, "workflow", None) is not None,
                 "proactive": getattr(core, "proactive", None) is not None,
+                "reflection": getattr(core, "reflection", None) is not None,
                 "voice": voice_runtime is not None,
                 "background_tasks": supervisor.active_count,
             },
+            "tool_packages": getattr(core, "tool_packages", []),
+            "tool_package_errors": getattr(core, "tool_package_errors", []),
+            "startup": getattr(core, "startup_diagnostics", None),
             "storage": backup_manager.health() if backup_manager is not None else {},
         }
+
+    @app.get("/api/capabilities")
+    async def capabilities():
+        """Describe installed capabilities without exposing schemas or user data."""
+        catalog = getattr(core, "capability_catalog", None)
+        if catalog is not None:
+            return catalog
+        registry = getattr(core, "registry", None)
+        return {
+            "status": "ready",
+            "tools": [
+                {"name": tool.name, "description": tool.description}
+                for tool in (registry.list() if registry is not None else [])
+            ],
+            "workflows": [],
+            "packages": [],
+            "examples": [],
+        }
+
+    @app.get("/api/reflections")
+    async def reflections(limit: int = 20):
+        service = getattr(core, "reflection", None)
+        if service is None:
+            raise HTTPException(status_code=409, detail="Reflection 未启用或当前处于 Setup Mode。")
+        try:
+            records = await service.repository.list(limit)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"reflections": [_safe_reflection(record) for record in records]}
+
+    @app.post("/api/reflections/{kind}")
+    async def generate_reflection(kind: ReflectionKind, regenerate: bool = False):
+        service = getattr(core, "reflection", None)
+        periods = getattr(core, "reflection_periods", None)
+        if service is None or periods is None:
+            raise HTTPException(status_code=409, detail="Reflection 未启用或当前处于 Setup Mode。")
+        if kind in {ReflectionKind.PROJECT, ReflectionKind.DREAM}:
+            raise HTTPException(status_code=422, detail="project/dream 回顾需要明确范围，当前接口暂不支持。")
+        try:
+            period = periods.resolve(kind)
+            with provider_budget_scope(
+                configured.request_max_model_calls,
+                configured.request_max_total_tokens,
+            ):
+                record = await service.generate(kind, period, regenerate=regenerate)
+        except Exception as exc:
+            logger.warning("reflection generation failed type=%s", type(exc).__name__)
+            raise HTTPException(status_code=422, detail="回顾生成失败，请稍后重试或检查数据来源。") from exc
+        return _safe_reflection(record)
 
     @app.post("/api/chat", response_model=ChatResponse)
     async def chat(request: ChatRequest):
