@@ -28,4 +28,4 @@
 
 - [x] README、CODEBASE_STATUS、Release Notes 和已知限制一致。
 - [x] P0 为零；延期项均为用户可见的 P2。
-- [ ] 仓库 commit 与最终构建 commit 尚待提交后记录。
+- [x] RC 源码提交、构建命令、测试结果和产物 hash 已记录。

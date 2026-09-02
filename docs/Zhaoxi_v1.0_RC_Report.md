@@ -2,6 +2,7 @@
 
 > 日期：2026-09-02  
 > 分支：`v1.0`  
+> RC 源码提交：`2e4db8f feat(v1.0): complete release candidate`  
 > 主机：Windows 10 Pro 10.0.19045，Python 3.13.0
 
 ## 自动化结果
