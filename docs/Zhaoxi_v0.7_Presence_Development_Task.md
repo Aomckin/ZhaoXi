@@ -307,7 +307,7 @@ P0 中“快速输入”和“设置”可以先路由到主窗口相应区域�
 
 快捷键要求：
 
-- 默认值配置化，例如 `Ctrl+Alt+Space`；
+- 默认值配置化，例如 Ctrl+Alt+小键盘 0（`ctrl+alt+numpad0`）；
 - 注册失败时显示可理解提示并保留托盘入口；
 - 支持重新注册和退出时注销；
 - 不记录用户在其他程序中的按键；
@@ -397,7 +397,7 @@ ZHAOXI_DESKTOP_ENABLED=true
 ZHAOXI_DESKTOP_START_HIDDEN=false
 ZHAOXI_DESKTOP_CLOSE_TO_TRAY=true
 ZHAOXI_DESKTOP_SINGLE_INSTANCE=true
-ZHAOXI_DESKTOP_HOTKEY=ctrl+alt+space
+ZHAOXI_DESKTOP_HOTKEY=ctrl+alt+numpad0
 ZHAOXI_DESKTOP_NOTIFICATIONS=true
 ZHAOXI_DESKTOP_WINDOW_WIDTH=1080
 ZHAOXI_DESKTOP_WINDOW_HEIGHT=760

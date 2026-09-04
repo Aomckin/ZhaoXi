@@ -1,6 +1,6 @@
 # 朝汐 ZhaoXi 代码现状与交接说明
 
-> **当前正式版本：v1.0「Zhaoxi」，运行时版本 `1.0.0`**。v0.9 Reliability 与 LifeHUD-Tool 前置解耦基线均已纳入正式版。
+> **当前代码版本：v1.1，运行时版本 `1.1.0`，分支 `v1.1`**。本次提交包含入口体验与图文消息功能；尚未生成 v1.1 发布包，未实测项见发布说明。
 
 Life HUD 原始时间字段继续按带时区的 UTC Instant 解析；仅在生成 Tool observation 时转换到配置的展示时区（默认 `Asia/Shanghai`），不回写源数据。
 
@@ -10,20 +10,33 @@ v1.0 前置解耦已完成：Life HUD 实现与铁幕 Workflow 位于独立 `too
 
 本文是后续开发的首要交接入口。版本、架构、数据结构、测试数量或关键限制发生变化时，应在同一提交中更新本文。
 
+## v1.1 当前增量
+
+- 当前用户 Task Scheduler 登录延迟 8 秒运行 venv pythonw，`--desktop --background` 初始隐藏；不配置自动重启，主动退出后不复活。
+- 在创建 Core 前取得单实例所有权；快捷键 `ctrl+alt+numpad0` 显示/隐藏切换，最小化时恢复，冲突保留托盘。
+- `scripts/create_desktop_launcher.ps1` 生成本机双击快捷方式；路径随项目定位，生成的 `.lnk` 不提交。
+- Web 回复按空行分气泡，代码围栏内空行保留；新回复段间随机 5～10 秒，历史立即呈现。
+- 输入防抖 2 秒；当前回合结束后处理排队输入。支持选择/粘贴图片和纯图片发送，图文合并上限 20 张、每张 100 MB。
+- Message 新增 images，Provider 转换成 text/image_url 内容块；Session JSON 向后兼容保存图片，旧文字记录无需迁移。图片回合走已有工具循环，文字路由不变。
+- 包含用户已有的人格 YAML、context 规则和角色设定文档修改。
+- 当前验证：287 项 Python 测试、14 项 Node 前端测试通过；1 项既有 Starlette/httpx 弃用警告。
+- 自启动安装/查询/移除/重装已实测；重新登录、快捷键和托盘完整人工验收、真实模型识图未全部完成。
+- `Zhaoxi_v1.1.1_Tidal_Heartbeat_Development_Task.md` 是后续计划，不代表心跳功能已实现。
+
 ## v0.9 Reliability
 
 - `src/zhaoxi/reliability/` 提供稳定错误分类、retry/replay 语义、ContextVar 关联上下文和线程安全的进程内指标。
 - Interface Gateway 使用外部 `request_id` 作为入口 trace，在异步 Core 调用期间传播 `request_id / session_id`，并记录 started/completed/failed/cache-hit 与耗时聚合。
 - `GET /api/diagnostics` 只返回版本、组件可用性和无用户内容的指标快照；Desktop token 边界仍覆盖该 API。
 - v0.8 基线导入错误已修复：Reflection SQLite 启用 postponed annotations，避免 `_list` 遮蔽内建 `list` 后破坏返回类型解析。
-- Planner、Session 和 Permission 新增独立 SQLite schema；Session 只保存有界 user/assistant 文本，排除 Tool payload 与 metadata。
+- Planner、Session 和 Permission 新增独立 SQLite schema；Session 保存有界 user/assistant 文本及 v1.1 图片附件，排除 Tool payload 与 metadata。
 - Planner 会从持久 Goal 重建权限等待；临时 Agent 权限等待因缺少完整 Provider transcript，在重启时失败关闭而不重放。
 - Provider 对 transient 错误有限重试并支持 fallback 与熔断；认证、校验和安全错误不 fallback；请求有模型调用数与 Token 硬预算。
 - Life HUD GET 使用同一 retry primitive；写操作保持不自动重放。任何未声明 `safe_to_replay` 的可重试写失败都会转为 `needs_reconciliation`。
 - `BackupManager` 统一管理 Memory、Planner、Session、Permission、Workflow、Proactive、Reflection 和审计数据；SQLite 使用 Online Backup API，恢复前验证并创建 safeguard。
 - Tool 参数实施大小、深度、集合和 URL 安全限制；日志与审计可轮转，后台任务通过 supervisor 有界关闭。
 - `scripts/` 提供 wheel 构建、当前用户安装、可选自启和保留用户数据的卸载脚本；运维说明见 `docs/Zhaoxi_v1.0_Operations_Runbook.md`。
-- 当前测试基线：**240 项通过**；加速 soak 覆盖 500 次请求，响应缓存和会话均保持上限。
+- v1.0 历史测试基线：**240 项通过**；加速 soak 覆盖 500 次请求，响应缓存和会话均保持上限。
 
 ## v1.0 当前切片
 
@@ -39,7 +52,7 @@ v1.0 前置解耦已完成：Life HUD 实现与铁幕 Workflow 位于独立 `too
 - `python main.py --desktop` 启动 Windows 10 主平台 Desktop Host；重复启动通过带随机令牌的 loopback 激活通道呼出已有窗口，不重复创建 Core、Scheduler、端口或托盘。
 - Voice 输入默认先录音、转写和人工复核，再以 `InterfaceChannel.VOICE` 进入统一 Gateway；自动发送与自动朗读默认关闭。
 - Voice 输出使用 Windows 10 SAPI5，支持显式停止和自然结束复位；Quiet、Night、Permission 等待与录音中状态由确定性策略阻止播报。
-- Desktop 使用 pywebview 承载现有 Web Shell，pystray 提供打开、快速输入、状态、Quiet Mode 与退出；默认 `Ctrl+Alt+Space` 使用 Win32 `RegisterHotKey`，冲突时保留托盘降级入口。
+- Desktop 使用 pywebview 承载现有 Web Shell，pystray 提供打开、快速输入、状态、Quiet Mode 与退出；默认 Ctrl+Alt+小键盘 0（`ctrl+alt+numpad0`） 使用 Win32 `RegisterHotKey`，冲突时保留托盘降级入口。
 - `InterfaceGateway` 统一 Web / Desktop 的消息、响应、Permission View、Session 串行与 request ID 幂等；非 user origin 不得进入用户认知链路。
 - Desktop 本地 API 使用每次启动随机令牌；令牌通过 URL fragment 交给内嵌页，再以不记入访问日志的请求头交换为 `HttpOnly`、`SameSite=Strict` Cookie，随后立即清除 fragment；SSE query 和访问日志不包含令牌，服务仍只监听 loopback。
 - Proactive Delivery 先持久化 Inbox，再按 Priority 映射到 Windows Toast；INFO 不弹窗，NOTICE / IMPORTANT / URGENT 可显示，点击激活现有桌面窗口。

@@ -100,14 +100,14 @@ class ZhaoxiAgent:
             raise AgentLoopError("Planner 未启用。")
         return await self.planner.run(goal)
 
-    async def run_natural(self, user_message: str) -> "CognitiveResponse | AgentResponse":
+    async def run_natural(self, user_message: str, *, images: list[str] | None = None) -> "CognitiveResponse | AgentResponse":
         """Use cognitive integration when configured, otherwise preserve v0.3 behavior."""
         pending_response = await self._handle_pending_permission_input(user_message)
         if pending_response is not None:
             return pending_response
         if self.cognitive is None:
-            return await self.run(user_message)
-        return await self.cognitive.run(user_message)
+            return await self.run(user_message, **({"images": images} if images else {}))
+        return await self.cognitive.run(user_message, **({"images": images} if images else {}))
 
     async def _handle_pending_permission_input(
         self, user_message: str
@@ -294,12 +294,12 @@ class ZhaoxiAgent:
             return None
         return positions
 
-    async def run(self, user_message: str, *, require_tool_call: bool = False) -> AgentResponse:
+    async def run(self, user_message: str, *, require_tool_call: bool = False, images: list[str] | None = None) -> AgentResponse:
         """Accept one user turn and return a final natural-language response."""
         if not user_message.strip():
             raise ValueError("消息不能为空。")
         request_id = uuid4().hex
-        self.conversation.add_user(user_message.strip())
+        self.conversation.add_user(user_message.strip(), images=images)
         logger.info("request=%s received user input", request_id)
         memories = []
         if self.context_builder.memory_retriever:

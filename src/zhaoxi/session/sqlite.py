@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 
 class SQLiteSessionStore(SessionStore):
-    """Persist only user/assistant text; Tool payloads and metadata are excluded."""
+    """Persist user/assistant text and image attachments; Tool payloads and metadata are excluded."""
 
     def __init__(self, path: str | Path, *, max_messages: int = 40) -> None:
         self.path = Path(path)

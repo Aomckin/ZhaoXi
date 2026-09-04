@@ -27,11 +27,12 @@ class WebInterfaceAdapter:
         self.agent = agent
         self.gateway = InterfaceGateway(agent)
 
-    async def chat(self, message: str, *, request_id: str | None = None) -> WebResult:
+    async def chat(self, message: str, *, request_id: str | None = None, images: list[str] | None = None) -> WebResult:
         response = await self.gateway.chat(UnifiedMessage(
             request_id=request_id or str(uuid4()),
             channel=InterfaceChannel.WEB,
             content=message,
+            images=images or [],
         ))
         return self._result(response)
 
@@ -43,7 +44,7 @@ class WebInterfaceAdapter:
         )
         return self._result(response)
 
-    def session(self) -> list[dict[str, str]]:
+    def session(self) -> list[dict[str, Any]]:
         return self.gateway.session()
 
     def clear(self) -> None:

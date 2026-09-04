@@ -319,7 +319,7 @@ def test_web_shell_has_keyboard_and_live_status_accessibility_baseline():
     assert 'aria-label="发送给朝汐的消息"' in page
     assert 'id="activity" class="activity" role="status" aria-live="polite"' in page
     assert 'id="connection" role="status" aria-live="polite"' in page
-    assert "if(e.key==='Enter'&&!e.shiftKey)" in page
+    assert "if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing)" in page
 
 
 def test_desktop_api_token_guards_local_core_routes():

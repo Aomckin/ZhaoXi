@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 
 from zhaoxi.cognitive.memory_decision import AutoMemory, MemoryAction
-from zhaoxi.cognitive.router import CognitiveRoute, CognitiveRouter
+from zhaoxi.cognitive.router import CognitiveRoute, CognitiveRouter, RouteDecision
 from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.permission.models import PendingConfirmation
 from zhaoxi.workflow.runtime import WorkflowRuntimeError
@@ -36,8 +36,11 @@ class CognitiveCoordinator:
         self.router = router
         self.auto_memory = auto_memory
 
-    async def run(self, user_message: str) -> CognitiveResponse:
-        decision = await self.router.route(user_message)
+    async def run(self, user_message: str, *, images: list[str] | None = None) -> CognitiveResponse:
+        # The text-only router cannot interpret attachments. Use the existing
+        # tool-capable loop so the main model sees the image and retains tools.
+        decision = (RouteDecision(route=CognitiveRoute.TOOL, reason="image input")
+                    if images else await self.router.route(user_message))
         workflow_run_id = None
         if decision.route == CognitiveRoute.WORKFLOW and self.agent.workflow is not None and decision.workflow_id:
             self.agent.conversation.add_user(user_message.strip())
@@ -67,7 +70,8 @@ class CognitiveCoordinator:
             if decision.route == CognitiveRoute.PLAN:
                 decision.route = CognitiveRoute.TOOL
             result = await self.agent.run(
-                user_message, require_tool_call=decision.requires_tool_call
+                user_message, require_tool_call=decision.requires_tool_call,
+                **({"images": images} if images else {})
             )
             content = result.content
             goal_id = None

@@ -63,7 +63,9 @@ class InterfaceGateway:
                 max_calls = getattr(provider, "max_calls", 12)
                 max_total_tokens = getattr(provider, "max_total_tokens", 100_000)
                 with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens):
-                    response = await self.agent.run_natural(message.content)
+                    response = await self.agent.run_natural(
+                        message.content, **({"images": message.images} if message.images else {})
+                    )
                     result = self._result(
                         response,
                         request_id=message.request_id,
@@ -117,9 +119,10 @@ class InterfaceGateway:
             return await self.agent.finalize_workflow(resumed)
         raise KeyError("找不到待确认操作的原始 Workflow。")
 
-    def session(self) -> list[dict[str, str]]:
+    def session(self) -> list[dict[str, Any]]:
         return [
-            {"role": item.role.value, "content": item.content or ""}
+            {"role": item.role.value, "content": item.content or "",
+             **({"images": item.images} if item.images else {})}
             for item in self.agent.conversation.messages
             if item.role.value in {"user", "assistant"}
         ]

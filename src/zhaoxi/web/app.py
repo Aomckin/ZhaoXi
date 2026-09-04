@@ -31,8 +31,12 @@ from zhaoxi.reliability import TaskSupervisor
 logger = logging.getLogger("WEB")
 
 
+from zhaoxi.core.attachments import ImageList
+
+
 class ChatRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=20_000)
+    message: str = Field(default="", max_length=20_000)
+    images: ImageList = Field(default_factory=list)
     request_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
@@ -278,7 +282,14 @@ def create_app(
     async def chat(request: ChatRequest):
         await events.publish({"type": "activity", "label": "正在思考…"})
         try:
-            result = await adapter.chat(request.message.strip(), request_id=request.request_id)
+            if not request.message.strip() and not request.images:
+                raise HTTPException(status_code=422, detail="消息或图片不能为空")
+            result = await adapter.chat(
+                request.message.strip() or "请查看这些图片。",
+                request_id=request.request_id, images=request.images,
+            )
+        except HTTPException:
+            raise
         except ZhaoxiError as exc:
             logger.warning("web chat core error type=%s", type(exc).__name__)
             raise HTTPException(status_code=422, detail=f"这次操作没成功：{exc}") from exc

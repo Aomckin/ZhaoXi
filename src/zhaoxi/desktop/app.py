@@ -84,8 +84,17 @@ class DesktopHost:
             is_quiet=self._is_quiet,
             status_text=self._status_text,
         )
-        self.hotkey = GlobalHotkey(settings.desktop_hotkey, self.window.show)
+        self.hotkey = GlobalHotkey(settings.desktop_hotkey, self.window.toggle)
         self.notifier = WindowsToastNotifier(self._open_delivery)
+        self.agent = agent
+        self.voice = None
+        self._server = None
+        self._server_thread: threading.Thread | None = None
+        self._stopping = threading.Event()
+
+    def _initialize_core(self) -> None:
+        settings = self.settings
+        agent = self.agent
         if agent is None:
             from zhaoxi.cli import build_agent
 
@@ -105,21 +114,18 @@ class DesktopHost:
                 InboxNotificationSink(store),
                 self.notifier.show,
             )
-        self._server = None
-        self._server_thread: threading.Thread | None = None
-        self._stopping = threading.Event()
-
-    def run(self) -> bool:
+    def run(self, *, background: bool = False) -> bool:
         if not self.instance.acquire(self.window.show):
             return False
         try:
+            self._initialize_core()
             self._start_server()
             self.tray.start()
             try:
                 self.hotkey.start()
             except RuntimeError as exc:
                 logger.warning("hotkey unavailable: %s", exc)
-            self.window.run(on_closed=self._on_window_closed)
+            self.window.run(on_closed=self._on_window_closed, background=background)
             return True
         finally:
             self.stop()
@@ -148,6 +154,7 @@ class DesktopHost:
             host=self.settings.web_host,
             port=self.settings.web_port,
             log_level=self.settings.log_level.lower(),
+            log_config=None,
         )
         self._server = uvicorn.Server(config)
         self._server_thread = threading.Thread(
@@ -203,6 +210,19 @@ class DesktopHost:
         self.window.destroy()
 
 
-def run_desktop(settings: Settings | None = None) -> None:
+def run_desktop(settings: Settings | None = None, *, background: bool = False) -> None:
+    # pythonw has no standard streams; optional GUI libraries may still write.
+    import os
+    import sys
+
+    for name in ("stdout", "stderr"):
+        if getattr(sys, name) is None:
+            setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))
     configured = settings or Settings()
-    DesktopHost(configured).run()
+    from zhaoxi.config.logging import configure_logging
+
+    configure_logging(
+        configured.log_level, path=configured.log_path,
+        max_bytes=configured.log_max_bytes, backup_count=configured.log_backup_count,
+    )
+    DesktopHost(configured).run(background=background)

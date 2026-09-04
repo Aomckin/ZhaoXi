@@ -10,3 +10,6 @@ dist/
 build/
 *.egg-info/
 .zhaoxi/
+
+# Machine-local double-click launcher (regenerate with scripts/create_desktop_launcher.ps1).
+/启动朝汐.lnk

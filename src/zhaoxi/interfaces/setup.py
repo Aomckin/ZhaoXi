@@ -44,7 +44,7 @@ class StartupUnavailableAgent:
             gateway=SimpleNamespace(store=SimpleNamespace(pending={}))
         )
 
-    async def run_natural(self, message: str) -> AgentResponse:
+    async def run_natural(self, message: str, *, images: list[str] | None = None) -> AgentResponse:
         model = self.startup_diagnostics["checks"]["model"]
         action = model.get("action") or "运行 python main.py --doctor 查看启动诊断。"
         content = f"朝汐尚未完成启动配置。{action}"

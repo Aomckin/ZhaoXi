@@ -363,7 +363,7 @@ async def interactive() -> None:
         return
 
     print(
-        "Zhaoxi v1.0 · Development\n"
+        "Zhaoxi v1.1 · Development\n"
         "输入 /diagnostics 检查运行状态，/capabilities 查看能力，"
         "/reflection 生成回顾，/exit 退出。"
     )
@@ -656,10 +656,27 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(prog="zhaoxi")
-    parser.add_argument("--web", action="store_true", help="启动本地 Web 交互界面")
-    parser.add_argument("--desktop", action="store_true", help="启动本地桌面常驻界面")
-    parser.add_argument("--doctor", action="store_true", help="检查首次启动配置与可选能力，不启动 Agent")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--web", action="store_true", help="启动本地 Web 交互界面")
+    modes.add_argument("--desktop", action="store_true", help="启动本地桌面常驻界面")
+    modes.add_argument("--doctor", action="store_true", help="检查首次启动配置与可选能力，不启动 Agent")
+    parser.add_argument("--background", action="store_true", help="Desktop 初始隐藏窗口")
+    for action in ("install", "remove"):
+        modes.add_argument(f"--{action}-autostart", action="store_true")
+    modes.add_argument("--autostart-status", action="store_true")
     args = parser.parse_args()
+    if args.background and not args.desktop:
+        parser.error("--background 必须与 --desktop 一起使用")
+    if args.install_autostart or args.remove_autostart or args.autostart_status:
+        import json
+        from zhaoxi.desktop.autostart import manage_autostart
+
+        action = "install" if args.install_autostart else "remove" if args.remove_autostart else "status"
+        try:
+            print(json.dumps(manage_autostart(action), ensure_ascii=False, indent=2))
+        except RuntimeError as exc:
+            parser.exit(1, f"自启动操作失败：{exc}\n")
+        return
     if args.doctor:
         import json
 
@@ -668,7 +685,7 @@ def main() -> None:
     if args.desktop:
         from zhaoxi.desktop import run_desktop
 
-        run_desktop()
+        run_desktop(background=args.background)
         return
     if args.web:
         from zhaoxi.web import run_web

@@ -10,7 +10,11 @@ from ctypes import wintypes
 
 
 _MODIFIERS = {"alt": 0x0001, "ctrl": 0x0002, "shift": 0x0004, "win": 0x0008}
-_KEYS = {"space": 0x20, **{chr(code).lower(): code for code in range(0x41, 0x5B)}}
+_KEYS = {
+    "space": 0x20,
+    **{chr(code).lower(): code for code in range(0x41, 0x5B)},
+    **{f"numpad{digit}": 0x60 + digit for digit in range(10)},
+}
 
 
 def parse_hotkey(value: str) -> tuple[int, int]:
@@ -31,6 +35,7 @@ def parse_hotkey(value: str) -> tuple[int, int]:
 class GlobalHotkey:
     def __init__(self, hotkey: str, callback: Callable[[], None]) -> None:
         self.modifiers, self.key = parse_hotkey(hotkey)
+        self.hotkey = "+".join(part.strip().lower() for part in hotkey.split("+") if part.strip())
         self.callback = callback
         self._thread: threading.Thread | None = None
         self._thread_id: int | None = None
@@ -51,7 +56,7 @@ class GlobalHotkey:
         kernel32 = ctypes.windll.kernel32
         self._thread_id = int(kernel32.GetCurrentThreadId())
         if not user32.RegisterHotKey(None, 1, self.modifiers, self.key):
-            self._error = "全局快捷键已被其他程序占用。"
+            self._error = f"全局快捷键 {self.hotkey} 注册失败，可能已被其他程序占用。"
             self._ready.set()
             return
         self._ready.set()

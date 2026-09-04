@@ -101,7 +101,7 @@ class Settings(BaseSettings):
     desktop_enabled: bool = True
     desktop_instance_path: str = ".zhaoxi/desktop-instance.json"
     desktop_activation_port: int = Field(default=4914, ge=1, le=65535)
-    desktop_hotkey: str = "ctrl+alt+space"
+    desktop_hotkey: str = "ctrl+alt+numpad0"
     desktop_window_width: int = Field(default=1080, ge=720, le=7680)
     desktop_window_height: int = Field(default=760, ge=520, le=4320)
     voice_enabled: bool = False

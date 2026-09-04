@@ -1,8 +1,18 @@
 # Zhaoxi / 朝汐
 
-Zhaoxi 1.0 是一个可扩展的本地个人 Agent Core，提供对话、记忆、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与独立 Tool Package 能力。
+Zhaoxi 1.1 是一个可扩展的本地个人 Agent Core，提供对话、记忆、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与独立 Tool Package 能力。
 
 Life HUD 通过独立的 `tools/lifehud_tool` 包接入，Core Registry 只注册一个 `lifehud` Tool；各能力由封闭 `operation` 区分，并按调用动态解析 READ/WRITE 权限。Life HUD API 的时间戳按原始 UTC 契约读取且不改写；发送给模型的 Tool observation 默认转换为 `Asia/Shanghai`，可通过 `ZHAOXI_TOOL_LIFEHUD_DISPLAY_TIMEZONE` 配置。
+
+## v1.1 入口体验
+
+- Windows 当前用户登录自启动、隐藏启动与双击启动入口。
+- Ctrl+Alt+小键盘 0 切换窗口显示/隐藏，保留单实例与托盘退出。
+- 回复按空行拆成气泡，第一段立即显示，后续每段随机等待 5～10 秒；历史立即恢复。
+- 连续文字/图片输入以 2 秒防抖合并，回复期间输入排队。
+- 支持选择/粘贴 PNG、JPEG、WebP，每次最多 20 张，每张 100 MB，图片随会话保存。
+
+详情见 [v1.1 发布说明](docs/Zhaoxi_v1.1_Release_Notes.md)；登录自启动命令与验收见 [常驻说明](docs/presence-autostart.md)。
 
 ## Architecture
 
@@ -109,7 +119,7 @@ Web 模式默认打开在 `http://127.0.0.1:4913`。可通过 `ZHAOXI_WEB_HOST` 
 - 用户级单实例协调：重复启动只激活已有窗口，不创建第二套 Core 或 Scheduler；
 - pywebview 复用现有 Web Shell，关闭窗口后隐藏到托盘；
 - 托盘提供打开、快速输入、运行状态、Quiet Mode 与安全退出；
-- `Ctrl+Alt+Space` 默认全局呼出，冲突时降级为托盘入口；
+- Ctrl+Alt+小键盘 0（`ctrl+alt+numpad0`） 默认全局切换：显示时隐藏到托盘，隐藏或最小化时恢复窗口；冲突时降级为托盘入口；
 - Windows Toast 消费 Core 已裁决的 Delivery，INFO 只进入 Inbox，点击通知激活窗口；
 - Desktop API 使用每次启动随机令牌，继续只监听 `127.0.0.1`；
 - Web、Desktop 通过统一 Interface Gateway 串行进入同一 Conversation，并按 request ID 幂等；
@@ -250,3 +260,25 @@ CLI 可直接检查记忆：
 ## Roadmap
 
 当前与历史文档的权威范围见 [文档索引](docs/README.md)。v1.0 范围见 [正式版任务书](docs/Zhaoxi_v1.0_Release_Development_Task.md)；Life HUD 边界见 [LifeHUD-Tool 解耦任务书](docs/Zhaoxi_v1.0_Prerequisite_LifeHUD_Tool_Decoupling_Task.md)。v1.0 按全新安装交付，不承诺迁移早期人工测试数据；卸载仍默认保留当前用户数据。
+
+### 双击启动（Windows）
+
+双击项目根目录的 **启动朝汐.lnk** 即可打开朝汐，无需打开 PowerShell。
+该快捷方式直接运行项目 `.venv\Scripts\pythonw.exe main.py --desktop`，不弹终端窗口；已有实例时只唤起现有窗口。
+可将快捷方式复制到桌面。关闭朝汐窗口仍会隐藏到托盘，彻底退出请使用托盘“退出朝汐”。
+
+首次创建快捷方式，或移动项目 / 重建虚拟环境后，在项目根目录执行一次：
+
+```powershell
+powershell -NoProfile -File .\scripts\create_desktop_launcher.ps1
+```
+
+快捷方式使用当前机器路径，因此不纳入 Git；生成脚本会自动定位项目目录。
+
+### 图片输入
+
+在输入框左侧点击“图片”选择文件，或在输入框中直接粘贴截图。支持 PNG、JPEG、WebP，发送前可预览并点击 × 移除；可只发图片，也可配文字一起发送。
+
+保护性上限为每次（含防抖合并后的请求）20 张、每张 100 MB。图片参与现有 2 秒输入合并，回复期间的新输入仍排队处理。图片随本地会话保存，重新打开后可查看，清空会话会一并移除该会话中的图片。
+
+图片通过现有模型接口的多模态消息发送，需要配置支持图片输入的模型；具体服务商可能有自己的请求限制。图片回合直接使用已有 Agent 工具循环读取图文，普通文字回合继续使用原有认知路由。

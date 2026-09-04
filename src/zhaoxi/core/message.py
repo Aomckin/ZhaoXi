@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from zhaoxi.models.types import ToolCall
+from zhaoxi.core.attachments import ImageList
 
 
 class Role(StrEnum):
@@ -21,6 +22,7 @@ class Message(BaseModel):
 
     role: Role
     content: str | None = None
+    images: ImageList = Field(default_factory=list)
     tool_calls: list[ToolCall] = Field(default_factory=list)
     tool_call_id: str | None = None
     name: str | None = None
@@ -30,6 +32,11 @@ class Message(BaseModel):
     def to_provider_dict(self) -> dict[str, Any]:
         """Convert only at the provider boundary."""
         result: dict[str, Any] = {"role": self.role.value, "content": self.content}
+        if self.images:
+            result["content"] = [
+                {"type": "text", "text": self.content or "请查看图片。"},
+                *[{"type": "image_url", "image_url": {"url": image}} for image in self.images],
+            ]
         if self.tool_calls:
             result["tool_calls"] = [
                 {
