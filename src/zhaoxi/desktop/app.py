@@ -177,7 +177,7 @@ class DesktopHost:
 
     def _open_delivery(self, delivery_id: str) -> None:
         logger.info("desktop notification opened delivery_id=%s", delivery_id)
-        self.window.show()
+        self.window.open_delivery(delivery_id)
 
     def _is_quiet(self) -> bool:
         state = getattr(self.agent, "proactive_state", None)

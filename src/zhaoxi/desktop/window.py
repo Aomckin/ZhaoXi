@@ -16,6 +16,8 @@ class DesktopWindow:
         self._visible = False
         self._minimized = False
         self._show_requested = threading.Event()
+        self._loaded = threading.Event()
+        self._pending_delivery_id = None
 
     def run(self, on_closed=None, *, background: bool = False) -> None:
         try:
@@ -33,6 +35,7 @@ class DesktopWindow:
             min_size=(720, 520),
             hidden=background,
         )
+        self._window.events.loaded += self._on_loaded
         self._window.events.closing += self._on_closing
         self._window.events.minimized += self._on_minimized
         self._window.events.restored += self._on_restored
@@ -53,6 +56,19 @@ class DesktopWindow:
             self._window.restore()
             self._visible = True
             self._minimized = False
+
+    def _on_loaded(self) -> None:
+        self._loaded.set()
+        if self._pending_delivery_id:
+            self.open_delivery(self._pending_delivery_id)
+
+    def open_delivery(self, delivery_id: str) -> None:
+        import json
+        self._pending_delivery_id = delivery_id
+        self.show()
+        if self._loaded.is_set() and self._window is not None:
+            self._window.evaluate_js(f"openDelivery({json.dumps(delivery_id)})")
+            self._pending_delivery_id = None
 
     def toggle(self) -> None:
         if self._ready.is_set() and self._visible and not self._minimized:

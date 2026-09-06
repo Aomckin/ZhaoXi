@@ -1,6 +1,6 @@
 # 朝汐 ZhaoXi 代码现状与交接说明
 
-> **当前代码版本：v1.1，运行时版本 `1.1.0`，分支 `v1.1`**。本次提交包含入口体验与图文消息功能；尚未生成 v1.1 发布包，未实测项见发布说明。
+> **当前代码版本：v1.1.1，运行时版本 `1.1.1`，分支 `v1.1.1`**。潮汐心跳与主动消息续聊已实现；未生成发布包，真实模型、LifeHUD 长时运行和 Windows Toast 人工验收待完成。
 
 Life HUD 原始时间字段继续按带时区的 UTC Instant 解析；仅在生成 Tool observation 时转换到配置的展示时区（默认 `Asia/Shanghai`），不回写源数据。
 
@@ -9,6 +9,19 @@ v1.0 采用全新安装策略，不提供早期人工测试数据的 v0.9 原位
 v1.0 前置解耦已完成：Life HUD 实现与铁幕 Workflow 位于独立 `tools/lifehud_tool` 包，Core 通过通用 Tool Package discovery 加载；Registry 只暴露一个 `lifehud` Tool，并根据封闭 operation 动态解析 READ/WRITE 权限。Life HUD 项目本体保持只读。
 
 本文是后续开发的首要交接入口。版本、架构、数据结构、测试数量或关键限制发生变化时，应在同一提交中更新本文。
+
+## v1.1.1 当前增量
+
+- `TidalHeartbeat` 与 `DecisionWorker` 分离，由现有 Web lifespan / TaskSupervisor 管理；观察完成唤醒决策任务，模型等待不阻塞下一次观察，退出可取消两者。
+- 复用 Scheduler、PolicyState、Inbox、Desktop sink、Proactive SQLite。事件增加 importance / urgency / next_decision_at，JSON 数据兼容旧记录，增加 pending 索引。
+- LifeHUD Tool Package 提供可选 `proactive_sensors()`；Core 不导入 LifeHUD 实现。每 2 分钟只读取 focus / tasks，90 分钟 Focus 和任务完成生成变化事件，API 故障保持静默。
+- 持久缓冲默认 5 分钟、200 条候选、6 小时 TTL；自然巡检 TTL 1 小时。使用稳定事件 ID、唯一去重键、事件状态和批次关联 ID 防止重启重复。
+- 普通消息冷却 45 分钟，聊天后 15 分钟不打扰；Quiet / 夜间推迟普通候选。提醒跳过普通冷却和聚合，只有 URGENT 可绕过 Quiet / 夜间。
+- 自然巡检要求 3 小时未交互、电脑最近 5 分钟有输入、无 Focus、来源健康且有今日轻量上下文；本地日期每天最多一个候选。
+- 模型每次最多接收 20 个摘要，返回 silent / defer / speak；单次 provider attempt、30 秒超时，失败静默，事件最多两次决策。回复完成后再次检查打扰状态和 Focus 事实。
+- Inbox 展示时间与读状态；点击通知 / Inbox 经鉴权 API 和 Gateway 锁，将消息及简短背景补入并持久化当前 Session，不把原始 Event JSON 交给用户。
+- diagnostics 提供 `proactive.*` 进程内计数，重启清零；测试 **321 项 Python、17 项 Node 通过**，1 项既有 Starlette/httpx 弃用警告。
+- 完整变更、配置与手动步骤见 [`Zhaoxi_v1.1.1_Release_Notes.md`](Zhaoxi_v1.1.1_Release_Notes.md)。
 
 ## v1.1 当前增量
 
@@ -21,7 +34,7 @@ v1.0 前置解耦已完成：Life HUD 实现与铁幕 Workflow 位于独立 `too
 - 包含用户已有的人格 YAML、context 规则和角色设定文档修改。
 - 当前验证：287 项 Python 测试、14 项 Node 前端测试通过；1 项既有 Starlette/httpx 弃用警告。
 - 自启动安装/查询/移除/重装已实测；重新登录、快捷键和托盘完整人工验收、真实模型识图未全部完成。
-- `Zhaoxi_v1.1.1_Tidal_Heartbeat_Development_Task.md` 是后续计划，不代表心跳功能已实现。
+- v1.1 的心跳后续计划已在 v1.1.1 实现，详见上节。
 
 ## v0.9 Reliability
 
@@ -101,7 +114,7 @@ v1.0 前置解耦已完成：Life HUD 实现与铁幕 Workflow 位于独立 `too
 - Undo / rollback 仅保留设计边界，当前内置 Tool 尚未实现回滚 hook。
 - Voice 的 P0 主链路已实现；独立 Push-to-talk 全局快捷键、音量指示、本地 STT 和多候选转写仍为后续体验项。RAG 与向量数据库尚未实现。
 - wheel、当前用户安装、可选开机自启和保留数据卸载脚本已完成；代码签名、自动更新及 Windows 11 实机认证仍未完成。
-- 当前 Toast 点击会激活单一桌面 Session，尚未实现多 Session 下的 Delivery 深链接；当前默认快捷键若被占用会降级到托盘，不自动抢占或注册键盘钩子。
+- Toast / Inbox 已支持 Delivery ID 恢复当前单一桌面 Session 的上下文；跨进程旧 Toast 和多 Session 路由未实现。快捷键冲突仍降级到托盘。
 - Workflow 首版不支持 DAG、并行调度、任意循环、图形编辑器或通用跨系统事务回滚。
 - “忘记”是软状态迁移，不是物理清除；尚无带审计的硬删除流程。
 - 自动记忆依赖模型语义判断，确定性兜底只覆盖有限的稳定身份与偏好表达。

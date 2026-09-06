@@ -41,8 +41,8 @@ def verify(root: Path, dist: Path) -> dict[str, object]:
     source = (root / "src" / "zhaoxi" / "__init__.py").read_text(encoding="utf-8")
     if f'__version__ = "{core_version}"' not in source:
         raise RuntimeError("pyproject.toml 与源码版本不一致")
-    if core_version != "1.1.0" or tool_version != "1.0.0":
-        raise RuntimeError("正式构建要求 Core 为 1.1.0，LifeHUD-Tool 为 1.0.0")
+    if core_version != "1.1.1" or tool_version != "1.0.0":
+        raise RuntimeError("正式构建要求 Core 为 1.1.1，LifeHUD-Tool 为 1.0.0")
 
     core_wheels = sorted(dist.glob(f"zhaoxi-{core_version}-*.whl"))
     tool_wheels = sorted(dist.glob(f"zhaoxi_lifehud_tool-{tool_version}-*.whl"))

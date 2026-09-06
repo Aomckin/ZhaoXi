@@ -306,6 +306,22 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         ],
     }
     agent.metrics = provider.metrics
+    if proactive is not None:
+        from zhaoxi.proactive.heartbeat import TidalHeartbeat
+        from zhaoxi.proactive.decision import ModelDecision
+        from zhaoxi.proactive.worker import DecisionWorker
+        sensors = []
+        for package in tool_packages:
+            factory = getattr(package, "proactive_sensors", None)
+            if factory is not None:
+                sensors.extend(factory())
+        agent.proactive_heartbeat = TidalHeartbeat(
+            proactive, proactive_scheduler, proactive_state, settings, agent.metrics, sensors,
+        )
+        agent.proactive_worker = DecisionWorker(
+            agent.proactive_heartbeat, ModelDecision(provider, context_builder.personality_prompt),
+        )
+
     agent.backup_manager = BackupManager(
         settings.backup_directory,
         [

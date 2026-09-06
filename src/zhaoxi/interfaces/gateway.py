@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 from collections import OrderedDict
+from datetime import UTC, datetime
 from time import monotonic
 from typing import Any
 
 from zhaoxi.core.agent import ZhaoxiAgent
+from zhaoxi.proactive.models import DeliveryStatus
 from zhaoxi.interfaces.models import (
     MessageOrigin,
     PermissionView,
@@ -51,6 +53,10 @@ class InterfaceGateway:
             if cached is not None:
                 self.metrics.increment("interface.chat.cache_hit")
                 return cached.model_copy(deep=True)
+            state = getattr(self.agent, "proactive_state", None)
+            if state is not None:
+                state.interacting = True
+                state.last_interaction_at = datetime.now(UTC)
             started = monotonic()
             self.metrics.increment("interface.chat.started")
             context = CorrelationContext(
@@ -79,7 +85,36 @@ class InterfaceGateway:
                 self.metrics.increment("interface.chat.failed")
                 raise
             finally:
+                if state is not None:
+                    state.interacting = False
+                    state.last_interaction_at = datetime.now(UTC)
                 self.metrics.observe_duration("interface.chat", monotonic() - started)
+
+    async def activate_delivery(self, delivery_id: str):
+        async with self._lock:
+            runtime = getattr(self.agent, "proactive", None)
+            if runtime is None:
+                raise KeyError(delivery_id)
+            delivery = await runtime.store.get_delivery(delivery_id)
+            if delivery is None or delivery.status not in {DeliveryStatus.DELIVERED, DeliveryStatus.ACKNOWLEDGED}:
+                raise KeyError(delivery_id)
+            # Append the actual delivered text, not a forged user turn or internal event JSON.
+            summaries = delivery.relevant_payload.get("summaries", [delivery.relevant_payload.get("summary", "")])
+            background = "；".join(str(x)[:600] for x in summaries[:20] if x)
+            marker = f"[朝汐主动消息 · {delivery.available_at.isoformat()}]\n{delivery.content}"
+            if background:
+                marker += "\n相关背景：" + background
+
+            if not any(m.content == marker for m in self.agent.conversation.messages):
+                self.agent.conversation.add_assistant(marker)
+                await self._persist_session()
+            state = getattr(self.agent, "proactive_state", None)
+            if state is not None:
+                state.last_interaction_at = datetime.now(UTC)
+            delivery.status = DeliveryStatus.ACKNOWLEDGED
+            delivery.acknowledged_at = datetime.now(UTC)
+            await runtime.store.save_delivery(delivery)
+            return {"delivery_id": delivery_id, "content": delivery.content, "status": delivery.status.value}
 
     async def resolve_permission(
         self,
@@ -93,16 +128,25 @@ class InterfaceGateway:
         if pending is None or pending.resolved:
             raise KeyError("待确认操作不存在或已经处理。")
         async with self._lock:
-            if confirmation_id in self.agent._pending_permissions:
-                method = self.agent.approve_permission if approve else self.agent.deny_permission
-                response = await method(confirmation_id)
-            elif self.agent.planner and confirmation_id in self.agent.planner._pending_permissions:
-                method = self.agent.planner.approve_permission if approve else self.agent.planner.deny_permission
-                response = await method(confirmation_id)
-            elif self.agent.workflow:
-                response = await self._resolve_workflow(confirmation_id, approve)
-            else:
-                raise KeyError("找不到待确认操作的原始任务。")
+            state = getattr(self.agent, "proactive_state", None)
+            if state is not None:
+                state.interacting = True
+                state.last_interaction_at = datetime.now(UTC)
+            try:
+                if confirmation_id in self.agent._pending_permissions:
+                    method = self.agent.approve_permission if approve else self.agent.deny_permission
+                    response = await method(confirmation_id)
+                elif self.agent.planner and confirmation_id in self.agent.planner._pending_permissions:
+                    method = self.agent.planner.approve_permission if approve else self.agent.planner.deny_permission
+                    response = await method(confirmation_id)
+                elif self.agent.workflow:
+                    response = await self._resolve_workflow(confirmation_id, approve)
+                else:
+                    raise KeyError("找不到待确认操作的原始任务。")
+            finally:
+                if state is not None:
+                    state.interacting = False
+                    state.last_interaction_at = datetime.now(UTC)
         result = self._result(response, request_id=request_id, session_id=session_id)
         self._cache(result)
         return result

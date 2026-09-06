@@ -4,6 +4,12 @@ Zhaoxi 1.1 是一个可扩展的本地个人 Agent Core，提供对话、记忆�
 
 Life HUD 通过独立的 `tools/lifehud_tool` 包接入，Core Registry 只注册一个 `lifehud` Tool；各能力由封闭 `operation` 区分，并按调用动态解析 READ/WRITE 权限。Life HUD API 的时间戳按原始 UTC 契约读取且不改写；发送给模型的 Tool observation 默认转换为 `Asia/Shanghai`，可通过 `ZHAOXI_TOOL_LIFEHUD_DISPLAY_TIMEZONE` 配置。
 
+## v1.1.1 潮汐心跳
+
+常驻 Web / Desktop 现在每 30 秒进行纯代码观察，LifeHUD Focus / 任务快照每 2 分钟读取一次；候选事件聚合、去重并经过 Quiet Mode、夜间、最近交互和冷却筛选后，才允许模型判断是否开口。普通主动消息默认冷却 45 分钟，自然关心最多每天一次。
+
+右侧主动消息支持时间、未读 / 已读和点击续聊；Windows 通知点击进入同一上下文。配置见 `.env.example`，实现与验收详见 [v1.1.1 开发报告](docs/Zhaoxi_v1.1.1_Release_Notes.md)。
+
 ## v1.1 入口体验
 
 - Windows 当前用户登录自启动、隐藏启动与双击启动入口。

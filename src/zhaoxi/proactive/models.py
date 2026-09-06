@@ -87,10 +87,13 @@ class ProactiveEvent(BaseModel):
     status: EventStatus = EventStatus.PENDING
     attempts: int = Field(default=0, ge=0)
     last_error: str | None = Field(default=None, max_length=500)
+    importance: float = Field(default=0.65, ge=0, le=1)
+    urgency: float = Field(default=0.4, ge=0, le=1)
+    next_decision_at: datetime | None = None
 
     @model_validator(mode="after")
     def normalize_times(self) -> "ProactiveEvent":
-        for name in ("occurred_at", "received_at", "expires_at"):
+        for name in ("occurred_at", "received_at", "expires_at", "next_decision_at"):
             value = getattr(self, name)
             if value is not None and value.tzinfo is None:
                 raise ValueError(f"{name} 必须包含时区")
@@ -144,3 +147,6 @@ class Delivery(BaseModel):
     delivered_at: datetime | None = None
     acknowledged_at: datetime | None = None
     attempts: int = Field(default=0, ge=0)
+    event_type: str = ""
+    relevant_payload: dict[str, Any] = Field(default_factory=dict)
+    related_event_ids: list[str] = Field(default_factory=list)

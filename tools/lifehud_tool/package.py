@@ -51,6 +51,12 @@ class LifeHudToolPackage:
             "examples": ["看看我今天怎么样", "朝汐，开幕，完成当前任务", "朝汐，落幕"],
         }
 
+    def proactive_sensors(self):
+        if self.client is None:
+            return []
+        from tools.lifehud_tool.proactive import LifeHudSensor
+        return [LifeHudSensor(self.client)]
+
     def reflection_sources(self):
         if self.client is None:
             return []

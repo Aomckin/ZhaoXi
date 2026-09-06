@@ -33,5 +33,5 @@ def test_source_and_package_versions_match():
     tool = tomllib.loads(
         (root / "tools" / "lifehud_tool" / "pyproject.toml").read_text(encoding="utf-8")
     )
-    assert project["project"]["version"] == "1.1.0"
+    assert project["project"]["version"] == "1.1.1"
     assert tool["project"]["version"] == "1.0.0"

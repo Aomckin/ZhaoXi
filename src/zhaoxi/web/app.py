@@ -153,7 +153,13 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         supervisor.start()
-        supervisor.create(proactive_loop(), name="zhaoxi-proactive-web")
+        heartbeat = getattr(core, "proactive_heartbeat", None)
+        worker = getattr(core, "proactive_worker", None)
+        if heartbeat is not None and worker is not None:
+            supervisor.create(heartbeat.run(), name="zhaoxi-tidal-heartbeat")
+            supervisor.create(worker.run(events.publish), name="zhaoxi-tidal-decisions")
+        else:
+            supervisor.create(proactive_loop(), name="zhaoxi-proactive-web")
         try:
             yield
         finally:
@@ -328,7 +334,14 @@ def create_app(
         if runtime is None:
             return {"deliveries": []}
         deliveries = await runtime.store.list_deliveries()
-        return {"deliveries": [item.model_dump(mode="json") for item in deliveries]}
+        return {"deliveries": [item.model_dump(mode="json", exclude={"relevant_payload"}) for item in deliveries]}
+
+    @app.post("/api/proactive/{delivery_id}/activate")
+    async def activate_delivery(delivery_id: str):
+        try:
+            return await adapter.gateway.activate_delivery(delivery_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="主动消息不存在或尚未送达。")
 
     @app.get("/api/voice/status")
     async def voice_status():

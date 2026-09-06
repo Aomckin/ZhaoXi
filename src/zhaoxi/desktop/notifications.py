@@ -22,6 +22,8 @@ class DesktopNotificationSink(NotificationSink):
 
     async def deliver(self, delivery: Delivery, now: datetime) -> Delivery:
         delivered = await self.durable_sink.deliver(delivery, now)
+        if delivered is not delivery:
+            return delivered
         if delivered.priority is not Priority.INFO:
             title = {
                 Priority.NOTICE: "朝汐提醒",

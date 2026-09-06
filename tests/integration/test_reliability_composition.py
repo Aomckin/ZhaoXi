@@ -68,4 +68,4 @@ async def test_v1_fresh_data_backup_restore_round_trip(tmp_path):
     assert (await restored.search(MemoryQuery(text="backup canary")))[0].record.content == "v1 backup canary"
     records = await restored.search(MemoryQuery(limit=20))
     assert "created after backup" not in {item.record.content for item in records}
-    assert agent.backup_manager.verify(safeguard)["application_version"] == "1.1.0"
+    assert agent.backup_manager.verify(safeguard)["application_version"] == "1.1.1"

@@ -87,6 +87,11 @@ class Settings(BaseSettings):
     reflection_auto_monthly: bool = False
     reflection_notify: bool = False
     proactive_enabled: bool = True
+    proactive_heartbeat_seconds: int = Field(default=30, ge=5, le=300)
+    proactive_cooldown_minutes: int = Field(default=45, ge=1, le=1440)
+    proactive_natural_checkin_enabled: bool = True
+    proactive_natural_checkin_min_hours: float = Field(default=3, ge=1, le=48)
+    proactive_event_buffer_seconds: int = Field(default=300, ge=0, le=600)
     proactive_db_path: str = ".zhaoxi/proactive.db"
     proactive_timezone: str = "Asia/Shanghai"
     proactive_max_events_per_tick: int = Field(default=50, ge=1, le=1000)

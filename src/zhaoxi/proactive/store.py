@@ -3,10 +3,19 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
 
-from zhaoxi.proactive.models import Delivery, ProactiveEvent, Schedule
+from zhaoxi.proactive.models import Delivery, ProactiveEvent, Schedule, EventStatus
 
 
 class ProactiveStore(ABC):
+    async def get_delivery(self, delivery_id: str) -> Delivery | None:
+        return next((d for d in await self.list_deliveries(1000) if d.delivery_id == delivery_id), None)
+
+    async def pending_events(self, limit: int = 200) -> list[ProactiveEvent]:
+        raise NotImplementedError
+
+    async def update_event(self, event: ProactiveEvent) -> None:
+        raise NotImplementedError
+
     @abstractmethod
     async def add_event(self, event: ProactiveEvent) -> bool: ...
 
@@ -39,6 +48,17 @@ class InMemoryProactiveStore(ProactiveStore):
         self.schedules: dict[str, Schedule] = {}
         self.deliveries: dict[str, Delivery] = {}
         self.delivery_pairs: set[tuple[str, str]] = set()
+
+    async def get_delivery(self, delivery_id: str) -> Delivery | None:
+        item = self.deliveries.get(delivery_id)
+        return item.model_copy(deep=True) if item else None
+
+    async def pending_events(self, limit: int = 200) -> list[ProactiveEvent]:
+        return [e.model_copy(deep=True) for e in self.events.values()
+                if e.status == EventStatus.PENDING][:limit]
+
+    async def update_event(self, event: ProactiveEvent) -> None:
+        self.events[event.event_id] = event.model_copy(deep=True)
 
     async def add_event(self, event: ProactiveEvent) -> bool:
         if event.event_id in self.events:

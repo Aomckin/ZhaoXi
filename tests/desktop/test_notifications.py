@@ -46,3 +46,16 @@ async def test_info_stays_in_inbox_without_desktop_popup():
 
     assert calls == []
     assert len(await store.list_deliveries()) == 1
+
+
+def test_toast_activation_waits_for_page_load():
+    from unittest.mock import Mock
+    from zhaoxi.desktop.window import DesktopWindow
+    window = DesktopWindow('http://localhost', width=1000, height=700)
+    native = Mock()
+    window._window = native
+    window.open_delivery('delivery-123')
+    native.evaluate_js.assert_not_called()
+    window._on_loaded()
+    native.evaluate_js.assert_called_once_with('openDelivery("delivery-123")')
+    assert window._pending_delivery_id is None

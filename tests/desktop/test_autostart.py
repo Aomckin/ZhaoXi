@@ -48,7 +48,7 @@ def test_window_initial_visibility_and_early_activation(monkeypatch, background)
     class Event:
         def __iadd__(self, callback):
             return self
-    native = Mock(events=SimpleNamespace(closing=Event(), closed=Event(), minimized=Event(), restored=Event(), maximized=Event()))
+    native = Mock(events=SimpleNamespace(loaded=Event(), closing=Event(), closed=Event(), minimized=Event(), restored=Event(), maximized=Event()))
     view = Mock()
     view.create_window.return_value = native
     view.start.side_effect = lambda callback: callback()

@@ -17,6 +17,9 @@ class InboxNotificationSink(NotificationSink):
         self.store = store
 
     async def deliver(self, delivery: Delivery, now: datetime) -> Delivery:
+        previous = await self.store.get_delivery(delivery.delivery_id)
+        if previous and previous.delivered_at:
+            return previous
         delivery.status = DeliveryStatus.DELIVERED
         delivery.delivered_at = now
         delivery.attempts += 1

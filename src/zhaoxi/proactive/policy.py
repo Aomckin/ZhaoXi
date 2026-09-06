@@ -10,6 +10,8 @@ from zhaoxi.proactive.models import PolicyAction, PolicyDecision, Priority, Proa
 class PolicyState:
     enabled: bool = True
     quiet_until: datetime | None = None
+    last_interaction_at: datetime | None = None
+    interacting: bool = False
 
 
 class InterruptPolicy:
@@ -37,4 +39,3 @@ class InterruptPolicy:
             defer_until = datetime.combine(tomorrow, self.night_end, tzinfo=now.tzinfo)
             return PolicyDecision(action=PolicyAction.DEFER, reason="night_mode", defer_until=defer_until)
         return PolicyDecision(action=PolicyAction.DELIVER_NOW, reason="policy_allowed")
-

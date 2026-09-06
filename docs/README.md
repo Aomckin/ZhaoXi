@@ -1,14 +1,15 @@
 # 文档索引与事实源
 
-## v1.1 当前文档
+## v1.1.1 当前文档
 
 - [`CODEBASE_STATUS.md`](CODEBASE_STATUS.md)：当前实现与验证事实。
-- [`Zhaoxi_v1.1_Release_Notes.md`](Zhaoxi_v1.1_Release_Notes.md)：本次功能、测试和未验证项。
+- [`Zhaoxi_v1.1.1_Release_Notes.md`](Zhaoxi_v1.1.1_Release_Notes.md)：潮汐心跳实现、测试、验收和限制。
+- [`Zhaoxi_v1.1_Release_Notes.md`](Zhaoxi_v1.1_Release_Notes.md)：v1.1 入口与图文消息基线。
 - [`presence-autostart.md`](presence-autostart.md)：登录常驻机制与手动验收。
 
-## 后续计划
+## 当前任务书
 
-- [`Zhaoxi_v1.1.1_Tidal_Heartbeat_Development_Task.md`](Zhaoxi_v1.1.1_Tidal_Heartbeat_Development_Task.md)：心跳任务书，尚未实现。
+- [`Zhaoxi_v1.1.1_Tidal_Heartbeat_Development_Task.md`](Zhaoxi_v1.1.1_Tidal_Heartbeat_Development_Task.md)：心跳任务书；实现与验证结果见 v1.1.1 开发报告。
 
 ## v1.0 基线文档
 
@@ -24,4 +25,4 @@
 
 ## 历史文档
 
-文件名以 `v0.1`～`v0.9` 开头的开发计划和任务书是当时的设计记录，不是当前状态清单。其未勾选项、旧测试数量、旧版本号和“留给后续版本”等文字保留历史语境，不应据此判断 v1.0 是否完成。发生冲突时，以本页“v1.1 当前文档”列表及 `CODEBASE_STATUS.md` 为准。
+文件名以 `v0.1`～`v0.9` 开头的开发计划和任务书是当时的设计记录，不是当前状态清单。其未勾选项、旧测试数量、旧版本号和“留给后续版本”等文字保留历史语境，不应据此判断 v1.0 是否完成。发生冲突时，以本页“v1.1.1 当前文档”列表及 `CODEBASE_STATUS.md` 为准。

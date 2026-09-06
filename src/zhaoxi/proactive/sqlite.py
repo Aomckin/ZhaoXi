@@ -63,6 +63,9 @@ class SQLiteProactiveStore(ProactiveStore):
                 )"""
             )
             connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_proactive_event_pending ON proactive_events(status, occurred_at)"
+            )
+            connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_proactive_schedule_due ON proactive_schedules(enabled, next_fire_at)"
             )
             connection.execute(
@@ -72,6 +75,35 @@ class SQLiteProactiveStore(ProactiveStore):
                 "INSERT OR REPLACE INTO schema_version(component, version) VALUES('proactive', ?)",
                 (self.SCHEMA_VERSION,),
             )
+
+    async def get_delivery(self, delivery_id: str) -> Delivery | None:
+        def read():
+            with self._connect() as connection:
+                row = connection.execute(
+                    "SELECT payload FROM proactive_deliveries WHERE delivery_id=?", (delivery_id,),
+                ).fetchone()
+            return Delivery.model_validate_json(row[0]) if row else None
+        return await asyncio.to_thread(read)
+
+    async def pending_events(self, limit: int = 200) -> list[ProactiveEvent]:
+        def read():
+            with self._connect() as connection:
+                rows = connection.execute(
+                    "SELECT payload FROM proactive_events WHERE status='pending' ORDER BY occurred_at LIMIT ?",
+                    (max(1, min(limit, 1000)),),
+                ).fetchall()
+            return [ProactiveEvent.model_validate_json(row[0]) for row in rows]
+        return await asyncio.to_thread(read)
+
+    async def update_event(self, event: ProactiveEvent) -> None:
+        snapshot = event.model_copy(deep=True)
+        def write():
+            with self._connect() as connection:
+                connection.execute(
+                    "UPDATE proactive_events SET status=?, payload=? WHERE event_id=?",
+                    (snapshot.status.value, snapshot.model_dump_json(), snapshot.event_id),
+                )
+        await asyncio.to_thread(write)
 
     async def add_event(self, event: ProactiveEvent) -> bool:
         return await asyncio.to_thread(self._add_event_sync, event.model_copy(deep=True))
