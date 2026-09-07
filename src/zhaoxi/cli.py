@@ -199,7 +199,8 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         session_store.save_sync(session_record)
     conversation = session_record.conversation
     context_builder = ContextBuilder(
-        PersonalityLoader.load_prompt(), memory_retriever=memory_retriever
+        PersonalityLoader.load_prompt(), memory_retriever=memory_retriever, timezone=settings.proactive_timezone,
+        suggestions_refresh_minutes=settings.quick_suggestions_refresh_minutes
     )
     planner = None
     if settings.planner_enabled:
@@ -241,6 +242,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     if settings.proactive_enabled:
         proactive_store = SQLiteProactiveStore(settings.proactive_db_path)
         proactive_state = PolicyState(enabled=True)
+        context_builder.interaction = proactive_state.interaction
         proactive = ProactiveRuntime(
             proactive_store,
             InboxNotificationSink(proactive_store),
@@ -319,7 +321,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
             proactive, proactive_scheduler, proactive_state, settings, agent.metrics, sensors,
         )
         agent.proactive_worker = DecisionWorker(
-            agent.proactive_heartbeat, ModelDecision(provider, context_builder.personality_prompt),
+            agent.proactive_heartbeat, ModelDecision(provider, context_builder.personality_prompt, agent.quick_suggestions),
         )
 
     agent.backup_manager = BackupManager(
@@ -363,23 +365,22 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
 
 async def interactive() -> None:
     settings = Settings()
-    if hasattr(settings, "log_path"):
-        configure_logging(
-            settings.log_level,
-            path=settings.log_path,
-            max_bytes=settings.log_max_bytes,
-            backup_count=settings.log_backup_count,
-        )
-    else:
-        configure_logging(settings.log_level)
+    configure_logging(
+        settings.log_level,
+        path=settings.log_path,
+        max_bytes=settings.log_max_bytes,
+        backup_count=settings.log_backup_count,
+    )
     try:
         agent = build_agent(settings)
     except ZhaoxiError as exc:
         print(f"配置错误：{exc}")
         return
 
+    from zhaoxi.interfaces import InterfaceGateway, UnifiedMessage, InterfaceChannel
+    interface = InterfaceGateway(agent)
     print(
-        "Zhaoxi v1.1 · Development\n"
+        "Zhaoxi v1.1.2 · Development\n"
         "输入 /diagnostics 检查运行状态，/capabilities 查看能力，"
         "/reflection 生成回顾，/exit 退出。"
     )
@@ -520,7 +521,7 @@ async def interactive() -> None:
                 print(f"朝汐 > 主动任务操作失败：{exc}")
             continue
         try:
-            response = await agent.run_natural(text)
+            response = await interface.chat(UnifiedMessage(channel=InterfaceChannel.CLI, content=text))
             print(f"朝汐 > {response.content}")
         except ZhaoxiError as exc:
             print(f"朝汐 > 这次没有顺利完成：{exc}")

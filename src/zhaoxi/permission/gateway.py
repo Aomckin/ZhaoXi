@@ -93,10 +93,7 @@ class PermissionGateway:
             resource_scope=request.resource_scope,
             expires_at=pending.expires_at,
         )
-        if hasattr(self.store, "save_grant"):
-            self.store.save_grant(grant)
-        else:
-            self.store.grants[grant.grant_id] = grant
+        self.store.save_grant(grant)
         return grant
 
     def record_execution(self, request: PermissionRequest, event_type: str, status: str) -> None:

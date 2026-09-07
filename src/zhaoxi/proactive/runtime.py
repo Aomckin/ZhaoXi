@@ -9,6 +9,7 @@ from zhaoxi.proactive.models import (
     PolicyAction,
     ProactiveEvent,
     Subscription,
+    Priority,
 )
 from zhaoxi.proactive.notifications import NotificationSink
 from zhaoxi.proactive.policy import InterruptPolicy, PolicyState
@@ -65,6 +66,8 @@ class ProactiveRuntime:
                 delivery.status = DeliveryStatus.DEFERRED
                 await self.store.save_delivery(delivery)
             else:
+                if decision.action == PolicyAction.INBOX_ONLY:
+                    delivery.priority = Priority.INFO
                 await self.sink.deliver(delivery, now)
             results.append(delivery)
         return results
@@ -84,5 +87,7 @@ class ProactiveRuntime:
             elif decision.action == PolicyAction.DEFER or state.interacting:
                 continue
             else:
+                if decision.action == PolicyAction.INBOX_ONLY:
+                    delivery.priority = Priority.INFO
                 results.append(await self.sink.deliver(delivery, now))
         return results

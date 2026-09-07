@@ -1,6 +1,6 @@
 # 朝汐 ZhaoXi 代码现状与交接说明
 
-> **当前代码版本：v1.1.1，运行时版本 `1.1.1`，分支 `v1.1.1`**。潮汐心跳与主动消息续聊已实现；未生成发布包，真实模型、LifeHUD 长时运行和 Windows Toast 人工验收待完成。
+> **当前开发分支：`v1.1.2`，运行时版本 `1.1.2`，v1.1.1 基线提交 `0b65cfd`**。潮间态、统一时间轴、桌面状态与动态建议已实现；已生成验证 wheel，真实模型、LifeHUD 长时运行、原生桌面图标及锁屏/全屏人工验收待完成。
 
 Life HUD 原始时间字段继续按带时区的 UTC Instant 解析；仅在生成 Tool observation 时转换到配置的展示时区（默认 `Asia/Shanghai`），不回写源数据。
 
@@ -9,6 +9,24 @@ v1.0 采用全新安装策略，不提供早期人工测试数据的 v0.9 原位
 v1.0 前置解耦已完成：Life HUD 实现与铁幕 Workflow 位于独立 `tools/lifehud_tool` 包，Core 通过通用 Tool Package discovery 加载；Registry 只暴露一个 `lifehud` Tool，并根据封闭 operation 动态解析 READ/WRITE 权限。Life HUD 项目本体保持只读。
 
 本文是后续开发的首要交接入口。版本、架构、数据结构、测试数量或关键限制发生变化时，应在同一提交中更新本文。
+
+## v1.1.2 当前增量
+
+- 复用 Message.timestamp，持久化主动 delivery_id/background；ContextBuilder 注入消息绝对时间、当前时间和互动状态，正式正文不混入背景。
+- Desktop 轻量 Win32 状态采样，ACTIVE / SEMI_ACTIVE / IDLE / AWAY 与变化事件、动态 Gate、Natural Check-in 集成。
+- 动态建议复用既有回复/主动决策，额外模型调用为0；时间显示统一，图片按钮和“汐”字应用图标已接入。
+- 当前验证：**351项 Python、17项 Node 通过**；compileall、diff检查、验证wheel与隔离安装导入通过。浏览器样例已验收，真实桌面长时场景待人工验证。
+- 完整方案、文件清单、API、配置及限制见 [`Zhaoxi_v1.1.2_Release_Notes.md`](Zhaoxi_v1.1.2_Release_Notes.md)。
+
+## v1.1.2 前置清理
+
+- Web Adapter 明确消费 `UnifiedResponse`；CLI 直接使用 Settings 的日志字段，移除为不完整测试替身保留的属性兜底。
+- 删除旧 importlib metadata API 兼容分支、重复 capability 声明和 Setup capability catalog 赋值。
+- Permission 内存存储补齐 `save_grant`，Gateway 统一通过存储方法写入；保留权限匹配及持久化行为。
+- PlanStore 明确提供启动用的同步 `list_sync`，Planner 不再探测私有 `_list`；内存与 SQLite 均验证权限等待恢复。
+- 删除已由 Workflow SQLite 行为测试覆盖的单独导入测试。发布验证取消固定版本号限制，继续检查源码、项目与 wheel metadata 一致性及敏感文件排除。
+- 发布测试实际验证合法 wheel 的 SHA256 输出，以及源码/metadata 版本错误、缺包、重复包、秘密文件和数据库拒绝；安装/卸载脚本在临时目录运行，pip 与注册表操作由测试替身拦截，验证数据保留和自启动显式启用。
+- 前置清理验证：**330 项 Python、17 项 Node 通过**；compileall 与 git diff --check 通过，1 项既有 Starlette/httpx 弃用警告。该清理阶段尚未生成发布包。
 
 ## v1.1.1 当前增量
 
@@ -279,7 +297,7 @@ python main.py
 git diff --check
 ```
 
-当前自动化测试基线：**240 项通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
+当前自动化测试基线：**351 项 Python、17 项 Node 通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
 
 ## 接手建议
 
@@ -291,7 +309,9 @@ git diff --check
 
 ## Git 基线
 
-- 当前开发分支：`v1.0`
+- 当前开发分支：`v1.1.2`
+- v1.1.1 基线：`0b65cfd feat(v1.1.1): add tidal heartbeat and proactive inbox continuation`
+- v1.1.2：本次潮间态实现、前置清理与验收文档在同一提交中归档。
 - v1.0 起点：`87eb9c6 feat: complete v0.9 reliability hardening`
 - v1.0 正式版：`51cf34b docs(v1.0): record release evidence`（功能 RC：`2e4db8f`）
 - v0.5.1.2 工作区基线：基于 `3f3f13a` 与未提交的 v0.5/v0.5.1/v0.5.1.1 纵向切片继续修补

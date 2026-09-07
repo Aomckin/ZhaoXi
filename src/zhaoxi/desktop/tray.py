@@ -25,12 +25,11 @@ class TrayIcon:
     def start(self) -> None:
         try:
             import pystray
-            from PIL import Image, ImageDraw
+            from PIL import Image
+            from pathlib import Path
         except ImportError as exc:
             raise RuntimeError("托盘依赖未安装，请运行 pip install -e .[desktop]。") from exc
-        image = Image.new("RGBA", (64, 64), (54, 132, 255, 255))
-        draw = ImageDraw.Draw(image)
-        draw.ellipse((17, 17, 47, 47), fill="white")
+        image = Image.open(Path(__file__).parents[1] / "web/static/zhaoxi.png")
         self._icon = pystray.Icon(
             "zhaoxi",
             image,

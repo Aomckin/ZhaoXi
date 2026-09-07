@@ -76,9 +76,9 @@ class SQLitePlanStore(PlanStore):
         return goal
 
     async def list(self) -> list[Goal]:
-        return await asyncio.to_thread(self._list)
+        return await asyncio.to_thread(self.list_sync)
 
-    def _list(self) -> list[Goal]:
+    def list_sync(self) -> list[Goal]:
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT goal_json FROM planner_goals ORDER BY updated_at DESC"

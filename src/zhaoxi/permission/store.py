@@ -45,6 +45,10 @@ class InMemoryPermissionStore:
         self.grants[grant.grant_id] = grant
         return grant
 
+    def save_grant(self, grant: PermissionGrant) -> PermissionGrant:
+        self.grants[grant.grant_id] = grant
+        return grant
+
     def deny(self, confirmation_id: str) -> PendingConfirmation:
         item = self.require_pending(confirmation_id)
         if not item.resolved:

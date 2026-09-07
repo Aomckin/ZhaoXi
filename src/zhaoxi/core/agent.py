@@ -82,6 +82,7 @@ class ZhaoxiAgent:
         self.provider = provider
         self.registry = registry
         self.context_builder = context_builder
+        self.quick_suggestions = context_builder.quick_suggestions
         self.conversation = conversation or Conversation()
         self.max_steps = max_steps
         self.timeout_seconds = timeout_seconds
@@ -213,7 +214,7 @@ class ZhaoxiAgent:
             model_response = await asyncio.wait_for(
                 self.provider.generate(messages, None), timeout=self.timeout_seconds
             )
-            content = (model_response.content or "").strip()
+            content = self.quick_suggestions.extract((model_response.content or "").strip())
         except Exception as exc:
             logger.warning("workflow final response fallback run=%s error=%s", run.id, type(exc).__name__)
         if not content:
@@ -353,7 +354,7 @@ class ZhaoxiAgent:
         except ProviderError as exc:
             log_internal_failure("request=%s provider error", request_id, exc=exc)
             raise AgentLoopError("模型服务当前不可访问，请稍后重试。") from exc
-        content = response.content or "模型没有返回可显示的内容。"
+        content = self.quick_suggestions.extract(response.content or "模型没有返回可显示的内容。")
         self.conversation.add_assistant(content)
         return AgentResponse(content=content, request_id=request_id, steps=1)
 
@@ -391,7 +392,7 @@ class ZhaoxiAgent:
                     continue
                 if require_tool_call and not tool_called:
                     raise AgentLoopError("这次没有实际完成工具查询，请换一种更明确的说法重试。")
-                content = response.content or "模型没有返回可显示的内容。"
+                content = self.quick_suggestions.extract(response.content or "模型没有返回可显示的内容。")
                 self.conversation.add_assistant(content)
                 logger.info("request=%s final response step=%d", request_id, step)
                 return AgentResponse(content=content, request_id=request_id, steps=step)

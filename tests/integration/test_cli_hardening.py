@@ -1,4 +1,4 @@
-from types import SimpleNamespace
+from zhaoxi.config.settings import Settings
 
 import pytest
 
@@ -18,8 +18,8 @@ class FailingAgent:
 async def test_unexpected_turn_error_does_not_exit_or_print_traceback(monkeypatch, capsys):
     answers = iter(["触发一次异常", "/exit"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
-    monkeypatch.setattr(cli, "Settings", lambda: SimpleNamespace(log_level="INFO"))
-    monkeypatch.setattr(cli, "configure_logging", lambda level: None)
+    monkeypatch.setattr(cli, "Settings", lambda: Settings(_env_file=None))
+    monkeypatch.setattr(cli, "configure_logging", lambda level, **kwargs: None)
     monkeypatch.setattr(cli, "build_agent", lambda settings: FailingAgent())
 
     await cli.interactive()

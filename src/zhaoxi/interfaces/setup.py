@@ -32,13 +32,6 @@ class StartupUnavailableAgent:
             "packages": [],
             "examples": ["先运行 python main.py --doctor 完成首次配置。"],
         }
-        self.capability_catalog = {
-            "status": "setup_required",
-            "tools": [],
-            "workflows": [],
-            "packages": [],
-            "examples": ["先运行 python main.py --doctor 完成首次配置。"],
-        }
         self._pending_permissions = {}
         self.tool_executor = SimpleNamespace(
             gateway=SimpleNamespace(store=SimpleNamespace(pending={}))

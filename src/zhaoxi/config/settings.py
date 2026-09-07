@@ -87,6 +87,13 @@ class Settings(BaseSettings):
     reflection_auto_monthly: bool = False
     reflection_notify: bool = False
     proactive_enabled: bool = True
+    quick_suggestions_refresh_minutes: int = Field(default=180, ge=1, le=1440)
+    active_timeout_minutes: int = Field(default=20, ge=1, le=120)
+    semi_active_timeout_minutes: int = Field(default=45, ge=1, le=240)
+    away_idle_minutes: int = Field(default=30, ge=1, le=240)
+    proactive_threshold_active: float = Field(default=.45, ge=0, le=1)
+    proactive_threshold_semi_active: float = Field(default=.55, ge=0, le=1)
+    proactive_threshold_idle: float = Field(default=.70, ge=0, le=1)
     proactive_heartbeat_seconds: int = Field(default=30, ge=5, le=300)
     proactive_cooldown_minutes: int = Field(default=45, ge=1, le=1440)
     proactive_natural_checkin_enabled: bool = True
@@ -130,6 +137,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_planner_limits(self) -> "Settings":
+        from zoneinfo import ZoneInfo
+        ZoneInfo(self.proactive_timezone)
+        if not self.proactive_threshold_active <= self.proactive_threshold_semi_active <= self.proactive_threshold_idle:
+            raise ValueError("主动阈值必须满足 ACTIVE <= SEMI_ACTIVE <= IDLE")
         valid_permission_policies = {"allow", "confirm", "deny"}
         configured_policies = {
             self.permission_read_policy,

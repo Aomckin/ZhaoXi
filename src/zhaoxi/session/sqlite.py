@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
+import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -69,6 +70,21 @@ class SQLiteSessionStore(SessionStore):
         if row is None:
             return None
         messages = [Message.model_validate(item) for item in json.loads(row["messages_json"])]
+        for message in messages:
+            # v1.1.1 stored activation context inside the assistant body.
+            prefix = "[朝汐主动消息 · "
+            if message.role == Role.ASSISTANT and not message.delivery_id and (message.content or '').startswith(prefix):
+                header, separator, body = message.content.partition(']\n')
+                if separator:
+                    try:
+                        original_time = datetime.fromisoformat(header[len(prefix):])
+                    except ValueError:
+                        continue
+                    if original_time.tzinfo is None:
+                        continue
+                    content, _, background = body.partition('\n相关背景：')
+                    message.delivery_id = 'legacy-' + hashlib.sha256(message.content.encode()).hexdigest()
+                    message.timestamp, message.content, message.background = original_time, content, background[:2000]
         return Session(
             id=row["session_id"],
             conversation=Conversation(messages, max_messages=row["max_messages"]),
@@ -90,7 +106,7 @@ class SQLiteSessionStore(SessionStore):
             connection.execute(
                 """INSERT INTO sessions(session_id, created_at, updated_at, max_messages, messages_json)
                 VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(session_id) DO UPDATE SET updated_at=excluded.updated_at,
+                ON CONFLICT(session_id) DO UPDATE SET created_at=excluded.created_at, updated_at=excluded.updated_at,
                 max_messages=excluded.max_messages, messages_json=excluded.messages_json""",
                 (
                     session.id,

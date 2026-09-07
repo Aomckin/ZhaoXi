@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from zhaoxi.cli import build_agent
 from zhaoxi import __version__
+from zhaoxi.core.suggestions import QuickSuggestions
 from zhaoxi.config.settings import Settings
 from zhaoxi.errors import ZhaoxiError
 from zhaoxi.interfaces.setup import StartupUnavailableAgent
@@ -41,6 +42,7 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
+    timestamp: datetime | None = None
     content: str
     activity: dict[str, Any] = Field(default_factory=dict)
     permission: dict[str, Any] | None = None
@@ -66,6 +68,7 @@ def _response(result: WebResult) -> ChatResponse:
         request_id=result.request_id,
         trace_id=result.trace_id,
         status=result.status,
+        timestamp=result.timestamp,
     )
 
 
@@ -103,6 +106,7 @@ def create_app(
         except ZhaoxiError as exc:
             core = StartupUnavailableAgent(startup_diagnostics(configured), str(exc))
     adapter = WebInterfaceAdapter(core)
+    suggestions = getattr(core, "quick_suggestions", None) or QuickSuggestions(configured.proactive_timezone, configured.quick_suggestions_refresh_minutes)
     events = EventBroadcaster()
     static_dir = Path(__file__).with_name("static")
     speech_policy = SpeechPolicy()
@@ -213,6 +217,19 @@ def create_app(
     async def health():
         return {"status": "ok", "version": __version__}
 
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon():
+        return FileResponse(static_dir / "zhaoxi.ico", media_type="image/x-icon")
+
+    @app.get("/api/suggestions")
+    async def quick_suggestions():
+        state = getattr(core, "proactive_state", None)
+        heartbeat = getattr(core, "proactive_heartbeat", None)
+        snapshot = suggestions.get(core.conversation, state,
+            focus=bool(heartbeat and heartbeat.focus_active),
+            recent_proactive=any(m.delivery_id for m in core.conversation.messages))
+        return {**snapshot, "timezone": configured.proactive_timezone}
+
     @app.get("/api/diagnostics")
     async def diagnostics():
         """Return a bounded, content-free local runtime snapshot."""
@@ -221,6 +238,10 @@ def create_app(
             "status": "ok",
             "version": __version__,
             "metrics": adapter.gateway.metrics.snapshot(),
+            "presence": (core.proactive_state.interaction.diagnostics(datetime.now(UTC))
+                         if getattr(core, "proactive_state", None) else None),
+            "quick_suggestions_generated": suggestions.generated,
+            "quick_suggestions_llm_calls": 0,
             "components": {
                 "planner": getattr(core, "planner", None) is not None,
                 "workflow": getattr(core, "workflow", None) is not None,
@@ -321,7 +342,7 @@ def create_app(
 
     @app.get("/api/session")
     async def session():
-        return {"messages": adapter.session()}
+        return {"messages": await adapter.gateway.history()}
 
     @app.delete("/api/session")
     async def clear_session():
@@ -342,6 +363,14 @@ def create_app(
             return await adapter.gateway.activate_delivery(delivery_id)
         except KeyError:
             raise HTTPException(status_code=404, detail="主动消息不存在或尚未送达。")
+
+    @app.get("/api/proactive/{delivery_id}/inspect")
+    async def inspect_delivery(delivery_id: str):
+        runtime = getattr(core, "proactive", None)
+        delivery = await runtime.store.get_delivery(delivery_id) if runtime else None
+        if delivery is None or delivery.status.value not in {"delivered", "acknowledged"}:
+            raise HTTPException(status_code=404, detail="主动消息不存在或尚未送达。")
+        return delivery.model_dump(mode="json", exclude={"content"})
 
     @app.get("/api/voice/status")
     async def voice_status():

@@ -16,6 +16,6 @@ $shortcut.TargetPath = $pythonw
 $shortcut.Arguments = '"' + $main + '" --desktop'
 $shortcut.WorkingDirectory = $projectRoot
 $shortcut.Description = '打开朝汐；已运行时唤起现有窗口'
-$shortcut.IconLocation = $pythonw + ',0'
+$shortcut.IconLocation = (Join-Path $projectRoot 'src\zhaoxi\web\static\zhaoxi.ico') + ',0'
 $shortcut.Save()
 Write-Output $launcherPath

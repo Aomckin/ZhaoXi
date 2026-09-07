@@ -22,22 +22,22 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Wheel build failed." }
     & $pythonCommand.Source -m pip wheel .\tools\lifehud_tool --no-deps --no-build-isolation --wheel-dir $outputPath
     if ($LASTEXITCODE -ne 0) { throw "LifeHUD-Tool wheel build failed." }
-    & $pythonCommand.Source scripts\verify_release.py --root $repoRoot --dist $outputPath
+    $release = & $pythonCommand.Source scripts\verify_release.py --root $repoRoot --dist $outputPath | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0) { throw "Release verification failed." }
 
     $smokeRoot = Join-Path ([IO.Path]::GetTempPath()) ("zhaoxi-release-smoke-" + [Guid]::NewGuid().ToString("N"))
     $smokeSite = Join-Path $smokeRoot "site"
     New-Item -ItemType Directory -Path $smokeSite -Force | Out-Null
     try {
-        $coreWheel = (Get-ChildItem -LiteralPath $outputPath -Filter 'zhaoxi-1.0.0-*.whl' -File -ErrorAction Stop).FullName
-        $toolWheel = (Get-ChildItem -LiteralPath $outputPath -Filter 'zhaoxi_lifehud_tool-1.0.0-*.whl' -File -ErrorAction Stop).FullName
+        $coreWheel = Join-Path $outputPath $release.wheels[0]
+        $toolWheel = Join-Path $outputPath $release.wheels[1]
         & $pythonCommand.Source -m pip install --no-deps --target $smokeSite $coreWheel $toolWheel
         if ($LASTEXITCODE -ne 0) { throw "Clean-target wheel installation failed." }
         $previousPythonPath = $env:PYTHONPATH
         $env:PYTHONPATH = $smokeSite
         Push-Location $smokeRoot
         try {
-            & $pythonCommand.Source -c "import zhaoxi; from tools.lifehud_tool import create_package; assert zhaoxi.__version__ == '1.0.0'; assert create_package().package_version == '1.0.0'"
+            & $pythonCommand.Source -c "import sys, zhaoxi; from tools.lifehud_tool import create_package; assert zhaoxi.__version__ == sys.argv[1]; assert create_package().package_version == sys.argv[2]" $release.version $release.tool_version
             if ($LASTEXITCODE -ne 0) { throw "Installed wheel import smoke failed." }
         }
         finally {

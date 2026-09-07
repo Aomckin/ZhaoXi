@@ -21,7 +21,6 @@ class ToolPackage(Protocol):
     def routing_hints(self) -> list[dict[str, object]]: ...
     def capabilities(self) -> dict[str, object]: ...
     def reflection_sources(self) -> list[object]: ...
-    def capabilities(self) -> dict[str, object]: ...
 
 
 def _config_for(package_id: str) -> dict[str, object]:
@@ -47,10 +46,7 @@ def discover_tool_packages(
     errors: list[dict[str, str]] | None = None,
 ) -> list[ToolPackage]:
     packages: dict[str, ToolPackage] = {}
-    try:
-        entry_points = metadata.entry_points(group="zhaoxi.tools")
-    except TypeError:  # Python 3.12 compatibility with older importlib metadata API
-        entry_points = metadata.entry_points().get("zhaoxi.tools", [])
+    entry_points = metadata.entry_points(group="zhaoxi.tools")
     for entry_point in entry_points:
         try:
             package = entry_point.load()()

@@ -8,9 +8,9 @@ const source=html.slice(html.indexOf('let pendingDeliveryTimer='),html.indexOf('
 function setup(){
   const nodes=new Map(),requests=[],rendered=[],timers=[];
   const notices={children:[],querySelector(){return null},prepend(n){nodes.set(n.id,n);this.children.unshift(n)}};
-  const context=vm.createContext({busy:false,activity:{},clearTimeout(){},setTimeout(fn){timers.push(fn)},
+  const context=vm.createContext({busy:false,activity:{},debug:{},setupCapabilities:async()=>{},clearTimeout(){},setTimeout(fn){timers.push(fn)},
     document:{getElementById:id=>nodes.get(id),createElement:()=>({style:{},querySelector:()=>({textContent:''})})},
-    $:()=>notices,markdown:s=>s,escapeHtml:s=>s,input:{focus(){}},
+    $:()=>notices,markdown:s=>s,escapeHtml:s=>s,formatTime:s=>s,input:{focus(){}},
     messages:{replaceChildren(){rendered.length=0}},addMessage:(...args)=>rendered.push(args),
     request:async(url,options)=>{requests.push({url,options});return url==='/api/session'?{messages:[{role:'assistant',content:'主动上下文'}]}:{}},
   });
@@ -25,6 +25,8 @@ test('inbox deduplicates notices and click activates durable context',async()=>{
   assert.equal(s.requests[0].url,'/api/proactive/a%3Ab/activate');
   assert.equal(s.requests[0].options.method,'POST');
   assert.equal(s.rendered[0][1],'主动上下文');
+  assert.equal(s.requests[2].url,'/api/proactive/a%3Ab/inspect');
+  assert.equal(s.context.debug.textContent,'{}');
 });
 test('suppressed and deferred deliveries do not appear in inbox',()=>{
   const s=setup();s.context.showNotice({delivery_id:'x',status:'deferred'});

@@ -1,6 +1,7 @@
 """Deterministic interruption policy."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from zhaoxi.proactive.interaction import Interaction, InteractionState
 from datetime import datetime, time, timedelta
 
 from zhaoxi.proactive.models import PolicyAction, PolicyDecision, Priority, ProactiveEvent
@@ -12,6 +13,8 @@ class PolicyState:
     quiet_until: datetime | None = None
     last_interaction_at: datetime | None = None
     interacting: bool = False
+    interaction: Interaction = field(default_factory=Interaction)
+    thresholds: tuple[float, float, float] = (.45, .55, .70)
 
 
 class InterruptPolicy:
@@ -38,4 +41,10 @@ class InterruptPolicy:
             tomorrow = now.date() + timedelta(days=1) if local_time >= self.night_start else now.date()
             defer_until = datetime.combine(tomorrow, self.night_end, tzinfo=now.tzinfo)
             return PolicyDecision(action=PolicyAction.DEFER, reason="night_mode", defer_until=defer_until)
+        if event.event_type != 'reminder.due' and event.priority != Priority.URGENT:
+            interaction = state.interaction
+            if interaction.refresh(now) == InteractionState.AWAY:
+                return PolicyDecision(action=PolicyAction.INBOX_ONLY, reason="user_away")
+            if interaction.snapshot and (interaction.snapshot.fullscreen or not interaction.snapshot.healthy):
+                return PolicyDecision(action=PolicyAction.DEFER, reason="desktop_unavailable", defer_until=now + timedelta(minutes=5))
         return PolicyDecision(action=PolicyAction.DELIVER_NOW, reason="policy_allowed")

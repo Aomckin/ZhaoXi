@@ -1,5 +1,7 @@
 """Planner task storage boundary."""
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 
 from zhaoxi.errors import PlannerTaskNotFoundError
@@ -15,6 +17,11 @@ class PlanStore(ABC):
 
     @abstractmethod
     async def list(self) -> list[Goal]: ...
+
+    @abstractmethod
+    def list_sync(self) -> list[Goal]:
+        """Read goals during synchronous runtime startup, including permission waits."""
+        ...
 
 
 class InMemoryPlanStore(PlanStore):
@@ -35,4 +42,7 @@ class InMemoryPlanStore(PlanStore):
         return goal
 
     async def list(self) -> list[Goal]:
+        return self.list_sync()
+
+    def list_sync(self) -> list[Goal]:
         return [goal.model_copy(deep=True) for goal in self._goals.values()]

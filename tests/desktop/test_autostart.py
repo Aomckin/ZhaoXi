@@ -51,7 +51,7 @@ def test_window_initial_visibility_and_early_activation(monkeypatch, background)
     native = Mock(events=SimpleNamespace(loaded=Event(), closing=Event(), closed=Event(), minimized=Event(), restored=Event(), maximized=Event()))
     view = Mock()
     view.create_window.return_value = native
-    view.start.side_effect = lambda callback: callback()
+    view.start.side_effect = lambda callback, **kwargs: callback()
     monkeypatch.setitem(sys.modules, 'webview', view)
     window = DesktopWindow('http://localhost', width=1000, height=700)
     window.show()  # Activation arriving while the Core/server is still starting.

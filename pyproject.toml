@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "zhaoxi"
-version = "1.1.1"
+version = "1.1.2"
 description = "Zhaoxi personal agent core"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -39,7 +39,7 @@ zhaoxi = "zhaoxi.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-zhaoxi = ["personality/*.yaml", "web/static/*.html"]
+zhaoxi = ["personality/*.yaml", "web/static/*.html", "web/static/*.png", "web/static/*.ico"]
 
 [tool.pytest.ini_options]
 addopts = "-q --basetemp=.pytest-tmp"

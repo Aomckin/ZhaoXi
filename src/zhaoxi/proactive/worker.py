@@ -89,6 +89,8 @@ class DecisionWorker:
         result = await self.decision.decide(batch, local_now, state)
         # User/quiet state can change while the network request is running.
         checked_at = now + timedelta(seconds=monotonic() - started)
+        if h.presence:
+            state.interaction.observe(await h.presence.sample(), checked_at)
         gates = [score_event(e, checked_at.astimezone(ZoneInfo(h.settings.proactive_timezone)),
                             state, runtime.policy, last_spoken, h.settings.proactive_cooldown_minutes,
                             h.focus_active) for e in batch]
@@ -100,6 +102,8 @@ class DecisionWorker:
         )
         if not facts_current:
             await self.resolve(batch)
+        elif result.action == 'speak' and all(g.hint == 'inbox' for g in gates):
+            output.append(await self.deliver(batch, result.content, Priority.INFO, checked_at, 'away_inbox'))
         elif result.action == 'speak' and all(g.hint in {'candidate', 'urgent'} for g in gates):
             priority = Priority.URGENT if all(e.priority == Priority.URGENT for e in batch) else Priority.NOTICE
             output.append(await self.deliver(batch, result.content, priority, checked_at, 'tidal_speak'))

@@ -1,6 +1,6 @@
 # Zhaoxi / 朝汐
 
-Zhaoxi 1.1 是一个可扩展的本地个人 Agent Core，提供对话、记忆、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与独立 Tool Package 能力。
+Zhaoxi 1.1.2 是一个可扩展的本地个人 Agent Core，提供对话、记忆、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与独立 Tool Package 能力。
 
 Life HUD 通过独立的 `tools/lifehud_tool` 包接入，Core Registry 只注册一个 `lifehud` Tool；各能力由封闭 `operation` 区分，并按调用动态解析 READ/WRITE 权限。Life HUD API 的时间戳按原始 UTC 契约读取且不改写；发送给模型的 Tool observation 默认转换为 `Asia/Shanghai`，可通过 `ZHAOXI_TOOL_LIFEHUD_DISPLAY_TIMEZONE` 配置。
 
@@ -288,3 +288,8 @@ powershell -NoProfile -File .\scripts\create_desktop_launcher.ps1
 保护性上限为每次（含防抖合并后的请求）20 张、每张 100 MB。图片参与现有 2 秒输入合并，回复期间的新输入仍排队处理。图片随本地会话保存，重新打开后可查看，清空会话会一并移除该会话中的图片。
 
 图片通过现有模型接口的多模态消息发送，需要配置支持图片输入的模型；具体服务商可能有自己的请求限制。图片回合直接使用已有 Agent 工具循环读取图文，普通文字回合继续使用原有认知路由。
+
+
+## v1.1.2 潮间态
+
+新增消息时间上下文、桌面轻量状态采样与 ACTIVE / SEMI_ACTIVE / IDLE / AWAY 互动状态。主动门槛随状态变化，动态快捷建议复用现有回复（额外模型调用为0）。统一消息时间、图片按钮及“汐”字应用图标。开发验证结果、配置和人工验收步骤见 [v1.1.2报告](docs/Zhaoxi_v1.1.2_Release_Notes.md)。

@@ -19,6 +19,13 @@ class Conversation:
         self._trim()
         return message
 
+    def add_delivery(self, message: Message) -> None:
+        if any(item.delivery_id == message.delivery_id for item in self._messages):
+            return
+        index = next((i for i, item in enumerate(self._messages) if item.timestamp > message.timestamp), len(self._messages))
+        self._messages.insert(index, message)
+        self._trim()
+
     def add_user(self, content: str, *, images: list[str] | None = None) -> Message:
         return self.add(Message(role=Role.USER, content=content, images=images or []))
 

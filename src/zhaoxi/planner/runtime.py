@@ -143,10 +143,7 @@ class PlannerRuntime:
 
     def _restore_pending_permissions(self) -> None:
         """Rebuild resumable permission waits from a persistent PlanStore."""
-        list_sync = getattr(self.store, "_list", None)
-        if list_sync is None:
-            return
-        for goal in list_sync():
+        for goal in self.store.list_sync():
             confirmation = goal.permission_confirmation
             request = confirmation.request if confirmation is not None else None
             if (

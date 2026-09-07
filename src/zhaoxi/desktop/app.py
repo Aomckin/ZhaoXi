@@ -104,6 +104,11 @@ class DesktopHost:
                 agent = StartupUnavailableAgent(startup_diagnostics(settings), str(exc))
         self.agent = agent
         self.voice = None
+        heartbeat = getattr(agent, "proactive_heartbeat", None)
+        if heartbeat is not None:
+            from zhaoxi.desktop.presence import DesktopPresenceSensor
+            heartbeat.presence = DesktopPresenceSensor()
+            self.window.on_show = heartbeat.state.interaction.window_opened.set
         try:
             self.voice = build_voice_runtime(settings)
         except Exception as exc:

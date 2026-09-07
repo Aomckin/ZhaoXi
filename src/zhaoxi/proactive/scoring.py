@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from zhaoxi.proactive.models import PolicyAction, Priority
+from zhaoxi.proactive.interaction import InteractionState
 
 
 @dataclass
@@ -21,7 +22,13 @@ def score_event(event, now, state, policy, last_spoken, cooldown_minutes, focus_
     if state.interacting:
         return GateResult(score, 'defer', now + timedelta(minutes=5))
     explicit = event.event_type == 'reminder.due' or event.priority == Priority.URGENT
+    interaction = state.interaction
+    mode = interaction.refresh(now)
     if not explicit:
+        if mode == InteractionState.AWAY:
+            return GateResult(score, 'inbox')
+        if interaction.snapshot and (interaction.snapshot.fullscreen or not interaction.snapshot.healthy):
+            return GateResult(score, 'defer', now + timedelta(minutes=5))
         deadlines = []
         if last_spoken:
             deadlines.append(last_spoken + timedelta(minutes=cooldown_minutes))
@@ -35,4 +42,5 @@ def score_event(event, now, state, policy, last_spoken, cooldown_minutes, focus_
         return GateResult(max(.85, score), 'urgent')
     if event.priority == Priority.INFO:
         return GateResult(score, 'inbox')
-    return GateResult(score, 'drop' if score < .3 else 'inbox' if score < .6 else 'candidate')
+    threshold = dict(zip((InteractionState.ACTIVE, InteractionState.SEMI_ACTIVE, InteractionState.IDLE), state.thresholds))[mode]
+    return GateResult(score, 'drop' if score < .3 else 'inbox' if score < threshold else 'candidate')

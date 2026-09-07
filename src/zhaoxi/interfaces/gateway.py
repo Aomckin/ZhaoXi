@@ -9,6 +9,7 @@ from time import monotonic
 from typing import Any
 
 from zhaoxi.core.agent import ZhaoxiAgent
+from zhaoxi.core.message import Message, Role
 from zhaoxi.proactive.models import DeliveryStatus
 from zhaoxi.interfaces.models import (
     MessageOrigin,
@@ -57,6 +58,7 @@ class InterfaceGateway:
             if state is not None:
                 state.interacting = True
                 state.last_interaction_at = datetime.now(UTC)
+                state.interaction.interact(state.last_interaction_at)
             started = monotonic()
             self.metrics.increment("interface.chat.started")
             context = CorrelationContext(
@@ -65,6 +67,7 @@ class InterfaceGateway:
                 session_id=message.session_id,
             )
             try:
+                await self._sync_deliveries()
                 provider = getattr(self.agent, "provider", None)
                 max_calls = getattr(provider, "max_calls", 12)
                 max_total_tokens = getattr(provider, "max_total_tokens", 100_000)
@@ -99,22 +102,45 @@ class InterfaceGateway:
             if delivery is None or delivery.status not in {DeliveryStatus.DELIVERED, DeliveryStatus.ACKNOWLEDGED}:
                 raise KeyError(delivery_id)
             # Append the actual delivered text, not a forged user turn or internal event JSON.
-            summaries = delivery.relevant_payload.get("summaries", [delivery.relevant_payload.get("summary", "")])
-            background = "；".join(str(x)[:600] for x in summaries[:20] if x)
-            marker = f"[朝汐主动消息 · {delivery.available_at.isoformat()}]\n{delivery.content}"
-            if background:
-                marker += "\n相关背景：" + background
-
-            if not any(m.content == marker for m in self.agent.conversation.messages):
-                self.agent.conversation.add_assistant(marker)
-                await self._persist_session()
+            self._include_delivery(delivery)
+            await self._persist_session()
             state = getattr(self.agent, "proactive_state", None)
             if state is not None:
                 state.last_interaction_at = datetime.now(UTC)
+                state.interaction.interact(state.last_interaction_at)
             delivery.status = DeliveryStatus.ACKNOWLEDGED
             delivery.acknowledged_at = datetime.now(UTC)
             await runtime.store.save_delivery(delivery)
             return {"delivery_id": delivery_id, "content": delivery.content, "status": delivery.status.value}
+
+    def _include_delivery(self, delivery):
+        for item in self.agent.conversation.messages:
+            if item.delivery_id and item.delivery_id.startswith('legacy-') and item.content == delivery.content:
+                item.delivery_id = delivery.delivery_id
+                return
+        summaries = delivery.relevant_payload.get("summaries", [delivery.relevant_payload.get("summary", "")])
+        self.agent.conversation.add_delivery(Message(
+            role=Role.ASSISTANT, content=delivery.content, delivery_id=delivery.delivery_id,
+            timestamp=delivery.delivered_at or delivery.available_at,
+            background="；".join(str(x)[:600] for x in summaries[:20] if x)[:2000],
+        ))
+
+    async def _sync_deliveries(self):
+        runtime = getattr(self.agent, "proactive", None)
+        if runtime is None:
+            return
+        session = getattr(self.agent, "session_record", None)
+        since = session.created_at if session else datetime.min.replace(tzinfo=UTC)
+        for delivery in reversed(await runtime.store.list_deliveries(self.agent.conversation.max_messages)):
+            if (delivery.status in {DeliveryStatus.DELIVERED, DeliveryStatus.ACKNOWLEDGED}
+                    and (delivery.delivered_at or delivery.available_at) >= since):
+                self._include_delivery(delivery)
+
+    async def history(self):
+        async with self._lock:
+            await self._sync_deliveries()
+            await self._persist_session()
+            return self.session()
 
     async def resolve_permission(
         self,
@@ -132,6 +158,7 @@ class InterfaceGateway:
             if state is not None:
                 state.interacting = True
                 state.last_interaction_at = datetime.now(UTC)
+                state.interaction.interact(state.last_interaction_at)
             try:
                 if confirmation_id in self.agent._pending_permissions:
                     method = self.agent.approve_permission if approve else self.agent.deny_permission
@@ -165,7 +192,8 @@ class InterfaceGateway:
 
     def session(self) -> list[dict[str, Any]]:
         return [
-            {"role": item.role.value, "content": item.content or "",
+            {"role": item.role.value, "content": item.content or "", "timestamp": item.timestamp.isoformat(),
+             "delivery_id": item.delivery_id,
              **({"images": item.images} if item.images else {})}
             for item in self.agent.conversation.messages
             if item.role.value in {"user", "assistant"}
@@ -177,6 +205,7 @@ class InterfaceGateway:
         session = getattr(self.agent, "session_record", None)
         store = getattr(self.agent, "session_store", None)
         if session is not None and store is not None:
+            session.created_at = datetime.now(UTC)
             session.conversation = self.agent.conversation
             store.save_sync(session)
 

@@ -41,8 +41,6 @@ def verify(root: Path, dist: Path) -> dict[str, object]:
     source = (root / "src" / "zhaoxi" / "__init__.py").read_text(encoding="utf-8")
     if f'__version__ = "{core_version}"' not in source:
         raise RuntimeError("pyproject.toml 与源码版本不一致")
-    if core_version != "1.1.1" or tool_version != "1.0.0":
-        raise RuntimeError("正式构建要求 Core 为 1.1.1，LifeHUD-Tool 为 1.0.0")
 
     core_wheels = sorted(dist.glob(f"zhaoxi-{core_version}-*.whl"))
     tool_wheels = sorted(dist.glob(f"zhaoxi_lifehud_tool-{tool_version}-*.whl"))
@@ -57,7 +55,7 @@ def verify(root: Path, dist: Path) -> dict[str, object]:
               for path in wheels]
     checksum_path = dist / "SHA256SUMS.json"
     checksum_path.write_text(json.dumps(hashes, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return {"version": core_version, "wheels": [path.name for path in wheels], "hashes": hashes}
+    return {"version": core_version, "tool_version": tool_version, "wheels": [path.name for path in wheels], "hashes": hashes}
 
 
 def main() -> None:

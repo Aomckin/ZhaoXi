@@ -75,6 +75,7 @@ class PermissionView(BaseModel):
 
 
 class UnifiedResponse(BaseModel):
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     request_id: str
     session_id: str = "local"
     trace_id: str | None = None

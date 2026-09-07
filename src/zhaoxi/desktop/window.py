@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import threading
+from pathlib import Path
+import sys
 
 
 class DesktopWindow:
@@ -11,6 +13,7 @@ class DesktopWindow:
         self.width = width
         self.height = height
         self._window = None
+        self.on_show = lambda: None
         self._ready = threading.Event()
         self._allow_close = False
         self._visible = False
@@ -26,6 +29,9 @@ class DesktopWindow:
             raise RuntimeError(
                 "Desktop 窗口依赖未安装，请运行 pip install -e .[desktop]。"
             ) from exc
+        if sys.platform == "win32":
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Zhaoxi.Desktop")
         self._visible = not background
         self._window = webview.create_window(
             "朝汐 Zhaoxi",
@@ -42,14 +48,17 @@ class DesktopWindow:
         self._window.events.maximized += self._on_restored
         if on_closed is not None:
             self._window.events.closed += on_closed
-        webview.start(self._on_started)
+        webview.start(self._on_started, icon=str(Path(__file__).parents[1] / "web/static/zhaoxi.ico"))
 
     def _on_started(self) -> None:
         self._ready.set()
+        if self._visible:
+            self.on_show()
         if self._show_requested.is_set():
             self.show()
 
     def show(self) -> None:
+        self.on_show()
         self._show_requested.set()
         if self._ready.is_set() and self._window is not None:
             self._window.show()

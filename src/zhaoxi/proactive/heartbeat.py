@@ -3,14 +3,15 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 from zhaoxi.proactive.buffer import EventBuffer
-from zhaoxi.proactive.models import ProactiveEvent
+from zhaoxi.proactive.models import ProactiveEvent, Priority, EventStatus
 from zhaoxi.proactive.sensors import computer_active
+from zhaoxi.proactive.interaction import InteractionState, PresenceSnapshot
 
 
 
 
 class TidalHeartbeat:
-    def __init__(self, runtime, scheduler, state, settings, metrics, sensors=(), active=computer_active):
+    def __init__(self, runtime, scheduler, state, settings, metrics, sensors=(), active=computer_active, presence=None):
         self.runtime, self.scheduler, self.state = runtime, scheduler, state
         self.settings, self.metrics = settings, metrics
         self.sensors, self.active = list(sensors), active
@@ -18,14 +19,29 @@ class TidalHeartbeat:
         self.started_at = datetime.now(UTC)
         self.focus_active = False
         self.updated = asyncio.Event()
+        self.presence = presence
+        state.interaction.active_minutes = settings.active_timeout_minutes
+        state.interaction.semi_active_minutes = settings.semi_active_timeout_minutes
+        state.interaction.away_minutes = settings.away_idle_minutes
+        state.thresholds = (settings.proactive_threshold_active, settings.proactive_threshold_semi_active,
+                            settings.proactive_threshold_idle)
 
     async def tick(self, now=None):
         now = now or datetime.now(UTC)
         self.metrics.increment('proactive.heartbeat')
+        interaction = self.state.interaction
+        if self.presence:
+            try:
+                interaction.observe(await self.presence.sample(), now)
+            except Exception:
+                interaction.observe(PresenceSnapshot(healthy=False), now)
+                self.metrics.increment('proactive.sensor_errors')
+        interaction.refresh(now)
         # Scheduler already persists its events using unique schedule occurrence keys.
         scheduled = await self.scheduler.tick()
         self.metrics.increment('proactive.sensor_events', len(scheduled))
         if not self.state.enabled:
+            interaction.pending_events.clear()
             return
         for sensor in self.sensors:
             try:
@@ -35,19 +51,46 @@ class TidalHeartbeat:
                         self.metrics.increment('proactive.sensor_events')
             except Exception:
                 self.metrics.increment('proactive.sensor_errors')
+        was_focused = self.focus_active
         self.focus_active = any(s.focus_active for s in self.sensors)
+        if was_focused != self.focus_active:
+            interaction.pending_events.append(('focus.started' if self.focus_active else 'focus.ended', now))
+            if not self.focus_active and interaction.state != InteractionState.AWAY:
+                interaction.receptive(now)
+        summaries = {
+            'user.returned': '用户离开一段时间后重新回到电脑前。',
+            'fullscreen.exited': '用户刚刚退出全屏活动。',
+            'focus.ended': '用户刚刚结束专注。',
+        }
+        changes = list(interaction.pending_events)
+        interaction.pending_events.clear()
+        for name, occurred_at in changes:
+            await self.buffer.add(ProactiveEvent(
+                event_type=name, source='presence', occurred_at=occurred_at, received_at=now,
+                dedupe_key=f'{name}:{occurred_at.isoformat()}', expires_at=now + timedelta(minutes=30),
+                importance=.8 if name in summaries else .1, urgency=.2,
+                priority=Priority.NOTICE if name in summaries else Priority.INFO,
+                status=EventStatus.PENDING if name in summaries else EventStatus.HANDLED,
+                payload={'summary': summaries.get(name, ''), 'last_seen': now.isoformat()},
+            ))
+            self.metrics.increment('interaction.state_events')
         quiet = self.state.quiet_until and self.state.quiet_until > now
         recent = self.state.last_interaction_at or self.started_at
         context = ' '.join(s.context for s in self.sensors if s.healthy)
-        active = self.active()
+        snapshot = interaction.snapshot
+        active = (snapshot.healthy and not snapshot.locked and snapshot.last_input_seconds < 300) if snapshot else self.active()
+        receptive = interaction.state == InteractionState.SEMI_ACTIVE
+        minimum = timedelta(minutes=45) if receptive else timedelta(hours=self.settings.proactive_natural_checkin_min_hours)
         if (self.settings.proactive_natural_checkin_enabled and not quiet and active
+                and interaction.state not in {InteractionState.ACTIVE, InteractionState.AWAY}
+                and not (snapshot and snapshot.fullscreen)
                 and not self.state.interacting and not self.focus_active and context
                 and all(s.healthy for s in self.sensors)
-                and now - recent >= timedelta(hours=self.settings.proactive_natural_checkin_min_hours)):
+                and now - recent >= minimum):
             day = now.astimezone(ZoneInfo(self.settings.proactive_timezone)).date()
             if await self.buffer.add(ProactiveEvent(
                 event_type='natural_checkin', source='heartbeat', occurred_at=now, received_at=now,
-                dedupe_key=f'natural-checkin:{day}', importance=.8, urgency=.2,
+                dedupe_key=f'natural-checkin:{day}', importance=.95, urgency=.4,
                 expires_at=now + timedelta(hours=1), payload={'summary': context[:600]},
             )):
                 self.metrics.increment('proactive.sensor_events')

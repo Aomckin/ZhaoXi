@@ -15,6 +15,8 @@ class EventBuffer:
             return False
         if event.expires_at is None:
             event.expires_at = event.received_at + timedelta(hours=6)
+        if event.status != EventStatus.PENDING:
+            return await self.store.add_event(event)
         pending = await self.store.pending_events(self.capacity + 1)
         if len(pending) >= self.capacity:
             lowest = min(pending, key=lambda e: e.importance + e.urgency)

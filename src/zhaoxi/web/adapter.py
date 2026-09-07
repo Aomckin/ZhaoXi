@@ -5,9 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
+from datetime import datetime
 
 from zhaoxi.core.agent import ZhaoxiAgent
-from zhaoxi.interfaces import InterfaceChannel, InterfaceGateway, UnifiedMessage
+from zhaoxi.interfaces import InterfaceChannel, InterfaceGateway, UnifiedMessage, UnifiedResponse
 
 
 @dataclass(slots=True)
@@ -18,6 +19,7 @@ class WebResult:
     request_id: str | None = None
     trace_id: str | None = None
     status: str = "completed"
+    timestamp: datetime | None = None
 
 
 class WebInterfaceAdapter:
@@ -51,14 +53,15 @@ class WebInterfaceAdapter:
         self.gateway.clear()
 
     @staticmethod
-    def _result(response: Any) -> WebResult:
-        activity = dict(getattr(response, "activity", {}))
-        permission = getattr(response, "permission", None)
+    def _result(response: UnifiedResponse) -> WebResult:
+        activity = dict(response.activity)
+        permission = response.permission
         return WebResult(
-            content=str(getattr(response, "content", "")),
+            content=response.content,
             activity=activity,
             permission=permission.model_dump() if permission is not None else None,
-            request_id=getattr(response, "request_id", None),
-            trace_id=getattr(response, "trace_id", None),
-            status=getattr(response, "status", "completed"),
+            request_id=response.request_id,
+            trace_id=response.trace_id,
+            status=response.status,
+            timestamp=response.timestamp,
         )

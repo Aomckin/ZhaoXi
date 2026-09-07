@@ -3,6 +3,7 @@ import pytest
 from zhaoxi.planner.models import Goal, GoalStatus
 from zhaoxi.planner.models import Plan, PlanStep, StepStatus
 from zhaoxi.planner.sqlite import SQLitePlanStore
+from zhaoxi.planner.store import InMemoryPlanStore
 from zhaoxi.planner.runtime import PlannerRuntime
 from zhaoxi.permission.models import InvocationOrigin, PendingConfirmation, PermissionLevel, PermissionRequest
 from datetime import UTC, datetime, timedelta
@@ -36,8 +37,9 @@ async def test_sqlite_plan_store_rejects_newer_schema(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_planner_rebuilds_persistent_permission_wait(tmp_path):
-    store = SQLitePlanStore(tmp_path / "planner.db")
+@pytest.mark.parametrize("persistent", [True, False])
+async def test_planner_rebuilds_permission_wait(tmp_path, persistent):
+    store = SQLitePlanStore(tmp_path / "planner.db") if persistent else InMemoryPlanStore()
     goal = Goal(description="恢复写入")
     step = PlanStep(description="写入", status=StepStatus.RUNNING)
     goal.plans.append(Plan(goal_id=goal.id, revision=1, steps=[step]))
@@ -69,7 +71,7 @@ async def test_planner_rebuilds_persistent_permission_wait(tmp_path):
         provider=SimpleNamespace(),
         registry=SimpleNamespace(),
         context_builder=SimpleNamespace(),
-        store=SQLitePlanStore(tmp_path / "planner.db"),
+        store=SQLitePlanStore(tmp_path / "planner.db") if persistent else store,
         tool_executor=SimpleNamespace(),
     )
     restored = runtime._pending_permissions[pending.confirmation_id]
