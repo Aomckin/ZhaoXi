@@ -39,6 +39,14 @@ class Settings(BaseSettings):
     memory_db_path: str = ".zhaoxi/memory.db"
     memory_retrieval_limit: int = Field(default=6, ge=1, le=50)
     memory_context_max_chars: int = Field(default=4000, ge=200, le=50_000)
+    archive_enabled: bool = True
+    archive_directory: str = "data/archive"
+    archive_db_path: str = ".zhaoxi/archive.db"
+    archive_search_top_k: int = Field(default=5, ge=1, le=20)
+    archive_context_max_chars: int = Field(default=6000, ge=200, le=50_000)
+    archive_max_document_chars: int = Field(default=12_000, ge=200, le=100_000)
+    archive_chunk_max_chars: int = Field(default=3000, ge=500, le=20_000)
+    archive_chunk_overlap_chars: int = Field(default=200, ge=0, le=2000)
     planner_enabled: bool = True
     planner_db_path: str = ".zhaoxi/planner.db"
     planner_max_steps: int = Field(default=12, ge=1, le=100)
@@ -168,6 +176,8 @@ class Settings(BaseSettings):
             raise ValueError("memory importance 遗忘阈值必须低于保留阈值")
         if self.memory_relevance_forget_threshold >= self.memory_relevance_active_threshold:
             raise ValueError("memory relevance 遗忘阈值必须低于活跃阈值")
+        if self.archive_chunk_overlap_chars >= self.archive_chunk_max_chars:
+            raise ValueError("archive chunk overlap 必须小于 chunk max chars")
         if self.proactive_night_start_hour == self.proactive_night_end_hour:
             raise ValueError("proactive night 起止小时不能相同")
         if self.desktop_activation_port == self.web_port:

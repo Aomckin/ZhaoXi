@@ -207,6 +207,24 @@ def test_diagnostics_exposes_content_free_metrics():
     assert "private canary" not in str(payload)
 
 
+def test_diagnostics_exposes_archive_health_without_document_content():
+    agent = FakeAgent()
+    agent.archive = SimpleNamespace(status=lambda: {
+        "enabled": True,
+        "documents": 2,
+        "chunks": 7,
+        "last_indexed_at": "2026-09-07T00:00:00+00:00",
+        "index_healthy": True,
+        "index_errors": [],
+        "db_path": ".zhaoxi/archive.db",
+    })
+    app = create_app(agent=agent)
+    with TestClient(app) as client:
+        payload = client.get("/api/diagnostics").json()
+    assert payload["archive"]["documents"] == 2
+    assert "正文内容" not in str(payload)
+
+
 def test_web_stays_available_in_first_run_setup_mode(tmp_path):
     settings = Settings(
         model_api_key="",
@@ -320,6 +338,8 @@ def test_web_shell_has_keyboard_and_live_status_accessibility_baseline():
     assert 'id="activity" class="activity" role="status" aria-live="polite"' in page
     assert 'id="connection" role="status" aria-live="polite"' in page
     assert "if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing)" in page
+    assert ".send,.mic{flex:0 0 34px;width:34px;height:34px" in page
+    assert "#attachImage{flex:0 0 34px;width:34px;height:34px" in page
 
 
 def test_desktop_api_token_guards_local_core_routes():

@@ -1,6 +1,6 @@
 # 朝汐 ZhaoXi 代码现状与交接说明
 
-> **当前开发分支：`v1.1.2`，运行时版本 `1.1.2`，v1.1.1 基线提交 `0b65cfd`**。潮间态、统一时间轴、桌面状态与动态建议已实现；已生成验证 wheel，真实模型、LifeHUD 长时运行、原生桌面图标及锁屏/全屏人工验收待完成。
+> **当前开发分支：`v1.1.3`，运行时版本 `1.1.3`**。潮庭书库、潮间态、统一时间轴、桌面状态与动态建议已实现；Archive 真实本地索引与全量自动测试已验证，真实模型端到端问答及既有桌面长时场景仍待人工验证。
 
 Life HUD 原始时间字段继续按带时区的 UTC Instant 解析；仅在生成 Tool observation 时转换到配置的展示时区（默认 `Asia/Shanghai`），不回写源数据。
 
@@ -9,6 +9,17 @@ v1.0 采用全新安装策略，不提供早期人工测试数据的 v0.9 原位
 v1.0 前置解耦已完成：Life HUD 实现与铁幕 Workflow 位于独立 `tools/lifehud_tool` 包，Core 通过通用 Tool Package discovery 加载；Registry 只暴露一个 `lifehud` Tool，并根据封闭 operation 动态解析 READ/WRITE 权限。Life HUD 项目本体保持只读。
 
 本文是后续开发的首要交接入口。版本、架构、数据结构、测试数量或关键限制发生变化时，应在同一提交中更新本文。
+
+## v1.1.3 当前增量
+
+- 新增 `src/zhaoxi/archive/`：Markdown Front Matter、heading-aware chunking、SQLite documents/chunks/metadata/index_state 与 FTS5 索引。
+- 默认从 `data/archive/` 启动增量索引；支持新增、修改、删除、稳定 ID、错误隔离、完整重建和 Sidecar attachment metadata。
+- 新增只读 `archive_list_documents`、`archive_search`、`archive_read` Tool，统一经过现有 Registry、Permission Gateway 与 Tool observation 边界。
+- 中文检索组合 FTS5/BM25、短语/二元词片 fallback、字段权重、authority 适度加成及 scope/type/authority 筛选。
+- Agent 规则明确 Archive、Memory、Conversation 边界、事实优先级、canonical 冲突和未知细节不得编造；认知路由对正式资料事实问题要求真实 Tool Call。
+- `--archive-status`、`--reindex-archive` 与 Web diagnostics 已接入；Archive DB 纳入现有验证式备份。
+- 首份角色身世文档迁入 `data/archive/zhaoxi/` 并标记 canonical；两张设定图配有只索引文本的 Sidecar Markdown。
+- 当前验证：**362 项 Python 测试通过，1 项 symlink 权限相关测试跳过**；compileall、CLI 重建/状态和 `git diff --check` 通过。完整报告见 [`Zhaoxi_v1.1.3_Release_Notes.md`](Zhaoxi_v1.1.3_Release_Notes.md)。
 
 ## v1.1.2 当前增量
 
@@ -256,6 +267,19 @@ ZHAOXI_MEMORY_RELEVANCE_ACCESS_BOOST=0.15
 ZHAOXI_MEMORY_COLD_ARCHIVE_AFTER_DAYS=30
 ```
 
+潮庭书库参数：
+
+```dotenv
+ZHAOXI_ARCHIVE_ENABLED=true
+ZHAOXI_ARCHIVE_DIRECTORY=data/archive
+ZHAOXI_ARCHIVE_DB_PATH=.zhaoxi/archive.db
+ZHAOXI_ARCHIVE_SEARCH_TOP_K=5
+ZHAOXI_ARCHIVE_CONTEXT_MAX_CHARS=6000
+ZHAOXI_ARCHIVE_MAX_DOCUMENT_CHARS=12000
+ZHAOXI_ARCHIVE_CHUNK_MAX_CHARS=3000
+ZHAOXI_ARCHIVE_CHUNK_OVERLAP_CHARS=200
+```
+
 v0.4 权限参数：
 
 ```dotenv
@@ -297,7 +321,7 @@ python main.py
 git diff --check
 ```
 
-当前自动化测试基线：**351 项 Python、17 项 Node 通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
+当前自动化测试基线：**362 项 Python 通过、1 项 symlink 权限相关测试跳过；既有 17 项 Node 前端测试保持通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
 
 ## 接手建议
 
@@ -309,7 +333,8 @@ git diff --check
 
 ## Git 基线
 
-- 当前开发分支：`v1.1.2`
+- 当前开发分支：`v1.1.3`
+- v1.1.3：潮庭书库实现、首批资料、自动测试与验收文档位于当前工作区，尚未提交。
 - v1.1.1 基线：`0b65cfd feat(v1.1.1): add tidal heartbeat and proactive inbox continuation`
 - v1.1.2：本次潮间态实现、前置清理与验收文档在同一提交中归档。
 - v1.0 起点：`87eb9c6 feat: complete v0.9 reliability hardening`

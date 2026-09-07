@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from zhaoxi.config.logging import configure_logging
 from zhaoxi.config.settings import Settings
+from zhaoxi.archive.service import ArchiveService
 from zhaoxi.cognitive.coordinator import CognitiveCoordinator
 from zhaoxi.cognitive.memory_decision import AutoMemory
 from zhaoxi.cognitive.router import CognitiveRouter
@@ -69,6 +70,28 @@ from zhaoxi.reflection.sources import MemoryReflectionSource
 from zhaoxi.reflection.sqlite import SQLiteReflectionRepository
 
 
+def build_archive(settings: Settings, *, reindex: bool = True) -> ArchiveService | None:
+    """Build the local archive without requiring model credentials."""
+    if not settings.archive_enabled:
+        return None
+    service = ArchiveService(
+        settings.archive_directory,
+        settings.archive_db_path,
+        search_top_k=settings.archive_search_top_k,
+        context_max_chars=settings.archive_context_max_chars,
+        max_document_chars=settings.archive_max_document_chars,
+        chunk_max_chars=settings.archive_chunk_max_chars,
+        chunk_overlap_chars=settings.archive_chunk_overlap_chars,
+    )
+    if reindex:
+        report = service.reindex()
+        if report.errors:
+            logging.getLogger("ARCHIVE").warning(
+                "archive indexed with %d document error(s)", len(report.errors)
+            )
+    return service
+
+
 def build_agent(settings: Settings) -> ZhaoxiAgent:
     """Wire v0.2 dependencies at the application boundary."""
     settings.validate_model_config()
@@ -119,8 +142,9 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         limit=settings.memory_retrieval_limit,
         max_chars=settings.memory_context_max_chars,
     )
+    archive_service = build_archive(settings)
     registry = ToolRegistry()
-    for tool in create_builtin_tools(memory_service):
+    for tool in create_builtin_tools(memory_service, archive_service):
         registry.register(tool)
     tool_package_errors: list[dict[str, str]] = []
     discovered_packages = discover_tool_packages(errors=tool_package_errors)
@@ -285,6 +309,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     agent.tool_package_errors = tool_package_errors
     agent.reflection = reflection_service
     agent.reflection_periods = reflection_periods
+    agent.archive = archive_service
     agent.capability_catalog = {
         "status": "ready",
         "tools": [
@@ -324,18 +349,21 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
             agent.proactive_heartbeat, ModelDecision(provider, context_builder.personality_prompt, agent.quick_suggestions),
         )
 
+    data_stores = [
+        DataStoreSpec("memory", Path(settings.memory_db_path)),
+        DataStoreSpec("planner", Path(settings.planner_db_path)),
+        DataStoreSpec("session", Path(settings.session_db_path)),
+        DataStoreSpec("permission", Path(settings.permission_db_path)),
+        DataStoreSpec("workflow", Path(settings.workflow_db_path)),
+        DataStoreSpec("proactive", Path(settings.proactive_db_path)),
+        DataStoreSpec("reflection", Path(settings.reflection_db_path)),
+        DataStoreSpec("permission_audit", Path(settings.permission_audit_path), kind="file"),
+    ]
+    if archive_service is not None:
+        data_stores.append(DataStoreSpec("archive", Path(settings.archive_db_path)))
     agent.backup_manager = BackupManager(
         settings.backup_directory,
-        [
-            DataStoreSpec("memory", Path(settings.memory_db_path)),
-            DataStoreSpec("planner", Path(settings.planner_db_path)),
-            DataStoreSpec("session", Path(settings.session_db_path)),
-            DataStoreSpec("permission", Path(settings.permission_db_path)),
-            DataStoreSpec("workflow", Path(settings.workflow_db_path)),
-            DataStoreSpec("proactive", Path(settings.proactive_db_path)),
-            DataStoreSpec("reflection", Path(settings.reflection_db_path)),
-            DataStoreSpec("permission_audit", Path(settings.permission_audit_path), kind="file"),
-        ],
+        data_stores,
         retention_count=settings.backup_retention_count,
     )
     unhealthy = [
@@ -357,7 +385,11 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         ]
         agent.cognitive = CognitiveCoordinator(
             agent=agent,
-            router=CognitiveRouter(provider, routing_hints=routing_hints),
+            router=CognitiveRouter(
+                provider,
+                routing_hints=routing_hints,
+                archive_enabled=archive_service is not None,
+            ),
             auto_memory=AutoMemory(provider, memory_service) if settings.auto_memory_enabled else None,
         )
     return agent
@@ -677,6 +709,8 @@ def main() -> None:
     modes.add_argument("--web", action="store_true", help="启动本地 Web 交互界面")
     modes.add_argument("--desktop", action="store_true", help="启动本地桌面常驻界面")
     modes.add_argument("--doctor", action="store_true", help="检查首次启动配置与可选能力，不启动 Agent")
+    modes.add_argument("--archive-status", action="store_true", help="查看潮庭书库索引状态，不启动 Agent")
+    modes.add_argument("--reindex-archive", action="store_true", help="重建潮庭书库索引，不启动 Agent")
     parser.add_argument("--background", action="store_true", help="Desktop 初始隐藏窗口")
     for action in ("install", "remove"):
         modes.add_argument(f"--{action}-autostart", action="store_true")
@@ -698,6 +732,19 @@ def main() -> None:
         import json
 
         print(json.dumps(startup_diagnostics(Settings()), ensure_ascii=False, indent=2))
+        return
+    if args.archive_status or args.reindex_archive:
+        import json
+
+        configured = Settings()
+        archive = build_archive(configured, reindex=False)
+        if archive is None:
+            payload = {"enabled": False}
+        elif args.reindex_archive:
+            payload = archive.reindex(force=True).model_dump(mode="json")
+        else:
+            payload = archive.status()
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
         return
     if args.desktop:
         from zhaoxi.desktop import run_desktop

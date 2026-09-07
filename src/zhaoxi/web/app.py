@@ -250,6 +250,11 @@ def create_app(
                 "voice": voice_runtime is not None,
                 "background_tasks": supervisor.active_count,
             },
+            "archive": (
+                core.archive.status()
+                if getattr(core, "archive", None) is not None
+                else {"enabled": False}
+            ),
             "tool_packages": getattr(core, "tool_packages", []),
             "tool_package_errors": getattr(core, "tool_package_errors", []),
             "startup": getattr(core, "startup_diagnostics", None),

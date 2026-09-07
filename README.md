@@ -1,6 +1,19 @@
 # Zhaoxi / 朝汐
 
-Zhaoxi 1.1.2 是一个可扩展的本地个人 Agent Core，提供对话、记忆、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与独立 Tool Package 能力。
+Zhaoxi 1.1.3 是一个可扩展的本地个人 Agent Core，提供对话、记忆、潮庭书库、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与独立 Tool Package 能力。
+
+## v1.1.3 潮庭书库
+
+`data/archive/` 是人工维护的本地 Markdown 资料库。启动时按文件哈希增量更新 `.zhaoxi/archive.db`，不会把整座书库常驻注入模型上下文。Agent 只在需要正式设定、用户长期资料或项目文档时调用 `archive_list_documents`、`archive_search`、`archive_read` 三个只读 Tool。
+
+书库支持 `zhaoxi`、`user`、`projects`、`reference` 四个 scope，以及 `canonical`、`reference`、`personal`、`draft` 四个 authority。当前用户明确指令优先级最高；canonical 高于普通 Archive 与 Memory；没有记录的细节不得编造。图片采用同名 Sidecar Markdown 和 `attachments` 元数据，不做 OCR 或图片向量化。
+
+```bash
+python main.py --archive-status
+python main.py --reindex-archive
+```
+
+配置、实现边界与验收结果见 [v1.1.3 开发报告](docs/Zhaoxi_v1.1.3_Release_Notes.md)。
 
 Life HUD 通过独立的 `tools/lifehud_tool` 包接入，Core Registry 只注册一个 `lifehud` Tool；各能力由封闭 `operation` 区分，并按调用动态解析 READ/WRITE 权限。Life HUD API 的时间戳按原始 UTC 契约读取且不改写；发送给模型的 Tool observation 默认转换为 `Asia/Shanghai`，可通过 `ZHAOXI_TOOL_LIFEHUD_DISPLAY_TIMEZONE` 配置。
 

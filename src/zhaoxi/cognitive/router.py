@@ -51,13 +51,21 @@ class CognitiveRouter:
         "PLAN 仅用于确实存在多个步骤、依赖关系、检查后再整理或可能需要重规划的复杂目标。"
         "WORKFLOW 仅用于已经注册并由运行时提供的已知流程；"
         "用户要求检查外部事实或明确使用工具时选择 TOOL；"
+        "询问朝汐自身设定、用户长期资料或项目正式文档中的具体事实时选择 TOOL，以便查询潮庭书库；"
         "不要选择 DIRECT 后声称稍后检查。"
         "简单请求禁止选择 PLAN。"
     )
 
-    def __init__(self, provider: ModelProvider, *, routing_hints: list[dict[str, object]] | None = None) -> None:
+    def __init__(
+        self,
+        provider: ModelProvider,
+        *,
+        routing_hints: list[dict[str, object]] | None = None,
+        archive_enabled: bool = False,
+    ) -> None:
         self.provider = provider
         self.routing_hints = list(routing_hints or [])
+        self.archive_enabled = archive_enabled
 
     async def route(self, user_message: str) -> RouteDecision:
         try:
@@ -108,6 +116,9 @@ class CognitiveRouter:
 
     def _guard_simple_request(self, user_message: str, decision: RouteDecision) -> RouteDecision:
         text = user_message.casefold()
+        archive = self._archive_decision(text)
+        if archive is not None:
+            return archive
         if decision.route == CognitiveRoute.WORKFLOW:
             return decision
         hinted = self._hint_decision(user_message)
@@ -127,6 +138,9 @@ class CognitiveRouter:
 
     def _fallback(self, user_message: str) -> RouteDecision:
         text = user_message.casefold()
+        archive = self._archive_decision(text)
+        if archive is not None:
+            return archive
         hinted = self._hint_decision(user_message)
         if hinted is not None:
             return hinted
@@ -141,3 +155,22 @@ class CognitiveRouter:
         if any(marker in text for marker in tool_markers):
             return RouteDecision(route=CognitiveRoute.TOOL, reason="fallback: tool marker")
         return RouteDecision(route=CognitiveRoute.DIRECT, reason="fallback: simple conversation")
+
+    def _archive_decision(self, text: str) -> RouteDecision | None:
+        if not self.archive_enabled:
+            return None
+        domains = (
+            "朝汐", "潮庭", "暗苟", "身世", "设定", "向日葵发卡", "怕黑",
+            "夏装", "生日", "长期资料", "项目文档", "规划文档", "书库",
+        )
+        fact_markers = (
+            "为什么", "是谁", "谁送", "哪天", "哪一天", "什么时候", "是什么", "有哪些",
+            "怎么", "多少", "设定", "身世", "资料", "文档", "记载", "写过",
+        )
+        if any(item in text for item in domains) and any(item in text for item in fact_markers):
+            return RouteDecision(
+                route=CognitiveRoute.TOOL,
+                reason="archive factual query",
+                requires_tool_call=True,
+            )
+        return None

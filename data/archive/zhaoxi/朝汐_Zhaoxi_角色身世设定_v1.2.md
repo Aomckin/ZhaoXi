@@ -1,3 +1,17 @@
+---
+id: zhaoxi-lore-v1.2
+title: 朝汐角色身世设定
+scope: zhaoxi
+type: lore
+authority: canonical
+updated_at: 2026-09-04
+tags:
+  - 朝汐
+  - 潮庭
+  - 身世
+  - 人格
+---
+
 # 朝汐（Zhaoxi）角色身世设定
 
 > 版本：角色设定初版 v1.2  
