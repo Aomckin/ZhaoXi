@@ -39,6 +39,17 @@ class Settings(BaseSettings):
     memory_db_path: str = ".zhaoxi/memory.db"
     memory_retrieval_limit: int = Field(default=6, ge=1, le=50)
     memory_context_max_chars: int = Field(default=4000, ge=200, le=50_000)
+    memory_per_cluster_limit: int = Field(default=2, ge=1, le=20)
+    memory_graph_max_hops: int = Field(default=2, ge=0, le=2)
+    memory_graph_min_edge_weight: float = Field(default=0.25, ge=0, le=1)
+    memory_auto_consolidation_enabled: bool = True
+    memory_consolidate_after_episodes: int = Field(default=25, ge=2, le=1000)
+    memory_consolidation_interval_hours: float = Field(default=24, gt=0, le=720)
+    memory_consolidation_min_evidence: int = Field(default=3, ge=2, le=100)
+    memory_cluster_embedding_enabled: bool = True
+    memory_cluster_match_threshold: float = Field(default=0.38, ge=0, le=1)
+    memory_cluster_merge_threshold: float = Field(default=0.84, ge=0, le=1)
+    memory_edge_extraction_enabled: bool = True
     archive_enabled: bool = True
     archive_directory: str = "data/archive"
     archive_db_path: str = ".zhaoxi/archive.db"
@@ -64,6 +75,12 @@ class Settings(BaseSettings):
     memory_relevance_decay_per_day: float = Field(default=0.01, ge=0, le=1)
     memory_relevance_access_boost: float = Field(default=0.15, ge=0, le=1)
     memory_cold_archive_after_days: float = Field(default=30, ge=0)
+    memory_activation_active_threshold: float = Field(default=0.60, ge=0, le=1)
+    memory_activation_dormant_threshold: float = Field(default=0.20, ge=0, le=1)
+    memory_activation_decay_per_day: float = Field(default=0.01, ge=0, le=1)
+    memory_activation_access_boost: float = Field(default=0.12, ge=0, le=1)
+    memory_cold_dormant_after_days: float = Field(default=30, ge=0)
+    memory_dormant_archive_after_days: float = Field(default=90, ge=0)
     permission_read_policy: str = "allow"
     permission_write_policy: str = "confirm"
     permission_delete_policy: str = "confirm"
@@ -146,6 +163,16 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_planner_limits(self) -> "Settings":
         from zoneinfo import ZoneInfo
+        legacy_memory_settings = {
+            "memory_relevance_active_threshold": "memory_activation_active_threshold",
+            "memory_relevance_forget_threshold": "memory_activation_dormant_threshold",
+            "memory_relevance_decay_per_day": "memory_activation_decay_per_day",
+            "memory_relevance_access_boost": "memory_activation_access_boost",
+            "memory_cold_archive_after_days": "memory_cold_dormant_after_days",
+        }
+        for legacy, current in legacy_memory_settings.items():
+            if legacy in self.model_fields_set and current not in self.model_fields_set:
+                setattr(self, current, getattr(self, legacy))
         ZoneInfo(self.proactive_timezone)
         if not self.proactive_threshold_active <= self.proactive_threshold_semi_active <= self.proactive_threshold_idle:
             raise ValueError("主动阈值必须满足 ACTIVE <= SEMI_ACTIVE <= IDLE")
@@ -176,6 +203,12 @@ class Settings(BaseSettings):
             raise ValueError("memory importance 遗忘阈值必须低于保留阈值")
         if self.memory_relevance_forget_threshold >= self.memory_relevance_active_threshold:
             raise ValueError("memory relevance 遗忘阈值必须低于活跃阈值")
+        if self.memory_activation_dormant_threshold >= self.memory_activation_active_threshold:
+            raise ValueError("memory activation dormant 阈值必须低于 active 阈值")
+        if self.memory_cold_dormant_after_days > self.memory_dormant_archive_after_days:
+            raise ValueError("memory cold dormant 天数不能大于 dormant archive 天数")
+        if self.memory_cluster_match_threshold >= self.memory_cluster_merge_threshold:
+            raise ValueError("memory cluster match threshold 必须低于 merge threshold")
         if self.archive_chunk_overlap_chars >= self.archive_chunk_max_chars:
             raise ValueError("archive chunk overlap 必须小于 chunk max chars")
         if self.proactive_night_start_hour == self.proactive_night_end_hour:

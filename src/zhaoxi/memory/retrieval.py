@@ -7,13 +7,21 @@ from zhaoxi.memory.service import MemoryService
 
 
 class MemoryRetriever:
-    def __init__(self, service: MemoryService, *, limit: int = 6, max_chars: int = 4000) -> None:
+    def __init__(self, service: MemoryService, *, limit: int = 6, max_chars: int = 4000,
+                 per_cluster_limit: int = 2, max_hops: int = 2,
+                 min_edge_weight: float = 0.25) -> None:
         self.service = service
         self.limit = limit
         self.max_chars = max_chars
+        self.per_cluster_limit = per_cluster_limit
+        self.max_hops = max_hops
+        self.min_edge_weight = min_edge_weight
 
     async def retrieve(self, text: str) -> list[MemorySearchResult]:
-        return await self.service.search(MemoryQuery(text=text, limit=self.limit))
+        return await self.service.search(MemoryQuery(
+            text=text, limit=self.limit, per_cluster_limit=self.per_cluster_limit,
+            max_hops=self.max_hops, min_edge_weight=self.min_edge_weight,
+        ))
 
     def format(self, results: list[MemorySearchResult]) -> str:
         if not results:
@@ -24,17 +32,33 @@ class MemoryRetriever:
         )
         parts = [header]
         used = len(header)
+        grouped: dict[str, list[MemorySearchResult]] = {}
         for item in results:
-            record = item.record
-            line = (
-                f'<memory id="{escape(record.id)}" kind="{record.kind.value}" '
-                f'time="{record.created_at.isoformat()}" confidence="{record.confidence:g}" '
-                f'importance="{record.importance:g}" relevance="{record.relevance:g}" '
-                f'source="{escape(record.source_name or record.source_type.value)}">'
-                f"{escape(record.content)}</memory>\n"
-            )
-            if used + len(line) > self.max_chars:
+            topic = item.cluster.topic if item.cluster else "未聚类"
+            grouped.setdefault(topic, []).append(item)
+        for topic, items in grouped.items():
+            cluster = items[0].cluster
+            heading = f'\n<memory-topic name="{escape(topic)}">\n'
+            if cluster and cluster.summary:
+                heading += f"<summary>{escape(cluster.summary)}</summary>\n"
+            if used + len(heading) > self.max_chars:
                 break
-            parts.append(line)
-            used += len(line)
+            parts.append(heading)
+            used += len(heading)
+            for item in items:
+                record = item.record
+                memory_time = record.event_at or record.created_at
+                line = (
+                    f'<memory id="{escape(record.id)}" kind="{record.kind.value}" '
+                    f'time="{memory_time.isoformat()}" confidence="{record.confidence:g}" '
+                    f'importance="{record.importance:g}" activation="{record.activation:g}" '
+                    f'contextual_relevance="{item.contextual_relevance:g}" '
+                    f'source="{escape(record.source_name or record.source_type.value)}">'
+                    f"{escape(record.content)}</memory>\n"
+                )
+                if used + len(line) > self.max_chars:
+                    break
+                parts.append(line)
+                used += len(line)
+            parts.append("</memory-topic>\n")
         return "".join(parts).rstrip()

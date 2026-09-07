@@ -1,6 +1,30 @@
 # 朝汐 ZhaoXi 代码现状与交接说明
 
-> **当前开发分支：`v1.1.3`，运行时版本 `1.1.3`**。潮庭书库、潮间态、统一时间轴、桌面状态与动态建议已实现；Archive 真实本地索引与全量自动测试已验证，真实模型端到端问答及既有桌面长时场景仍待人工验证。
+> **当前开发分支：`v1.1.4`，运行时版本 `1.1.4.1`**。联想记忆自动 Consolidation、开放式 Cluster 与实体名称型 EDGE 抽取闭环已完成；真实模型端到端提取及既有桌面长时场景仍待人工验证。
+
+## v1.1.4.1 当前增量
+
+- AutoConsolidator 在对话后按新增 Episode 数或时间间隔低频检查；先纯代码预筛，无候选保持 0 次 LLM，有候选一次批量调用。
+- 自动归纳只创建派生 Semantic或更新 evidence/confidence/last_confirmed_at，不归档、删除、替代或修改原 Episode。
+- Cluster Match 综合 tag/entity/lexical/embedding/time；`local-hash-v1` 的 embedding 权重降至 5%，神经 Provider 可提高至 40%。
+- Cluster 保存 deterministic centroid；高置信相似 Cluster 可迁移成员并将旧 Cluster 标记 inactive/merged。
+- EDGE Candidate 使用 source_entity/target_entity/relation_label；Service 解析 Concept Node 与 canonical aliases，禁止模型猜内部 ID。
+- `朝汐` / `Zhaoxi` 默认指向同一 Entity；缺字段 EDGE 稳定降级为 NODE，不产生坏边。
+- Retrieval Inspect 增加 seed_memory_id、edge_relation、relation_label、graph_hop 与 graph contribution 路径说明。
+- Diagnostics 增加 Consolidation、Cluster merge、EDGE extraction 与 Entity Node 指标。
+- 当前验证：**379 项 Python 通过、1 项 symlink 权限相关测试跳过，17 项 Node 通过**。
+
+## v1.1.4 当前增量
+
+- Memory 扩展为五种 kind 与 NODE / EDGE shape；事件时间、有效期、确认时间、参与者、实体、来源消息和证据链均进入正式 schema。
+- v1/v2 SQLite 启动时升级到 v3；旧 `relevance` 值复制为初始 `activation`，旧记录和原状态不丢失。
+- AutoMemory 一次模型调用输出 0~N 条 `MemoryCandidate`，生活小事、短期状态和计划不再默认忽略。
+- 规则主题归类、Cluster 摘要与成员表、可重建关系边、本地 hash embedding 缓存和 O(n) cosine scan 已接入写入链路。
+- 混合召回以 keyword/embedding 为主，结合时间、Graph、activation、importance；普通检索默认每 Cluster 最多 2 条，明确主题回忆可展开。
+- ACTIVE → COLD → DORMANT → ARCHIVED 自然衰减与 1/2-hop activation spreading 已实现；FORGOTTEN 仍只用于明确遗忘。
+- Consolidation 生成带 `evidence_memory_ids` / `derived_at` 的 Semantic，保留 Episode，并建立双向证据边。
+- Web diagnostics 新增无内容的 memory 总量、kind/status、cluster、edge、embedding 与 consolidation 时间指标。
+- v1.1.4 专项测试包含 10,000 条 Memory 的 keyword 与 O(n) embedding 扫描；当前验证为 **372 项 Python 通过、1 项 symlink 权限相关测试跳过，17 项 Node 通过**。
 
 Life HUD 原始时间字段继续按带时区的 UTC Instant 解析；仅在生成 Tool observation 时转换到配置的展示时区（默认 `Asia/Shanghai`），不回写源数据。
 
@@ -248,7 +272,7 @@ ContextBuilder / MemoryRetriever
 ## 数据与兼容性
 
 - 默认数据库为 `.zhaoxi/memory.db`，目录已由 Git 忽略；不要将真实用户记忆提交进仓库。
-- schema 版本记录在数据库中，v1 → v2 使用 `ALTER TABLE` 增量迁移；新增字段必须继续提供兼容默认值和迁移测试。
+- schema 版本记录在数据库中，v1/v2 → v3 使用 `ALTER TABLE` 增量迁移；新增字段必须继续提供兼容默认值和迁移测试。
 - 正常忘记、归档、替代均保留记录；查询时必须明确需要包含的状态，避免把历史数据误注入普通上下文。
 - 测试必须使用临时数据库，不得覆盖工作目录中的真实 `.zhaoxi` 数据。
 - `.env` 已忽略；任何日志、文档、测试快照和提交中都不得出现真实 API Key。
@@ -265,7 +289,18 @@ ZHAOXI_MEMORY_RELEVANCE_FORGET_THRESHOLD=0.20
 ZHAOXI_MEMORY_RELEVANCE_DECAY_PER_DAY=0.01
 ZHAOXI_MEMORY_RELEVANCE_ACCESS_BOOST=0.15
 ZHAOXI_MEMORY_COLD_ARCHIVE_AFTER_DAYS=30
+ZHAOXI_MEMORY_ACTIVATION_ACTIVE_THRESHOLD=0.60
+ZHAOXI_MEMORY_ACTIVATION_DORMANT_THRESHOLD=0.20
+ZHAOXI_MEMORY_ACTIVATION_DECAY_PER_DAY=0.01
+ZHAOXI_MEMORY_ACTIVATION_ACCESS_BOOST=0.12
+ZHAOXI_MEMORY_COLD_DORMANT_AFTER_DAYS=30
+ZHAOXI_MEMORY_DORMANT_ARCHIVE_AFTER_DAYS=90
+ZHAOXI_MEMORY_PER_CLUSTER_LIMIT=2
+ZHAOXI_MEMORY_GRAPH_MAX_HOPS=2
+ZHAOXI_MEMORY_GRAPH_MIN_EDGE_WEIGHT=0.25
 ```
+
+旧 `ZHAOXI_MEMORY_RELEVANCE_*` 与 `ZHAOXI_MEMORY_COLD_ARCHIVE_AFTER_DAYS` 在 v1.1.4 保留一个兼容周期；新部署应使用 activation/dormant 名称。
 
 潮庭书库参数：
 
@@ -321,7 +356,7 @@ python main.py
 git diff --check
 ```
 
-当前自动化测试基线：**362 项 Python 通过、1 项 symlink 权限相关测试跳过；既有 17 项 Node 前端测试保持通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
+当前自动化测试基线：**379 项 Python 通过、1 项 symlink 权限相关测试跳过；17 项 Node 前端测试通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
 
 ## 接手建议
 
@@ -333,7 +368,9 @@ git diff --check
 
 ## Git 基线
 
-- 当前开发分支：`v1.1.3`
+- 当前开发分支：`v1.1.4`
+- v1.1.4.1：自动 Consolidation、开放式 Cluster、Entity/EDGE 闭环与专项测试位于当前工作区，尚未提交。
+- v1.1.4：联想记忆结构重构、专项测试和开发报告位于当前工作区，尚未提交。
 - v1.1.3：潮庭书库实现、首批资料、自动测试与验收文档位于当前工作区，尚未提交。
 - v1.1.1 基线：`0b65cfd feat(v1.1.1): add tidal heartbeat and proactive inbox continuation`
 - v1.1.2：本次潮间态实现、前置清理与验收文档在同一提交中归档。

@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 from enum import StrEnum
+import re
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
@@ -15,6 +16,17 @@ class Role(StrEnum):
     USER = "user"
     ASSISTANT = "assistant"
     TOOL = "tool"
+
+
+_TIMELINE_HEADER = re.compile(
+    r"^\s*\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?"
+    r"(?:Z|[+-]\d{2}:\d{2})\s*·\s*(?:assistant|user|朝汐主动消息)\]\s*\r?\n"
+)
+
+
+def strip_echoed_timeline_header(content: str) -> str:
+    """Remove only a leaked internal timeline header at the start of a reply."""
+    return _TIMELINE_HEADER.sub("", content, count=1)
 
 
 class Message(BaseModel):

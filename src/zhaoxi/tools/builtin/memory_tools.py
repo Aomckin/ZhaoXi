@@ -17,7 +17,7 @@ class RememberInput(BaseModel):
     confidence: float = Field(default=1.0, ge=0, le=1)
     supersedes_id: str | None = None
     importance: float = Field(default=0.9, ge=0, le=1)
-    relevance: float = Field(default=0.7, ge=0, le=1)
+    activation: float = Field(default=0.7, ge=0, le=1)
     pinned: bool = False
 
 
@@ -36,7 +36,7 @@ class UpdateMemoryInput(BaseModel):
     tags: list[str] | None = None
     confidence: float | None = Field(default=None, ge=0, le=1)
     importance: float | None = Field(default=None, ge=0, le=1)
-    relevance: float | None = Field(default=None, ge=0, le=1)
+    activation: float | None = Field(default=None, ge=0, le=1)
     pinned: bool | None = None
 
 
@@ -171,7 +171,7 @@ class ArchiveMemoryTool(Tool):
 
 class ReactivateMemoryTool(Tool):
     name = "reactivate_memory"
-    description = "重新激活一条 COLD 或 ARCHIVED 记忆并提高其 relevance。"
+    description = "重新激活一条 COLD、DORMANT 或 ARCHIVED 记忆并提高其 activation。"
     input_model = LifecycleMemoryInput
     permission = PermissionLevel.WRITE
     side_effects = frozenset({SideEffect.LOCAL_STATE})
@@ -201,7 +201,7 @@ class PinMemoryTool(Tool):
 
 class ConsolidateMemoriesTool(Tool):
     name = "consolidate_memories"
-    description = "将至少两条相关记忆压缩为一条稳定 Semantic Memory，并归档旧细节。"
+    description = "从至少两条相关经历归纳一条可追溯 Semantic Memory，并保留原始 Episode。"
     input_model = ConsolidateMemoriesInput
     permission = PermissionLevel.WRITE
     side_effects = frozenset({SideEffect.LOCAL_STATE})

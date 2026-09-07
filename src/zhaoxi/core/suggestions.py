@@ -3,6 +3,8 @@ import json
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from zhaoxi.core.message import strip_echoed_timeline_header
+
 
 SUGGESTION_RULE = (
     '\n最终自然回复后可以附加 <quick_suggestions>{"chat":"聊天类建议",'
@@ -44,8 +46,8 @@ class QuickSuggestions:
                     self.accept(json.loads(payload))
                 except (ValueError, TypeError):
                     pass
-            return head.rstrip()
-        return content
+            return strip_echoed_timeline_header(head.rstrip())
+        return strip_echoed_timeline_header(content)
 
     def get(self, conversation, state=None, focus=False, recent_proactive=False, now=None):
         now = now or datetime.now(UTC)

@@ -93,3 +93,22 @@ def test_invalid_suggestions_are_hidden_without_replacing_cache():
     assert cache.extract('你好<quick_suggestions>{broken') == '你好'
     assert cache.extract('你好<quick_suggestions>{}</quick_suggestions>') == '你好'
     assert cache.suggestions == list(VALUES.values())
+
+
+def test_echoed_internal_timeline_header_is_removed_from_model_reply():
+    cache = QuickSuggestions()
+    leaked = '[2026-09-07T16:56:46+08:00 · assistant]\n真正应该显示的回复。'
+    assert cache.extract(leaked) == '真正应该显示的回复。'
+    assert cache.extract('[提示]\n这是正常正文。') == '[提示]\n这是正常正文。'
+    assert cache.extract('正文里的 [2026-09-07T16:56:46+08:00 · assistant] 保留。').startswith('正文里的')
+
+
+async def test_session_load_cleans_leaked_timeline_header(tmp_path):
+    store = SQLiteSessionStore(tmp_path / 'sessions.db')
+    session = await store.create()
+    session.conversation.add_assistant(
+        '[2026-09-07T16:56:46+08:00 · assistant]\n真正应该显示的回复。'
+    )
+    await store.save(session)
+    restored = await store.get(session.id)
+    assert restored.conversation.messages[0].content == '真正应该显示的回复。'

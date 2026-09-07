@@ -11,6 +11,7 @@ from zhaoxi.config.settings import Settings
 from zhaoxi.archive.service import ArchiveService
 from zhaoxi.cognitive.coordinator import CognitiveCoordinator
 from zhaoxi.cognitive.memory_decision import AutoMemory
+from zhaoxi.memory.consolidation import AutoConsolidationConfig
 from zhaoxi.cognitive.router import CognitiveRouter
 from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.core.context import ContextBuilder
@@ -129,18 +130,26 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         SQLiteMemoryRepository(settings.memory_db_path),
         MemoryLifecyclePolicy(
             importance_keep_threshold=settings.memory_importance_keep_threshold,
-            relevance_active_threshold=settings.memory_relevance_active_threshold,
             importance_forget_threshold=settings.memory_importance_forget_threshold,
-            relevance_forget_threshold=settings.memory_relevance_forget_threshold,
-            relevance_decay_per_day=settings.memory_relevance_decay_per_day,
-            relevance_access_boost=settings.memory_relevance_access_boost,
-            cold_archive_after_days=settings.memory_cold_archive_after_days,
+            activation_active_threshold=settings.memory_activation_active_threshold,
+            activation_dormant_threshold=settings.memory_activation_dormant_threshold,
+            activation_decay_per_day=settings.memory_activation_decay_per_day,
+            activation_access_boost=settings.memory_activation_access_boost,
+            cold_dormant_after_days=settings.memory_cold_dormant_after_days,
+            dormant_archive_after_days=settings.memory_dormant_archive_after_days,
         ),
+        cluster_embedding_enabled=settings.memory_cluster_embedding_enabled,
+        cluster_match_threshold=settings.memory_cluster_match_threshold,
+        cluster_merge_threshold=settings.memory_cluster_merge_threshold,
+        edge_extraction_enabled=settings.memory_edge_extraction_enabled,
     )
     memory_retriever = MemoryRetriever(
         memory_service,
         limit=settings.memory_retrieval_limit,
         max_chars=settings.memory_context_max_chars,
+        per_cluster_limit=settings.memory_per_cluster_limit,
+        max_hops=settings.memory_graph_max_hops,
+        min_edge_weight=settings.memory_graph_min_edge_weight,
     )
     archive_service = build_archive(settings)
     registry = ToolRegistry()
@@ -366,6 +375,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         data_stores,
         retention_count=settings.backup_retention_count,
     )
+    agent.memory_service = memory_service
     unhealthy = [
         name for name, status in agent.backup_manager.health().items()
         if status["exists"] and not status["healthy"]
@@ -390,7 +400,15 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
                 routing_hints=routing_hints,
                 archive_enabled=archive_service is not None,
             ),
-            auto_memory=AutoMemory(provider, memory_service) if settings.auto_memory_enabled else None,
+            auto_memory=(AutoMemory(
+                provider, memory_service,
+                consolidation_config=AutoConsolidationConfig(
+                    enabled=settings.memory_auto_consolidation_enabled,
+                    after_episodes=settings.memory_consolidate_after_episodes,
+                    interval_hours=settings.memory_consolidation_interval_hours,
+                    min_evidence=settings.memory_consolidation_min_evidence,
+                ),
+            ) if settings.auto_memory_enabled else None),
         )
     return agent
 
@@ -412,7 +430,7 @@ async def interactive() -> None:
     from zhaoxi.interfaces import InterfaceGateway, UnifiedMessage, InterfaceChannel
     interface = InterfaceGateway(agent)
     print(
-        "Zhaoxi v1.1.2 · Development\n"
+        "Zhaoxi v1.1.4.1 · Development\n"
         "输入 /diagnostics 检查运行状态，/capabilities 查看能力，"
         "/reflection 生成回顾，/exit 退出。"
     )

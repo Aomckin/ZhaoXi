@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from zhaoxi.core.conversation import Conversation
-from zhaoxi.core.message import Message, Role
+from zhaoxi.core.message import Message, Role, strip_echoed_timeline_header
 from zhaoxi.session.base import Session, SessionStore
 
 
@@ -85,6 +85,8 @@ class SQLiteSessionStore(SessionStore):
                     content, _, background = body.partition('\n相关背景：')
                     message.delivery_id = 'legacy-' + hashlib.sha256(message.content.encode()).hexdigest()
                     message.timestamp, message.content, message.background = original_time, content, background[:2000]
+            if message.role == Role.ASSISTANT and not message.delivery_id and message.content:
+                message.content = strip_echoed_timeline_header(message.content)
         return Session(
             id=row["session_id"],
             conversation=Conversation(messages, max_messages=row["max_messages"]),

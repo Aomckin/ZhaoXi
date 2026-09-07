@@ -234,6 +234,7 @@ def create_app(
     async def diagnostics():
         """Return a bounded, content-free local runtime snapshot."""
         backup_manager = getattr(core, "backup_manager", None)
+        memory_service = getattr(core, "memory_service", None)
         return {
             "status": "ok",
             "version": __version__,
@@ -255,6 +256,7 @@ def create_app(
                 if getattr(core, "archive", None) is not None
                 else {"enabled": False}
             ),
+            "memory": await memory_service.diagnostics() if memory_service is not None else None,
             "tool_packages": getattr(core, "tool_packages", []),
             "tool_package_errors": getattr(core, "tool_package_errors", []),
             "startup": getattr(core, "startup_diagnostics", None),

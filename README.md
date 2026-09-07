@@ -1,6 +1,24 @@
 # Zhaoxi / 朝汐
 
-Zhaoxi 1.1.3 是一个可扩展的本地个人 Agent Core，提供对话、记忆、潮庭书库、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与独立 Tool Package 能力。
+Zhaoxi 1.1.4.1 是一个可扩展的本地个人 Agent Core，提供对话、联想记忆、潮庭书库、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与独立 Tool Package 能力。
+
+## v1.1.4.1 联想记忆闭环修正
+
+- 新 Episode 数量与时间间隔可触发低频自动 Consolidation；纯代码无候选时不调用模型。
+- Cluster 使用 tag、entity、lexical、embedding centroid 与时间接近度综合匹配，并支持可追溯合并。
+- AutoMemory 可输出实体名称型 EDGE Candidate；Service 负责 Concept/alias 解析、建边与缺字段降级。
+
+完整实现与验收见 [v1.1.4.1 开发报告](docs/Zhaoxi_v1.1.4.1_Release_Notes.md)。
+
+## v1.1.4 联想记忆
+
+- 单轮 AutoMemory 可批量提取 0~N 条原子生活记忆，覆盖 EPISODIC / SEMANTIC / STATE / INTENT / RELATIONSHIP。
+- 长期权重拆分为稳定 `importance`、可衰减 `activation` 与查询时动态 `contextual_relevance`。
+- SQLite schema v3 提供 Cluster、成员、Graph Edge、Embedding 与 Semantic Evidence 表，并无损迁移 v1/v2 数据。
+- 召回组合 keyword、O(n) local embedding、时间有效性、2-hop graph expansion 和 cluster diversity rerank。
+- Consolidation 保留原 Episode，并通过 EVIDENCE_FOR / DERIVED_FROM 边记录可追溯证据。
+
+设计、实现与验收结果见 [v1.1.4 开发报告](docs/Zhaoxi_v1.1.4_Release_Notes.md)。
 
 ## v1.1.3 潮庭书库
 
@@ -205,7 +223,7 @@ CLI 支持 `/tools`、`/permissions`、`/approve`、`/deny`、`/revoke`、`/audi
 - `echo`、安全 `calculator`、`current_time`
 - 内存 Session Store、结构化日志和无真实 API 的测试
 - SQLite 长期 Memory，进程重启后仍可读取
-- Episodic / Semantic 分层、来源、时间、置信度与标签
+- Episodic / Semantic / State / Intent / Relationship 分层、来源、时间、置信度与标签
 - `remember_memory`、`search_memories`、`update_memory`、`forget_memory`
 - 跨 Session 相关记忆检索与有边界的 Context 注入
 - 精确去重、冲突确认、显式替换与软遗忘
@@ -218,20 +236,20 @@ CLI 支持 `/tools`、`/permissions`、`/approve`、`/deny`、`/revoke`、`/audi
 - Cognitive Router 自动区分 `DIRECT`、`TOOL` 和 `PLAN`
 - 简单问题不启动 Planner，复杂依赖型目标自动规划
 - `DIRECT` 路径不暴露 Tool Schema
-- 回复后执行独立的 Auto Memory Decision
-- 自动记忆支持 `IGNORE`、`CREATE`、`UPDATE`、`MERGE`、`CONFLICT`
+- 回复后执行一次独立 Auto Memory 批量原子提取
+- 自动记忆一轮可生成 0~N 条候选，并兼容旧 `IGNORE` / `CREATE` / `UPDATE` / `MERGE` / `CONFLICT`
 - 用户“记住 / 不要记 / 忘掉”意图拥有最高优先级
 - 只读规划任务会从确定性执行层阻止状态变更工具
-- `importance` / `relevance` 二维记忆模型与可配置衰减策略
-- `ACTIVE → COLD → ARCHIVED → FORGOTTEN` 生命周期
-- 检索命中提升 relevance，COLD 记忆可按相关主题重新激活
+- `importance` / `activation` 持久权重与动态 `contextual_relevance`
+- `ACTIVE → COLD → DORMANT → ARCHIVED` 自然生命周期；明确遗忘才进入 `FORGOTTEN`
+- 检索命中提升 activation，并向 1/2-hop 邻居轻量传播
 - Pinned 关键记忆不参与自动归档，用户仍可显式遗忘
 - `archive_memory`、`reactivate_memory`、`pin_memory`、`consolidate_memories`
-- 多条细节记忆可压缩为高重要度 Semantic Memory
+- 多条 Episode 可归纳为带证据链的 Semantic Memory，原 Episode 保留
 - 可重复查询的 Tool 事实默认不复制进长期 Memory
-- SQLite schema v1 自动迁移至 v2，不丢失旧记录
+- SQLite schema v1/v2 自动迁移至 v3，不丢失旧记录
 
-长期记忆默认保存到 `.zhaoxi/memory.db`，可通过 `ZHAOXI_MEMORY_DB_PATH` 修改，数据库目录已被 Git 忽略。主 Agent 不会在普通对话中自行调用记忆写入工具；最终回复生成后，独立的 Auto Memory Decision 会判断是否保存稳定偏好、身份关系、长期目标和项目状态等高价值信息。用户明确要求记住、禁止记忆或遗忘时，其意图拥有最高优先级。
+长期记忆默认保存到 `.zhaoxi/memory.db`，可通过 `ZHAOXI_MEMORY_DB_PATH` 修改，数据库目录已被 Git 忽略。主 Agent 不会在普通对话中自行调用记忆写入工具；最终回复生成后，独立 Auto Memory Extractor 会宽松提取值得留下的生活痕迹，再由 Cluster、Graph 与 Hybrid Retrieval 控制召回。用户明确要求记住、禁止记忆或遗忘时，其意图拥有最高优先级。
 
 CLI 可直接检查记忆：
 
