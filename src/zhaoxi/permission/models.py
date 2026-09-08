@@ -22,6 +22,7 @@ class SideEffect(StrEnum):
     DATA_DELETION = "data_deletion"
     EXTERNAL_COMMUNICATION = "external_communication"
     SYSTEM_CHANGE = "system_change"
+    EXTERNAL_SERVICE_WRITE = "external_service_write"
 
 
 class PermissionStatus(StrEnum):

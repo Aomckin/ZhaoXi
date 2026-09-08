@@ -24,7 +24,7 @@ from zhaoxi.memory.lifecycle import MemoryLifecyclePolicy
 from zhaoxi.memory.retrieval import MemoryRetriever
 from zhaoxi.memory.service import MemoryService
 from zhaoxi.memory.sqlite import SQLiteMemoryRepository
-from zhaoxi.personality.loader import PersonalityLoader
+from zhaoxi.personality.loader import ExpressionLoader, PersonalityLoader
 from zhaoxi.planner.runtime import PlannerRuntime
 from zhaoxi.planner.sqlite import SQLitePlanStore
 from zhaoxi.planner.trace import TraceRecorder
@@ -49,6 +49,14 @@ from zhaoxi.proactive import (
 from zhaoxi.tools.builtin import create_builtin_tools
 from zhaoxi.tools.registry import ToolRegistry
 from zhaoxi.tools.packages import create_package_tools, discover_tool_packages
+from zhaoxi.tools.packages import (
+    capability_enabled,
+    config_for_package,
+    declared_capabilities,
+    package_enabled,
+    sdk_compatible,
+)
+from zhaoxi.proactive.continuation import ConversationContinuation
 from zhaoxi.workflow.loader import WorkflowLoader
 from zhaoxi.workflow.registry import WorkflowRegistry
 from zhaoxi.workflow.runtime import WorkflowRuntime
@@ -156,12 +164,48 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     for tool in create_builtin_tools(memory_service, archive_service):
         registry.register(tool)
     tool_package_errors: list[dict[str, str]] = []
-    discovered_packages = discover_tool_packages(errors=tool_package_errors)
+    try:
+        discovered_packages = discover_tool_packages(errors=tool_package_errors)
+    except Exception as exc:
+        discovered_packages = []
+        tool_package_errors.append({"source": "discovery", "error": type(exc).__name__})
     tool_packages = []
+    package_records = []
+    package_capabilities: dict[str, dict[str, bool]] = {}
     for package in discovered_packages:
         try:
-            for tool in create_package_tools(package):
-                registry.register(tool)
+            config = config_for_package(package.package_id)
+            enabled = package_enabled(config)
+            declaration = declared_capabilities(package)
+            requirement = str(getattr(package, "requires_sdk", ""))
+            if not sdk_compatible(requirement):
+                raise ValueError(f"incompatible SDK requirement: {requirement}")
+            flags = {
+                name: enabled and capability_enabled(declaration, name, config)
+                for name in type(declaration).model_fields
+            }
+            package_capabilities[package.package_id] = flags
+            record = {
+                "id": package.package_id,
+                "version": package.package_version,
+                "installed": True,
+                "enabled": enabled,
+                "configured": bool(config.get("base_url", True)),
+                "reachable": None,
+                "healthy": None,
+                "requires_sdk": requirement,
+                "capabilities": [name for name, value in flags.items() if value],
+                "backoff_until": None,
+            }
+            package_records.append(record)
+            if not enabled:
+                continue
+            configure = getattr(package, "configure", None)
+            if configure is not None:
+                configure(config)
+            if flags["tool"]:
+                for tool in create_package_tools(package):
+                    registry.register(tool)
             tool_packages.append(package)
         except Exception as exc:
             tool_package_errors.append({"source": package.package_id, "error": type(exc).__name__})
@@ -181,8 +225,11 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
             )
         ]
         for package in tool_packages:
-            if hasattr(package, "reflection_sources"):
-                reflection_sources.extend(package.reflection_sources())
+            if package_capabilities[package.package_id]["reflection_provider"] and hasattr(package, "reflection_sources"):
+                try:
+                    reflection_sources.extend(package.reflection_sources())
+                except Exception as exc:
+                    tool_package_errors.append({"source": f"{package.package_id}:reflection", "error": type(exc).__name__})
         reflection_service = ReflectionService(
             SQLiteReflectionRepository(settings.reflection_db_path),
             ReflectionCollector(
@@ -233,7 +280,8 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     conversation = session_record.conversation
     context_builder = ContextBuilder(
         PersonalityLoader.load_prompt(), memory_retriever=memory_retriever, timezone=settings.proactive_timezone,
-        suggestions_refresh_minutes=settings.quick_suggestions_refresh_minutes
+        suggestions_refresh_minutes=settings.quick_suggestions_refresh_minutes,
+        expression_prompt=ExpressionLoader.load_prompt(),
     )
     planner = None
     if settings.planner_enabled:
@@ -258,9 +306,13 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         for definition in WorkflowLoader().load_directory(settings.workflow_directory):
             workflow_registry.register(definition)
         for package in tool_packages:
-            for workflow_path in package.workflow_paths():
-                for definition in WorkflowLoader().load_directory(workflow_path):
-                    workflow_registry.register(definition)
+            if package_capabilities[package.package_id]["workflow"]:
+                try:
+                    for workflow_path in package.workflow_paths():
+                        for definition in WorkflowLoader().load_directory(workflow_path):
+                            workflow_registry.register(definition)
+                except Exception as exc:
+                    tool_package_errors.append({"source": f"{package.package_id}:workflow", "error": type(exc).__name__})
         workflow = WorkflowRuntime(
             workflow_registry,
             tool_executor,
@@ -271,11 +323,10 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         registered_workflows = workflow_registry.list()
     proactive = None
     proactive_scheduler = None
-    proactive_state = None
+    proactive_state = PolicyState(enabled=settings.proactive_enabled)
+    context_builder.interaction = proactive_state.interaction
     if settings.proactive_enabled:
         proactive_store = SQLiteProactiveStore(settings.proactive_db_path)
-        proactive_state = PolicyState(enabled=True)
-        context_builder.interaction = proactive_state.interaction
         proactive = ProactiveRuntime(
             proactive_store,
             InboxNotificationSink(proactive_store),
@@ -311,10 +362,8 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     )
     agent.session_store = session_store
     agent.session_record = session_record
-    agent.tool_packages = [
-        {"id": package.package_id, "version": package.package_version}
-        for package in tool_packages
-    ]
+    agent.tool_packages = package_records
+    agent.tool_package_instances = {package.package_id: package for package in tool_packages}
     agent.tool_package_errors = tool_package_errors
     agent.reflection = reflection_service
     agent.reflection_periods = reflection_periods
@@ -330,7 +379,12 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
             for definition in registered_workflows
         ],
         "packages": [
-            package.capabilities()
+            {
+                **package.capabilities(),
+                "enabled_capabilities": [
+                    name for name, value in package_capabilities[package.package_id].items() if value
+                ],
+            }
             for package in tool_packages
             if hasattr(package, "capabilities")
         ],
@@ -347,15 +401,32 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         from zhaoxi.proactive.decision import ModelDecision
         from zhaoxi.proactive.worker import DecisionWorker
         sensors = []
+        signal_providers = []
         for package in tool_packages:
             factory = getattr(package, "proactive_sensors", None)
-            if factory is not None:
-                sensors.extend(factory())
+            if package_capabilities[package.package_id]["proactive_provider"] and factory is not None:
+                try:
+                    sensors.extend(factory())
+                except Exception as exc:
+                    tool_package_errors.append({"source": f"{package.package_id}:proactive", "error": type(exc).__name__})
+            signal_factory = getattr(package, "state_signal_providers", None)
+            if package_capabilities[package.package_id]["state_signal_provider"] and signal_factory is not None:
+                try:
+                    signal_providers.extend(signal_factory())
+                except Exception as exc:
+                    tool_package_errors.append({"source": f"{package.package_id}:state_signals", "error": type(exc).__name__})
         agent.proactive_heartbeat = TidalHeartbeat(
             proactive, proactive_scheduler, proactive_state, settings, agent.metrics, sensors,
+            signal_providers=signal_providers,
         )
+        agent.conversation_continuation = ConversationContinuation(
+            silence_minutes=settings.continuation_silence_minutes,
+            cooldown_minutes=settings.continuation_cooldown_minutes,
+            budget=settings.continuation_budget_per_active_window,
+        )
+        agent.proactive_heartbeat.continuation = agent.conversation_continuation
         agent.proactive_worker = DecisionWorker(
-            agent.proactive_heartbeat, ModelDecision(provider, context_builder.personality_prompt, agent.quick_suggestions),
+            agent.proactive_heartbeat, ModelDecision(provider, context_builder.character_prompt, agent.quick_suggestions),
         )
 
     data_stores = [
@@ -390,9 +461,14 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
             continue
         gateway.deny(confirmation_id)
     if settings.cognitive_router_enabled:
-        routing_hints = [
-            hint for package in tool_packages for hint in package.routing_hints()
-        ]
+        routing_hints = []
+        for package in tool_packages:
+            if not package_capabilities[package.package_id]["router_hints"]:
+                continue
+            try:
+                routing_hints.extend(package.routing_hints())
+            except Exception as exc:
+                tool_package_errors.append({"source": f"{package.package_id}:router_hints", "error": type(exc).__name__})
         agent.cognitive = CognitiveCoordinator(
             agent=agent,
             router=CognitiveRouter(
@@ -430,7 +506,7 @@ async def interactive() -> None:
     from zhaoxi.interfaces import InterfaceGateway, UnifiedMessage, InterfaceChannel
     interface = InterfaceGateway(agent)
     print(
-        "Zhaoxi v1.1.4.1 · Development\n"
+        f"Zhaoxi v{__import__('zhaoxi').__version__} · Development\n"
         "输入 /diagnostics 检查运行状态，/capabilities 查看能力，"
         "/reflection 生成回顾，/exit 退出。"
     )

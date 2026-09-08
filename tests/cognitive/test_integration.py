@@ -31,11 +31,65 @@ def test_router_fallback_recognizes_iron_curtain_workflows():
     assert closed.workflow_inputs["note"] == "完成 Workflow"
 
 
+def test_router_hint_does_not_hijack_ordinary_opening_text():
+    hints = __import__("tools.lifehud_tool.package", fromlist=["create_package"]).create_package().routing_hints()
+    router = CognitiveRouter(FakeProvider([]), routing_hints=hints)
+    decision = router._fallback("那个电影节今天开幕了。")
+    assert decision.workflow_id != "lifehud.iron_curtain.open"
+
+
 def test_router_fallback_sends_lifehud_and_tool_inspection_to_tools():
     hints = __import__("tools.lifehud_tool.package", fromlist=["create_package"]).create_package().routing_hints()
     router = CognitiveRouter(FakeProvider([]), routing_hints=hints)
     assert router._fallback("随便用 LifeHUD 查点啥").route == CognitiveRoute.TOOL
     assert router._fallback("你检查下工具看看？").route == CognitiveRoute.TOOL
+
+
+@pytest.mark.asyncio
+async def test_contextual_lifehud_followup_forces_a_real_tool_call():
+    hints = __import__("tools.lifehud_tool.package", fromlist=["create_package"]).create_package().routing_hints()
+    provider = FakeProvider([
+        control("route_cognition", {"route": "direct", "reason": "错误地只看了当前短句"}),
+    ])
+    router = CognitiveRouter(provider, routing_hints=hints)
+
+    decision = await router.route(
+        "你明明可以查到的",
+        recent_context="user: 你肯定不知道我中午吃的啥\nassistant: 我可以看 LifeHUD",
+    )
+
+    assert decision.route == CognitiveRoute.TOOL
+    assert decision.requires_tool_call is True
+    assert decision.reason == "contextual tool follow-up"
+    assert "最近对话" in provider.calls[0][1].content
+
+
+@pytest.mark.asyncio
+async def test_contextual_tool_followup_cannot_end_on_a_verbal_promise(tmp_path):
+    service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"))
+    provider = FakeProvider([
+        control("route_cognition", {"route": "direct", "reason": "错误地只看了当前短句"}),
+        ModelResponse(content="我这就去看看。"),
+        control("current_time", {}),
+        ModelResponse(content="已经实际查过了。"),
+        control("decide_memory", {"action": "ignore", "reason": "一次查询"}),
+    ])
+    agent = make_cognitive(provider, service)
+    agent.cognitive.router.routing_hints = (
+        __import__("tools.lifehud_tool.package", fromlist=["create_package"])
+        .create_package()
+        .routing_hints()
+    )
+    agent.conversation.add_user("你肯定不知道我中午吃的啥")
+    agent.conversation.add_assistant("我可以看 LifeHUD。")
+
+    response = await agent.run_natural("你明明可以查到的")
+
+    assert response.route == CognitiveRoute.TOOL
+    assert response.content == "已经实际查过了。"
+    assert provider.tool_schemas[1]
+    assert provider.tool_schemas[2]
+    assert any(message.name == "current_time" for message in agent.conversation.messages)
 
 
 def control(name, arguments):

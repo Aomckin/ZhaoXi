@@ -28,6 +28,8 @@ class ContextBuilder:
         "潮庭书库是人工维护的正式资料，不等同于长期记忆或当前对话。冲突优先级为：当前用户明确指令、"
         "canonical Archive、reference/personal Archive、长期 Memory、模型推断。多个 canonical 冲突时说明冲突并请求确认；"
         "draft 不是绝对事实；书库没有记录的具体细节必须明确说没有记录。"
+        "Memory 与外部结构化事实可以共存：精确的 Focus、任务、睡眠和饮食字段优先采用当前可用的结构化来源；"
+        "经历、感受和对话语境优先采用 Memory。不得因为外部 Tool 不可用而拒绝记录生活经历，也不得让 Tool observation 覆盖 Memory。"
     )
 
     def __init__(
@@ -37,13 +39,22 @@ class ContextBuilder:
         memory_retriever: MemoryRetriever | None = None,
         timezone: str = "Asia/Shanghai",
         suggestions_refresh_minutes: int = 180,
+        expression_prompt: str = "",
     ) -> None:
         self.personality_prompt = personality_prompt
+        self.expression_prompt = expression_prompt
         self.runtime_rules = runtime_rules or self.RUNTIME_RULES
         self.memory_retriever = memory_retriever
         self.timezone = ZoneInfo(timezone)
         self.quick_suggestions = QuickSuggestions(timezone, suggestions_refresh_minutes)
         self.interaction = None
+
+    @property
+    def character_prompt(self) -> str:
+        """Compose stable identity and reply style while keeping them independently editable."""
+        return "\n\n".join(
+            prompt.strip() for prompt in (self.personality_prompt, self.expression_prompt) if prompt.strip()
+        )
 
     def build(
         self,
@@ -51,7 +62,7 @@ class ContextBuilder:
         memories: list[MemorySearchResult] | None = None,
         planner_context: str | None = None,
     ) -> list[Message]:
-        system = f"{self.personality_prompt}\n\n运行规则：\n{self.runtime_rules}"
+        system = f"{self.character_prompt}\n\n运行规则：\n{self.runtime_rules}"
         system += SUGGESTION_RULE
         if self.interaction is not None:
             system += "\n当前互动状态（仅状态元数据，不代表能读取屏幕或输入内容）：" + json.dumps(

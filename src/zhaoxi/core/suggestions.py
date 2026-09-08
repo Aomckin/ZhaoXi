@@ -65,7 +65,7 @@ class QuickSuggestions:
         text = recent.content if recent and recent.content else ''
         chat = '朝汐，接着刚才的话题聊聊吧。' if mode == 'ACTIVE' else '朝汐，陪我聊一会儿吧。'
         action = '帮我看看今天还有什么没收尾。' if local.hour >= 17 else '帮我看看今天最值得先做的一件事。'
-        life = '看看我这段专注持续多久了。' if focus else '看看 LifeHUD 今天的状态。'
+        life = '看看我这段专注持续多久了。' if focus else '聊聊我今天的状态。'
         explore = '说说刚才那条提醒吧。' if recent_proactive else ('帮我把刚才的编程问题拆成下一步。' if any(k in text for k in ('代码', '编程', 'bug')) else '一起回顾一下今天的小进展吧。')
         if mode == 'SEMI_ACTIVE':
             chat = '我刚忙完，陪我放松一会儿吧。'

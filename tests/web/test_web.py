@@ -337,6 +337,9 @@ def test_web_shell_has_keyboard_and_live_status_accessibility_baseline():
     assert 'aria-label="发送给朝汐的消息"' in page
     assert 'id="activity" class="activity" role="status" aria-live="polite"' in page
     assert 'id="connection" role="status" aria-live="polite"' in page
+    assert 'id="interactionBadge" class="interaction-badge" role="status" aria-live="polite" hidden' in page
+    assert "if(state==='ACTIVE')return {label:'活跃'" in page
+    assert "if(state==='SEMI_ACTIVE')return {label:'半活跃'" in page
     assert "if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing)" in page
     assert ".send,.mic{flex:0 0 34px;width:34px;height:34px" in page
     assert "#attachImage{flex:0 0 34px;width:34px;height:34px" in page

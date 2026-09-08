@@ -47,3 +47,27 @@ class ModelDecision:
             return result
         except Exception:
             return Decision(action='silent', reason='model_failed_or_invalid')
+
+    async def decide_continuation(self, candidate, now, state):
+        prompt = self.personality + (
+            '\n这是 ACTIVE 对话延续判断，不是事件提醒。只能输出 JSON：'
+            'action(silent/defer/speak)、priority、reason、content。'
+            '只有自然延续未结束的话题才 speak；不要催促、编造进展或调用工具。'
+        )
+        payload = {
+            'time': now.isoformat(),
+            'interaction_state': state.interaction.diagnostics(now),
+            'open_thread': {'summary': candidate.summary, 'last_user_message': candidate.user_text},
+        }
+        try:
+            with provider_budget_scope(1, 3000):
+                response = await asyncio.wait_for(self.provider.generate([
+                    Message(role=Role.SYSTEM, content=prompt),
+                    Message(role=Role.USER, content=json.dumps(payload, ensure_ascii=False, default=str)),
+                ]), timeout=30)
+            result = Decision.model_validate_json(response.content or '')
+            if result.action == 'speak' and not result.content.strip():
+                return Decision(action='silent', reason='empty_content')
+            return result
+        except Exception:
+            return Decision(action='silent', reason='model_failed_or_invalid')

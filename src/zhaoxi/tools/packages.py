@@ -6,24 +6,28 @@ from importlib import import_module, metadata
 from pathlib import Path
 from typing import Protocol
 import os
+import re
 
 from dotenv import dotenv_values
 
 from zhaoxi.tools.base import Tool
+from zhaoxi.sdk import SDK_VERSION, CapabilityDeclaration
 
 
 class ToolPackage(Protocol):
     package_id: str
     package_version: str
+    requires_sdk: str
 
     def create_tools(self, config: dict[str, object]) -> list[Tool]: ...
     def workflow_paths(self) -> list[Path]: ...
     def routing_hints(self) -> list[dict[str, object]]: ...
     def capabilities(self) -> dict[str, object]: ...
     def reflection_sources(self) -> list[object]: ...
+    def capability_declaration(self) -> CapabilityDeclaration: ...
 
 
-def _config_for(package_id: str) -> dict[str, object]:
+def config_for_package(package_id: str) -> dict[str, object]:
     identifier = package_id.removesuffix("-tool").replace("-", "_").upper()
     prefix = f"ZHAOXI_TOOL_{identifier}_"
     values = {**dotenv_values(".env"), **os.environ}
@@ -38,6 +42,61 @@ def _config_for(package_id: str) -> dict[str, object]:
         if key.startswith(legacy_prefix) and value is not None:
             config.setdefault(key[len(legacy_prefix):].lower(), value)
     return config
+
+
+def _as_bool(value: object, default: bool = True) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().casefold()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"invalid boolean value: {value}")
+
+
+def package_enabled(config: dict[str, object]) -> bool:
+    # Presence on disk is discovery, not user consent to activate a capability.
+    return _as_bool(config.get("enabled"), False)
+
+
+_CAPABILITY_CONFIG_KEYS = {
+    "tool": "tool_enabled",
+    "workflow": "workflow_enabled",
+    "router_hints": "router_hints_enabled",
+    "proactive_provider": "proactive_enabled",
+    "reflection_provider": "reflection_enabled",
+    "state_signal_provider": "state_signals_enabled",
+}
+
+
+def declared_capabilities(package: ToolPackage) -> CapabilityDeclaration:
+    factory = getattr(package, "capability_declaration", None)
+    if factory is None:
+        raise ValueError(f"Tool Package {package.package_id} lacks a capability declaration")
+    return CapabilityDeclaration.model_validate(factory())
+
+
+def capability_enabled(
+    declaration: CapabilityDeclaration,
+    name: str,
+    config: dict[str, object],
+) -> bool:
+    if not getattr(declaration, name):
+        return False
+    return _as_bool(config.get(_CAPABILITY_CONFIG_KEYS[name]), True)
+
+
+def sdk_compatible(requirement: str) -> bool:
+    """Validate the supported public SDK major without another runtime dependency."""
+    current_major = int(SDK_VERSION.split(".", 1)[0])
+    lower = re.search(r">=\s*(\d+)", requirement)
+    upper = re.search(r"<\s*(\d+)", requirement)
+    return bool(lower) and int(lower.group(1)) <= current_major and (
+        upper is None or current_major < int(upper.group(1))
+    )
 
 
 def discover_tool_packages(
@@ -70,4 +129,4 @@ def discover_tool_packages(
 
 
 def create_package_tools(package: ToolPackage) -> list[Tool]:
-    return package.create_tools(_config_for(package.package_id))
+    return package.create_tools(config_for_package(package.package_id))

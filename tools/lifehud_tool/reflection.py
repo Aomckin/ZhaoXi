@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import hashlib
 
-from zhaoxi.reflection.models import EvidenceRef, ReflectionPeriod, SourceSnapshot, SourceStatus
-from zhaoxi.reflection.sources import ReflectionSource
+from zhaoxi.sdk import EvidenceRef, ReflectionPeriod, ReflectionSource, SourceSnapshot, SourceStatus
 
 from tools.lifehud_tool.client import LifeHudClient
 

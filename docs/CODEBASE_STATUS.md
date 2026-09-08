@@ -1,6 +1,19 @@
 # 朝汐 ZhaoXi 代码现状与交接说明
 
-> **当前开发分支：`v1.1.4`，运行时版本 `1.1.4.1`**。联想记忆自动 Consolidation、开放式 Cluster 与实体名称型 EDGE 抽取闭环已完成；真实模型端到端提取及既有桌面长时场景仍待人工验证。
+> **当前开发分支：`v1.1.5`，运行时版本 `1.1.5`**。Core Sovereignty、显式 Tool Package Capability、公共 SDK、StateSignal、Interruptibility 与 ACTIVE Conversation Continuation 已完成；真实桌面长时 continuation 仍待人工体验验证。
+
+## v1.1.5 当前增量
+
+- 新增 `zhaoxi.sdk` 1.0 公共边界与 Package SDK 兼容检查。
+- Tool Package 支持包级总开关及 Tool、Workflow、Router Hint、Proactive、Reflection、State Signal 分项开关。
+- LifeHUD-Tool 1.1.0 只依赖公共 SDK，并提供健康状态、状态信号和 2/5/15/30 分钟不可达退避。
+- Core 通过 Signal Aggregator 解析外部观察；Focus 只降低 interruptibility，不改写 Interaction State。
+- ACTIVE 对话拥有 3 分钟静默门槛、5 分钟冷却和每窗口最多 3 次 continuation 的独立路径。
+- Memory 与结构化 Tool Observation 使用 provenance 与 Domain Authority 进行冲突解析。
+- 人格 Prompt 与表达方式 Prompt 已拆分为独立版本化 YAML，并按固定顺序共同注入普通回复、工具回复、Workflow 与主动交互。
+- Cognitive Router 会读取最近 6 条、最多 2400 字符的对话上下文；模型先承诺查询工具后，用户用短承接语追问时仍会强制进入真实 Tool Call。
+- Web 端为 ACTIVE / SEMI_ACTIVE 增加状态标识；输入合并防抖由 2 秒调整为 15 秒。
+- 普通“电影节开幕”等文本不再触发铁幕 Workflow。
 
 ## v1.1.4.1 当前增量
 
@@ -82,7 +95,7 @@ v1.0 前置解耦已完成：Life HUD 实现与铁幕 Workflow 位于独立 `too
 - 在创建 Core 前取得单实例所有权；快捷键 `ctrl+alt+numpad0` 显示/隐藏切换，最小化时恢复，冲突保留托盘。
 - `scripts/create_desktop_launcher.ps1` 生成本机双击快捷方式；路径随项目定位，生成的 `.lnk` 不提交。
 - Web 回复按空行分气泡，代码围栏内空行保留；新回复段间随机 5～10 秒，历史立即呈现。
-- 输入防抖 2 秒；当前回合结束后处理排队输入。支持选择/粘贴图片和纯图片发送，图文合并上限 20 张、每张 100 MB。
+- 输入防抖 15 秒；当前回合结束后处理排队输入。支持选择/粘贴图片和纯图片发送，图文合并上限 20 张、每张 100 MB。
 - Message 新增 images，Provider 转换成 text/image_url 内容块；Session JSON 向后兼容保存图片，旧文字记录无需迁移。图片回合走已有工具循环，文字路由不变。
 - 包含用户已有的人格 YAML、context 规则和角色设定文档修改。
 - 当前验证：287 项 Python 测试、14 项 Node 前端测试通过；1 项既有 Starlette/httpx 弃用警告。
@@ -123,7 +136,7 @@ v1.0 前置解耦已完成：Life HUD 实现与铁幕 Workflow 位于独立 `too
 - Desktop 本地 API 使用每次启动随机令牌；令牌通过 URL fragment 交给内嵌页，再以不记入访问日志的请求头交换为 `HttpOnly`、`SameSite=Strict` Cookie，随后立即清除 fragment；SSE query 和访问日志不包含令牌，服务仍只监听 loopback。
 - Proactive Delivery 先持久化 Inbox，再按 Priority 映射到 Windows Toast；INFO 不弹窗，NOTICE / IMPORTANT / URGENT 可显示，点击激活现有桌面窗口。
 - Python 3.12+、异步运行时和 OpenAI-compatible Provider；通过环境变量可接入兼容 Chat Completions 的模型服务。
-- `Conversation`、`ContextBuilder`、人格提示词和会话管理组成基础对话上下文。
+- `Conversation`、`ContextBuilder`、独立的人格 Prompt、表达方式 Prompt 和会话管理组成基础对话上下文；两者分别维护，并在运行时按固定顺序组合。
 - `CognitiveRouter` 将输入分为 `DIRECT`、`TOOL`、`PLAN`、`WORKFLOW`：稳定流程进入确定性 Workflow Runtime，开放复杂目标仍进入 Planner。
 - `ZhaoxiAgent` 支持多轮工具调用；内置 echo、计算器、当前时间和记忆工具，工具由统一 Registry 注册。
 - Planner 支持 Goal / Plan / Step、线性执行、重试、fallback、版本化 replan、等待用户、恢复、取消和 trace；当前 Goal/Plan/等待状态保存在 SQLite。
@@ -186,7 +199,7 @@ src/zhaoxi/
   models/        Provider 抽象、OpenAI-compatible 实现和响应类型
   tools/         工具基类、Registry、内置工具和 Life HUD 集成工具
   config/        环境变量与设置
-  personality/   人格提示词
+  personality/   独立版本化的人格与表达方式提示词
   session/       会话组合
   interfaces/    Web / Desktop 统一消息、响应、权限视图和串行 Gateway
   desktop/       单实例、pywebview、托盘、快捷键和 Windows Toast
@@ -356,7 +369,7 @@ python main.py
 git diff --check
 ```
 
-当前自动化测试基线：**379 项 Python 通过、1 项 symlink 权限相关测试跳过；17 项 Node 前端测试通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
+当前自动化测试基线：**397 项 Python 通过、1 项 symlink 权限相关测试跳过；19 项 Node 前端测试通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
 
 ## 接手建议
 
@@ -368,10 +381,11 @@ git diff --check
 
 ## Git 基线
 
-- 当前开发分支：`v1.1.4`
-- v1.1.4.1：自动 Consolidation、开放式 Cluster、Entity/EDGE 闭环与专项测试位于当前工作区，尚未提交。
-- v1.1.4：联想记忆结构重构、专项测试和开发报告位于当前工作区，尚未提交。
-- v1.1.3：潮庭书库实现、首批资料、自动测试与验收文档位于当前工作区，尚未提交。
+- 当前开发分支：`v1.1.5`
+- v1.1.5：本体主权、公共 SDK、显式 Capability、StateSignal、Interruptibility、Conversation Continuation 与 LifeHUD 可选化随当前版本切片归档。
+- v1.1.4.1：自动 Consolidation、开放式 Cluster、Entity/EDGE 闭环与专项测试已纳入当前代码基线。
+- v1.1.4：联想记忆结构重构、专项测试和开发报告已纳入当前代码基线。
+- v1.1.3：潮庭书库实现、首批资料、自动测试与验收文档已纳入当前代码基线。
 - v1.1.1 基线：`0b65cfd feat(v1.1.1): add tidal heartbeat and proactive inbox continuation`
 - v1.1.2：本次潮间态实现、前置清理与验收文档在同一提交中归档。
 - v1.0 起点：`87eb9c6 feat: complete v0.9 reliability hardening`

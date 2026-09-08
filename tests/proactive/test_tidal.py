@@ -342,14 +342,22 @@ def test_activation_api_rejects_unknown_and_hides_raw_payload():
 
 async def test_focus_finishing_during_decision_cancels_stale_message():
     h, worker, _ = setup()
-    sensor = SimpleNamespace(healthy=True, active_focus_id='f', focus_active=True)
-    h.sensors = [sensor]
+    from zhaoxi.sdk import StateSignal
+    class Signals:
+        active = True
+        async def collect_signals(self, now):
+            return [StateSignal(type='attention.focus', value='active' if self.active else 'inactive',
+                                source='test', observed_at=now, expires_at=now + timedelta(minutes=2))]
+    signals = Signals()
+    h.signal_providers = [signals]
+    h.state.interaction.observe_signals(await signals.collect_signals(NOW), NOW)
+    h.focus_active = True
     e = candidate()
     e.payload['focus_id'] = 'f'
     await h.buffer.add(e)
     class FocusEnded:
         async def decide(self, *args):
-            sensor.active_focus_id = None
+            signals.active = False
             return Decision(action='speak', content='该休息了')
     worker.decision = FocusEnded()
     assert not await worker.tick(NOW)

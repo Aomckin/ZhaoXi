@@ -40,7 +40,10 @@ class CognitiveCoordinator:
         # The text-only router cannot interpret attachments. Use the existing
         # tool-capable loop so the main model sees the image and retains tools.
         decision = (RouteDecision(route=CognitiveRoute.TOOL, reason="image input")
-                    if images else await self.router.route(user_message))
+                    if images else await self.router.route(
+                        user_message,
+                        recent_context=self._recent_routing_context(),
+                    ))
         workflow_run_id = None
         if decision.route == CognitiveRoute.WORKFLOW and self.agent.workflow is not None and decision.workflow_id:
             self.agent.conversation.add_user(user_message.strip())
@@ -91,3 +94,12 @@ class CognitiveCoordinator:
             permission_confirmation=getattr(result, "permission_confirmation", None),
             workflow_run_id=workflow_run_id,
         )
+
+    def _recent_routing_context(self, limit: int = 6, max_chars: int = 2400) -> str:
+        """Provide bounded dialogue context to the router without Tool observations or metadata."""
+        lines = []
+        for message in self.agent.conversation.recent(limit):
+            if message.role.value not in {"user", "assistant"} or not message.content:
+                continue
+            lines.append(f"{message.role.value}: {message.content[:600]}")
+        return "\n".join(lines)[-max_chars:]

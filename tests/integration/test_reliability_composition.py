@@ -9,7 +9,8 @@ from zhaoxi.reflection.sqlite import SQLiteReflectionRepository
 from zhaoxi.session.sqlite import SQLiteSessionStore
 
 
-def test_build_agent_uses_persistent_reliability_stores(tmp_path):
+def test_build_agent_uses_persistent_reliability_stores(tmp_path, monkeypatch):
+    monkeypatch.setenv("ZHAOXI_TOOL_LIFEHUD_ENABLED", "true")
     settings = Settings(
         model_api_key="test-key",
         model_name="test-model",

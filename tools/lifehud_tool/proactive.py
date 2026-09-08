@@ -1,27 +1,48 @@
-"""Optional read-only LifeHUD sensor; bounded snapshots, no full today payload."""
+"""Optional LifeHUD providers with shared sampling and unreachable backoff."""
 from datetime import timedelta
-from zhaoxi.proactive.models import ProactiveEvent, Priority
+
+from zhaoxi.sdk import ProactiveEvent, Priority, StateSignal
 
 
 class LifeHudSensor:
-    def __init__(self, client):
+    BACKOFF_MINUTES = (2, 5, 15, 30)
+
+    def __init__(self, client, *, status_owner=None):
         self.client = client
+        self.status_owner = status_owner
         self.next_poll = None
         self.focus_active = False
         self.active_focus_id = None
         self.last_long_focus_id = None
         self.healthy = False
+        self.reachable = None
+        self.failures = 0
         self.context = ''
         self.tasks = None
         self.day = None
 
-    async def collect(self, now):
+        self._events = []
+        self._signals = []
+        self._sampled_at = None
+
+    async def _refresh(self, now):
         if self.next_poll and now < self.next_poll:
-            return []
-        self.next_poll = now + timedelta(minutes=2)
+            return
         self.healthy = False
-        focus = (await self.client.focus()).focus
-        tasks_response = await self.client.tasks()
+        try:
+            focus = (await self.client.focus()).focus
+            tasks_response = await self.client.tasks()
+        except Exception:
+            self.reachable = False
+            self.failures += 1
+            delay = self.BACKOFF_MINUTES[min(self.failures - 1, len(self.BACKOFF_MINUTES) - 1)]
+            self.next_poll = now + timedelta(minutes=delay)
+            self._events = []
+            self._signals = []
+            raise
+        self.next_poll = now + timedelta(minutes=2)
+        self.failures = 0
+        self.reachable = True
         self.healthy = True
         self.focus_active = bool(focus.active)
         self.active_focus_id = focus.active.id if focus.active else None
@@ -37,6 +58,7 @@ class LifeHudSensor:
                     dedupe_key=f'focus-long-running:{active.id}', importance=.8, urgency=.5,
                     payload={'focus_id': active.id, 'minutes': minutes,
                              'summary': f'当前 Focus「{active.title[:120]}」已持续 {minutes} 分钟。'},
+                    expires_at=now + timedelta(minutes=5),
                 ))
         current = {t.id: t.completed for t in tasks_response.tasks.items[:500]}
         if self.tasks is not None and self.day == tasks_response.date:
@@ -53,4 +75,24 @@ class LifeHudSensor:
         self.context = (f'今天已完成 {tasks_response.tasks.completed} 项任务，'
                         f'专注 {focus.effectiveMinutes} 分钟。') if (
                             tasks_response.tasks.completed or focus.effectiveMinutes) else ''
+        self._events = events
+        self._signals = [StateSignal(
+            type="attention.focus",
+            value="active" if focus.active else "inactive",
+            observed_at=now,
+            expires_at=now + timedelta(minutes=3),
+            confidence=1.0,
+            priority="high",
+            source="lifehud",
+            metadata={"focus_id": self.active_focus_id},
+        )]
+        self._sampled_at = now
+
+    async def collect(self, now):
+        await self._refresh(now)
+        events, self._events = self._events, []
         return events
+
+    async def collect_signals(self, now):
+        await self._refresh(now)
+        return list(self._signals)

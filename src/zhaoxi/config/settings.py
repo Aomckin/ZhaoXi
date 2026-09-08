@@ -123,6 +123,9 @@ class Settings(BaseSettings):
     proactive_cooldown_minutes: int = Field(default=45, ge=1, le=1440)
     proactive_natural_checkin_enabled: bool = True
     proactive_natural_checkin_min_hours: float = Field(default=3, ge=1, le=48)
+    continuation_silence_minutes: int = Field(default=3, ge=2, le=5)
+    continuation_cooldown_minutes: int = Field(default=5, ge=1, le=60)
+    continuation_budget_per_active_window: int = Field(default=3, ge=1, le=3)
     proactive_event_buffer_seconds: int = Field(default=300, ge=0, le=600)
     proactive_db_path: str = ".zhaoxi/proactive.db"
     proactive_timezone: str = "Asia/Shanghai"

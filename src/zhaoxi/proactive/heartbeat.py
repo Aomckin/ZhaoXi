@@ -6,20 +6,24 @@ from zhaoxi.proactive.buffer import EventBuffer
 from zhaoxi.proactive.models import ProactiveEvent, Priority, EventStatus
 from zhaoxi.proactive.sensors import computer_active
 from zhaoxi.proactive.interaction import InteractionState, PresenceSnapshot
+from zhaoxi.sdk import StateSignal
 
 
 
 
 class TidalHeartbeat:
-    def __init__(self, runtime, scheduler, state, settings, metrics, sensors=(), active=computer_active, presence=None):
+    def __init__(self, runtime, scheduler, state, settings, metrics, sensors=(), active=computer_active, presence=None,
+                 signal_providers=()):
         self.runtime, self.scheduler, self.state = runtime, scheduler, state
         self.settings, self.metrics = settings, metrics
         self.sensors, self.active = list(sensors), active
+        self.signal_providers = list(signal_providers)
         self.buffer = EventBuffer(runtime.store, settings.proactive_event_buffer_seconds)
         self.started_at = datetime.now(UTC)
         self.focus_active = False
         self.updated = asyncio.Event()
         self.presence = presence
+        self.continuation = None
         state.interaction.active_minutes = settings.active_timeout_minutes
         state.interaction.semi_active_minutes = settings.semi_active_timeout_minutes
         state.interaction.away_minutes = settings.away_idle_minutes
@@ -36,6 +40,19 @@ class TidalHeartbeat:
             except Exception:
                 interaction.observe(PresenceSnapshot(healthy=False), now)
                 self.metrics.increment('proactive.sensor_errors')
+        snapshot = interaction.snapshot
+        if snapshot and snapshot.healthy:
+            interaction.observe_signals([
+                StateSignal(type="desktop.fullscreen", value=snapshot.fullscreen, source="desktop",
+                            observed_at=now, expires_at=now + timedelta(minutes=2)),
+                StateSignal(type="desktop.locked", value=snapshot.locked, source="desktop",
+                            observed_at=now, expires_at=now + timedelta(minutes=2), priority="critical"),
+            ], now)
+        if self.state.quiet_until and self.state.quiet_until > now:
+            interaction.observe_signals([
+                StateSignal(type="interruptibility.manual", value="blocked", source="quiet_mode",
+                            observed_at=now, expires_at=self.state.quiet_until, priority="critical"),
+            ], now)
         interaction.refresh(now)
         # Scheduler already persists its events using unique schedule occurrence keys.
         scheduled = await self.scheduler.tick()
@@ -51,8 +68,14 @@ class TidalHeartbeat:
                         self.metrics.increment('proactive.sensor_events')
             except Exception:
                 self.metrics.increment('proactive.sensor_errors')
+        for provider in self.signal_providers:
+            try:
+                interaction.observe_signals(await asyncio.wait_for(provider.collect_signals(now), 8), now)
+            except Exception:
+                self.metrics.increment('proactive.signal_provider_errors')
         was_focused = self.focus_active
-        self.focus_active = any(s.focus_active for s in self.sensors)
+        focus_signal = interaction.signals.resolve("attention.focus", now)
+        self.focus_active = bool(focus_signal and focus_signal.value == "active")
         if was_focused != self.focus_active:
             interaction.pending_events.append(('focus.started' if self.focus_active else 'focus.ended', now))
             if not self.focus_active and interaction.state != InteractionState.AWAY:

@@ -27,6 +27,34 @@ class DecisionWorker:
         history = await store.list_deliveries(1000)
         last_spoken = max((d.delivered_at for d in history if d.delivered_at
                            and d.priority != Priority.INFO), default=None)
+        continuation = getattr(h, 'continuation', None)
+        candidate = continuation.candidate(now, state.interaction) if continuation else None
+        if candidate is not None and not state.interacting:
+            h.metrics.increment('proactive.continuation_decisions')
+            result = await self.decision.decide_continuation(candidate, local_now, state)
+            checked_at = now + timedelta(seconds=monotonic() - started)
+            continuation.decided(checked_at, close=result.action == 'silent')
+            if result.action == 'speak' and state.interaction.can_continue(
+                checked_at,
+                cooldown_minutes=continuation.cooldown_minutes,
+                budget=continuation.budget,
+            ):
+                delivery = Delivery(
+                    delivery_id=f'continuation-{candidate.opened_at.timestamp()}',
+                    event_id=f'continuation-{candidate.opened_at.timestamp()}',
+                    subscription_id='conversation-continuation',
+                    event_type='conversation.continuation',
+                    relevant_payload={'summary': candidate.summary},
+                    priority=Priority.NOTICE,
+                    content=result.content,
+                    decision_reason='active_conversation_continuation',
+                    available_at=checked_at,
+                )
+                await runtime.sink.deliver(delivery, checked_at)
+                continuation.delivered(checked_at, state.interaction)
+                h.metrics.increment('proactive.continuations')
+                h.metrics.increment('proactive.deliveries')
+                return [*flushed, delivery]
         # Reconcile a crash after durable delivery but before resolving its events.
         delivered_ids = {eid for d in history for eid in [d.event_id, *d.related_event_ids]}
         batch, output = [], list(flushed)
@@ -34,13 +62,6 @@ class DecisionWorker:
             if event.attempts >= 2:
                 await self.resolve([event])
                 continue
-            if event.event_type == 'focus.long_running':
-                sources = [s for s in h.sensors if hasattr(s, 'active_focus_id')]
-                if sources and all(s.healthy and s.active_focus_id != event.payload.get('focus_id') for s in sources):
-                    await self.resolve([event])
-                    continue
-                if any(not s.healthy for s in sources):
-                    continue
             if event.event_id in delivered_ids:
                 await self.resolve([event])
                 continue
@@ -91,13 +112,18 @@ class DecisionWorker:
         checked_at = now + timedelta(seconds=monotonic() - started)
         if h.presence:
             state.interaction.observe(await h.presence.sample(), checked_at)
+        for provider in getattr(h, 'signal_providers', []):
+            try:
+                state.interaction.observe_signals(await provider.collect_signals(checked_at), checked_at)
+            except Exception:
+                h.metrics.increment('proactive.signal_provider_errors')
+        focus_signal = state.interaction.signals.resolve('attention.focus', checked_at)
+        h.focus_active = bool(focus_signal and focus_signal.value == 'active')
         gates = [score_event(e, checked_at.astimezone(ZoneInfo(h.settings.proactive_timezone)),
                             state, runtime.policy, last_spoken, h.settings.proactive_cooldown_minutes,
                             h.focus_active) for e in batch]
-        sources = [s for s in h.sensors if hasattr(s, 'active_focus_id')]
         facts_current = all(
-            e.event_type != 'focus.long_running' or not sources or any(
-                s.healthy and s.active_focus_id == e.payload.get('focus_id') for s in sources)
+            e.event_type != 'focus.long_running' or focus_signal is None or h.focus_active
             for e in batch
         )
         if not facts_current:

@@ -5,12 +5,21 @@ from enum import StrEnum
 from collections import deque
 from threading import Event
 
+from zhaoxi.sdk.signals import SignalAggregator, StateSignal
+
 
 class InteractionState(StrEnum):
     ACTIVE = "ACTIVE"
     SEMI_ACTIVE = "SEMI_ACTIVE"
     IDLE = "IDLE"
     AWAY = "AWAY"
+
+
+class Interruptibility(StrEnum):
+    HIGH = "HIGH"
+    NORMAL = "NORMAL"
+    LOW = "LOW"
+    BLOCKED = "BLOCKED"
 
 
 @dataclass(frozen=True)
@@ -38,6 +47,11 @@ class Interaction:
         self.transitions = 0
         self.pending_events = deque(maxlen=64)
         self.window_opened = Event()
+        self.active_since = None
+        self.continuation_count = 0
+        self.last_continuation_at = None
+        self.signals = SignalAggregator()
+        self.interruptibility = Interruptibility.NORMAL
 
     def _set(self, state, now):
         if state == self.state:
@@ -52,8 +66,12 @@ class Interaction:
             self.away_since = None
             self.pending_events.append(("user.returned", now))
         if state == InteractionState.ACTIVE:
+            self.active_since = now
+            self.continuation_count = 0
+            self.last_continuation_at = None
             self.pending_events.append(("conversation.started", now))
         elif previous == InteractionState.ACTIVE:
+            self.active_since = None
             self.pending_events.append(("conversation.cooled", now))
 
     def interact(self, now):
@@ -112,11 +130,50 @@ class Interaction:
                         self.receptive(now)
         if not old or old.foreground_process != snapshot.foreground_process:
             self.foreground_since = now
+        self._resolve_interruptibility(now)
+
+    def observe_signals(self, signals: list[StateSignal], now: datetime) -> None:
+        self.signals.update(signals, now)
+        self._resolve_interruptibility(now)
+
+    def _resolve_interruptibility(self, now: datetime) -> Interruptibility:
+        focus = self.signals.resolve("attention.focus", now)
+        manual = self.signals.resolve("interruptibility.manual", now)
+        if (manual and manual.value == "blocked") or self.state == InteractionState.AWAY or (self.snapshot and self.snapshot.locked):
+            value = Interruptibility.BLOCKED
+        elif (self.snapshot and self.snapshot.fullscreen) or (focus and focus.value == "active"):
+            value = Interruptibility.LOW
+        elif self.state == InteractionState.SEMI_ACTIVE:
+            value = Interruptibility.HIGH
+        else:
+            value = Interruptibility.NORMAL
+        self.interruptibility = value
+        return value
+
+    def can_continue(self, now: datetime, *, cooldown_minutes: int, budget: int) -> bool:
+        self.refresh(now)
+        self._resolve_interruptibility(now)
+        if self.state is not InteractionState.ACTIVE or self.interruptibility is Interruptibility.BLOCKED:
+            return False
+        if self.continuation_count >= budget:
+            return False
+        return not self.last_continuation_at or now - self.last_continuation_at >= timedelta(minutes=cooldown_minutes)
+
+    def record_continuation(self, now: datetime) -> None:
+        self.continuation_count += 1
+        self.last_continuation_at = now
 
     def diagnostics(self, now):
         self.refresh(now)
+        self._resolve_interruptibility(now)
         return {
             "interaction_state": self.state.value,
+            "interruptibility": self.interruptibility.value,
+            "active_since": self.active_since,
+            "active_expires_at": self.active_until,
+            "continuation_count": self.continuation_count,
+            "last_continuation_at": self.last_continuation_at,
+            "signal_sources": sorted({item["source"] for item in self.signals.snapshot(now)}),
             "last_user_interaction_at": self.last_user_interaction_at,
             "away_since": self.away_since, "last_seen": self.last_seen,
             "state_transitions": self.transitions,

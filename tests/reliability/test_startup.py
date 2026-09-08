@@ -15,7 +15,8 @@ def test_startup_diagnostics_explains_missing_model_without_exposing_secrets(tmp
     assert "ZHAOXI_MODEL_API_KEY" in result["checks"]["model"]["action"]
 
 
-def test_startup_diagnostics_lists_single_lifehud_package_without_user_content(tmp_path):
+def test_startup_diagnostics_lists_single_lifehud_package_without_user_content(tmp_path, monkeypatch):
+    monkeypatch.setenv("ZHAOXI_TOOL_LIFEHUD_ENABLED", "true")
     settings = Settings(
         model_api_key="secret-canary",
         model_name="test-model",
@@ -24,7 +25,13 @@ def test_startup_diagnostics_lists_single_lifehud_package_without_user_content(t
     result = startup_diagnostics(settings)
 
     assert result["status"] == "ready"
-    assert result["tool_packages"] == [
-        {"id": "lifehud-tool", "version": "1.0.0", "tools": ["lifehud"]}
-    ]
+    package = result["tool_packages"][0]
+    assert package["id"] == "lifehud-tool"
+    assert package["version"] == "1.1.0"
+    assert package["installed"] is package["enabled"] is package["configured"] is True
+    assert package["tools"] == ["lifehud"]
+    assert package["requires_sdk"] == ">=1,<2"
+    assert "state_signal_provider" in package["capabilities"]
+    assert isinstance(package["reachable"], bool)
+    assert isinstance(package["healthy"], bool)
     assert "secret-canary" not in str(result)

@@ -1,6 +1,7 @@
 """Lightweight model-assisted routing before normal conversation execution."""
 
 from enum import StrEnum
+import re
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
@@ -67,12 +68,18 @@ class CognitiveRouter:
         self.routing_hints = list(routing_hints or [])
         self.archive_enabled = archive_enabled
 
-    async def route(self, user_message: str) -> RouteDecision:
+    async def route(self, user_message: str, *, recent_context: str = "") -> RouteDecision:
+        routing_input = user_message
+        if recent_context.strip():
+            routing_input = (
+                "最近对话（只用于理解当前消息的指代与承接）：\n"
+                f"{recent_context.strip()}\n\n当前用户消息：\n{user_message}"
+            )
         try:
             response = await self.provider.generate(
                 [
                     Message(role=Role.SYSTEM, content=self.SYSTEM_PROMPT),
-                    Message(role=Role.USER, content=user_message),
+                    Message(role=Role.USER, content=routing_input),
                 ],
                 [ROUTE_SCHEMA],
             )
@@ -85,7 +92,8 @@ class CognitiveRouter:
                 value = RouteInput.model_validate(call.arguments)
                 return self._guard_simple_request(
                     user_message, RouteDecision(route=value.route, reason=value.reason,
-                        workflow_id=value.workflow_id, workflow_inputs=value.workflow_inputs)
+                        workflow_id=value.workflow_id, workflow_inputs=value.workflow_inputs),
+                    recent_context=recent_context,
                 )
             except ValidationError:
                 break
@@ -93,17 +101,31 @@ class CognitiveRouter:
 
     def _hint_decision(self, user_message: str) -> RouteDecision | None:
         text = user_message.casefold()
+        normalized = re.sub(r"[，,。！!？?、:：;；]+", " ", text)
+        normalized = " ".join(normalized.split())
         for hint in self.routing_hints:
             markers = [str(item).casefold() for item in hint.get("markers", [])]
-            matched = next((marker for marker in markers if marker in text), None)
+            if hint.get("match") == "command":
+                normalized_markers = [" ".join(re.sub(r"[，,。！!？?、:：;；]+", " ", marker).split()) for marker in markers]
+                matched = next(
+                    (marker for marker in normalized_markers
+                     if normalized == marker or normalized.startswith(marker + " ")),
+                    None,
+                )
+            else:
+                matched = next((marker for marker in markers if marker in text), None)
             if matched is None:
                 continue
             route = CognitiveRoute(str(hint["route"]))
             if route is CognitiveRoute.TOOL:
                 return RouteDecision(route=route, reason="tool package routing hint", requires_tool_call=True)
             value = user_message
-            for marker in ["朝汐", "，", ",", *[str(item) for item in hint.get("markers", [])]]:
-                value = value.replace(marker, " ")
+            if matched and hint.get("match") == "command":
+                for token in matched.split():
+                    value = re.sub(re.escape(token), " ", value, count=1, flags=re.IGNORECASE)
+                value = re.sub(r"^[\s，,。！!？?、:：;；]+", "", value).strip()
+            elif matched:
+                value = re.sub(re.escape(matched), " ", value, count=1, flags=re.IGNORECASE).strip()
             input_name = hint.get("input")
             inputs = {str(input_name): value.strip() or hint.get("default_input")} if input_name else {}
             return RouteDecision(
@@ -114,16 +136,32 @@ class CognitiveRouter:
             )
         return None
 
-    def _guard_simple_request(self, user_message: str, decision: RouteDecision) -> RouteDecision:
+    def _guard_simple_request(
+        self,
+        user_message: str,
+        decision: RouteDecision,
+        *,
+        recent_context: str = "",
+    ) -> RouteDecision:
         text = user_message.casefold()
         archive = self._archive_decision(text)
         if archive is not None:
             return archive
+        contextual_tool = self._contextual_tool_followup(text, recent_context)
+        if contextual_tool is not None:
+            return contextual_tool
         if decision.route == CognitiveRoute.WORKFLOW:
             return decision
-        hinted = self._hint_decision(user_message)
-        if hinted is not None:
-            return hinted
+        if decision.route is CognitiveRoute.DIRECT:
+            hinted = self._hint_decision(user_message)
+            if hinted is not None:
+                return hinted
+        elif decision.route is CognitiveRoute.TOOL:
+            hinted = self._hint_decision(user_message)
+            if hinted is not None and hinted.route is CognitiveRoute.TOOL:
+                return decision.model_copy(update={"requires_tool_call": True})
+            if self._is_lookup_request(text):
+                return decision.model_copy(update={"requires_tool_call": True})
         if "工具" in text and any(marker in text for marker in ("检查", "看看", "有哪些", "可用", "试试")):
             return RouteDecision(route=CognitiveRoute.TOOL, reason="fallback: tool inspection", requires_tool_call=True)
         if decision.route != CognitiveRoute.PLAN:
@@ -135,6 +173,28 @@ class CognitiveRouter:
         ):
             return RouteDecision(route=CognitiveRoute.TOOL, reason="simple request guard")
         return decision
+
+    @staticmethod
+    def _is_lookup_request(text: str) -> bool:
+        return any(marker in text for marker in ("查", "看看", "读取", "核对", "检索", "调用"))
+
+    def _contextual_tool_followup(
+        self, text: str, recent_context: str
+    ) -> RouteDecision | None:
+        """Resolve short follow-ups such as '你明明可以查到的' against recent tool mentions."""
+        if not recent_context or not self._is_lookup_request(text):
+            return None
+        context = recent_context.casefold()
+        for hint in self.routing_hints:
+            if str(hint.get("route", "")) != CognitiveRoute.TOOL.value:
+                continue
+            if any(str(marker).casefold() in context for marker in hint.get("markers", [])):
+                return RouteDecision(
+                    route=CognitiveRoute.TOOL,
+                    reason="contextual tool follow-up",
+                    requires_tool_call=True,
+                )
+        return None
 
     def _fallback(self, user_message: str) -> RouteDecision:
         text = user_message.casefold()

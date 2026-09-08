@@ -10,7 +10,15 @@ import sys
 
 from zhaoxi import __version__
 from zhaoxi.config.settings import Settings
-from zhaoxi.tools.packages import create_package_tools, discover_tool_packages
+from zhaoxi.tools.packages import (
+    capability_enabled,
+    config_for_package,
+    create_package_tools,
+    declared_capabilities,
+    discover_tool_packages,
+    package_enabled,
+    sdk_compatible,
+)
 
 
 def _check(ok: bool, *, code: str, message: str, action: str | None = None) -> dict[str, object]:
@@ -52,15 +60,59 @@ def startup_diagnostics(settings: Settings, *, tool_root: str | Path = "tools") 
     packages = []
     package_errors: list[dict[str, str]] = []
     try:
-        for package in discover_tool_packages(tool_root, errors=package_errors):
-            tools = create_package_tools(package)
+        discovered = discover_tool_packages(tool_root, errors=package_errors)
+    except Exception as exc:
+        discovered = []
+        package_errors.append({"source": "discovery", "error": type(exc).__name__})
+    for package in discovered:
+        try:
+            config = config_for_package(package.package_id)
+            enabled = package_enabled(config)
+            declaration = declared_capabilities(package)
+            requirement = str(getattr(package, "requires_sdk", ""))
+            if not sdk_compatible(requirement):
+                raise ValueError(f"incompatible SDK requirement: {requirement}")
+            flags = {
+                name: enabled and capability_enabled(declaration, name, config)
+                for name in type(declaration).model_fields
+            }
+            tools = []
+            health = {"configured": bool(config.get("base_url", True)), "reachable": None, "healthy": None}
+            if enabled:
+                configure = getattr(package, "configure", None)
+                if configure is not None:
+                    configure(config)
+                if flags["tool"]:
+                    tools = create_package_tools(package)
+                checker = getattr(package, "health_check", None)
+                if checker is not None:
+                    health.update(checker(config))
             packages.append({
                 "id": package.package_id,
                 "version": package.package_version,
+                "installed": True,
+                "enabled": enabled,
+                **health,
                 "tools": [tool.name for tool in tools],
+                "capabilities": [name for name, value in flags.items() if value],
+                "requires_sdk": requirement,
+                "backoff_until": None,
             })
-    except Exception as exc:
-        package_errors.append({"source": "configuration", "error": type(exc).__name__})
+        except Exception as exc:
+            package_errors.append({"source": package.package_id, "error": type(exc).__name__})
+            packages.append({
+                "id": package.package_id,
+                "version": package.package_version,
+                "installed": True,
+                "enabled": False,
+                "configured": False,
+                "reachable": None,
+                "healthy": False,
+                "tools": [],
+                "capabilities": [],
+                "requires_sdk": str(getattr(package, "requires_sdk", "")),
+                "backoff_until": None,
+            })
     checks["tool_packages"] = _check(
         not package_errors,
         code="tool_packages_ready" if not package_errors else "tool_package_load_failed",
@@ -73,7 +125,7 @@ def startup_diagnostics(settings: Settings, *, tool_root: str | Path = "tools") 
         "voice_input": find_spec("sounddevice") is not None,
         "voice_output": find_spec("comtypes") is not None,
     }
-    blockers = [name for name, value in checks.items() if not value["ok"] and name != "model"]
+    blockers = [name for name, value in checks.items() if not value["ok"] and name not in {"model", "tool_packages"}]
     status = "blocked" if blockers else ("ready" if model_ready else "needs_configuration")
     return {
         "status": status,

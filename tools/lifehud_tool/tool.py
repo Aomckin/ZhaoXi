@@ -5,8 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
-from zhaoxi.permission.models import PermissionLevel, SideEffect
-from zhaoxi.tools.base import Tool, ToolResult
+from zhaoxi.sdk import PermissionLevel, SideEffect, Tool, ToolResult
 
 from tools.lifehud_tool.client import LifeHudClient
 from tools.lifehud_tool.errors import LifeHudError
@@ -56,7 +55,7 @@ class LifeHudTool(Tool):
 
     def side_effects_for(self, arguments: dict[str, Any]) -> frozenset[SideEffect]:
         if self.permission_for(arguments) is PermissionLevel.WRITE:
-            return frozenset({SideEffect.LOCAL_STATE})
+            return frozenset({SideEffect.EXTERNAL_SERVICE_WRITE})
         return frozenset({SideEffect.NONE})
 
     def safe_to_replay(self, arguments: dict[str, Any]) -> bool:

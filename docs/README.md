@@ -1,8 +1,11 @@
 # 文档索引与事实源
 
-## v1.1.3 当前文档
+## 当前文档（v1.1.5）
 
 - [`CODEBASE_STATUS.md`](CODEBASE_STATUS.md)：当前实现与验证事实。
+- [`Zhaoxi_v1.1.5_Release_Notes.md`](Zhaoxi_v1.1.5_Release_Notes.md)：本体主权、Tool Package 能力边界、互动状态、人格/表达方式分层及验证结果。
+- [`Zhaoxi_v1.1.4.1_Release_Notes.md`](Zhaoxi_v1.1.4.1_Release_Notes.md)：联想记忆自动闭环修正。
+- [`Zhaoxi_v1.1.4_Release_Notes.md`](Zhaoxi_v1.1.4_Release_Notes.md)：联想记忆结构重构。
 - [`Zhaoxi_v1.1.3_Release_Notes.md`](Zhaoxi_v1.1.3_Release_Notes.md)：潮庭书库实现、测试、验收和限制。
 - [`Zhaoxi_v1.1.2_Release_Notes.md`](Zhaoxi_v1.1.2_Release_Notes.md)：潮间态实现、验证与人工验收说明。
 - [`Zhaoxi_v1.1.1_Release_Notes.md`](Zhaoxi_v1.1.1_Release_Notes.md)：潮汐心跳实现、测试、验收和限制。
@@ -11,6 +14,9 @@
 
 ## 当前任务书
 
+- [`Zhaoxi_v1.1.5_Core_Sovereignty_Development_Task.md`](Zhaoxi_v1.1.5_Core_Sovereignty_Development_Task.md)：本体主权与能力边界任务书。
+- [`Zhaoxi_v1.1.4.1_Associative_Memory_Closure_Patch.md`](Zhaoxi_v1.1.4.1_Associative_Memory_Closure_Patch.md)：联想记忆闭环修正任务书。
+- [`Zhaoxi_v1.1.4_Associative_Memory_Development_Task.md`](Zhaoxi_v1.1.4_Associative_Memory_Development_Task.md)：联想记忆重构任务书。
 - [`Zhaoxi_v1.1.3_Tidecourt_Archive_Development_Task.md`](Zhaoxi_v1.1.3_Tidecourt_Archive_Development_Task.md)：潮庭书库任务书。
 - [`Zhaoxi_v1.1.2_Intertidal_Presence_Development_Task.md`](Zhaoxi_v1.1.2_Intertidal_Presence_Development_Task.md)：本版本任务书。
 - [`Zhaoxi_v1.1.1_Tidal_Heartbeat_Development_Task.md`](Zhaoxi_v1.1.1_Tidal_Heartbeat_Development_Task.md)：心跳任务书；实现与验证结果见 v1.1.1 开发报告。
@@ -29,4 +35,4 @@
 
 ## 历史文档
 
-文件名以 `v0.1`～`v0.9` 开头的开发计划和任务书是当时的设计记录，不是当前状态清单。其未勾选项、旧测试数量、旧版本号和“留给后续版本”等文字保留历史语境，不应据此判断 v1.0 是否完成。发生冲突时，以本页“v1.1.3 当前文档”列表及 `CODEBASE_STATUS.md` 为准。
+文件名以 `v0.1`～`v0.9` 开头的开发计划和任务书是当时的设计记录，不是当前状态清单。其未勾选项、旧测试数量、旧版本号和“留给后续版本”等文字保留历史语境，不应据此判断当前版本是否完成。发生冲突时，以本页“当前文档（v1.1.5）”列表及 `CODEBASE_STATUS.md` 为准。

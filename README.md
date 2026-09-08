@@ -1,6 +1,16 @@
 # Zhaoxi / 朝汐
 
-Zhaoxi 1.1.4.1 是一个可扩展的本地个人 Agent Core，提供对话、联想记忆、潮庭书库、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与独立 Tool Package 能力。
+Zhaoxi 1.1.5 是一个可扩展的本地个人 Agent Core，提供对话、联想记忆、潮庭书库、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与可选 Tool Package 能力。
+
+## v1.1.5 本体主权与能力边界
+
+- Tool Package 必须声明公共 SDK 版本与显式 Capability，不再因为包存在就无条件进入所有运行链。
+- Tool Package 默认只发现、不启用；`ZHAOXI_TOOL_<ID>_ENABLED=true` 显式授权后才装配。Tool、Workflow、Router Hint、Proactive、Reflection 与 State Signal 支持分项启停。
+- Core 只聚合 `StateSignal`，不读取 Life HUD 对象；Interaction State 与 Interruptibility 已分离。
+- ACTIVE 表示仍在持续的对话，拥有独立的 Conversation Continuation、静默时间、冷却和每窗口预算。
+- Memory 与 Life HUD 采用分域权威：精确结构化生活事实优先 Life HUD，经历与对话语境优先 Memory，两者不互相覆盖。
+
+完整实现与验收见 [v1.1.5 开发报告](docs/Zhaoxi_v1.1.5_Release_Notes.md)。
 
 ## v1.1.4.1 联想记忆闭环修正
 
@@ -46,7 +56,7 @@ Life HUD 通过独立的 `tools/lifehud_tool` 包接入，Core Registry 只注�
 - Windows 当前用户登录自启动、隐藏启动与双击启动入口。
 - Ctrl+Alt+小键盘 0 切换窗口显示/隐藏，保留单实例与托盘退出。
 - 回复按空行拆成气泡，第一段立即显示，后续每段随机等待 5～10 秒；历史立即恢复。
-- 连续文字/图片输入以 2 秒防抖合并，回复期间输入排队。
+- 连续文字/图片输入以 15 秒防抖合并，回复期间输入排队。
 - 支持选择/粘贴 PNG、JPEG、WebP，每次最多 20 张，每张 100 MB，图片随会话保存。
 
 详情见 [v1.1 发布说明](docs/Zhaoxi_v1.1_Release_Notes.md)；登录自启动命令与验收见 [常驻说明](docs/presence-autostart.md)。
@@ -128,6 +138,13 @@ ZHAOXI_MODEL_BASE_URL=https://api.openai.com/v1
 ZHAOXI_MODEL_API_KEY=your-key
 ZHAOXI_MODEL_NAME=your-model
 ```
+
+人格与表达方式使用两个独立、版本化的 YAML 输入：
+
+- `src/zhaoxi/personality/zhaoxi_v1.yaml`：身份、关系、性格与长期设定，决定“朝汐是谁”。
+- `src/zhaoxi/personality/expression_v1.yaml`：语气、节奏、情绪表达与格式偏好，决定“朝汐怎么说”。
+
+修改任一文件后需要重启朝汐。运行时按人格 → 表达方式 → Core 规则的顺序组合；普通对话、Tool/Workflow 最终回复与主动消息使用同一组合 Prompt。
 
 运行与测试：
 
@@ -216,7 +233,7 @@ CLI 支持 `/tools`、`/permissions`、`/approve`、`/deny`、`/revoke`、`/audi
 - 后台 Auto Memory 不允许模型自行执行归档、遗忘或整合
 
 - 短期 Conversation 与上下文裁剪
-- YAML 版本化人格
+- 独立版本化的人格与表达方式 YAML：人格决定“朝汐是谁”，表达方式决定“朝汐怎么说”
 - OpenAI-compatible Model Provider
 - 支持单个/并行多个 Tool Call 的 Agent Runtime
 - 工具结果回填、再次推理、超时与最大步数保护
@@ -316,7 +333,7 @@ powershell -NoProfile -File .\scripts\create_desktop_launcher.ps1
 
 在输入框左侧点击“图片”选择文件，或在输入框中直接粘贴截图。支持 PNG、JPEG、WebP，发送前可预览并点击 × 移除；可只发图片，也可配文字一起发送。
 
-保护性上限为每次（含防抖合并后的请求）20 张、每张 100 MB。图片参与现有 2 秒输入合并，回复期间的新输入仍排队处理。图片随本地会话保存，重新打开后可查看，清空会话会一并移除该会话中的图片。
+保护性上限为每次（含防抖合并后的请求）20 张、每张 100 MB。图片参与现有 15 秒输入合并，回复期间的新输入仍排队处理。图片随本地会话保存，重新打开后可查看，清空会话会一并移除该会话中的图片。
 
 图片通过现有模型接口的多模态消息发送，需要配置支持图片输入的模型；具体服务商可能有自己的请求限制。图片回合直接使用已有 Agent 工具循环读取图文，普通文字回合继续使用原有认知路由。
 

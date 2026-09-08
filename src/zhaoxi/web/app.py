@@ -235,6 +235,15 @@ def create_app(
         """Return a bounded, content-free local runtime snapshot."""
         backup_manager = getattr(core, "backup_manager", None)
         memory_service = getattr(core, "memory_service", None)
+        package_statuses = []
+        instances = getattr(core, "tool_package_instances", {})
+        for package_record in getattr(core, "tool_packages", []):
+            current = dict(package_record)
+            package = instances.get(current.get("id"))
+            status = getattr(package, "status", None)
+            if status is not None:
+                current.update(status())
+            package_statuses.append(current)
         return {
             "status": "ok",
             "version": __version__,
@@ -257,7 +266,7 @@ def create_app(
                 else {"enabled": False}
             ),
             "memory": await memory_service.diagnostics() if memory_service is not None else None,
-            "tool_packages": getattr(core, "tool_packages", []),
+            "tool_packages": package_statuses,
             "tool_package_errors": getattr(core, "tool_package_errors", []),
             "startup": getattr(core, "startup_diagnostics", None),
             "storage": backup_manager.health() if backup_manager is not None else {},

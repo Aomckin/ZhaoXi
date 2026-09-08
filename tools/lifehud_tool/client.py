@@ -21,7 +21,7 @@ from tools.lifehud_tool.models import (
     TodayContext,
 )
 from tools.lifehud_tool.time_display import LifeHudTimeDisplay
-from zhaoxi.reliability.retry import RetryPolicy, retry_async
+from zhaoxi.sdk import RetryPolicy, retry_async
 
 ContextModel = TypeVar("ContextModel", bound=AgentEnvelope)
 

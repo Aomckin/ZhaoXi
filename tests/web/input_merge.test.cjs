@@ -9,7 +9,7 @@ function setup(){
   let id=0;const timers=new Map(),requests=[],payloads=[],bubbles=[],clear={replaceChildren(){},append(){}};
   const context=vm.createContext({busy:false,send:{},input:{value:'',focus(){}},activity:{},debug:{},
     $:()=>clear,document:{createElement:()=>({append(){},setAttribute(){}})},addMessage:(...args)=>bubbles.push(args),permissionCard(){},
-    setTimeout:(fn,ms)=>{assert.equal(ms,2000);timers.set(++id,fn);return id},clearTimeout:id=>timers.delete(id),
+    setTimeout:(fn,ms)=>{assert.equal(ms,15000);timers.set(++id,fn);return id},clearTimeout:id=>timers.delete(id),
     request:async(url,options)=>{payloads.push(JSON.parse(options.body));requests.push(JSON.parse(options.body).message);return {content:'回复'}},
     sendReply:async()=>{},setupCapabilities:async()=>{},
   });

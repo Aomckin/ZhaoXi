@@ -59,6 +59,9 @@ class InterfaceGateway:
                 state.interacting = True
                 state.last_interaction_at = datetime.now(UTC)
                 state.interaction.interact(state.last_interaction_at)
+                continuation = getattr(self.agent, "conversation_continuation", None)
+                if continuation is not None:
+                    continuation.note_user_message(message.content, state.last_interaction_at)
             started = monotonic()
             self.metrics.increment("interface.chat.started")
             context = CorrelationContext(

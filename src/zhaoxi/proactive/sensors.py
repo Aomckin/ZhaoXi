@@ -6,7 +6,6 @@ from zhaoxi.proactive.models import ProactiveEvent
 
 
 class WorldSensor(Protocol):
-    focus_active: bool
     healthy: bool
     context: str
 
