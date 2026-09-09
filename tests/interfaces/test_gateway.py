@@ -129,3 +129,17 @@ async def test_merged_request_keeps_display_parts_after_message_roundtrip():
     assert agent.conversation.messages[0].content == 'first\n\nsecond'
     agent.conversation = Conversation([Message.model_validate_json(m.model_dump_json()) for m in agent.conversation.messages])
     assert gateway.session()[0]['display_parts'] == [p.model_dump(mode='json') for p in parts]
+
+async def test_existing_task_notice_reclassified_without_duplicate():
+    from zhaoxi.proactive.models import Delivery, Priority
+    from zhaoxi.core.message import Message, Role
+    agent=FakeAgent()
+    gateway=InterfaceGateway(agent)
+    delivery=Delivery(event_id='task',subscription_id='tidal',event_type='task.completed',priority=Priority.INFO,content='Task completed',decision_reason='inbox')
+    agent.conversation.add(Message(role=Role.ASSISTANT,content=delivery.content,delivery_id=delivery.delivery_id))
+    gateway._include_delivery(delivery)
+    assert len(agent.conversation.messages)==1
+    assert gateway.session()[0]['kind']=='system'
+    assert delivery.model_dump()['kind']=='system'
+    beat=delivery.model_copy(update={'event_type':'conversation.beat','decision_reason':'active_conversation_beat'})
+    assert beat.kind=='assistant'

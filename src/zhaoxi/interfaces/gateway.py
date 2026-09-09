@@ -134,14 +134,18 @@ class InterfaceGateway:
 
     def _include_delivery(self, delivery):
         for item in self.agent.conversation.messages:
+            if item.delivery_id == delivery.delivery_id:
+                item.metadata['kind'] = delivery.kind
+                return
             if item.delivery_id and item.delivery_id.startswith('legacy-') and item.content == delivery.content:
                 item.delivery_id = delivery.delivery_id
+                item.metadata['kind'] = delivery.kind
                 return
         summaries = delivery.relevant_payload.get("summaries", [delivery.relevant_payload.get("summary", "")])
         self.agent.conversation.add_delivery(Message(
             role=Role.ASSISTANT, content=delivery.content, delivery_id=delivery.delivery_id,
             timestamp=delivery.delivered_at or delivery.available_at,
-            metadata={"kind": "system"} if delivery.event_type.startswith("system.") else {},
+            metadata={"kind": delivery.kind},
             background="；".join(str(x)[:600] for x in summaries[:20] if x)[:2000],
         ))
 

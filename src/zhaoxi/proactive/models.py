@@ -7,7 +7,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, computed_field
 
 
 def utc_now() -> datetime:
@@ -150,3 +150,12 @@ class Delivery(BaseModel):
     event_type: str = ""
     relevant_payload: dict[str, Any] = Field(default_factory=dict)
     related_event_ids: list[str] = Field(default_factory=list)
+
+
+    @computed_field
+    @property
+    def kind(self) -> str:
+        """Route factual notices separately from conversational initiative."""
+        return 'system' if (self.event_type.startswith('system.')
+            or self.event_type in {'task.completed', 'reminder.due'}
+            or self.decision_reason == 'inbox') else 'assistant'
