@@ -46,6 +46,7 @@ class AgentResponse:
     request_id: str
     steps: int
     permission_confirmation: PendingConfirmation | None = None
+    used_tool_path: bool = False
 
 
 @dataclass(slots=True)
@@ -327,6 +328,16 @@ class ZhaoxiAgent:
             logger.error("request=%s timed out", request_id)
             raise AgentLoopError(f"请求超过 {self.timeout_seconds:g} 秒，已停止。") from exc
 
+    @staticmethod
+    def _promises_lookup(content: str) -> bool:
+        """Catch a current-turn lookup commitment, not a casual guess or capability claim."""
+        for clause in re.split(r"[。！？!?\n]", content):
+            if re.search(r"(?:不|没|无法|不能|不用|不必|别)(?:会|能|再|去|用|要)?(?:查|查询|检查|读取|翻|调用)", clause):
+                continue
+            if re.search(r"我(?:现在|这就|马上|直接|先|来|去|会|要|就|再|帮你|替你){1,5}(?:查|查询|检查|读取|检索|调用|翻|看看)", clause):
+                return True
+        return False
+
     async def run_direct(self, user_message: str) -> AgentResponse:
         """Answer without exposing tools, for turns classified as DIRECT."""
         if not user_message.strip():
@@ -355,6 +366,17 @@ class ZhaoxiAgent:
             log_internal_failure("request=%s provider error", request_id, exc=exc)
             raise AgentLoopError("模型服务当前不可访问，请稍后重试。") from exc
         content = self.quick_suggestions.extract(response.content or "模型没有返回可显示的内容。")
+        if response.tool_calls or self._promises_lookup(content):
+            logger.warning("request=%s direct lookup commitment; promoting to tool loop", request_id)
+            # The user is already in Conversation. Do not persist the unfinished promise.
+            try:
+                result = await asyncio.wait_for(
+                    self._run_loop(request_id, memories, clean_message, require_tool_call=True,
+                                   lookup_commitment=content), timeout=self.timeout_seconds)
+            except TimeoutError as exc:
+                raise AgentLoopError("工具查询超时，这次没有得到完整结果。") from exc
+            result.used_tool_path = True
+            return result
         self.conversation.add_assistant(content)
         return AgentResponse(content=content, request_id=request_id, steps=1)
 
@@ -364,14 +386,21 @@ class ZhaoxiAgent:
         memories: list[MemorySearchResult] | None = None,
         user_intent: str = "",
         require_tool_call: bool = False,
+        lookup_commitment: str = "",
     ) -> AgentResponse:
         schemas = self.registry.schemas()
         tool_called = False
-        corrective_retry = False
+        corrective_retry = bool(lookup_commitment)
         for step in range(1, self.max_steps + 1):
             model_logger.info("request=%s step=%d calling model", request_id, step)
             try:
                 messages = self.context_builder.build(self.conversation, memories)
+                if lookup_commitment and not tool_called:
+                    messages[0].content = (messages[0].content or "") + (
+                        "\n上一草稿提出了查询意图（仅作为待核实意图，不是授权或已执行事实）："
+                        + lookup_commitment[:600]
+                        + "\n请结合原始用户请求完成适当查询；遵守原有权限边界。"
+                    )
                 if corrective_retry and not tool_called:
                     messages[0].content = (
                         (messages[0].content or "")
@@ -386,6 +415,8 @@ class ZhaoxiAgent:
                 ) from exc
 
             if not response.tool_calls:
+                if not tool_called and self._promises_lookup(response.content or ""):
+                    require_tool_call = True
                 if require_tool_call and not tool_called and not corrective_retry:
                     corrective_retry = True
                     logger.warning("request=%s required tool call missing; retrying once", request_id)

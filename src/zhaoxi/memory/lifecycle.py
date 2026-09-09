@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from zhaoxi.memory.models import MemoryRecord, MemoryStatus
+from zhaoxi.memory.models import MemoryRecord, MemoryStatus, aware_utc
 
 
 @dataclass(slots=True)
@@ -36,9 +36,9 @@ class MemoryLifecyclePolicy:
             self.cold_dormant_after_days = self.cold_archive_after_days
 
     def decay(self, record: MemoryRecord, now: datetime | None = None) -> bool:
-        now = now or datetime.now(timezone.utc)
+        now = aware_utc(now or datetime.now(timezone.utc))
         stored_basis = record.metadata.get("activation_decayed_at")
-        basis = datetime.fromisoformat(stored_basis) if stored_basis else max(
+        basis = aware_utc(datetime.fromisoformat(stored_basis)) if stored_basis else max(
             value for value in (record.accessed_at, record.updated_at, record.created_at) if value
         )
         elapsed_days = max((now - basis).total_seconds() / 86_400, 0)
@@ -50,7 +50,7 @@ class MemoryLifecyclePolicy:
         return changed
 
     def classify(self, record: MemoryRecord, now: datetime | None = None) -> MemoryStatus:
-        now = now or datetime.now(timezone.utc)
+        now = aware_utc(now or datetime.now(timezone.utc))
         if record.status in {MemoryStatus.SUPERSEDED, MemoryStatus.FORGOTTEN}:
             return record.status
         if record.activation >= self.activation_active_threshold:
@@ -81,7 +81,7 @@ class MemoryLifecyclePolicy:
         return changed
 
     def activate(self, record: MemoryRecord, now: datetime | None = None, amount: float | None = None) -> None:
-        now = now or datetime.now(timezone.utc)
+        now = aware_utc(now or datetime.now(timezone.utc))
         record.activation = min(1.0, record.activation + (amount or self.activation_access_boost))
         record.access_count += 1
         record.accessed_at = now

@@ -426,7 +426,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         )
         agent.proactive_heartbeat.continuation = agent.conversation_continuation
         agent.proactive_worker = DecisionWorker(
-            agent.proactive_heartbeat, ModelDecision(provider, context_builder.character_prompt, agent.quick_suggestions),
+            agent.proactive_heartbeat, ModelDecision(provider, context_builder.character_prompt, agent.quick_suggestions, agent.conversation, agent.conversation_continuation),
         )
 
     data_stores = [

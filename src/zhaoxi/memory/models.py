@@ -12,6 +12,18 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def aware_utc(value: datetime) -> datetime:
+    """Legacy timezone-less Memory timestamps use the store's UTC convention."""
+    return (value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value).astimezone(timezone.utc)
+
+
+class MemoryTimeModel(BaseModel):
+    @field_validator('*', mode='after')
+    @classmethod
+    def normalize_datetimes(cls, value):
+        return aware_utc(value) if isinstance(value, datetime) else value
+
+
 class MemoryKind(StrEnum):
     EPISODIC = "episodic"
     SEMANTIC = "semantic"
@@ -68,7 +80,7 @@ def _normalized_list(values: list[str]) -> list[str]:
     return result
 
 
-class MemoryCreate(BaseModel):
+class MemoryCreate(MemoryTimeModel):
     content: str = Field(min_length=1, max_length=20_000)
     kind: MemoryKind = MemoryKind.SEMANTIC
     shape: MemoryShape = MemoryShape.NODE
@@ -133,12 +145,12 @@ class MemoryCandidate(MemoryCreate):
     target_node_id: str | None = None
 
 
-class MemoryCandidateBatch(BaseModel):
+class MemoryCandidateBatch(MemoryTimeModel):
     candidates: list[MemoryCandidate] = Field(default_factory=list, max_length=20)
     reason: str = ""
 
 
-class MemoryUpdate(BaseModel):
+class MemoryUpdate(MemoryTimeModel):
     content: str | None = Field(default=None, min_length=1, max_length=20_000)
     kind: MemoryKind | None = None
     shape: MemoryShape | None = None
@@ -170,7 +182,7 @@ class MemoryUpdate(BaseModel):
         return self
 
 
-class MemoryQuery(BaseModel):
+class MemoryQuery(MemoryTimeModel):
     text: str = ""
     kind: MemoryKind | None = None
     tags: list[str] = Field(default_factory=list)
@@ -185,7 +197,7 @@ class MemoryQuery(BaseModel):
     now: datetime | None = None
 
 
-class MemoryRecord(BaseModel):
+class MemoryRecord(MemoryTimeModel):
     id: str = Field(default_factory=lambda: uuid4().hex)
     kind: MemoryKind
     shape: MemoryShape = MemoryShape.NODE
@@ -231,7 +243,7 @@ class MemoryRecord(BaseModel):
         self.activation = value
 
 
-class MemoryCluster(BaseModel):
+class MemoryCluster(MemoryTimeModel):
     id: str = Field(default_factory=lambda: uuid4().hex)
     topic: str
     summary: str = ""
@@ -251,7 +263,7 @@ class MemoryCluster(BaseModel):
     updated_at: datetime = Field(default_factory=utc_now)
 
 
-class MemoryEdge(BaseModel):
+class MemoryEdge(MemoryTimeModel):
     id: str = Field(default_factory=lambda: uuid4().hex)
     source_id: str
     target_id: str
@@ -268,7 +280,7 @@ class MemoryEdge(BaseModel):
     last_activated_at: datetime | None = None
 
 
-class MemoryEmbedding(BaseModel):
+class MemoryEmbedding(MemoryTimeModel):
     memory_id: str
     embedding_model: str
     embedding_hash: str
@@ -276,7 +288,7 @@ class MemoryEmbedding(BaseModel):
     updated_at: datetime = Field(default_factory=utc_now)
 
 
-class MemoryEntity(BaseModel):
+class MemoryEntity(MemoryTimeModel):
     id: str = Field(default_factory=lambda: uuid4().hex)
     canonical_name: str
     normalized_name: str
@@ -285,7 +297,7 @@ class MemoryEntity(BaseModel):
     updated_at: datetime = Field(default_factory=utc_now)
 
 
-class MemorySearchResult(BaseModel):
+class MemorySearchResult(MemoryTimeModel):
     record: MemoryRecord
     score: float = 0
     contextual_relevance: float = 0
@@ -304,7 +316,7 @@ class MemorySearchResult(BaseModel):
     graph_hop: int | None = None
 
 
-class MemoryWriteResult(BaseModel):
+class MemoryWriteResult(MemoryTimeModel):
     record: MemoryRecord
     created: bool
     duplicate: bool = False

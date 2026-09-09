@@ -1,6 +1,10 @@
 # 文档索引与事实源
 
-## 当前文档（v1.1.5）
+## 当前文档（v1.1.6.1）
+
+- [`Zhaoxi_v1.1.6.1_Release_Notes.md`](Zhaoxi_v1.1.6.1_Release_Notes.md)：普通聊天桌面上下文注入补丁。
+
+- [`Zhaoxi_v1.1.6_Release_Notes.md`](Zhaoxi_v1.1.6_Release_Notes.md)：桌面活动感知、数据边界、验证与已知限制。
 
 - [`CODEBASE_STATUS.md`](CODEBASE_STATUS.md)：当前实现与验证事实。
 - [`Zhaoxi_v1.1.5_Release_Notes.md`](Zhaoxi_v1.1.5_Release_Notes.md)：本体主权、Tool Package 能力边界、互动状态、人格/表达方式分层及验证结果。
@@ -13,6 +17,10 @@
 - [`presence-autostart.md`](presence-autostart.md)：登录常驻机制与手动验收。
 
 ## 当前任务书
+
+- [`Zhaoxi_v1.1.6.1_Desktop_Context_Injection_Patch.md`](Zhaoxi_v1.1.6.1_Desktop_Context_Injection_Patch.md)：普通对话 Runtime 注入任务书。
+
+- [`Zhaoxi_v1.1.6_Desktop_Activity_Awareness_Development_Task.md`](Zhaoxi_v1.1.6_Desktop_Activity_Awareness_Development_Task.md)：桌面活动感知任务书。
 
 - [`Zhaoxi_v1.1.5_Core_Sovereignty_Development_Task.md`](Zhaoxi_v1.1.5_Core_Sovereignty_Development_Task.md)：本体主权与能力边界任务书。
 - [`Zhaoxi_v1.1.4.1_Associative_Memory_Closure_Patch.md`](Zhaoxi_v1.1.4.1_Associative_Memory_Closure_Patch.md)：联想记忆闭环修正任务书。
@@ -35,4 +43,4 @@
 
 ## 历史文档
 
-文件名以 `v0.1`～`v0.9` 开头的开发计划和任务书是当时的设计记录，不是当前状态清单。其未勾选项、旧测试数量、旧版本号和“留给后续版本”等文字保留历史语境，不应据此判断当前版本是否完成。发生冲突时，以本页“当前文档（v1.1.5）”列表及 `CODEBASE_STATUS.md` 为准。
+文件名以 `v0.1`～`v0.9` 开头的开发计划和任务书是当时的设计记录，不是当前状态清单。其未勾选项、旧测试数量、旧版本号和“留给后续版本”等文字保留历史语境，不应据此判断当前版本是否完成。发生冲突时，以本页“当前文档（v1.1.6.1）”列表及 `CODEBASE_STATUS.md` 为准。

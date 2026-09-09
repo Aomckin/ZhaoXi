@@ -82,9 +82,18 @@ class TidalHeartbeat:
                 interaction.receptive(now)
         summaries = {
             'user.returned': '用户离开一段时间后重新回到电脑前。',
-            'fullscreen.exited': '用户刚刚退出全屏活动。',
+            'activity.deep_work_ended': '用户刚才持续高频操作了一段时间，现在输入明显停止。这只是活动形状，具体在做什么仍不确定。',
             'focus.ended': '用户刚刚结束专注。',
         }
+        activity = interaction.desktop_activity
+        if activity:
+            while activity.pending:
+                transition = activity.pending.popleft()
+                if transition.event_type == 'activity.deep_work_ended' and interaction.state != InteractionState.AWAY:
+                    interaction.receptive(now)
+                    if self.continuation:
+                        self.continuation.prepare_background('activity', '刚才有一段持续高输入活动，可以在合适时机温和关心；具体活动尚不确定。', now)
+                interaction.pending_events.append((transition.event_type, transition.observed_at))
         changes = list(interaction.pending_events)
         interaction.pending_events.clear()
         for name, occurred_at in changes:
@@ -100,6 +109,8 @@ class TidalHeartbeat:
         quiet = self.state.quiet_until and self.state.quiet_until > now
         recent = self.state.last_interaction_at or self.started_at
         context = ' '.join(s.context for s in self.sensors if s.healthy)
+        if activity and activity.context and activity.context.desktop_available:
+            context += ' 用户当前在电脑前，近期有桌面活动，可结合活动上下文判断是否适合关心。'
         snapshot = interaction.snapshot
         active = (snapshot.healthy and not snapshot.locked and snapshot.last_input_seconds < 300) if snapshot else self.active()
         receptive = interaction.state == InteractionState.SEMI_ACTIVE

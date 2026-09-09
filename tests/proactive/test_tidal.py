@@ -362,3 +362,23 @@ async def test_focus_finishing_during_decision_cancels_stale_message():
     worker.decision = FocusEnded()
     assert not await worker.tick(NOW)
     assert not await h.runtime.store.list_deliveries()
+
+async def test_desktop_deep_work_candidate_and_fullscreen_noise():
+    from zhaoxi.desktop.activity import DesktopActivity
+    from zhaoxi.proactive.interaction import PresenceSnapshot, InteractionState
+    from zhaoxi.proactive.continuation import ConversationContinuation
+    h, worker, model = setup(proactive_natural_checkin_enabled=False)
+    h.continuation = ConversationContinuation()
+    activity = DesktopActivity(h.settings)
+    h.state.interaction.desktop_activity = activity
+    h.state.interaction.observe(PresenceSnapshot(), NOW)
+    activity.transition('activity.deep_work_ended', 'high_input', 'silence', 1800, NOW)
+    h.state.interaction.pending_events.append(('fullscreen.exited', NOW))
+    await h.tick(NOW)
+    events = await h.runtime.store.pending_events()
+    assert any(e.event_type == 'activity.deep_work_ended' and e.priority == Priority.NOTICE for e in events)
+    assert not any(e.event_type == 'fullscreen.exited' for e in events)
+    assert h.state.interaction.state == InteractionState.SEMI_ACTIVE
+    assert h.continuation.background_intents and not h.continuation.background_intents[-1].send
+    result = await worker.tick(NOW)
+    assert result and model.calls

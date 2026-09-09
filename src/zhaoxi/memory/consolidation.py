@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field, ValidationError
 
 from zhaoxi.core.message import Message, Role
-from zhaoxi.memory.models import MemoryEdge, MemoryKind, MemoryRelation, MemoryStatus, MemoryUpdate, utc_now
+from zhaoxi.memory.models import MemoryEdge, MemoryKind, MemoryRelation, MemoryStatus, MemoryUpdate, utc_now, aware_utc
 from zhaoxi.models.base import ModelProvider
 from zhaoxi.errors import ProviderError
 
@@ -73,7 +73,7 @@ class AutoConsolidator:
             "episodes_since_consolidation_check"
         ) or 0)
         last_raw = await self.service.repository.get_runtime("last_consolidation_check_at")
-        last_check = datetime.fromisoformat(last_raw) if last_raw else None
+        last_check = aware_utc(datetime.fromisoformat(last_raw)) if last_raw else None
         due = episode_count >= self.config.after_episodes or (
             last_check is None or now - last_check >= timedelta(hours=self.config.interval_hours)
         )

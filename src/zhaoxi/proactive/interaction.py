@@ -43,6 +43,7 @@ class Interaction:
         self.away_since = None
         self.last_seen = None
         self.snapshot = None
+        self.desktop_activity = None
         self.foreground_since = None
         self.transitions = 0
         self.pending_events = deque(maxlen=64)
@@ -137,11 +138,12 @@ class Interaction:
         self._resolve_interruptibility(now)
 
     def _resolve_interruptibility(self, now: datetime) -> Interruptibility:
+        input_active = self.signals.resolve("desktop.input_active", now)
         focus = self.signals.resolve("attention.focus", now)
         manual = self.signals.resolve("interruptibility.manual", now)
         if (manual and manual.value == "blocked") or self.state == InteractionState.AWAY or (self.snapshot and self.snapshot.locked):
             value = Interruptibility.BLOCKED
-        elif (self.snapshot and self.snapshot.fullscreen) or (focus and focus.value == "active"):
+        elif (input_active and input_active.value) or (self.snapshot and self.snapshot.fullscreen) or (focus and focus.value == "active"):
             value = Interruptibility.LOW
         elif self.state == InteractionState.SEMI_ACTIVE:
             value = Interruptibility.HIGH
@@ -153,7 +155,7 @@ class Interaction:
     def can_continue(self, now: datetime, *, cooldown_minutes: int, budget: int) -> bool:
         self.refresh(now)
         self._resolve_interruptibility(now)
-        if self.state is not InteractionState.ACTIVE or self.interruptibility is Interruptibility.BLOCKED:
+        if self.state is not InteractionState.ACTIVE or self.interruptibility in {Interruptibility.BLOCKED, Interruptibility.LOW}:
             return False
         if self.continuation_count >= budget:
             return False
@@ -180,5 +182,5 @@ class Interaction:
             "user_active": bool(self.snapshot and self.snapshot.healthy and not self.snapshot.locked and self.snapshot.last_input_seconds < 300),
             "idle_duration": self.snapshot.last_input_seconds if self.snapshot else None,
             "foreground_duration": max(0, (now - self.foreground_since).total_seconds()) if self.foreground_since else 0,
-            **(asdict(self.snapshot) if self.snapshot else {"healthy": False}),
+            **({k: v for k, v in asdict(self.snapshot).items() if k not in {"foreground_title", "foreground_window"}} if self.snapshot else {"healthy": False}),
         }

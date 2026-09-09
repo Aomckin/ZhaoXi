@@ -1,6 +1,22 @@
 # Zhaoxi / 朝汐
 
-Zhaoxi 1.1.5 是一个可扩展的本地个人 Agent Core，提供对话、联想记忆、潮庭书库、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与可选 Tool Package 能力。
+Zhaoxi 1.1.6.1 是一个可扩展的本地个人 Agent Core，提供对话、联想记忆、潮庭书库、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与可选 Tool Package 能力。
+
+## v1.1.6.1 普通对话桌面上下文
+
+普通聊天现在通过独立 `[Desktop Activity]` Runtime 区块获得当前前台进程、标题、输入频率和已有活动推测。只复用现有采样与缓存，不增加 Activity LLM 调用；超过 15 秒的观察明确标记 stale，无法采样或模块关闭时标记 unavailable。原始区块不写入 Session / Memory，diagnostics 保持脱敏。
+
+实现、测试与人工验收见 [v1.1.6.1 补丁报告](docs/Zhaoxi_v1.1.6.1_Release_Notes.md)。
+
+## v1.1.6 桌面活动感知
+
+- Desktop Host 每 2 秒读取当前前台进程、标题和 Presence；键鼠 hook 只累计事件数量，不读取输入内容或坐标。
+- 1 / 5 分钟事件频率、窗口切换与约 20 分钟标题缓冲全部只驻留内存。
+- 需要判断主动关心或对话延续时，才低频结合窗口语义、行为形状和近期对话推测活动，保留置信度和其他可能。
+- 持续高输入降低 Interruptibility 并暂缓 ACTIVE Continuation；长时间高输入结束可生成 SEMI_ACTIVE 候选。全屏退出不再单独形成高权重提醒。
+- 普通 diagnostics 不含完整标题；显式 `/api/desktop/activity/inspect` 可查看短期上下文，Desktop 会话继续要求本地令牌。
+
+开关、计数单位、自动测试、手动验收及限制见 [v1.1.6 开发报告](docs/Zhaoxi_v1.1.6_Release_Notes.md)。
 
 ## v1.1.5 本体主权与能力边界
 

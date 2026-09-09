@@ -386,3 +386,71 @@ def test_context_explains_post_turn_auto_memory_without_false_confirmation():
     assert "回复后独立判断" in system
     assert "不要声称普通对话已经自动保存" in system
     assert "仅当用户明确要求记住长期信息" not in system
+
+@pytest.mark.asyncio
+async def test_direct_dinner_guess_promoting_own_lookup_finishes_same_turn(tmp_path):
+    service = MemoryService(SQLiteMemoryRepository(tmp_path / 'memory.db'))
+    promise = '唔……居然又要考我。这回我可不傻，我直接去翻你的LifeHUD记录，看看你晚饭到底填了什么。'
+    provider = FakeProvider([
+        control('route_cognition', {'route': 'direct', 'reason': '闲聊猜测'}),
+        ModelResponse(content=promise),
+        control('current_time', {}),
+        ModelResponse(content='查完了，这是完整的最终回复。'),
+        control('decide_memory', {'action': 'ignore', 'reason': '查询'}),
+    ])
+    agent = make_cognitive(provider, service)
+    result = await agent.run_natural('猜猜我晚上吃的啥')
+    assert result.route == CognitiveRoute.TOOL
+    assert result.content == '查完了，这是完整的最终回复。'
+    assert provider.tool_schemas[1] is None
+    assert provider.tool_schemas[2]
+    assert sum(m.role.value == 'user' for m in agent.conversation.messages) == 1
+    assert not any(m.content == promise for m in agent.conversation.messages)
+    assert any(m.role.value == 'tool' for m in agent.conversation.messages)
+
+
+@pytest.mark.asyncio
+async def test_guess_without_lookup_remains_direct(tmp_path):
+    service = MemoryService(SQLiteMemoryRepository(tmp_path / 'memory.db'))
+    provider = FakeProvider([
+        control('route_cognition', {'route': 'direct', 'reason': '闲聊'}),
+        ModelResponse(content='我猜是面条？只是猜的。'),
+        control('decide_memory', {'action': 'ignore', 'reason': '猜测'}),
+    ])
+    result = await make_cognitive(provider, service).run_natural('猜猜我晚上吃的啥')
+    assert result.route == CognitiveRoute.DIRECT
+    assert provider.tool_schemas[1] is None
+
+
+@pytest.mark.asyncio
+async def test_direct_repeated_lookup_promise_fails_honestly(tmp_path):
+    from zhaoxi.errors import AgentLoopError
+    service = MemoryService(SQLiteMemoryRepository(tmp_path / 'memory.db'))
+    provider = FakeProvider([
+        control('route_cognition', {'route': 'direct', 'reason': '闲聊'}),
+        ModelResponse(content='我这就去查一下。'),
+        ModelResponse(content='我马上去查。'),
+    ])
+    agent = make_cognitive(provider, service)
+    with pytest.raises(AgentLoopError, match='没有实际完成工具查询'):
+        await agent.run_natural('猜猜晚饭')
+    assert len(provider.calls) == 3
+    assert len(agent.conversation.messages) == 1
+
+
+@pytest.mark.asyncio
+async def test_optional_tool_path_cannot_end_on_lookup_promise(tmp_path):
+    service = MemoryService(SQLiteMemoryRepository(tmp_path / 'memory.db'))
+    provider = FakeProvider([
+        ModelResponse(content='我先检查一下记录。'),
+        control('current_time', {}),
+        ModelResponse(content='查询完成。'),
+    ])
+    result = await make_cognitive(provider, service).run('猜猜晚饭')
+    assert result.content == '查询完成。'
+    assert len(provider.calls) == 3
+
+
+@pytest.mark.parametrize('text', ['我不会查记录，只猜。', '我不能查询。', '我可以查询记录。', '你去查一下。'])
+def test_non_commitments_do_not_trigger_lookup(text):
+    assert not ZhaoxiAgent._promises_lookup(text)

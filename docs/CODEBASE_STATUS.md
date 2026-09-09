@@ -1,6 +1,25 @@
 # 朝汐 ZhaoXi 代码现状与交接说明
 
-> **当前开发分支：`v1.1.5`，运行时版本 `1.1.5`**。Core Sovereignty、显式 Tool Package Capability、公共 SDK、StateSignal、Interruptibility 与 ACTIVE Conversation Continuation 已完成；真实桌面长时 continuation 仍待人工体验验证。
+> **当前开发分支：`v1.1.6`，运行时版本 `1.1.6.1`**。Desktop Activity Awareness 已接入桌面采样、低频活动推测、StateSignal、Interruptibility、主动候选及受令牌保护的 inspect。真实前台标题/语义模型与长时活动仍待手动验收。
+
+## v1.1.6.1 当前增量
+
+- 普通 DIRECT / Tool Loop / 共用 ContextBuilder 的最终回复获得独立 Desktop Activity Runtime 区块。
+- 当前前台、标题、输入频率与有效推测缓存一起注入；不触发额外采样或 Activity LLM。
+- 15 秒过期标记 stale，缺失/锁屏/关闭标记 unavailable；原始注入区块不进入 Conversation、Session 或 AutoMemory 输入。
+- 本补丁全量回归：431 passed、1 skipped、1 warning。
+- 测试与限制见 [v1.1.6.1 补丁报告](Zhaoxi_v1.1.6.1_Release_Notes.md)。
+
+## v1.1.6 当前增量
+
+- Windows 前台进程/标题采样与键鼠计数 hook；输入内容与坐标不采集，原始数据不落盘。
+- 有界 1m/5m 频率、20 分钟标题历史、DesktopActivityContext、带 confidence 的 ActivityInference。
+- 持续高输入降低打扰并暂停 ACTIVE Continuation，长输入结束生成 SEMI_ACTIVE 候选；全屏退出降噪。
+- Context Fusion 使用近期对话、准备中的 Intent、Tool Signals 与近期主动消息；没有新增原始桌面 Memory 持久化。
+- 普通 diagnostics 无标题，显式 inspect 复用 Desktop 随机令牌。
+- 查询承诺提前结束修复：DIRECT 可在同轮提升为 TOOL，未兑现承诺不作为最终回复；Memory 时间统一为 aware UTC，兼容旧无偏移值。
+- 最新自动回归：422 passed、1 skipped；真实 Memory 隔离副本检索与后续写入验证通过。
+- 完整修改清单、性能冒烟及测试结果见 [v1.1.6 开发报告](Zhaoxi_v1.1.6_Release_Notes.md)。
 
 ## v1.1.5 当前增量
 

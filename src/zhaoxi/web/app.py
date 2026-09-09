@@ -160,6 +160,8 @@ def create_app(
         heartbeat = getattr(core, "proactive_heartbeat", None)
         worker = getattr(core, "proactive_worker", None)
         if heartbeat is not None and worker is not None:
+            if getattr(heartbeat.presence, "run", None):
+                supervisor.create(heartbeat.presence.run(), name="zhaoxi-desktop-activity")
             supervisor.create(heartbeat.run(), name="zhaoxi-tidal-heartbeat")
             supervisor.create(worker.run(events.publish), name="zhaoxi-tidal-decisions")
         else:
@@ -230,6 +232,12 @@ def create_app(
             recent_proactive=any(m.delivery_id for m in core.conversation.messages))
         return {**snapshot, "timezone": configured.proactive_timezone}
 
+    @app.get("/api/desktop/activity/inspect")
+    async def desktop_activity_inspect():
+        state = getattr(core, "proactive_state", None)
+        activity = getattr(getattr(state, "interaction", None), "desktop_activity", None)
+        return activity.inspect() if activity else {"enabled": False}
+
     @app.get("/api/diagnostics")
     async def diagnostics():
         """Return a bounded, content-free local runtime snapshot."""
@@ -250,6 +258,9 @@ def create_app(
             "metrics": adapter.gateway.metrics.snapshot(),
             "presence": (core.proactive_state.interaction.diagnostics(datetime.now(UTC))
                          if getattr(core, "proactive_state", None) else None),
+            "desktop_activity": (core.proactive_state.interaction.desktop_activity.diagnostics()
+                if getattr(core, "proactive_state", None) and core.proactive_state.interaction.desktop_activity
+                else {"enabled": False}),
             "quick_suggestions_generated": suggestions.generated,
             "quick_suggestions_llm_calls": 0,
             "components": {
