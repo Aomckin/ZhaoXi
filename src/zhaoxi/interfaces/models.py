@@ -24,6 +24,12 @@ class MessageOrigin(StrEnum):
     SYSTEM = "system"
 
 
+class DisplayPart(BaseModel):
+    text: str = Field(default="", max_length=20_000)
+    image_count: int = Field(default=0, ge=0, le=20)
+    timestamp: datetime
+
+
 class UnifiedMessage(BaseModel):
     """A bounded message entering Core through a known local interface."""
 
@@ -34,6 +40,7 @@ class UnifiedMessage(BaseModel):
     origin: MessageOrigin = MessageOrigin.USER
     content: str = Field(min_length=1, max_length=20_000)
     images: ImageList = Field(default_factory=list)
+    display_parts: list[DisplayPart] = Field(default_factory=list, max_length=1000)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     reply_to: str | None = Field(default=None, max_length=128)
     capabilities: set[str] = Field(default_factory=set, max_length=20)

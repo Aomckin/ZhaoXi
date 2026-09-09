@@ -1,6 +1,8 @@
 """OpenAI-compatible chat-completions provider."""
 
 import json
+from pathlib import Path
+from urllib.parse import urlparse
 from typing import Any, Sequence
 
 import httpx
@@ -25,6 +27,7 @@ class OpenAICompatibleProvider(ModelProvider):
         temperature: float = 0.7,
         max_tokens: int | None = None,
         client: httpx.AsyncClient | None = None,
+        thinking_settings_path: str | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -33,6 +36,31 @@ class OpenAICompatibleProvider(ModelProvider):
         self.temperature = temperature
         self.max_tokens = max_tokens
         self._client = client
+        self.thinking_settings_path = thinking_settings_path
+        self.thinking_enabled = None
+        if thinking_settings_path:
+            try:
+                value = json.loads(Path(thinking_settings_path).read_text(encoding='utf-8')).get('thinking_enabled')
+                if isinstance(value, bool):
+                    self.thinking_enabled = value
+            except (OSError, ValueError):
+                pass
+
+    @property
+    def supports_thinking(self):
+        return urlparse(self.base_url).hostname == 'api.deepseek.com'
+
+    def set_thinking(self, enabled):
+        if not self.supports_thinking:
+            raise ValueError('当前模型接口尚未支持思考开关')
+        if self.thinking_settings_path:
+            path = Path(self.thinking_settings_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temp = path.with_suffix('.tmp')
+            temp.write_text(json.dumps({'thinking_enabled': enabled}), encoding='utf-8')
+            temp.replace(path)
+        self.thinking_enabled = enabled
+
 
     async def generate(
         self,
@@ -45,6 +73,12 @@ class OpenAICompatibleProvider(ModelProvider):
             "messages": [message.to_provider_dict() for message in messages],
             "temperature": kwargs.get("temperature", self.temperature),
         }
+        if self.supports_thinking:
+            if self.thinking_enabled is not None:
+                payload['thinking'] = {'type': 'enabled' if self.thinking_enabled else 'disabled'}
+            for original, outgoing in zip(messages, payload['messages']):
+                if original.tool_calls and original.metadata.get('reasoning_content') is not None:
+                    outgoing['reasoning_content'] = original.metadata['reasoning_content']
         max_tokens = kwargs.get("max_tokens", self.max_tokens)
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
@@ -88,7 +122,8 @@ class OpenAICompatibleProvider(ModelProvider):
                 tool_calls=calls,
                 finish_reason=choice.get("finish_reason"),
                 usage=data.get("usage", {}),
-                raw_metadata={"id": data.get("id"), "model": data.get("model")},
+                raw_metadata={"id": data.get("id"), "model": data.get("model"),
+                              **({"reasoning_content": message["reasoning_content"]} if isinstance(message.get("reasoning_content"), str) else {})},
             )
         except ProviderError:
             raise

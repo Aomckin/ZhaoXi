@@ -116,3 +116,16 @@ async def test_gateway_records_metrics_and_propagates_correlation():
         "interface.chat.started": 1,
     }
     assert snapshot["durations"]["interface.chat"]["count"] == 1
+
+async def test_merged_request_keeps_display_parts_after_message_roundtrip():
+    from zhaoxi.core.message import Message
+    from zhaoxi.interfaces.models import DisplayPart
+    agent = FakeAgent()
+    gateway = InterfaceGateway(agent)
+    parts = [DisplayPart(text='first', timestamp='2026-09-09T06:00:00Z'),
+             DisplayPart(text='second', timestamp='2026-09-09T06:00:02Z')]
+    await gateway.chat(UnifiedMessage(channel=InterfaceChannel.WEB, content='first\n\nsecond', display_parts=parts))
+    assert agent.calls == 1
+    assert agent.conversation.messages[0].content == 'first\n\nsecond'
+    agent.conversation = Conversation([Message.model_validate_json(m.model_dump_json()) for m in agent.conversation.messages])
+    assert gateway.session()[0]['display_parts'] == [p.model_dump(mode='json') for p in parts]

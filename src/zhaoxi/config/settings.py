@@ -19,9 +19,15 @@ class Settings(BaseSettings):
     desktop_activity_title_buffer_minutes: int = Field(default=20, ge=10, le=30)
     desktop_activity_sample_interval_seconds: float = Field(default=2, ge=1, le=5)
     desktop_activity_inference_interval_seconds: float = Field(default=60, ge=30, le=120)
-    desktop_activity_high_keyboard_rate: float = Field(default=60, gt=0)
+    desktop_activity_keyboard_busy_grace_seconds: float = Field(default=15, ge=1, le=60)
+    desktop_activity_high_keyboard_rate: float = Field(default=120, gt=0)
     desktop_activity_high_mouse_rate: float = Field(default=180, gt=0)
     desktop_activity_deep_work_seconds: float = Field(default=1200, ge=60)
+
+    active_beat_min_silence_seconds: int = Field(default=180, ge=1, le=3600)
+    active_beat_cooldown_seconds: int = Field(default=300, ge=1, le=3600)
+    active_beat_initial_budget: int = Field(default=2, ge=0, le=3)
+    active_beat_max_budget: int = Field(default=3, ge=1, le=3)
 
     model_base_url: str = "https://api.openai.com/v1"
     model_api_key: str = ""

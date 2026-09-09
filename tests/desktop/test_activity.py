@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 from zhaoxi.config.settings import Settings
-from zhaoxi.desktop.activity import DesktopActivity, InputCounters
+from zhaoxi.desktop.activity import DesktopActivity, InputCounters, InputShape
 from zhaoxi.desktop.input_hooks import InputHooks
 from zhaoxi.desktop.presence import DesktopSnapshot, read_presence
 from zhaoxi.proactive.interaction import Interaction, InteractionState, Interruptibility, PresenceSnapshot
@@ -224,3 +224,74 @@ def test_desktop_inspect_requires_token_and_diagnostics_hide_titles():
     assert 'private title' in client.get('/api/desktop/activity/inspect', headers=headers).text
     response = client.get('/api/diagnostics', headers=headers)
     assert response.status_code == 200 and 'private title' not in response.text
+
+def test_autoclicker_mouse_alone_does_not_make_desktop_busy():
+    clock = [0.]
+    activity = DesktopActivity(config(), InputCounters(lambda: clock[0]))
+    for _ in range(6000):
+        activity.counters.count('mouse')
+    activity.update(DesktopSnapshot(foreground_window=1), NOW)
+    assert activity.context.input_shape.mouse_rate_1m == 6000
+    assert activity.intensity != 'HIGH'
+    assert not next(s.value for s in activity.signals(NOW) if s.type == 'desktop.input_active')
+
+
+def test_keyboard_stop_releases_busy_even_if_mouse_continues():
+    clock = [0.]
+    activity = DesktopActivity(config(), InputCounters(lambda: clock[0]))
+    for _ in range(200): activity.counters.count('keyboard')
+    activity.update(DesktopSnapshot(foreground_window=1), NOW)
+    assert activity.intensity == 'HIGH'
+    clock[0] = 16
+    activity.counters.count('mouse')
+    activity.update(DesktopSnapshot(foreground_window=1, last_input_seconds=0), NOW+timedelta(seconds=16))
+    assert activity.context.input_shape.keyboard_rate_1m == 200
+    assert activity.intensity != 'HIGH'
+
+
+def test_own_chat_window_does_not_suppress_beat():
+    activity = DesktopActivity(config())
+    for _ in range(200): activity.counters.count('keyboard')
+    activity.update(DesktopSnapshot(foreground_process='pythonw.exe', foreground_is_self=True), NOW)
+    assert activity.intensity != 'HIGH'
+    assert activity.diagnostics()['foreground_is_self']
+
+
+def test_high_five_minute_rate_with_falling_input_releases_busy():
+    activity = DesktopActivity(config())
+    shape = InputShape(keyboard_rate_1m=150, keyboard_rate_5m=400, keyboard_idle_seconds=1)
+    assert not activity.keyboard_busy(shape, True, NOW)
+    assert activity.busy_evidence['trend'] == 'just_stopped'
+    assert activity.busy_evidence['above_threshold']
+    shape.keyboard_rate_1m = 450
+    assert activity.keyboard_busy(shape, True, NOW)
+    shape.keyboard_idle_seconds = 16
+    assert not activity.keyboard_busy(shape, True, NOW)
+
+
+def test_personal_baseline_learns_without_overweighting_frequent_samples():
+    activity = DesktopActivity(config())
+    shape = InputShape(keyboard_rate_1m=300, keyboard_rate_5m=300, keyboard_idle_seconds=1)
+    for second in range(0, 1201, 2):
+        activity.keyboard_busy(shape, True, NOW+timedelta(seconds=second))
+    assert len(activity.keyboard_baseline) == 20
+    shape.keyboard_rate_1m = 250
+    assert not activity.keyboard_busy(shape, True, NOW+timedelta(seconds=1202))
+    evidence = activity.busy_evidence
+    assert evidence['baseline_ready'] and evidence['keyboard_threshold'] == 300
+    assert evidence['p50'] == evidence['p80'] == evidence['p95'] == 300
+    shape.keyboard_rate_1m = 350
+    assert activity.keyboard_busy(shape, True, NOW+timedelta(seconds=1204))
+
+
+def test_baseline_excludes_self_unavailable_and_idle_minutes():
+    activity = DesktopActivity(config())
+    shape = InputShape(keyboard_rate_1m=900, keyboard_idle_seconds=0)
+    activity.keyboard_busy(shape, True, NOW)
+    activity.keyboard_busy(shape, False, NOW+timedelta(seconds=30))
+    activity.keyboard_busy(shape, True, NOW+timedelta(seconds=60))
+    assert not activity.keyboard_baseline
+    shape.keyboard_rate_1m = 0
+    activity.keyboard_busy(shape, True, NOW+timedelta(seconds=120))
+    assert not activity.keyboard_baseline
+    assert activity.busy_evidence['keyboard_threshold'] == 120

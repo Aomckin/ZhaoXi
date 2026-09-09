@@ -35,10 +35,18 @@ logger = logging.getLogger("WEB")
 from zhaoxi.core.attachments import ImageList
 
 
+from zhaoxi.interfaces.models import DisplayPart
+
+
 class ChatRequest(BaseModel):
     message: str = Field(default="", max_length=20_000)
+    display_parts: list[DisplayPart] = Field(default_factory=list, max_length=1000)
     images: ImageList = Field(default_factory=list)
     request_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class ThinkingRequest(BaseModel):
+    enabled: bool
 
 
 class ChatResponse(BaseModel):
@@ -232,6 +240,46 @@ def create_app(
             recent_proactive=any(m.delivery_id for m in core.conversation.messages))
         return {**snapshot, "timezone": configured.proactive_timezone}
 
+    def thinking_provider():
+        provider = getattr(core, "provider", None)
+        return provider.providers[0] if getattr(provider, "providers", None) else provider
+
+    @app.get("/api/settings/thinking")
+    async def thinking_settings():
+        provider = thinking_provider()
+        return {"supported": bool(getattr(provider, "supports_thinking", False)),
+                "enabled": getattr(provider, "thinking_enabled", None)}
+
+    @app.put("/api/settings/thinking")
+    async def change_thinking(request: ThinkingRequest):
+        provider = thinking_provider()
+        if not getattr(provider, "supports_thinking", False):
+            raise HTTPException(status_code=422, detail="当前模型接口尚未支持思考开关")
+        provider.set_thinking(request.enabled)
+        return {"supported": True, "enabled": provider.thinking_enabled}
+
+    @app.post("/api/proactive/active/poke")
+    async def poke():
+        worker = getattr(core, "proactive_worker", None)
+        if worker is None:
+            raise HTTPException(status_code=503, detail="Beat 尚未启用")
+        delivery = await worker.poke()
+        if delivery:
+            await events.publish({"type": "proactive", "delivery": delivery.model_dump(mode="json", exclude={"relevant_payload"})})
+        return {"delivered": delivery is not None, "trace": worker.heartbeat.state.interaction.beat_loop.last_trace}
+
+    @app.get("/api/proactive/active/inspect")
+    async def active_inspect():
+        state = getattr(core, "proactive_state", None)
+        beat = getattr(getattr(state, "interaction", None), "beat_loop", None)
+        if not beat:
+            return {"enabled": False}
+        now = datetime.now(UTC)
+        return {"enabled": True, "current_state": str(state.interaction.refresh(now)),
+                "session": beat.diagnostics(now), "recent_beats": list(beat.trace_history),
+                "desktop_suppression": state.interaction._resolve_interruptibility(now).value,
+                "last_model_decision": beat.last_model_decision.model_dump() if beat.last_model_decision else None}
+
     @app.get("/api/desktop/activity/inspect")
     async def desktop_activity_inspect():
         state = getattr(core, "proactive_state", None)
@@ -258,6 +306,9 @@ def create_app(
             "metrics": adapter.gateway.metrics.snapshot(),
             "presence": (core.proactive_state.interaction.diagnostics(datetime.now(UTC))
                          if getattr(core, "proactive_state", None) else None),
+            "sensor_health": getattr(getattr(core, "proactive_heartbeat", None), "sensor_health", {}),
+            "active": (core.proactive_state.interaction.beat_loop.diagnostics(datetime.now(UTC))
+                if getattr(core, "proactive_state", None) and core.proactive_state.interaction.beat_loop else None),
             "desktop_activity": (core.proactive_state.interaction.desktop_activity.diagnostics()
                 if getattr(core, "proactive_state", None) and core.proactive_state.interaction.desktop_activity
                 else {"enabled": False}),
@@ -338,9 +389,14 @@ def create_app(
         try:
             if not request.message.strip() and not request.images:
                 raise HTTPException(status_code=422, detail="消息或图片不能为空")
+            if request.display_parts and (
+                "\n\n".join(p.text for p in request.display_parts if p.text) != request.message.strip()
+                or sum(p.image_count for p in request.display_parts) != len(request.images)
+            ):
+                raise HTTPException(status_code=422, detail="消息显示分段与内容不匹配")
             result = await adapter.chat(
                 request.message.strip() or "请查看这些图片。",
-                request_id=request.request_id, images=request.images,
+                request_id=request.request_id, images=request.images, display_parts=request.display_parts,
             )
         except HTTPException:
             raise

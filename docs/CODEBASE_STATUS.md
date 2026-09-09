@@ -1,6 +1,17 @@
 # 朝汐 ZhaoXi 代码现状与交接说明
 
-> **当前开发分支：`v1.1.6`，运行时版本 `1.1.6.1`**。Desktop Activity Awareness 已接入桌面采样、低频活动推测、StateSignal、Interruptibility、主动候选及受令牌保护的 inspect。真实前台标题/语义模型与长时活动仍待手动验收。
+> 当前配置、界面行为与最新限制见 [当前状态](CURRENT_STATUS.md)。下文保留分阶段实现与验收记录；其中旧预算和测试数量不代表当前值。
+
+> **当前开发分支：`v1.1.7`，运行时版本 `1.1.7`**。Desktop Activity Awareness 已接入桌面采样、低频活动推测、StateSignal、Interruptibility、主动候选及受令牌保护的 inspect。真实前台标题/语义模型与长时活动仍待手动验收。
+
+## v1.1.7 当前增量
+
+- 基线 v1.1.6.1 已提交为 `6fbe423`，当前分支 `v1.1.7`。
+- Conversation Beat Scheduler 不要求 open thread，按会话维护 SILENT/发送结果、预算、momentum 和调度时间。
+- Gateway 记录普通回复完成时间；ACTIVE TTL 不被无人回应的 Beat 续期，用户回应可延续同一会话并补预算。
+- 发送前复核并复用 Gateway 会话锁；延期普通消息也遵守与 Beat 的冷却，显式提醒保留优先级。
+- `active` diagnostics 与 `/api/proactive/active/inspect` 已提供；完整验证和真实模型验收结果见 [开发报告](Zhaoxi_v1.1.7_Release_Notes.md)。
+- 用户授权后的真实 DeepSeek 隔离验收通过：无 open thread，首次 Beat 为 CONTINUE，成功投递 1 条；共 2 次模型调用。Desktop UI 长时人工体验仍待验收。v1.1.x 功能范围冻结。
 
 ## v1.1.6.1 当前增量
 

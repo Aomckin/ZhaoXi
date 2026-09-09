@@ -108,6 +108,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         base_url=settings.model_base_url,
         api_key=settings.model_api_key,
         model=settings.model_name,
+        thinking_settings_path=".zhaoxi/model-settings.json",
         timeout=settings.request_timeout_seconds,
         temperature=settings.temperature,
         max_tokens=settings.max_tokens,
@@ -419,10 +420,10 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
             proactive, proactive_scheduler, proactive_state, settings, agent.metrics, sensors,
             signal_providers=signal_providers,
         )
-        agent.conversation_continuation = ConversationContinuation(
-            silence_minutes=settings.continuation_silence_minutes,
-            cooldown_minutes=settings.continuation_cooldown_minutes,
-            budget=settings.continuation_budget_per_active_window,
+        from zhaoxi.proactive.beat import ConversationBeatLoop
+        agent.conversation_continuation = ConversationBeatLoop(
+            settings, proactive_state.interaction, agent.conversation,
+            pending_work=lambda: any(not p.resolved for p in agent.tool_executor.gateway.store.pending.values()),
         )
         agent.proactive_heartbeat.continuation = agent.conversation_continuation
         agent.proactive_worker = DecisionWorker(

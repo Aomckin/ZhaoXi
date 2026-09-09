@@ -1,6 +1,6 @@
 """Event-to-notification proactive runtime."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from zhaoxi.proactive.conditions import evaluate
 from zhaoxi.proactive.models import (
@@ -72,13 +72,19 @@ class ProactiveRuntime:
             results.append(delivery)
         return results
 
-    async def flush_deferred(self, now: datetime, state: PolicyState) -> list[Delivery]:
+    async def flush_deferred(self, now: datetime, state: PolicyState, *, ordinary_cooldown_minutes: int = 0) -> list[Delivery]:
         results = []
-        for delivery in await self.store.list_deliveries(1000):
+        history = await self.store.list_deliveries(1000)
+        last_spoken = max((d.delivered_at for d in history if d.delivered_at and d.priority != Priority.INFO), default=None)
+        for delivery in history:
             if delivery.status != DeliveryStatus.DEFERRED or delivery.available_at > now:
                 continue
             event = await self.store.get_event(delivery.event_id)
             if event is None:
+                continue
+            if (last_spoken and delivery.priority not in {Priority.INFO, Priority.URGENT}
+                    and event.event_type != 'reminder.due'
+                    and now < last_spoken + timedelta(minutes=ordinary_cooldown_minutes)):
                 continue
             decision = self.policy.decide(event, now, state)
             if decision.action == PolicyAction.SUPPRESS:
@@ -90,4 +96,6 @@ class ProactiveRuntime:
                 if decision.action == PolicyAction.INBOX_ONLY:
                     delivery.priority = Priority.INFO
                 results.append(await self.sink.deliver(delivery, now))
+                if delivery.priority != Priority.INFO:
+                    last_spoken = now
         return results

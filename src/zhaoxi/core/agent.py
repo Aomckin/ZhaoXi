@@ -428,7 +428,8 @@ class ZhaoxiAgent:
                 logger.info("request=%s final response step=%d", request_id, step)
                 return AgentResponse(content=content, request_id=request_id, steps=step)
 
-            self.conversation.add_assistant(response.content, tool_calls=response.tool_calls)
+            self.conversation.add_assistant(response.content, tool_calls=response.tool_calls,
+                metadata={"reasoning_content": response.raw_metadata["reasoning_content"]} if "reasoning_content" in response.raw_metadata else {})
             tool_called = True
             for call_index, call in enumerate(response.tool_calls):
                 tool_logger.info(

@@ -30,8 +30,8 @@ test('assistant replies render separately, user and proactive messages stay inta
   calls.length=0;
   context.addMessage('assistant','一\n\n二');
   context.addMessage('user','一\n\n二');
-  context.addMessage('assistant','一\n\n二','proactive');
-  assert.deepEqual(calls.map(args=>args.slice(0,3)),[['assistant','一',''],['assistant','二',''],['user','一\n\n二',''],['assistant','一\n\n二','proactive']]);
+  context.addMessage('assistant','一\n\n二','system');
+  assert.deepEqual(calls.map(args=>args.slice(0,3)),[['assistant','一',''],['assistant','二',''],['user','一\n\n二',''],['assistant','一\n\n二','system']]);
 });
 test('formatting and literal HTML are unchanged before safe rendering',()=>{
   assert.deepEqual(split('**你好**\n\n<script>alert(1)</script>'),['**你好**','<script>alert(1)</script>']);

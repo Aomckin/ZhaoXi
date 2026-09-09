@@ -44,6 +44,7 @@ class Interaction:
         self.last_seen = None
         self.snapshot = None
         self.desktop_activity = None
+        self.beat_loop = None
         self.foreground_since = None
         self.transitions = 0
         self.pending_events = deque(maxlen=64)
@@ -76,6 +77,7 @@ class Interaction:
             self.pending_events.append(("conversation.cooled", now))
 
     def interact(self, now):
+        self.refresh(now)
         self.last_user_interaction_at = now
         self.active_until = now + timedelta(minutes=self.active_minutes)
         self.semi_active_until = now + timedelta(minutes=self.active_minutes + self.semi_active_minutes)
@@ -149,6 +151,12 @@ class Interaction:
             value = Interruptibility.HIGH
         else:
             value = Interruptibility.NORMAL
+        self.interruptibility_reason = (
+            'blocked' if value == Interruptibility.BLOCKED else
+            'keyboard_busy' if input_active and input_active.value else
+            'fullscreen' if self.snapshot and self.snapshot.fullscreen else
+            'focus_active' if focus and focus.value == 'active' else 'available'
+        )
         self.interruptibility = value
         return value
 
@@ -169,8 +177,10 @@ class Interaction:
         self.refresh(now)
         self._resolve_interruptibility(now)
         return {
+            "active": self.beat_loop.diagnostics(now) if self.beat_loop else None,
             "interaction_state": self.state.value,
             "interruptibility": self.interruptibility.value,
+            "interruptibility_reason": self.interruptibility_reason,
             "active_since": self.active_since,
             "active_expires_at": self.active_until,
             "continuation_count": self.continuation_count,

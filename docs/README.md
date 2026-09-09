@@ -1,6 +1,11 @@
 # 文档索引与事实源
 
-## 当前文档（v1.1.6.1）
+## 当前文档（v1.1.7）
+
+- [当前状态与设置](CURRENT_STATUS.md)：优先阅读；汇总最新预算、思考开关、前端行为及诊断结论。
+- [ACTIVE 排查记录](ACTIVE_Beat_Diagnostics_Fix.md)：按时间保留实机证据与修复经过。
+
+- [`Zhaoxi_v1.1.7_Release_Notes.md`](Zhaoxi_v1.1.7_Release_Notes.md)：ACTIVE Beat、会话预算与验证状态。
 
 - [`Zhaoxi_v1.1.6.1_Release_Notes.md`](Zhaoxi_v1.1.6.1_Release_Notes.md)：普通聊天桌面上下文注入补丁。
 
@@ -17,6 +22,8 @@
 - [`presence-autostart.md`](presence-autostart.md)：登录常驻机制与手动验收。
 
 ## 当前任务书
+
+- [`Zhaoxi_v1.1.7_Active_Conversation_Closure_Development_Task.md`](Zhaoxi_v1.1.7_Active_Conversation_Closure_Development_Task.md)：v1.1.x 对话闭环收尾任务书。
 
 - [`Zhaoxi_v1.1.6.1_Desktop_Context_Injection_Patch.md`](Zhaoxi_v1.1.6.1_Desktop_Context_Injection_Patch.md)：普通对话 Runtime 注入任务书。
 
@@ -43,4 +50,4 @@
 
 ## 历史文档
 
-文件名以 `v0.1`～`v0.9` 开头的开发计划和任务书是当时的设计记录，不是当前状态清单。其未勾选项、旧测试数量、旧版本号和“留给后续版本”等文字保留历史语境，不应据此判断当前版本是否完成。发生冲突时，以本页“当前文档（v1.1.6.1）”列表及 `CODEBASE_STATUS.md` 为准。
+文件名以 `v0.1`～`v0.9` 开头的开发计划和任务书是当时的设计记录，不是当前状态清单。其未勾选项、旧测试数量、旧版本号和“留给后续版本”等文字保留历史语境，不应据此判断当前版本是否完成。发生冲突时，以本页“当前文档（v1.1.7）”列表及 `CODEBASE_STATUS.md` 为准。

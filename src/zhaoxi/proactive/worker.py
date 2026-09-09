@@ -1,4 +1,7 @@
 """Gated batch decisions and durable delivery, independent from observation cadence."""
+import logging
+import json
+from uuid import uuid4
 import asyncio
 from time import monotonic
 from datetime import UTC, datetime, timedelta
@@ -11,23 +14,40 @@ class DecisionWorker:
     def __init__(self, heartbeat, decision):
         self.heartbeat, self.decision = heartbeat, decision
         self.lock = asyncio.Lock()
+        self.delivery_lock = asyncio.Lock()
         self.last_decision = None
 
     async def tick(self, now=None):
         async with self.lock:
             return await self._tick(now or datetime.now(UTC))
 
+    async def poke(self):
+        async with self.lock:
+            now = datetime.now(UTC)
+            state = self.heartbeat.state
+            state.interaction.interact(now)
+            beat = state.interaction.beat_loop
+            beat.sync(now)
+            beat.session.initiative_budget = max(1, beat.session.initiative_budget)
+            history = await self.heartbeat.runtime.store.list_deliveries(1000)
+            return await self._beat(now, now.astimezone(ZoneInfo(self.heartbeat.settings.proactive_timezone)), history, None, forced=True)
+
     async def _tick(self, now):
         started = monotonic()
         h = self.heartbeat
         store, runtime, state = h.runtime.store, h.runtime, h.state
         local_now = now.astimezone(ZoneInfo(h.settings.proactive_timezone))
-        flushed = await runtime.flush_deferred(local_now, state)
+        flushed = await runtime.flush_deferred(local_now, state, ordinary_cooldown_minutes=h.settings.proactive_cooldown_minutes)
         h.metrics.increment('proactive.deliveries', len(flushed))
         history = await store.list_deliveries(1000)
         last_spoken = max((d.delivered_at for d in history if d.delivered_at
                            and d.priority != Priority.INFO), default=None)
-        continuation = getattr(h, 'continuation', None)
+        beat = getattr(state.interaction, 'beat_loop', None)
+        if beat:
+            delivery = await self._beat(now, local_now, history, last_spoken)
+            if delivery:
+                return [*flushed, delivery]
+        continuation = None if beat else getattr(h, 'continuation', None)
         candidate = continuation.candidate(now, state.interaction) if continuation else None
         if candidate is not None and not state.interacting:
             h.metrics.increment('proactive.continuation_decisions')
@@ -141,6 +161,105 @@ class DecisionWorker:
         else:
             await self.resolve(batch)
         return output
+
+    def _trace_beat(self, beat, **updates):
+        self.beat_trace.update(updates)
+        self.beat_trace['beat_scheduled'] = self.beat_trace['scheduled']
+        self.beat_trace['gate_passed'] = not self.beat_trace['gated']
+        beat.last_trace = dict(self.beat_trace)
+        if beat.trace_history and beat.trace_history[-1]['id'] == self.beat_trace['id']:
+            beat.trace_history[-1] = dict(self.beat_trace)
+        else:
+            beat.trace_history.append(dict(self.beat_trace))
+        logging.getLogger('BEAT').info('%s', json.dumps(self.beat_trace, default=str))
+
+    async def _beat(self, now, local_now, history, last_spoken, forced=False):
+        h = self.heartbeat
+        state = h.state
+        beat = state.interaction.beat_loop
+        beat.sync(now)
+        self.beat_trace = {'id': uuid4().hex, 'observed_at': now.isoformat(),
+            'session_started_at': beat.session.started_at.isoformat() if beat.session else None,
+            'scheduled': bool(beat.session and beat.session.next_beat_at and now >= beat.session.next_beat_at),
+            'gated': False, 'gate_reason': None, 'llm_called': False, 'llm_action': None,
+            'forced': forced, 'model_error': None, 'llm_confidence': None, 'suppressed': False, 'suppression_reason': None, 'delivered': False}
+        reason = beat.gate(now, state, last_spoken, forced=forced)
+        activity = state.interaction.desktop_activity
+        self.beat_trace['desktop'] = activity.diagnostics() if activity else None
+        desktop = self.beat_trace['desktop'] or {}
+        self.beat_trace.update(desktop_busy=beat.desktop_busy(now),
+            keyboard_1m=desktop.get('keyboard_rate_1m'), keyboard_5m=desktop.get('keyboard_rate_5m'),
+            mouse_1m=desktop.get('mouse_rate_1m'), foreground_process=desktop.get('foreground_process'),
+            interruptibility=str(state.interaction.interruptibility))
+        self.beat_trace['interruptibility_reason'] = getattr(state.interaction, 'interruptibility_reason', None)
+        policy = h.runtime.policy
+        local_time = local_now.time().replace(tzinfo=None)
+        night = (local_time >= policy.night_start or local_time < policy.night_end) if policy.night_start > policy.night_end else policy.night_start <= local_time < policy.night_end
+        if reason or (night and not forced):
+            if night and beat.session:
+                beat.session.last_silent_reason = 'night_mode'
+            if beat.session:
+                self._trace_beat(beat, gated=True, gate_reason=reason or 'night_mode')
+            return None
+        pending = await h.runtime.store.pending_events()
+        if not forced and any(e.event_type == 'reminder.due' or e.priority == Priority.URGENT for e in pending):
+            beat.session.last_silent_reason = 'priority_message_pending'
+            self._trace_beat(beat, gated=True, gate_reason='priority_message_pending')
+            return None
+        token = beat.reserve(now)
+        started = monotonic()
+        h.metrics.increment('proactive.beat_decisions')
+        self._trace_beat(beat, llm_called=True)
+        result = await beat.decide(self.decision, now, history)
+        self._trace_beat(beat, llm_action=None if beat.model_failure else result.action,
+            llm_confidence=None if beat.model_failure else result.confidence, model_error=beat.model_failure,
+            model_diagnostics=dict(beat.model_diagnostics))
+        checked = now + timedelta(seconds=monotonic()-started)
+        async with self.delivery_lock:
+            return await self._send_beat(beat, result, token, checked, last_spoken, forced)
+
+    async def _send_beat(self, beat, result, token, checked, last_spoken, forced=False):
+        h = self.heartbeat
+        state = h.state
+        # Observe latest user, desktop and quiet state after network latency.
+        reason = beat.gate(checked, state, last_spoken, sending=True, forced=forced)
+        if not beat.session or token != (beat.session.started_at, beat.session.last_user_at):
+            self._trace_beat(beat, suppressed=True, suppression_reason='conversation_changed')
+            return None
+        local = checked.astimezone(ZoneInfo(h.settings.proactive_timezone)).time().replace(tzinfo=None)
+        policy = h.runtime.policy
+        night = (local >= policy.night_start or local < policy.night_end) if policy.night_start > policy.night_end else policy.night_start <= local < policy.night_end
+        if night and not forced:
+            reason = 'night_mode'
+        beat.record(result)
+        if reason:
+            beat.session.last_silent_reason = reason
+            self._trace_beat(beat, suppressed=True, suppression_reason=reason)
+            return None
+        if result.action == 'SILENT':
+            self._trace_beat(beat, suppression_reason=beat.model_failure or 'model_silent')
+            return None
+        delivery = Delivery(
+            delivery_id=f'beat-{token[0].timestamp()}-{beat.session.beat_count}',
+            event_id=f'beat-{token[0].timestamp()}-{beat.session.beat_count}',
+            subscription_id='conversation-beat', event_type='conversation.beat',
+            relevant_payload={'summary': 'ACTIVE 对话中的自然续聊。'},
+            priority=Priority.NOTICE, content=result.content,
+            decision_reason='active_conversation_beat', available_at=checked,
+        )
+        try:
+            await h.runtime.sink.deliver(delivery, checked)
+        except Exception:
+            self._trace_beat(beat, suppressed=True, suppression_reason='delivery_failed')
+            raise
+        self._trace_beat(beat, delivered=True)
+        h.metrics.increment('proactive.deliveries')
+        beat.sent(checked)
+        from zhaoxi.core.message import Message, Role
+        beat.conversation.add_delivery(Message(role=Role.ASSISTANT, content=result.content,
+            delivery_id=delivery.delivery_id, timestamp=checked))
+        h.metrics.increment('proactive.beat_deliveries')
+        return delivery
 
     async def resolve(self, events):
         for event in events:

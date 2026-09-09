@@ -1,4 +1,5 @@
 """Optional LifeHUD providers with shared sampling and unreachable backoff."""
+import asyncio
 from datetime import timedelta
 
 from zhaoxi.sdk import ProactiveEvent, Priority, StateSignal
@@ -32,7 +33,7 @@ class LifeHudSensor:
         try:
             focus = (await self.client.focus()).focus
             tasks_response = await self.client.tasks()
-        except Exception:
+        except (Exception, asyncio.CancelledError):
             self.reachable = False
             self.failures += 1
             delay = self.BACKOFF_MINUTES[min(self.failures - 1, len(self.BACKOFF_MINUTES) - 1)]

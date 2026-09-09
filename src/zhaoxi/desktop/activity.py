@@ -23,6 +23,7 @@ class InputShape:
     window_switch_rate_1m: float = 0
     window_switch_rate_5m: float = 0
     idle_seconds: float = 0
+    keyboard_idle_seconds: float | None = None
 
 
 class InputCounters:
@@ -50,6 +51,8 @@ class InputCounters:
                     items.popleft()
                 for seconds, label in ((60, '1m'), (300, '5m')):
                     values[f'{name}_rate_{label}'] = sum(n for t, n in items if t > now-seconds) * 60 / seconds
+            keyboard = self.buckets['keyboard']
+            values['keyboard_idle_seconds'] = max(0., now-keyboard[-1][0]) if keyboard else None
         return InputShape(**values)
 
 
@@ -82,6 +85,7 @@ class DesktopActivityContext:
     fullscreen: bool
     idle_seconds: float
     desktop_available: bool
+    foreground_is_self: bool = False
     activity_intensity: str = 'LOW'
     activity_duration: float = 0
     interaction_state: str = 'IDLE'
@@ -109,6 +113,46 @@ class DesktopActivity:
         self.last_transition = None
         self.pending = deque(maxlen=32)
         self.input_healthy = False
+        # Non-overlapping eligible minutes; numeric features only, bounded to
+        # 1440 typing minutes. A restart starts a fresh calibration.
+        self.keyboard_baseline = deque(maxlen=1440)
+        self.baseline_sample_at = None
+        self.busy_evidence = {}
+
+    def keyboard_busy(self, shape, eligible, now):
+        samples = sorted(self.keyboard_baseline)
+        def percentile(fraction):
+            if not samples:
+                return None
+            index = (len(samples)-1)*fraction
+            low = int(index)
+            return samples[low] + (samples[min(low+1, len(samples)-1)]-samples[low])*(index-low)
+        quantiles = {name: percentile(q) for name, q in (('p50', .5), ('p80', .8), ('p95', .95))}
+        ready = len(samples) >= 20
+        threshold = max(self.settings.desktop_activity_high_keyboard_rate,
+                        quantiles['p80'] if ready else 0)
+        recent = (shape.keyboard_idle_seconds is not None and
+                  shape.keyboard_idle_seconds < self.settings.desktop_activity_keyboard_busy_grace_seconds)
+        ratio = shape.keyboard_rate_1m / shape.keyboard_rate_5m if shape.keyboard_rate_5m > 0 else None
+        falling = ratio is not None and ratio < .6
+        trend = 'just_stopped' if shape.keyboard_rate_5m > 0 and (falling or not recent) else (
+            'rising' if ratio is not None and ratio > 1.2 else 'steady')
+        high = eligible and recent and not falling and shape.keyboard_rate_1m >= threshold
+        self.busy_evidence = {'baseline_samples': len(samples), 'baseline_ready': ready,
+            'baseline_scope': 'process_typing_minutes', **quantiles, 'keyboard_threshold': threshold,
+            'recent_keyboard': recent, 'above_threshold': shape.keyboard_rate_1m >= threshold,
+            'eligible': eligible, 'ratio_1m_to_5m': ratio, 'trend': trend, 'busy': high}
+        # Exclude minutes containing unavailable/self-window observations. Do
+        # not train on idle zeros or repeatedly weight overlapping 2s samples.
+        if not eligible:
+            self.baseline_sample_at = None
+        elif self.baseline_sample_at is None:
+            self.baseline_sample_at = now
+        elif (now-self.baseline_sample_at).total_seconds() >= 60:
+            if shape.keyboard_rate_1m > 0:
+                self.keyboard_baseline.append(shape.keyboard_rate_1m)
+            self.baseline_sample_at = now
+        return high
 
     def update(self, snapshot, now):
         available = snapshot.healthy and not snapshot.locked
@@ -139,9 +183,11 @@ class DesktopActivity:
                 self.previous_inference = self.inference
             self.inference = None
         shape = self.counters.shape(snapshot.last_input_seconds)
-        high = available and snapshot.last_input_seconds < 30 and (
-            shape.keyboard_rate_1m >= self.settings.desktop_activity_high_keyboard_rate or
-            shape.mouse_rate_1m >= self.settings.desktop_activity_high_mouse_rate)
+        # Mouse movement rate depends heavily on device polling frequency; it is
+        # observation data, not evidence of sustained text input or a busy user.
+        own_window = getattr(snapshot, 'foreground_is_self', False)
+        high = self.keyboard_busy(shape, available and not own_window
+            and self.settings.desktop_activity_input_rate_enabled, now)
         intensity = 'HIGH' if high else 'MEDIUM' if available and snapshot.last_input_seconds < 30 and (shape.keyboard_rate_1m or shape.mouse_rate_1m) else 'LOW'
         if self.activity_since is None:
             self.activity_since = now
@@ -163,7 +209,7 @@ class DesktopActivity:
         self.context = DesktopActivityContext(now, snapshot.foreground_process if available else None,
             getattr(snapshot, 'foreground_title', None) if available and self.settings.desktop_activity_window_title_enabled else None,
             self.foreground_since, max(0, (now-self.foreground_since).total_seconds()), list(self.windows), shape,
-            snapshot.fullscreen, snapshot.last_input_seconds, available, intensity,
+            snapshot.fullscreen, snapshot.last_input_seconds, available, own_window, intensity,
             max(0, (now-self.activity_since).total_seconds()))
 
     def transition(self, name, previous, current, duration, now):
@@ -189,6 +235,9 @@ class DesktopActivity:
         return {'enabled': True, 'title_enabled': self.settings.desktop_activity_window_title_enabled,
                 'input_rate_enabled': self.settings.desktop_activity_input_rate_enabled,
                 'input_healthy': self.input_healthy,
+                'foreground_is_self': c.foreground_is_self if c else False,
+                'busy_basis': 'adaptive_keyboard_and_trend',
+                'busy_evidence': dict(self.busy_evidence),
                 'healthy': bool(c and c.desktop_available and (datetime.now(UTC)-c.observed_at).total_seconds() < 15),
                 'foreground_process': c.foreground_process if c else None,
                 'activity_mode': self.inference.activity_mode if self.inference else 'unknown',
@@ -218,6 +267,7 @@ class DesktopActivity:
             'input_healthy': self.input_healthy,
             'activity_mode': inference.activity_mode if inference else 'unknown',
             'activity_intensity': c.activity_intensity,
+            'busy_evidence': dict(self.busy_evidence),
             'activity_confidence': inference.confidence if inference else None,
             'activity_summary': inference.primary_activity if inference else None,
         })

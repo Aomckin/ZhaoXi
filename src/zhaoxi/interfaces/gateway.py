@@ -37,7 +37,11 @@ class InterfaceGateway:
     ) -> None:
         self.agent = agent
         self.metrics = metrics or getattr(agent, "metrics", None) or MetricRegistry()
-        self._lock = asyncio.Lock()
+        self._lock = getattr(agent, "conversation_lock", None) or asyncio.Lock()
+        agent.conversation_lock = self._lock
+        worker = getattr(agent, "proactive_worker", None)
+        if worker:
+            worker.delivery_lock = self._lock
         self._responses: OrderedDict[str, UnifiedResponse] = OrderedDict()
         self._response_cache_size = response_cache_size
 
@@ -75,14 +79,23 @@ class InterfaceGateway:
                 max_calls = getattr(provider, "max_calls", 12)
                 max_total_tokens = getattr(provider, "max_total_tokens", 100_000)
                 with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens):
+                    previous_messages = {id(m) for m in self.agent.conversation.messages}
                     response = await self.agent.run_natural(
                         message.content, **({"images": message.images} if message.images else {})
                     )
+                    if message.display_parts:
+                        for item in self.agent.conversation.messages:
+                            if id(item) not in previous_messages and item.role == Role.USER:
+                                item.metadata['display_parts'] = [p.model_dump(mode='json') for p in message.display_parts]
+                                break
                     result = self._result(
                         response,
                         request_id=message.request_id,
                         session_id=message.session_id,
                     )
+                beat = getattr(getattr(state, "interaction", None), "beat_loop", None)
+                if beat:
+                    beat.note_assistant(datetime.now(UTC))
                 self._cache(result)
                 await self._persist_session()
                 self.metrics.increment("interface.chat.completed")
@@ -111,6 +124,9 @@ class InterfaceGateway:
             if state is not None:
                 state.last_interaction_at = datetime.now(UTC)
                 state.interaction.interact(state.last_interaction_at)
+                beat = getattr(state.interaction, "beat_loop", None)
+                if beat:
+                    beat.note_user_message('', state.last_interaction_at)
             delivery.status = DeliveryStatus.ACKNOWLEDGED
             delivery.acknowledged_at = datetime.now(UTC)
             await runtime.store.save_delivery(delivery)
@@ -125,6 +141,7 @@ class InterfaceGateway:
         self.agent.conversation.add_delivery(Message(
             role=Role.ASSISTANT, content=delivery.content, delivery_id=delivery.delivery_id,
             timestamp=delivery.delivered_at or delivery.available_at,
+            metadata={"kind": "system"} if delivery.event_type.startswith("system.") else {},
             background="；".join(str(x)[:600] for x in summaries[:20] if x)[:2000],
         ))
 
@@ -162,6 +179,9 @@ class InterfaceGateway:
                 state.interacting = True
                 state.last_interaction_at = datetime.now(UTC)
                 state.interaction.interact(state.last_interaction_at)
+                beat = getattr(state.interaction, "beat_loop", None)
+                if beat:
+                    beat.note_user_message("确认" if approve else "拒绝", state.last_interaction_at)
             try:
                 if confirmation_id in self.agent._pending_permissions:
                     method = self.agent.approve_permission if approve else self.agent.deny_permission
@@ -177,6 +197,9 @@ class InterfaceGateway:
                 if state is not None:
                     state.interacting = False
                     state.last_interaction_at = datetime.now(UTC)
+        beat = getattr(getattr(state, "interaction", None), "beat_loop", None)
+        if beat:
+            beat.note_assistant(datetime.now(UTC))
         result = self._result(response, request_id=request_id, session_id=session_id)
         self._cache(result)
         return result
@@ -197,6 +220,8 @@ class InterfaceGateway:
         return [
             {"role": item.role.value, "content": item.content or "", "timestamp": item.timestamp.isoformat(),
              "delivery_id": item.delivery_id,
+             "kind": item.metadata.get("kind", ""),
+             "display_parts": item.metadata.get("display_parts", []) if item.role == Role.USER else [],
              **({"images": item.images} if item.images else {})}
             for item in self.agent.conversation.messages
             if item.role.value in {"user", "assistant"}
@@ -204,6 +229,15 @@ class InterfaceGateway:
 
     def clear(self) -> None:
         self.agent.conversation.clear()
+        state = getattr(self.agent, "proactive_state", None)
+        beat = getattr(getattr(state, "interaction", None), "beat_loop", None)
+        if beat:
+            state.interaction.active_until = None
+            state.interaction.receptive(datetime.now(UTC))
+            state.interaction.refresh(datetime.now(UTC))
+            beat.session = None
+            beat.open_thread = None
+            beat.last_model_decision = None
         self._responses.clear()
         session = getattr(self.agent, "session_record", None)
         store = getattr(self.agent, "session_store", None)

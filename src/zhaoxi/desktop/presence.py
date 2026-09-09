@@ -1,5 +1,6 @@
 """Windows presence metadata only: idle duration, executable basename and geometry."""
 from dataclasses import dataclass
+import os
 import asyncio
 import ctypes
 from ctypes import wintypes as w
@@ -13,6 +14,7 @@ from zhaoxi.proactive.interaction import PresenceSnapshot
 class DesktopSnapshot(PresenceSnapshot):
     foreground_title: str | None = None
     foreground_window: int | None = None
+    foreground_is_self: bool = False
 
 
 def covers_monitor(window, monitor):
@@ -69,6 +71,7 @@ def read_presence(title_enabled=False):
         return PresenceSnapshot(last_input_seconds=idle, locked=True)
     hwnd = user.GetForegroundWindow()
     process, fullscreen, title = None, False, None
+    is_self = False
     if hwnd and hwnd != user.GetShellWindow():
         if title_enabled:
             user.GetWindowTextW.argtypes = [w.HWND, w.LPWSTR, ctypes.c_int]
@@ -82,6 +85,7 @@ def read_presence(title_enabled=False):
             fullscreen = covers_monitor(rect, monitor.rcMonitor)
         pid = w.DWORD()
         user.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        is_self = pid.value == os.getpid()
         handle = kernel.OpenProcess(0x1000, False, pid.value)
         if handle:
             try:
@@ -91,7 +95,7 @@ def read_presence(title_enabled=False):
                     process = PureWindowsPath(name.value).name
             finally:
                 kernel.CloseHandle(handle)
-    return DesktopSnapshot(idle, process, fullscreen, locked, True, title, int(hwnd) if hwnd else None)
+    return DesktopSnapshot(idle, process, fullscreen, locked, True, title, int(hwnd) if hwnd else None, is_self)
 
 
 class DesktopPresenceSensor:

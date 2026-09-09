@@ -1,6 +1,16 @@
 # Zhaoxi / 朝汐
 
-Zhaoxi 1.1.6.1 是一个可扩展的本地个人 Agent Core，提供对话、联想记忆、潮庭书库、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与可选 Tool Package 能力。
+Zhaoxi 1.1.7 是一个可扩展的本地个人 Agent Core，提供对话、联想记忆、潮庭书库、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与可选 Tool Package 能力。
+
+最新界面设置、模型思考开关、Beat 预算和验收边界统一见 [当前状态](docs/CURRENT_STATUS.md)。
+
+## v1.1.7 ACTIVE 对话闭环
+
+ACTIVE 现在独立调度 Conversation Beat：沉默默认 180 秒后获得判断机会，后续至少间隔 300 秒；普通闲聊也可触发，open thread 只是一种理由。模型可选择 SILENT / CONTINUE / COMMENT / ASK / CALLBACK，SILENT 不消耗发送预算。
+
+每段会话初始预算 2、上限 3，主动发送扣 1，用户有效回应后补 1。持续极高输入、BLOCKED、Quiet、夜间、待确认或正在处理请求时不调用常规 Beat 模型；LOW 不再自动阻断；普通主动消息与 Beat 共享发送历史和冷却。无人回应时不会靠主动发送无限续期，约 20 分钟后冷却到 SEMI_ACTIVE。
+
+诊断包含 `active` 会话、Beat 时间、预算及拦截原因；`/api/proactive/active/inspect` 可查看最近模型决策。配置及验收状态见 [v1.1.7 开发报告](docs/Zhaoxi_v1.1.7_Release_Notes.md)。本版为 v1.1.x 功能收尾，之后仅修复缺陷。
 
 ## v1.1.6.1 普通对话桌面上下文
 

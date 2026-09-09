@@ -1,4 +1,5 @@
 """Cheap world observation; model decisions are owned by a separate worker."""
+import logging
 import asyncio
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -24,6 +25,7 @@ class TidalHeartbeat:
         self.updated = asyncio.Event()
         self.presence = presence
         self.continuation = None
+        self.sensor_health = {}
         state.interaction.active_minutes = settings.active_timeout_minutes
         state.interaction.semi_active_minutes = settings.semi_active_timeout_minutes
         state.interaction.away_minutes = settings.away_idle_minutes
@@ -66,12 +68,14 @@ class TidalHeartbeat:
                 for event in candidates:
                     if await self.buffer.add(event):
                         self.metrics.increment('proactive.sensor_events')
-            except Exception:
+            except Exception as exc:
+                self._sensor_failure('sensor', sensor, exc, now)
                 self.metrics.increment('proactive.sensor_errors')
         for provider in self.signal_providers:
             try:
                 interaction.observe_signals(await asyncio.wait_for(provider.collect_signals(now), 8), now)
-            except Exception:
+            except Exception as exc:
+                self._sensor_failure('signal_provider', provider, exc, now)
                 self.metrics.increment('proactive.signal_provider_errors')
         was_focused = self.focus_active
         focus_signal = interaction.signals.resolve("attention.focus", now)
@@ -128,6 +132,14 @@ class TidalHeartbeat:
                 expires_at=now + timedelta(hours=1), payload={'summary': context[:600]},
             )):
                 self.metrics.increment('proactive.sensor_events')
+
+    def _sensor_failure(self, role, provider, exc, now):
+        key = role + ':' + type(provider).__name__
+        detail = {'role': role, 'provider': type(provider).__name__, 'error_type': type(exc).__name__,
+                  'observed_at': now.isoformat(), 'next_poll': str(getattr(provider, 'next_poll', None)),
+                  'failures': getattr(provider, 'failures', None)}
+        self.sensor_health[key] = detail
+        logging.getLogger('SENSOR').warning('provider_failure %s', detail)
 
     async def run(self):
         while True:
