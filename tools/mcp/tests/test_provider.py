@@ -3,7 +3,7 @@ import asyncio
 import shutil
 
 from tools.mcp.provider import MCPServerSpec, MCPToolProvider
-from tools.mcp.servers import _find_es_path
+from tools.mcp.servers import _find_es_path, selected_server_specs
 from zhaoxi.cli import build_agent
 from zhaoxi.config.settings import Settings
 from zhaoxi.permission.executor import ToolExecutor
@@ -25,6 +25,38 @@ def test_find_es_path_supports_winget_portable_package(tmp_path):
     executable.touch()
 
     assert _find_es_path({"LOCALAPPDATA": str(tmp_path)}) == str(executable.resolve())
+
+
+def test_default_servers_use_an_isolated_filesystem_sandbox(monkeypatch, tmp_path):
+    monkeypatch.delenv("MCP_FILESYSTEM_ALLOWED_DIRS", raising=False)
+    monkeypatch.delenv("MCP_PLAYWRIGHT_ENABLED", raising=False)
+    root = Path(__file__).parents[1]
+
+    specs = selected_server_specs(root, {})
+
+    assert {spec.server_id for spec in specs} == {
+        "filesystem",
+        "everything-search",
+        "fetch",
+        "time",
+    }
+    filesystem = next(spec for spec in specs if spec.server_id == "filesystem")
+    assert filesystem.arguments[1:] == (str((root / "data" / "filesystem").resolve()),)
+    assert str(Path.cwd().resolve()) not in filesystem.arguments
+
+
+def test_filesystem_directories_and_playwright_have_independent_switches(monkeypatch, tmp_path):
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    monkeypatch.setenv("MCP_FILESYSTEM_ALLOWED_DIRS", str(allowed))
+    monkeypatch.setenv("MCP_PLAYWRIGHT_ENABLED", "true")
+    root = Path(__file__).parents[1]
+
+    specs = selected_server_specs(root, {"servers": "filesystem,memory"})
+
+    assert {spec.server_id for spec in specs} == {"filesystem", "memory", "playwright"}
+    filesystem = next(spec for spec in specs if spec.server_id == "filesystem")
+    assert filesystem.arguments[1:] == (str(allowed.resolve()),)
 
 
 def agent_settings(tmp_path):

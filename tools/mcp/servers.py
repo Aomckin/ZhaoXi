@@ -9,10 +9,53 @@ import shutil
 from tools.mcp.provider import MCPServerSpec
 
 
+DEFAULT_SERVER_IDS = frozenset({"filesystem", "everything-search", "fetch", "time"})
+
+
 def _required(path: Path, label: str) -> str:
     if not path.exists():
         raise FileNotFoundError(f"{label} 尚未安装：{path}")
     return str(path)
+
+
+def _as_bool(value: object, default: bool = False) -> bool:
+    if value is None:
+        return default
+    normalized = str(value).strip().casefold()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"无效布尔值：{value}")
+
+
+def _config_value(config: dict[str, object], key: str, environment_key: str) -> object | None:
+    value = config.get(key)
+    return value if value is not None else os.environ.get(environment_key)
+
+
+def _filesystem_allowed_directories(root: Path, config: dict[str, object]) -> tuple[str, ...]:
+    configured = _config_value(
+        config,
+        "filesystem_allowed_dirs",
+        "MCP_FILESYSTEM_ALLOWED_DIRS",
+    )
+    if configured is None or not str(configured).strip():
+        sandbox = root / "data" / "filesystem"
+        sandbox.mkdir(parents=True, exist_ok=True)
+        return (str(sandbox.resolve()),)
+
+    directories: list[str] = []
+    for raw_path in str(configured).split(os.pathsep):
+        if not raw_path.strip():
+            continue
+        path = Path(raw_path.strip()).expanduser().resolve()
+        if not path.is_dir():
+            raise FileNotFoundError(f"Filesystem MCP 允许目录不存在：{path}")
+        directories.append(str(path))
+    if not directories:
+        raise ValueError("Filesystem MCP 至少需要一个允许目录")
+    return tuple(dict.fromkeys(directories))
 
 
 def _find_es_path(environment: dict[str, str] | None = None) -> str | None:
@@ -21,8 +64,11 @@ def _find_es_path(environment: dict[str, str] | None = None) -> str | None:
     configured = env.get("ES_PATH")
     if configured:
         candidate = Path(configured).expanduser()
-        if candidate.is_absolute() and candidate.is_file():
-            return str(candidate)
+        if not candidate.is_absolute():
+            raise ValueError(f"ES_PATH 必须是绝对路径：{candidate}")
+        if not candidate.is_file():
+            raise FileNotFoundError(f"ES_PATH 不存在：{candidate}")
+        return str(candidate.resolve())
 
     candidates = [
         Path(env.get("ProgramFiles", r"C:\Program Files")) / "Everything" / "es.exe",
@@ -44,7 +90,11 @@ def _find_es_path(environment: dict[str, str] | None = None) -> str | None:
     return next((str(path.resolve()) for path in candidates if path.is_file()), None)
 
 
-def installed_server_specs(root: Path, workspace_root: Path) -> list[MCPServerSpec]:
+def installed_server_specs(
+    root: Path,
+    filesystem_allowed_dirs: tuple[str, ...],
+    everything_es_path: object | None = None,
+) -> list[MCPServerSpec]:
     node = shutil.which("node")
     if not node:
         raise FileNotFoundError("没有找到 Node.js")
@@ -63,8 +113,11 @@ def installed_server_specs(root: Path, workspace_root: Path) -> list[MCPServerSp
     ]
     if edge.exists():
         playwright_args.extend(("--browser", "msedge"))
-    everything_environment = {}
-    if es_path := _find_es_path():
+    everything_environment: dict[str, str] = {}
+    es_environment = dict(os.environ)
+    if everything_es_path is not None and str(everything_es_path).strip():
+        es_environment["ES_PATH"] = str(everything_es_path).strip()
+    if es_path := _find_es_path(es_environment):
         everything_environment["ES_PATH"] = es_path
     return [
         MCPServerSpec(
@@ -83,7 +136,10 @@ def installed_server_specs(root: Path, workspace_root: Path) -> list[MCPServerSp
         MCPServerSpec(
             "filesystem",
             node,
-            (_required(official / "filesystem" / "dist" / "index.js", "Filesystem MCP"), str(workspace_root)),
+            (
+                _required(official / "filesystem" / "dist" / "index.js", "Filesystem MCP"),
+                *filesystem_allowed_dirs,
+            ),
             official / "filesystem",
         ),
         MCPServerSpec(
@@ -113,12 +169,21 @@ def installed_server_specs(root: Path, workspace_root: Path) -> list[MCPServerSp
 
 
 def selected_server_specs(root: Path, config: dict[str, object]) -> list[MCPServerSpec]:
-    workspace = Path(str(config.get("workspace_root") or os.getcwd())).resolve()
-    selected_value = str(config.get("servers") or "all").strip()
+    allowed_directories = _filesystem_allowed_directories(root, config)
+    everything_es_path = _config_value(config, "everything_es_path", "MCP_EVERYTHING_ES_PATH")
+    selected_value = str(config.get("servers") or ",".join(sorted(DEFAULT_SERVER_IDS))).strip()
     selected = {item.strip() for item in selected_value.split(",") if item.strip()}
-    specs = installed_server_specs(root, workspace)
-    if not selected or "all" in selected:
-        return specs
+    specs = installed_server_specs(root, allowed_directories, everything_es_path)
+    if not selected:
+        selected = set(DEFAULT_SERVER_IDS)
+    if "all" in selected:
+        selected = {spec.server_id for spec in specs if spec.server_id != "playwright"}
+    playwright_enabled = _as_bool(
+        _config_value(config, "playwright_enabled", "MCP_PLAYWRIGHT_ENABLED")
+    )
+    selected.discard("playwright")
+    if playwright_enabled:
+        selected.add("playwright")
     known = {spec.server_id for spec in specs}
     unknown = selected - known
     if unknown:
