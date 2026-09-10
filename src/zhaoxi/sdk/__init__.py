@@ -13,11 +13,12 @@ from zhaoxi.sdk.protocols import (
     ReflectionProvider,
     StateSignalProvider,
     ToolPackageProtocol,
+    ToolProviderProtocol,
     ToolProtocol,
 )
 from zhaoxi.sdk.signals import SignalAggregator, SignalPriority, StateSignal
 
-SDK_VERSION = "1.0.0"
+SDK_VERSION = "1.1.0"
 
 __all__ = [
     "SDK_VERSION",
@@ -42,6 +43,7 @@ __all__ = [
     "StateSignalProvider",
     "Tool",
     "ToolPackageProtocol",
+    "ToolProviderProtocol",
     "ToolProtocol",
     "ToolResult",
 ]

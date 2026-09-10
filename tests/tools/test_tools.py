@@ -43,3 +43,31 @@ def test_registry_lifecycle_and_duplicate():
     assert registry.unregister("echo") is tool
     with pytest.raises(ToolNotFoundError):
         registry.get("echo")
+
+
+def test_registry_dynamically_registers_refreshes_and_closes_tool_provider():
+    class Provider:
+        provider_id = "dynamic-test"
+
+        def __init__(self):
+            self.tools = [EchoTool()]
+            self.closed = False
+
+        def provide_tools(self):
+            return self.tools
+
+        def close(self):
+            self.closed = True
+
+    provider = Provider()
+    registry = ToolRegistry()
+    assert [tool.name for tool in registry.register_provider(provider)] == ["echo"]
+    assert registry.get("echo") is provider.tools[0]
+
+    provider.tools = [CurrentTimeTool()]
+    assert [tool.name for tool in registry.refresh_provider(provider.provider_id)] == ["current_time"]
+    with pytest.raises(ToolNotFoundError):
+        registry.get("echo")
+
+    assert registry.close_providers() == []
+    assert provider.closed

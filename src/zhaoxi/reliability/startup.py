@@ -13,6 +13,7 @@ from zhaoxi.config.settings import Settings
 from zhaoxi.tools.packages import (
     capability_enabled,
     config_for_package,
+    create_package_tool_providers,
     create_package_tools,
     declared_capabilities,
     discover_tool_packages,
@@ -83,7 +84,12 @@ def startup_diagnostics(settings: Settings, *, tool_root: str | Path = "tools") 
                 if configure is not None:
                     configure(config)
                 if flags["tool"]:
-                    tools = create_package_tools(package)
+                    tools = create_package_tools(package, config)
+                    for tool_provider in create_package_tool_providers(package, config):
+                        try:
+                            tools.extend(tool_provider.provide_tools())
+                        finally:
+                            tool_provider.close()
                 checker = getattr(package, "health_check", None)
                 if checker is not None:
                     health.update(checker(config))

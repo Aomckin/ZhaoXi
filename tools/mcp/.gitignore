@@ -1,0 +1,8 @@
+everything-mcp/
+modelcontextprotocol-servers/
+playwright-mcp/
+data/
+runtime/node_modules/
+runtime/pnpm-lock.yaml
+__pycache__/
+tests/__pycache__/

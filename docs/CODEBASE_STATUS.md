@@ -2,7 +2,16 @@
 
 > 当前配置、界面行为与最新限制见 [当前状态](CURRENT_STATUS.md)。下文保留分阶段实现与验收记录；其中旧预算和测试数量不代表当前值。
 
-> **当前开发分支：`v1.1.7`，运行时版本 `1.1.7`**。Desktop Activity Awareness 已接入桌面采样、低频活动推测、StateSignal、Interruptibility、主动候选及受令牌保护的 inspect。真实前台标题/语义模型与长时活动仍待手动验收。
+> **当前开发分支：`v1.1.8`，运行时版本 `1.1.8`**。Core 已增加协议无关的动态 ToolProvider 扩展点，MCP 实现完整隔离在 `tools/mcp/`；原 Desktop Activity 与 ACTIVE 能力保持不变。
+
+## v1.1.8 当前增量
+
+- 公共 SDK 升级至 1.1，新增 `ToolProviderProtocol`；Registry 支持 Provider 动态注册、原子刷新、卸载和关闭。
+- Tool Package 可同时返回静态 Tools 与动态 ToolProviders；启动诊断、CLI 和 Web 生命周期使用相同的协议无关装配路径。
+- MCP Client、stdio 子进程、MCP Schema Adapter、结果归一化与 server inventory 全部位于 `tools/mcp/`；Core 不 import MCP-specific 模块。
+- 每个 MCP Tool 独立注册，带稳定 server 前缀，继续经过原有参数校验、ToolExecutor、PermissionGateway、审计和输出截断。
+- 本机安装 9 个 MCP Server，实际握手发现 78 个独立 Tool；权限映射结果为 41 READ、13 WRITE、24 DELETE。
+- 全量 Core 回归 475 passed、1 skipped、1 warning；MCP 专项 3 passed；9 Provider 装配与关闭无错误。
 
 ## v1.1.7 当前增量
 

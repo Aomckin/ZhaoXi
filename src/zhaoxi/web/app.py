@@ -182,6 +182,10 @@ def create_app(
             result = await supervisor.shutdown(
                 configured.shutdown_grace_seconds, cancel_immediately=True
             )
+            registry = getattr(core, "registry", None)
+            provider_errors = registry.close_providers() if registry is not None else []
+            if provider_errors:
+                logger.warning("ToolProvider shutdown failures=%s", provider_errors)
             logger.info(
                 "runtime shutdown completed=%s cancelled=%s",
                 result["completed"],

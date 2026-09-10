@@ -11,7 +11,7 @@ import re
 from dotenv import dotenv_values
 
 from zhaoxi.tools.base import Tool
-from zhaoxi.sdk import SDK_VERSION, CapabilityDeclaration
+from zhaoxi.sdk import SDK_VERSION, CapabilityDeclaration, ToolProviderProtocol
 
 
 class ToolPackage(Protocol):
@@ -128,5 +128,20 @@ def discover_tool_packages(
     return list(packages.values())
 
 
-def create_package_tools(package: ToolPackage) -> list[Tool]:
-    return package.create_tools(config_for_package(package.package_id))
+def create_package_tools(
+    package: ToolPackage,
+    config: dict[str, object] | None = None,
+) -> list[Tool]:
+    resolved = config if config is not None else config_for_package(package.package_id)
+    return package.create_tools(resolved)
+
+
+def create_package_tool_providers(
+    package: ToolPackage,
+    config: dict[str, object] | None = None,
+) -> list[ToolProviderProtocol]:
+    factory = getattr(package, "create_tool_providers", None)
+    if factory is None:
+        return []
+    resolved = config if config is not None else config_for_package(package.package_id)
+    return list(factory(resolved))

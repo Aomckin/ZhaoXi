@@ -100,7 +100,7 @@ def test_capabilities_can_be_disabled_independently(monkeypatch, tmp_path):
 
 def test_sdk_and_lifehud_declare_a_single_capability_source():
     package = create_package()
-    assert SDK_VERSION == "1.0.0"
+    assert SDK_VERSION == "1.1.0"
     assert package.requires_sdk == ">=1,<2"
     assert package.capability_declaration().state_signal_provider
     tree = ast.parse(Path("tools/lifehud_tool/package.py").read_text(encoding="utf-8"))

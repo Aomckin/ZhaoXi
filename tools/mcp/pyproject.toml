@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zhaoxi-mcp-tool"
+version = "1.0.0"
+description = "Protocol-isolated MCP ToolProviders for Zhaoxi"
+readme = "README_ZHAOXI.md"
+requires-python = ">=3.12"
+dependencies = ["zhaoxi>=1.1.8,<2", "pydantic>=2.8,<3"]
+
+[project.entry-points."zhaoxi.tools"]
+mcp = "tools.mcp.package:create_package"
+
+[tool.setuptools]
+packages = ["tools.mcp"]
+package-dir = {"tools.mcp" = "."}

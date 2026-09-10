@@ -1,8 +1,17 @@
 # Zhaoxi / 朝汐
 
-Zhaoxi 1.1.7 是一个可扩展的本地个人 Agent Core，提供对话、联想记忆、潮庭书库、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与可选 Tool Package 能力。
+Zhaoxi 1.1.8 是一个可扩展的本地个人 Agent Core，提供对话、联想记忆、潮庭书库、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与可选 Tool Package 能力。
 
 最新界面设置、模型思考开关、Beat 预算和验收边界统一见 [当前状态](docs/CURRENT_STATUS.md)。
+
+## v1.1.8 动态 ToolProvider 与 MCP 接入
+
+- Core 新增协议无关的 `ToolProviderProtocol`；Registry 支持动态注册、原子刷新、卸载与统一关闭 Provider。
+- MCP Client、stdio Server 生命周期、MCP Schema 适配和权限提示映射全部位于独立 `tools/mcp` Tool Package，Core 不导入 MCP 模块。
+- 每个远程 MCP Tool 都转换成独立 Zhaoxi Tool，Agent、Planner、Workflow 继续复用现有 Registry、ToolExecutor 与 PermissionGateway。
+- 当前安装的 9 个 MCP Server 可发现 78 个独立 Tool；Package 默认只发现、不启用，设置 `ZHAOXI_TOOL_MCP_ENABLED=true` 后装配。
+
+设计边界、配置和验证结果见 [v1.1.8 开发报告](docs/Zhaoxi_v1.1.8_Release_Notes.md)。
 
 ## v1.1.7 ACTIVE 对话闭环
 

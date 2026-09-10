@@ -1,6 +1,22 @@
-# v1.1.7 当前状态与使用说明
+# v1.1.8 当前状态与使用说明
 
-本页汇总截至 2026-09-09 的实际实现。旧版本报告中的测试数字、预算和未完成事项属于当时记录；当前行为以本页及代码为准。原始开发任务书保留，不改写为验收报告。
+本页汇总截至 2026-09-10 的实际实现。旧版本报告中的测试数字、预算和未完成事项属于当时记录；当前行为以本页及代码为准。原始开发任务书保留，不改写为验收报告。
+
+## 动态 ToolProvider 与 MCP
+
+Core SDK 1.1 新增协议无关的 `ToolProviderProtocol`。Provider 产生的每个 Tool 独立进入现有 Registry；Agent、Planner、Workflow 不感知来源。Registry 支持运行时原子刷新，并在 CLI/Web 退出时统一关闭 Provider。
+
+MCP 实现只存在于 `tools/mcp/`：stdio JSON-RPC Client、Server 进程生命周期、MCP inputSchema 校验与 Zhaoxi Tool Schema 适配、MCP annotations 权限映射均不进入 Core。当前本机安装 9 个 Server，合计发现 78 个 Tool。
+
+默认不启用。启用全部或部分 Server：
+
+```dotenv
+ZHAOXI_TOOL_MCP_ENABLED=true
+ZHAOXI_TOOL_MCP_SERVERS=filesystem,time,playwright
+ZHAOXI_TOOL_MCP_TIMEOUT_SECONDS=20
+```
+
+Filesystem 默认仅开放朝汐启动工作目录；Memory 数据与 Playwright 输出写入 `tools/mcp/data/`。Everything 文件搜索 MCP 已安装但仍要求系统提供 `es.exe`。
 
 ## 界面设置
 

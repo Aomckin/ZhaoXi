@@ -48,7 +48,11 @@ from zhaoxi.proactive import (
 )
 from zhaoxi.tools.builtin import create_builtin_tools
 from zhaoxi.tools.registry import ToolRegistry
-from zhaoxi.tools.packages import create_package_tools, discover_tool_packages
+from zhaoxi.tools.packages import (
+    create_package_tool_providers,
+    create_package_tools,
+    discover_tool_packages,
+)
 from zhaoxi.tools.packages import (
     capability_enabled,
     config_for_package,
@@ -205,8 +209,22 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
             if configure is not None:
                 configure(config)
             if flags["tool"]:
-                for tool in create_package_tools(package):
+                for tool in create_package_tools(package, config):
                     registry.register(tool)
+                provider_tools = []
+                for tool_provider in create_package_tool_providers(package, config):
+                    try:
+                        provider_tools.extend(registry.register_provider(tool_provider))
+                    except Exception as exc:
+                        try:
+                            tool_provider.close()
+                        except Exception:
+                            pass
+                        tool_package_errors.append({
+                            "source": f"{package.package_id}:provider:{tool_provider.provider_id}",
+                            "error": type(exc).__name__,
+                        })
+                record["provider_tools"] = [tool.name for tool in provider_tools]
             tool_packages.append(package)
         except Exception as exc:
             tool_package_errors.append({"source": package.package_id, "error": type(exc).__name__})
@@ -516,11 +534,17 @@ async def interactive() -> None:
             text = input("\nYou > ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\n朝汐 > 再见，暗苟。")
+            registry = getattr(agent, "registry", None)
+            if registry is not None:
+                registry.close_providers()
             return
         if not text:
             continue
         if text == "/exit":
             print("朝汐 > 再见，暗苟。")
+            registry = getattr(agent, "registry", None)
+            if registry is not None:
+                registry.close_providers()
             return
         if text == "/clear":
             agent.conversation.clear()

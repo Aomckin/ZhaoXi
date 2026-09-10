@@ -1,0 +1,7 @@
+{
+  "name": "zhaoxi-mcp-runtime",
+  "private": true,
+  "dependencies": {
+    "npm": "11.6.0"
+  }
+}
