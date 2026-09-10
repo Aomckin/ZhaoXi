@@ -20,4 +20,6 @@ ZHAOXI_TOOL_MCP_TIMEOUT_SECONDS=20
 Available server ids are `everything-search`, `reference-everything`,
 `filesystem`, `memory`, `sequential-thinking`, `fetch`, `git`, `time`, and
 `playwright`. Filesystem access defaults to the Zhaoxi process working directory.
-The Everything search server additionally requires an installed `es.exe`.
+The Everything search server additionally requires the Everything service and
+`es.exe`. Zhaoxi resolves `ES_PATH`, standard Everything locations, Scoop, and
+winget portable-package installs automatically.

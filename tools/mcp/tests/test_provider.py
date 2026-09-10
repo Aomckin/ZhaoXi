@@ -3,6 +3,7 @@ import asyncio
 import shutil
 
 from tools.mcp.provider import MCPServerSpec, MCPToolProvider
+from tools.mcp.servers import _find_es_path
 from zhaoxi.cli import build_agent
 from zhaoxi.config.settings import Settings
 from zhaoxi.permission.executor import ToolExecutor
@@ -15,6 +16,15 @@ def provider():
     assert node
     fixture = Path(__file__).with_name("fake_server.mjs")
     return MCPToolProvider(MCPServerSpec("fake", node, (str(fixture),), fixture.parent))
+
+
+def test_find_es_path_supports_winget_portable_package(tmp_path):
+    package = tmp_path / "Microsoft" / "WinGet" / "Packages" / "voidtools.Everything.Cli_test"
+    package.mkdir(parents=True)
+    executable = package / "es.exe"
+    executable.touch()
+
+    assert _find_es_path({"LOCALAPPDATA": str(tmp_path)}) == str(executable.resolve())
 
 
 def agent_settings(tmp_path):
