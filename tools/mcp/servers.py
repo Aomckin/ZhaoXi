@@ -104,15 +104,12 @@ def installed_server_specs(
     memory_file = data / "memory.jsonl"
     playwright_output = data / "playwright"
     playwright_output.mkdir(parents=True, exist_ok=True)
-    edge = Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
     playwright_args = [
         _required(root / "playwright-mcp" / "cli.js", "Playwright MCP"),
-        "--headless",
+        "--extension",
         "--output-dir",
         str(playwright_output),
     ]
-    if edge.exists():
-        playwright_args.extend(("--browser", "msedge"))
     everything_environment: dict[str, str] = {}
     es_environment = dict(os.environ)
     if everything_es_path is not None and str(everything_es_path).strip():

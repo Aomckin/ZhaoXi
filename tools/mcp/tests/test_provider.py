@@ -57,6 +57,10 @@ def test_filesystem_directories_and_playwright_have_independent_switches(monkeyp
     assert {spec.server_id for spec in specs} == {"filesystem", "memory", "playwright"}
     filesystem = next(spec for spec in specs if spec.server_id == "filesystem")
     assert filesystem.arguments[1:] == (str(allowed.resolve()),)
+    playwright = next(spec for spec in specs if spec.server_id == "playwright")
+    assert "--extension" in playwright.arguments
+    assert "--headless" not in playwright.arguments
+    assert "--browser" not in playwright.arguments
 
 
 def agent_settings(tmp_path):

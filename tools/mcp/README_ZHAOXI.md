@@ -23,7 +23,9 @@ Available server ids are `everything-search`, `reference-everything`,
 `playwright`. `reference-everything`, `memory`, `git`, and
 `sequential-thinking` are disabled by default. Playwright is controlled
 independently with `MCP_PLAYWRIGHT_ENABLED=true` (or
-`ZHAOXI_TOOL_MCP_PLAYWRIGHT_ENABLED=true`).
+`ZHAOXI_TOOL_MCP_PLAYWRIGHT_ENABLED=true`). It runs in `--extension` mode and
+connects to an existing Chrome or Edge session, so the Playwright Extension must
+already be installed in that browser.
 
 Filesystem access never defaults to the Zhaoxi project root. Its default is the
 isolated `tools/mcp/data/filesystem/` directory. Override it with a semicolon
