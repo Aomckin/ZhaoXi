@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections import OrderedDict
 from datetime import UTC, datetime
 from time import monotonic
@@ -23,6 +24,9 @@ from zhaoxi.reliability import (
     correlation_scope,
     provider_budget_scope,
 )
+
+
+logger = logging.getLogger("INTERFACE")
 
 
 class InterfaceGateway:
@@ -68,6 +72,7 @@ class InterfaceGateway:
                     continuation.note_user_message(message.content, state.last_interaction_at)
             started = monotonic()
             self.metrics.increment("interface.chat.started")
+            previous_messages = {id(item) for item in self.agent.conversation.messages}
             context = CorrelationContext(
                 trace_id=message.request_id,
                 request_id=message.request_id,
@@ -79,15 +84,10 @@ class InterfaceGateway:
                 max_calls = getattr(provider, "max_calls", 12)
                 max_total_tokens = getattr(provider, "max_total_tokens", 100_000)
                 with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens):
-                    previous_messages = {id(m) for m in self.agent.conversation.messages}
                     response = await self.agent.run_natural(
                         message.content, **({"images": message.images} if message.images else {})
                     )
-                    if message.display_parts:
-                        for item in self.agent.conversation.messages:
-                            if id(item) not in previous_messages and item.role == Role.USER:
-                                item.metadata['display_parts'] = [p.model_dump(mode='json') for p in message.display_parts]
-                                break
+                    self._attach_display_parts(message, previous_messages)
                     result = self._result(
                         response,
                         request_id=message.request_id,
@@ -102,6 +102,17 @@ class InterfaceGateway:
                 return result
             except Exception:
                 self.metrics.increment("interface.chat.failed")
+                # The model/tool path may fail after accepting the user turn.
+                # Preserve that turn so a session refresh cannot make it disappear.
+                self._attach_display_parts(message, previous_messages)
+                if any(id(item) not in previous_messages for item in self.agent.conversation.messages):
+                    try:
+                        await self._persist_session()
+                    except Exception as persist_error:
+                        logger.warning(
+                            "failed to persist conversation after chat error type=%s",
+                            type(persist_error).__name__,
+                        )
                 raise
             finally:
                 if state is not None:
@@ -257,6 +268,16 @@ class InterfaceGateway:
             return
         session.conversation = self.agent.conversation
         await store.save(session)
+
+    def _attach_display_parts(self, message: UnifiedMessage, previous_messages: set[int]) -> None:
+        if not message.display_parts:
+            return
+        for item in self.agent.conversation.messages:
+            if id(item) not in previous_messages and item.role == Role.USER:
+                item.metadata["display_parts"] = [
+                    part.model_dump(mode="json") for part in message.display_parts
+                ]
+                return
 
     def _cache(self, response: UnifiedResponse) -> None:
         self._responses[response.request_id] = response.model_copy(deep=True)

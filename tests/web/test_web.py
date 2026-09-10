@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from zhaoxi.core.conversation import Conversation
 from zhaoxi.core.agent import AgentResponse
+from zhaoxi.errors import AgentLoopError
 from zhaoxi.permission.models import (
     InvocationOrigin,
     PendingConfirmation,
@@ -92,6 +93,21 @@ class FakeAgent:
     async def deny_permission(self, confirmation_id: str):
         assert confirmation_id in self._pending_permissions
         return await self.run_natural("拒绝")
+
+
+class FailingPersistedAgent(FakeAgent):
+    def __init__(self) -> None:
+        super().__init__()
+        self.session_record = SimpleNamespace(conversation=self.conversation)
+        self.saved_messages = []
+        self.session_store = SimpleNamespace(save=self._save)
+
+    async def _save(self, session) -> None:
+        self.saved_messages = session.conversation.messages
+
+    async def run_natural(self, message: str):
+        self.conversation.add_user(message)
+        raise AgentLoopError("模型服务当前不可访问")
 
 
 class FakeVoiceRuntime:
@@ -328,6 +344,26 @@ def test_core_error_is_sanitized_and_page_remains_available():
         assert "secret traceback" not in failed.text
         assert client.get("/api/health").status_code == 200
         assert "朝汐" in client.get("/").text
+
+
+def test_failed_chat_persists_user_turn_for_session_restore():
+    agent = FailingPersistedAgent()
+    app = create_app(agent=agent)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        failed = client.post("/api/chat", json={
+            "message": "不要吞掉这条消息",
+            "display_parts": [{
+                "text": "不要吞掉这条消息",
+                "image_count": 0,
+                "timestamp": "2026-09-10T05:12:30Z",
+            }],
+        })
+        restored = client.get("/api/session").json()["messages"]
+
+    assert failed.status_code == 422
+    assert [item["content"] for item in restored] == ["不要吞掉这条消息"]
+    assert restored[0]["display_parts"][0]["timestamp"] == "2026-09-10T05:12:30Z"
+    assert [item.content for item in agent.saved_messages] == ["不要吞掉这条消息"]
 
 
 def test_web_shell_has_keyboard_and_live_status_accessibility_baseline():
