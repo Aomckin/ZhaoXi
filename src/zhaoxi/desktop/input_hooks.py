@@ -1,8 +1,21 @@
-"""Windows message-loop hooks: callback only increments a counter; never dereferences lParam."""
+"""Windows input hooks retaining only counts and transient mouse coordinates."""
 import ctypes
 from ctypes import wintypes as w
 from threading import Thread, Event
 import sys
+
+
+WM_MOUSEMOVE = 0x0200
+
+
+class LowLevelMouseEvent(ctypes.Structure):
+    _fields_ = [
+        ('pt', w.POINT),
+        ('mouseData', w.DWORD),
+        ('flags', w.DWORD),
+        ('time', w.DWORD),
+        ('dwExtraInfo', ctypes.c_void_p),
+    ]
 
 
 class InputHooks:
@@ -46,7 +59,14 @@ class InputHooks:
             for hook_id, channel in ((13, 'keyboard'), (14, 'mouse')):
                 def callback(code, message_id, payload, channel=channel):
                     if code >= 0:
-                        self.counters.count(channel)
+                        if channel == 'keyboard':
+                            self.counters.count(channel)
+                        elif int(message_id) == WM_MOUSEMOVE:
+                            event = ctypes.cast(payload, ctypes.POINTER(LowLevelMouseEvent)).contents
+                            self.counters.mouse_move(event.pt.x, event.pt.y)
+                        else:
+                            # Clicks, wheel movement and other explicit mouse actions.
+                            self.counters.count(channel)
                     return user.CallNextHookEx(None, code, message_id, payload)
                 handler = callback_type(callback)
                 callbacks.append(handler)

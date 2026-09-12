@@ -24,7 +24,12 @@ from zhaoxi.memory.lifecycle import MemoryLifecyclePolicy
 from zhaoxi.memory.retrieval import MemoryRetriever
 from zhaoxi.memory.service import MemoryService
 from zhaoxi.memory.sqlite import SQLiteMemoryRepository
-from zhaoxi.personality.loader import ExpressionLoader, PersonalityLoader
+from zhaoxi.personality.loader import (
+    CanineExpressionLoader,
+    ExpressionLoader,
+    FewShotDialoguesLoader,
+    PersonalityLoader,
+)
 from zhaoxi.planner.runtime import PlannerRuntime
 from zhaoxi.planner.sqlite import SQLitePlanStore
 from zhaoxi.planner.trace import TraceRecorder
@@ -300,7 +305,17 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     context_builder = ContextBuilder(
         PersonalityLoader.load_prompt(), memory_retriever=memory_retriever, timezone=settings.proactive_timezone,
         suggestions_refresh_minutes=settings.quick_suggestions_refresh_minutes,
-        expression_prompt=ExpressionLoader.load_prompt(),
+        expression_prompt="\n\n".join((
+            ExpressionLoader.load_prompt(),
+            CanineExpressionLoader.load_prompt(),
+            FewShotDialoguesLoader.load_prompt(),
+        )),
+        character_components=[
+            ("system.personality", PersonalityLoader.load_prompt()),
+            ("system.expression", ExpressionLoader.load_prompt()),
+            ("system.canine_expression", CanineExpressionLoader.load_prompt()),
+            ("system.few_shot_dialogues", FewShotDialoguesLoader.load_prompt()),
+        ],
     )
     planner = None
     if settings.planner_enabled:
@@ -378,6 +393,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         proactive=proactive,
         proactive_scheduler=proactive_scheduler,
         proactive_state=proactive_state,
+        tool_router_mode=settings.tool_router_mode,
     )
     agent.session_store = session_store
     agent.session_record = session_record

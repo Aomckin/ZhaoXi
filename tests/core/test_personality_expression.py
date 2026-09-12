@@ -1,6 +1,11 @@
 from zhaoxi.core.context import ContextBuilder
 from zhaoxi.core.conversation import Conversation
-from zhaoxi.personality import ExpressionLoader, PersonalityLoader
+from zhaoxi.personality import (
+    CanineExpressionLoader,
+    ExpressionLoader,
+    FewShotDialoguesLoader,
+    PersonalityLoader,
+)
 
 
 def test_personality_and_expression_are_independent_versioned_prompts():
@@ -29,3 +34,23 @@ def test_expression_input_remains_optional_for_existing_context_callers():
 
     assert context.character_prompt == "PERSONALITY"
     assert "PERSONALITY" in context.build(Conversation())[0].content
+
+
+def test_canine_expression_is_loaded_as_a_separate_prompt():
+    prompt = CanineExpressionLoader.load_prompt()
+
+    assert "犬娘行为与情绪" in prompt
+    assert "golden_retriever_traits:" in prompt
+    assert "犬娘感主要来自行为和情绪" in prompt
+    assert "不必每句话描写" in prompt
+
+
+def test_few_shot_dialogues_load_all_scenes_and_render_as_examples():
+    dialogues = FewShotDialoguesLoader.load()
+    prompt = FewShotDialoguesLoader.to_prompt(dialogues)
+
+    assert dialogues
+    assert len({item["scene"] for item in dialogues}) == len(dialogues)
+    assert all(f"场景：{item['scene']}" in prompt for item in dialogues)
+    assert all(f"用户：{item['user']}" in prompt for item in dialogues)
+    assert "学习其反应方式与节奏，不要照抄内容" in prompt

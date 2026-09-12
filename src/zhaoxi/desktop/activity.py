@@ -14,6 +14,10 @@ from zhaoxi.reliability import provider_budget_scope
 from zhaoxi.sdk import StateSignal
 
 
+MOUSE_MOVE_DISTANCE_THRESHOLD_PIXELS = 12.0
+MOUSE_MOVE_AGGREGATION_WINDOW_SECONDS = 1.0
+
+
 @dataclass
 class InputShape:
     keyboard_rate_1m: float = 0
@@ -24,23 +28,69 @@ class InputShape:
     window_switch_rate_5m: float = 0
     idle_seconds: float = 0
     keyboard_idle_seconds: float | None = None
+    last_effective_input_seconds: float | None = None
 
 
 class InputCounters:
     """One count bucket per second, at most 301 buckets per channel."""
-    def __init__(self, clock=monotonic):
+    def __init__(
+        self,
+        clock=monotonic,
+        *,
+        mouse_distance_threshold=MOUSE_MOVE_DISTANCE_THRESHOLD_PIXELS,
+        mouse_aggregation_window=MOUSE_MOVE_AGGREGATION_WINDOW_SECONDS,
+    ):
         self.clock = clock
         self.lock = Lock()
         self.buckets = {name: deque(maxlen=301) for name in ('keyboard', 'mouse', 'window_switch')}
+        self.mouse_distance_threshold = mouse_distance_threshold
+        self.mouse_aggregation_window = mouse_aggregation_window
+        self._mouse_position = None
+        self._mouse_distance = 0.0
+        self._last_effective_input_at = None
+        self._last_effective_mouse_at = None
 
     def count(self, channel):
-        second = int(self.clock())
+        now = self.clock()
         with self.lock:
-            items = self.buckets[channel]
-            if items and items[-1][0] == second:
-                items[-1] = (second, items[-1][1] + 1)
-            else:
-                items.append((second, 1))
+            self._count_locked(channel, now)
+            if channel in {'keyboard', 'mouse'}:
+                self._last_effective_input_at = now
+            if channel == 'mouse':
+                self._last_effective_mouse_at = now
+                self._mouse_distance = 0.0
+
+    def mouse_move(self, x, y):
+        """Aggregate raw move events into meaningful mouse activity."""
+        now = self.clock()
+        point = (int(x), int(y))
+        with self.lock:
+            if self._mouse_position is None:
+                self._mouse_position = point
+                self._count_locked('mouse', now)
+                self._last_effective_mouse_at = self._last_effective_input_at = now
+                return True
+            dx = point[0] - self._mouse_position[0]
+            dy = point[1] - self._mouse_position[1]
+            self._mouse_position = point
+            self._mouse_distance += (dx * dx + dy * dy) ** 0.5
+            elapsed = (now - self._last_effective_mouse_at
+                       if self._last_effective_mouse_at is not None else float('inf'))
+            if (self._mouse_distance < self.mouse_distance_threshold
+                    and elapsed < self.mouse_aggregation_window):
+                return False
+            self._count_locked('mouse', now)
+            self._mouse_distance = 0.0
+            self._last_effective_mouse_at = self._last_effective_input_at = now
+            return True
+
+    def _count_locked(self, channel, now):
+        second = int(now)
+        items = self.buckets[channel]
+        if items and items[-1][0] == second:
+            items[-1] = (second, items[-1][1] + 1)
+        else:
+            items.append((second, 1))
 
     def shape(self, idle=0):
         now = self.clock()
@@ -53,6 +103,10 @@ class InputCounters:
                     values[f'{name}_rate_{label}'] = sum(n for t, n in items if t > now-seconds) * 60 / seconds
             keyboard = self.buckets['keyboard']
             values['keyboard_idle_seconds'] = max(0., now-keyboard[-1][0]) if keyboard else None
+            values['last_effective_input_seconds'] = (
+                max(0., now-self._last_effective_input_at)
+                if self._last_effective_input_at is not None else None
+            )
         return InputShape(**values)
 
 
@@ -108,6 +162,7 @@ class DesktopActivity:
         self.identity = None
         self.foreground_since = None
         self.activity_since = None
+        self.active_session_since = None
         self.intensity = 'LOW'
         self.high_since = None
         self.last_transition = None
@@ -189,6 +244,10 @@ class DesktopActivity:
         high = self.keyboard_busy(shape, available and not own_window
             and self.settings.desktop_activity_input_rate_enabled, now)
         intensity = 'HIGH' if high else 'MEDIUM' if available and snapshot.last_input_seconds < 30 and (shape.keyboard_rate_1m or shape.mouse_rate_1m) else 'LOW'
+        if intensity != 'LOW' and self.active_session_since is None:
+            self.active_session_since = now
+        elif intensity == 'LOW':
+            self.active_session_since = None
         if self.activity_since is None:
             self.activity_since = now
         if high and self.high_since is None:
@@ -262,16 +321,53 @@ class DesktopActivity:
             'foreground_process': c.foreground_process,
             'foreground_title': c.foreground_title if self.settings.desktop_activity_window_title_enabled else None,
             'foreground_duration': c.foreground_duration,
-            **asdict(c.input_shape), 'fullscreen': c.fullscreen, 'idle_seconds': c.idle_seconds,
-            'input_rate_enabled': self.settings.desktop_activity_input_rate_enabled,
+            'fullscreen': c.fullscreen,
             'input_healthy': self.input_healthy,
             'activity_mode': inference.activity_mode if inference else 'unknown',
-            'activity_intensity': c.activity_intensity,
-            'busy_evidence': dict(self.busy_evidence),
+            'activity_state': self.activity_abstraction(now),
             'activity_confidence': inference.confidence if inference else None,
             'activity_summary': inference.primary_activity if inference else None,
         })
         return result
+
+    def activity_abstraction(self, now):
+        """Expose semantic input state without raw keyboard or mouse counts."""
+        c = self.context
+        if not c:
+            return {
+                'recently_operated': False,
+                'intensity': '静止',
+                'primary_source': '无',
+                'continuous_activity_seconds': 0,
+                'last_effective_activity_seconds': None,
+            }
+        shape = c.input_shape
+        last_effective = shape.last_effective_input_seconds
+        if last_effective is None:
+            last_effective = c.idle_seconds
+        recent = c.desktop_available and last_effective < 30
+        keyboard_active = shape.keyboard_rate_1m > 0
+        mouse_active = shape.mouse_rate_1m > 0
+        source = ('混合' if keyboard_active and mouse_active else
+                  '键盘' if keyboard_active else '鼠标' if mouse_active else '无')
+        if not recent:
+            intensity = '静止'
+            source = '无'
+        elif c.activity_intensity == 'HIGH':
+            intensity = '高频'
+        elif shape.keyboard_rate_1m >= 30 or shape.mouse_rate_1m >= 10:
+            intensity = '正常'
+        else:
+            intensity = '轻度'
+        duration = ((now-self.active_session_since).total_seconds()
+                    if recent and self.active_session_since else 0)
+        return {
+            'recently_operated': recent,
+            'intensity': intensity,
+            'primary_source': source,
+            'continuous_activity_seconds': round(max(0, duration), 1),
+            'last_effective_activity_seconds': round(max(0, last_effective), 1),
+        }
 
     def inspect(self):
         return {'context': asdict(self.context) if self.context else None,
@@ -293,8 +389,20 @@ class DesktopActivity:
         c.recent_conversation_summary = conversation[:1200]
         c.current_intents = list(intents)[:5]
         c.tool_signals = interaction.signals.snapshot(now)[:20]
-        payload = asdict(c)
-        payload['recent_windows'] = payload['recent_windows'][-12:]
+        payload = {
+            'observed_at': c.observed_at.isoformat(),
+            'foreground_process': c.foreground_process,
+            'foreground_title': c.foreground_title,
+            'foreground_duration': c.foreground_duration,
+            'recent_windows': c.recent_windows[-12:],
+            'fullscreen': c.fullscreen,
+            'activity_state': self.activity_abstraction(now),
+            'interaction_state': c.interaction_state,
+            'interruptibility': c.interruptibility,
+            'recent_conversation_summary': c.recent_conversation_summary,
+            'current_intents': c.current_intents,
+            'tool_signals': c.tool_signals,
+        }
         try:
             with provider_budget_scope(1, 4000):
                 response = await asyncio.wait_for(provider.generate([

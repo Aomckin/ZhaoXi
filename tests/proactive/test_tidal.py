@@ -1,5 +1,6 @@
 import asyncio
 from datetime import UTC, datetime, timedelta, time
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -24,6 +25,8 @@ from zhaoxi.proactive.store import InMemoryProactiveStore
 from zhaoxi.proactive.worker import DecisionWorker
 from zhaoxi.reliability.metrics import MetricRegistry
 from zhaoxi.desktop.notifications import DesktopNotificationSink
+from zhaoxi.desktop.activity import DesktopActivity
+from zhaoxi.desktop.presence import DesktopSnapshot
 
 NOW = datetime(2026, 9, 5, 4, tzinfo=UTC)  # noon Shanghai
 
@@ -226,6 +229,32 @@ async def test_model_failure_is_silent():
         async def generate(self, messages):
             raise RuntimeError('offline')
     assert (await ModelDecision(Provider(), '').decide([candidate()], NOW, PolicyState())).action == 'silent'
+
+
+async def test_proactive_llm_receives_activity_abstraction_not_raw_counts():
+    captured = {}
+
+    class Provider:
+        async def generate(self, messages):
+            captured.update(json.loads(messages[-1].content))
+            return ModelResponse(content='{"action":"silent"}')
+
+    state = PolicyState()
+    activity = DesktopActivity(Settings(_env_file=None))
+    for _ in range(40):
+        activity.counters.count('keyboard')
+    activity.update(DesktopSnapshot(foreground_process='Code.exe', foreground_window=1), NOW)
+    state.interaction.desktop_activity = activity
+
+    await ModelDecision(Provider(), '朝汐人格').decide([candidate()], NOW, state)
+
+    serialized = json.dumps(captured, ensure_ascii=False)
+    activity_state = captured['ambient_context']['activity_state']
+    assert activity_state['recently_operated']
+    assert activity_state['primary_source'] == '键盘'
+    assert 'keyboard_rate' not in serialized
+    assert 'mouse_rate' not in serialized
+    assert 'busy_evidence' not in serialized
 
 
 async def test_heartbeat_runs_while_model_waits_and_shutdown_cancels():

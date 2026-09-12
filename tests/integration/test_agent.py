@@ -8,6 +8,9 @@ from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.errors import AgentLoopError
 from zhaoxi.models.openai_compatible import OpenAICompatibleProvider
 from zhaoxi.models.types import ModelResponse, ToolCall
+from zhaoxi.memory.service import MemoryService
+from zhaoxi.memory.sqlite import SQLiteMemoryRepository
+from zhaoxi.tools.builtin import create_memory_tools
 
 
 def make_agent(provider, registry, context_builder, conversation, max_steps=8):
@@ -26,6 +29,23 @@ async def test_direct_answer(registry, context_builder, conversation):
     response = await make_agent(provider, registry, context_builder, conversation).run("今天有点累")
     assert response.content == "先休息一下吧。"
     assert response.steps == 1
+
+
+@pytest.mark.asyncio
+async def test_ordinary_agent_turn_exposes_persistent_memory_tools(
+    context_builder, conversation, tmp_path
+):
+    from zhaoxi.tools.registry import ToolRegistry
+
+    registry = ToolRegistry()
+    for tool in create_memory_tools(MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"))):
+        registry.register(tool)
+    provider = FakeProvider([ModelResponse(content="早呀。")])
+
+    await make_agent(provider, registry, context_builder, conversation).run_direct("周六早上了呀")
+
+    names = {item["function"]["name"] for item in provider.tool_schemas[0]}
+    assert names == {"remember_memory", "update_memory"}
 
 
 @pytest.mark.asyncio
@@ -75,6 +95,48 @@ async def test_dsml_tool_call_enters_the_same_agent_runtime(
     assert "DSML" not in response.content
     tool_messages = [message for message in conversation.messages if message.name == "echo"]
     assert json.loads(tool_messages[0].content)["data"]["message"] == "hi"
+
+
+@pytest.mark.asyncio
+async def test_qwen_text_call_uses_normal_tool_loop_with_native_schemas(
+    registry, context_builder, conversation
+):
+    requests = []
+    responses = iter([
+        {
+            "id": "qwen-text-call",
+            "choices": [{"message": {"content": (
+                "<tool_call><function=echo>"
+                "<parameter=message>hi</parameter>"
+                "</function></tool_call>"
+            )}}],
+        },
+        {
+            "id": "qwen-final-answer",
+            "choices": [{"message": {"content": "工具已正常执行。"}}],
+        },
+    ])
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content))
+        return httpx.Response(200, json=next(responses))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = OpenAICompatibleProvider(
+            base_url="https://example.test/v1", api_key="secret", model="qwen3.8-flash", client=client
+        )
+        response = await make_agent(
+            provider, registry, context_builder, conversation
+        ).run("回显 hi")
+
+    assert response.content == "工具已正常执行。"
+    assert requests[0]["tools"]
+    assert [message["role"] for message in requests[1]["messages"][-3:]] == [
+        "user", "assistant", "tool",
+    ]
+    assert requests[1]["messages"][-2]["tool_calls"][0]["function"]["name"] == "echo"
+    assert requests[1]["messages"][-1]["tool_call_id"].startswith("text-qwen-text-call-")
+    assert "tool_call" not in response.content
 
 
 @pytest.mark.asyncio

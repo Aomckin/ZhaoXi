@@ -373,12 +373,60 @@ def test_web_shell_has_keyboard_and_live_status_accessibility_baseline():
     assert 'aria-label="发送给朝汐的消息"' in page
     assert 'id="activity" class="activity" role="status" aria-live="polite"' in page
     assert 'id="connection" role="status" aria-live="polite"' in page
+    assert 'id="restartCore" type="button">重启 Core</button>' in page
     assert 'id="interactionBadge" class="interaction-badge" role="status" aria-live="polite" hidden' in page
     assert "if(state==='ACTIVE')return {label:'活跃'" in page
     assert "if(state==='SEMI_ACTIVE')return {label:'半活跃'" in page
     assert "if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing)" in page
     assert ".send,.mic{flex:0 0 34px;width:34px;height:34px" in page
     assert "#attachImage{flex:0 0 34px;width:34px;height:34px" in page
+
+
+def test_core_restart_endpoint_schedules_desktop_restart():
+    calls = []
+    app = create_app(agent=FakeAgent(), restart_callback=lambda: calls.append(True) or True)
+    with TestClient(app) as client:
+        response = client.post("/api/core/restart")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "restarting"}
+    assert calls == [True]
+
+
+def test_core_restart_endpoint_is_unavailable_without_desktop_host():
+    app = create_app(agent=FakeAgent())
+    with TestClient(app) as client:
+        response = client.post("/api/core/restart")
+
+    assert response.status_code == 409
+
+
+def test_interface_settings_persist_across_app_rebuilds(tmp_path):
+    path = tmp_path / "interface-settings.json"
+    settings = Settings(_env_file=None, interface_settings_path=str(path))
+    with TestClient(create_app(agent=FakeAgent(), settings=settings)) as client:
+        response = client.put("/api/settings/interface", json={
+            "input_merge_seconds": 7,
+            "reply_interval_seconds": 2,
+        })
+        assert response.status_code == 200
+
+    with TestClient(create_app(agent=FakeAgent(), settings=settings)) as client:
+        assert client.get("/api/settings/interface").json() == {
+            "input_merge_seconds": 7,
+            "reply_interval_seconds": 2,
+        }
+
+
+def test_interface_settings_reject_out_of_range_values(tmp_path):
+    settings = Settings(
+        _env_file=None, interface_settings_path=str(tmp_path / "interface-settings.json")
+    )
+    with TestClient(create_app(agent=FakeAgent(), settings=settings)) as client:
+        assert client.put("/api/settings/interface", json={
+            "input_merge_seconds": 31,
+            "reply_interval_seconds": 5,
+        }).status_code == 422
 
 
 def test_desktop_api_token_guards_local_core_routes():

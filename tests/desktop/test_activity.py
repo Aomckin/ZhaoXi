@@ -41,12 +41,39 @@ def test_rates_are_per_minute_bounded_and_contain_only_counts():
     assert all(isinstance(t, int) and isinstance(n, int) for t, n in counters.buckets['mouse'])
 
 
-def test_hooks_never_dereference_input_payload():
+def test_mouse_moves_are_aggregated_by_distance_and_time():
+    clock = [0.]
+    counters = InputCounters(
+        lambda: clock[0], mouse_distance_threshold=10, mouse_aggregation_window=1,
+    )
+
+    assert counters.mouse_move(100, 100)
+    assert not counters.mouse_move(102, 101)
+    assert not counters.mouse_move(104, 103)
+    assert counters.shape().mouse_rate_1m == 1
+    assert counters.mouse_move(110, 108)
+    assert counters.shape().mouse_rate_1m == 2
+
+    clock[0] = .5
+    assert not counters.mouse_move(111, 108)
+    clock[0] = 1.1
+    assert counters.mouse_move(112, 108)
+    assert counters.shape().mouse_rate_1m == 3
+
+
+def test_explicit_mouse_actions_still_count_immediately():
+    counters = InputCounters(lambda: 0.)
+    counters.count('mouse')
+    counters.count('mouse')
+    assert counters.shape().mouse_rate_1m == 2
+
+
+def test_hooks_only_read_mouse_coordinates_from_input_payload():
     source = inspect.getsource(InputHooks)
     callback = source.split('def callback(')[1].split('handler =')[0]
-    assert 'self.counters.count(channel)' in callback
-    assert 'cast(' not in callback and 'contents' not in callback
-    assert callback.count('payload') == 2  # signature and required CallNextHookEx forwarding only
+    assert "channel == 'keyboard'" in callback
+    assert 'self.counters.mouse_move(event.pt.x, event.pt.y)' in callback
+    assert 'mouseData' not in callback and 'flags' not in callback
 
 
 def test_titles_switches_retention_and_privacy():
@@ -130,6 +157,9 @@ def test_semantics_are_model_hypotheses_not_app_mapping(process, title, mode):
         assert activity.inference.activity_mode == mode
         assert activity.inference.confidence == .75
         assert title in calls[0][1].content and '刚才在修改项目' in calls[0][1].content
+        assert 'keyboard_rate_1m' not in calls[0][1].content
+        assert 'mouse_rate_1m' not in calls[0][1].content
+        assert 'activity_state' in calls[0][1].content
         await activity.infer(Provider(), Interaction(), NOW+timedelta(seconds=13))
         assert len(calls) == 1
         assert not any('lifehud' in line.lower() for line in inspect.getsource(type(activity)).splitlines())
@@ -234,6 +264,31 @@ def test_autoclicker_mouse_alone_does_not_make_desktop_busy():
     assert activity.context.input_shape.mouse_rate_1m == 6000
     assert activity.intensity != 'HIGH'
     assert not next(s.value for s in activity.signals(NOW) if s.type == 'desktop.input_active')
+
+
+def test_llm_activity_abstraction_has_semantics_without_raw_counts():
+    clock = [0.]
+    activity = DesktopActivity(config(), InputCounters(lambda: clock[0]))
+    for _ in range(40):
+        activity.counters.count('keyboard')
+    for _ in range(12):
+        activity.counters.count('mouse')
+    activity.update(DesktopSnapshot(foreground_window=1), NOW)
+
+    state = activity.activity_abstraction(NOW)
+    runtime = activity.runtime_context(NOW)
+    assert state == {
+        'recently_operated': True,
+        'intensity': '正常',
+        'primary_source': '混合',
+        'continuous_activity_seconds': 0,
+        'last_effective_activity_seconds': 0,
+    }
+    serialized = json.dumps(runtime, ensure_ascii=False)
+    assert runtime['activity_state'] == state
+    assert 'keyboard_rate' not in serialized
+    assert 'mouse_rate' not in serialized
+    assert 'busy_evidence' not in serialized
 
 
 def test_keyboard_stop_releases_busy_even_if_mouse_continues():

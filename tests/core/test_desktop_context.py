@@ -41,7 +41,7 @@ def desktop_data(messages):
 
 
 @pytest.mark.parametrize('inference', [False, True])
-async def test_direct_receives_current_raw_and_optional_cached_inference(inference):
+async def test_direct_receives_activity_abstraction_and_optional_cached_inference(inference):
     context, activity = setup(inference=inference)
     provider = FakeProvider([ModelResponse(content='能看到，焦点在 VS Code。')])
     agent = ZhaoxiAgent(provider=provider, registry=ToolRegistry(), context_builder=context)
@@ -52,7 +52,10 @@ async def test_direct_receives_current_raw_and_optional_cached_inference(inferen
     assert data['available'] and not data['stale']
     assert data['foreground_process'] == 'Code.exe'
     assert data['foreground_title'] == 'memory_decision.py - ZhaoXi'
-    assert data['keyboard_rate_1m'] == 80
+    assert data['activity_state']['recently_operated']
+    assert data['activity_state']['primary_source'] == '键盘'
+    assert 'keyboard_rate_1m' not in data and 'mouse_rate_1m' not in data
+    assert 'busy_evidence' not in data
     assert data['activity_confidence'] == (.88 if inference else None)
     assert data['activity_summary'] == ('正在修改 Zhaoxi 代码' if inference else None)
     assert data['activity_mode'] == ('text_production' if inference else 'unknown')

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zhaoxi-job-application-tool"
+version = "0.1.0"
+description = "Safe, browser-local job application form assistance for Zhaoxi"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "zhaoxi>=1.1.8,<2",
+  "pydantic>=2.8,<3",
+]
+
+[project.entry-points."zhaoxi.tools"]
+job-application = "tools.job_application_tool.package:create_package"
+
+[tool.setuptools]
+packages = ["tools.job_application_tool"]
+package-dir = {"tools.job_application_tool" = "."}
+
+[tool.setuptools.package-data]
+"tools.job_application_tool" = [
+  "browser_extension/*.json",
+  "browser_extension/*.js",
+  "browser_extension/adapters/*.js",
+  "schema/*.json",
+]

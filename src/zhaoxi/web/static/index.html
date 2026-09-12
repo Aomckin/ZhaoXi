@@ -34,7 +34,7 @@
     <div id="messages" class="messages"><div id="empty" class="empty"><b>晚上好，暗苟酱。</b>我在这里。想聊点什么，还是看看今天？</div></div>
     <footer class="composer"><div id="activity" class="activity" role="status" aria-live="polite"></div><div id="voiceReview" class="voice-review"><textarea id="voiceText" aria-label="语音识别结果"></textarea><div class="actions"><button id="voiceConfirm" class="allow">发送</button><button id="voiceRetry" class="ghost">重新录音</button><button id="voiceCancel" class="deny">取消</button></div></div><div id="imagePreview" class="image-preview" aria-label="待发送图片"></div><input id="imageFiles" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden><div class="inputbox"><button id="attachImage" class="ghost" aria-label="添加图片" title="添加图片（最多20张，每张100MB）"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 4-6 5 7"/></svg></button><textarea id="input" rows="1" aria-label="发送给朝汐的消息" placeholder="和朝汐说点什么…"></textarea><button id="mic" class="mic" aria-label="开始录音">●</button><button id="send" class="send" aria-label="发送">↑</button></div></footer>
   </section>
-  <aside class="side"><h2>连接状态</h2><div class="status"><span class="dot" aria-hidden="true"></span><span id="connection" role="status" aria-live="polite">本地 Core 已连接</span></div><details open><summary>可以这样找我</summary><div id="capabilities"><div class="sub">正在准备建议…</div></div></details><details open><summary>系统消息</summary><div id="notices" aria-live="polite"><div class="sub">暂无新的系统消息。</div></div></details><details><summary>设置</summary><p><label><input id="thinkingToggle" type="checkbox" disabled> 模型思考</label> <small id="thinkingStatus">正在读取…</small></p><p><label>输入合并 <output id="mergeValue">15 秒</output><input id="mergeRange" type="range" min="0" max="30" step="1" value="15" style="width:100%"></label></p><p><label>分段回复间隔 <output id="replyValue">5–10 秒</output><input id="replyRange" type="range" min="0" max="15" step="1" value="5" style="width:100%"></label></p></details><details><summary>Debug</summary><button id="poke" type="button">戳一戳</button><span id="pokeStatus" role="status"></span><div id="debug" class="debug">等待首次请求…</div></details></aside>
+  <aside class="side"><h2>连接状态</h2><div class="status"><span class="dot" aria-hidden="true"></span><span id="connection" role="status" aria-live="polite">本地 Core 已连接</span></div><details open><summary>可以这样找我</summary><div id="capabilities"><div class="sub">正在准备建议…</div></div></details><details open><summary>系统消息</summary><div id="notices" aria-live="polite"><div class="sub">暂无新的系统消息。</div></div></details><details><summary>设置</summary><p><label><input id="thinkingToggle" type="checkbox" disabled> 模型思考</label> <small id="thinkingStatus">正在读取…</small></p><p><label>输入合并 <output id="mergeValue">15 秒</output><input id="mergeRange" type="range" min="0" max="30" step="1" value="15" style="width:100%"></label></p><p><label>分段回复间隔 <output id="replyValue">5–10 秒</output><input id="replyRange" type="range" min="0" max="15" step="1" value="5" style="width:100%"></label></p></details><details><summary>Debug</summary><button id="poke" type="button">戳一戳</button> <button id="restartCore" type="button">重启 Core</button><span id="pokeStatus" role="status"></span><div id="debug" class="debug">等待首次请求…</div></details></aside>
 </main>
 <script>
 const $=s=>document.querySelector(s), messages=$('#messages'), input=$('#input'), send=$('#send'), mic=$('#mic'), activity=$('#activity'), debug=$('#debug'), voiceReview=$('#voiceReview'), voiceText=$('#voiceText');let busy=false,voiceEnabled=false,voiceRecording=false,speechActive=false;
@@ -197,20 +197,42 @@ async function drainDeliveries(){
   }
 }
 let replyIntervalMs=5000;
-function applySettings(event){
+function applySettings(event,persist=false){
   INPUT_MERGE_MS=Number($('#mergeRange').value)*1000;
   replyIntervalMs=Number($('#replyRange').value)*1000;
   $('#mergeValue').textContent=INPUT_MERGE_MS?`${INPUT_MERGE_MS/1000} 秒`:'关闭';
   $('#replyValue').textContent=replyIntervalMs?`${replyIntervalMs/1000}–${replyIntervalMs/500} 秒`:'立即';
   try{localStorage.setItem('zhaoxiTiming',JSON.stringify([INPUT_MERGE_MS/1000,replyIntervalMs/1000]))}catch{}
+  if(persist)void request('/api/settings/interface',{method:'PUT',body:JSON.stringify({input_merge_seconds:INPUT_MERGE_MS/1000,reply_interval_seconds:replyIntervalMs/1000})}).catch(()=>{$('#pokeStatus').textContent='界面设置保存失败'});
   if(event?.target===$('#mergeRange')&&inputTimer!==null){clearTimeout(inputTimer);inputTimer=setTimeout(()=>{inputTimer=null;flushInput()},INPUT_MERGE_MS)}
 }
-try{const saved=JSON.parse(localStorage.getItem('zhaoxiTiming'));if(Array.isArray(saved)&&saved.length===2&&saved.every(Number.isFinite)){ $('#mergeRange').value=Math.max(0,Math.min(30,saved[0]));$('#replyRange').value=Math.max(0,Math.min(15,saved[1]))}}catch{}
-$('#mergeRange').oninput=applySettings;$('#replyRange').oninput=applySettings;applySettings();
+async function setupInterfaceSettings(){
+  try{const saved=await request('/api/settings/interface');$('#mergeRange').value=saved.input_merge_seconds;$('#replyRange').value=saved.reply_interval_seconds}
+  catch{try{const saved=JSON.parse(localStorage.getItem('zhaoxiTiming'));if(Array.isArray(saved)&&saved.length===2&&saved.every(Number.isFinite)){ $('#mergeRange').value=Math.max(0,Math.min(30,saved[0]));$('#replyRange').value=Math.max(0,Math.min(15,saved[1]))}}catch{}}
+  applySettings();
+}
+$('#mergeRange').oninput=applySettings;$('#replyRange').oninput=e=>applySettings(e);$('#mergeRange').onchange=e=>applySettings(e,true);$('#replyRange').onchange=e=>applySettings(e,true);applySettings();
 $('#poke').onclick=async()=>{if(busy||pendingInput.length){$('#pokeStatus').textContent='请等当前消息处理完成';return}$('#poke').disabled=true;try{const r=await request('/api/proactive/active/poke',{method:'POST'});$('#pokeStatus').textContent=r.delivered?'已投递':r.trace?.model_diagnostics?.provider_error_code||r.trace?.model_error||r.trace?.gate_reason||'本次选择沉默';void setupDiagnostics()}catch(e){$('#pokeStatus').textContent=e.message}finally{$('#poke').disabled=false}};
+$('#restartCore').onclick=async()=>{
+  if(busy||pendingInput.length){$('#pokeStatus').textContent='请等当前消息处理完成';return}
+  if(!confirm('确定要重启 Core 吗？当前会话会保留。'))return;
+  const button=$('#restartCore');button.disabled=true;$('#poke').disabled=true;
+  $('#pokeStatus').textContent='正在重启 Core…';$('#connection').textContent='Core 正在重启…';
+  try{await request('/api/core/restart',{method:'POST'})}catch(e){
+    // The server can close just after accepting the request. Polling below
+    // distinguishes that expected disconnect from a rejected restart.
+    if(!String(e.message).includes('fetch')){$('#pokeStatus').textContent=e.message;button.disabled=false;$('#poke').disabled=false;return}
+  }
+  const deadline=Date.now()+30000;
+  while(Date.now()<deadline){
+    await new Promise(resolve=>setTimeout(resolve,500));
+    try{const response=await fetch('/api/health',{cache:'no-store'});if(response.ok){location.reload();return}}catch{}
+  }
+  $('#pokeStatus').textContent='重启超时，请从托盘重新打开朝汐';button.disabled=false;$('#poke').disabled=false;
+};
 async function setupThinking(){try{const s=await request('/api/settings/thinking');$('#thinkingToggle').disabled=!s.supported;$('#thinkingToggle').checked=s.enabled===true;$('#thinkingStatus').textContent=!s.supported?'当前接口不支持':s.enabled===null?'当前由模型默认决定':s.enabled?'已开启':'已关闭'}catch{$('#thinkingStatus').textContent='读取失败'}}
 $('#thinkingToggle').onchange=async()=>{const toggle=$('#thinkingToggle');toggle.disabled=true;try{await request('/api/settings/thinking',{method:'PUT',body:JSON.stringify({enabled:toggle.checked})});await setupThinking()}catch(e){toggle.checked=!toggle.checked;$('#thinkingStatus').textContent=e.message;toggle.disabled=false}};
-async function start(){const token=new URLSearchParams(location.hash.slice(1)).get('token')||'';if(token){const boot=await fetch('/api/bootstrap',{method:'POST',headers:{'X-Zhaoxi-Token':token}});history.replaceState(null,'',location.pathname+location.search);if(!boot.ok)throw new Error('Desktop 会话初始化失败')}const es=new EventSource('/api/events');es.onmessage=e=>{const data=JSON.parse(e.data);if(data.type==='activity')activity.textContent=data.label||'';if(data.type==='proactive'){receiveDelivery(data.delivery);void setupCapabilities()}};es.onerror=()=>{$('#connection').textContent='事件通道正在重连…'};es.onopen=()=>{$('#connection').textContent='本地 Core 已连接'};await setupThinking();await setupVoice();await setupCapabilities();await restore();await setupDiagnostics();setInterval(setupCapabilities,60000);setInterval(setupDiagnostics,30000);input.focus()};start().catch(()=>{$('#connection').textContent='Desktop 会话初始化失败'});
+async function start(){const token=new URLSearchParams(location.hash.slice(1)).get('token')||'';if(token){const boot=await fetch('/api/bootstrap',{method:'POST',headers:{'X-Zhaoxi-Token':token}});history.replaceState(null,'',location.pathname+location.search);if(!boot.ok)throw new Error('Desktop 会话初始化失败')}const es=new EventSource('/api/events');es.onmessage=e=>{const data=JSON.parse(e.data);if(data.type==='activity')activity.textContent=data.label||'';if(data.type==='proactive'){receiveDelivery(data.delivery);void setupCapabilities()}};es.onerror=()=>{$('#connection').textContent='事件通道正在重连…'};es.onopen=()=>{$('#connection').textContent='本地 Core 已连接'};await setupInterfaceSettings();await setupThinking();await setupVoice();await setupCapabilities();await restore();await setupDiagnostics();setInterval(setupCapabilities,60000);setInterval(setupDiagnostics,30000);input.focus()};start().catch(()=>{$('#connection').textContent='Desktop 会话初始化失败'});
 </script>
 </body>
 </html>

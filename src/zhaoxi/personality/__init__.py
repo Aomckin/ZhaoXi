@@ -1,3 +1,13 @@
-from zhaoxi.personality.loader import ExpressionLoader, PersonalityLoader
+from zhaoxi.personality.loader import (
+    CanineExpressionLoader,
+    ExpressionLoader,
+    FewShotDialoguesLoader,
+    PersonalityLoader,
+)
 
-__all__ = ["ExpressionLoader", "PersonalityLoader"]
+__all__ = [
+    "CanineExpressionLoader",
+    "ExpressionLoader",
+    "FewShotDialoguesLoader",
+    "PersonalityLoader",
+]

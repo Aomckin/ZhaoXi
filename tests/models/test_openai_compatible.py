@@ -138,6 +138,74 @@ async def test_structured_calls_win_without_leaking_duplicate_dsml():
 
 
 @pytest.mark.asyncio
+async def test_provider_normalizes_qwen_text_tool_call_and_hides_xml():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "id": "response-qwen-text",
+            "choices": [{"message": {"content": """准备查询。
+<tool_call>
+<function=archive_search>
+<parameter=query>
+钥匙 潮庭 记忆门 数量
+</parameter>
+</function>
+</tool_call>"""}}],
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = OpenAICompatibleProvider(
+            base_url="https://example.test/v1", api_key="secret", model="qwen3.8-flash", client=client
+        )
+        response = await provider.generate([Message(role=Role.USER, content="查询钥匙")])
+
+    assert response.content == "准备查询。"
+    assert response.tool_calls[0].name == "archive_search"
+    assert response.tool_calls[0].arguments == {"query": "钥匙 潮庭 记忆门 数量"}
+    assert "tool_call" not in (response.content or "")
+
+
+@pytest.mark.asyncio
+async def test_native_calls_win_without_leaking_duplicate_qwen_xml():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "choices": [{"message": {
+                "content": (
+                    "<tool_call><function=duplicate>"
+                    "</function></tool_call>"
+                ),
+                "tool_calls": [{
+                    "id": "structured-qwen-1",
+                    "function": {"name": "preferred", "arguments": "{}"},
+                }],
+            }}],
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = OpenAICompatibleProvider(
+            base_url="https://example.test/v1", api_key="secret", model="qwen3.8-flash", client=client
+        )
+        response = await provider.generate([Message(role=Role.USER, content="run")])
+
+    assert response.content is None
+    assert [call.name for call in response.tool_calls] == ["preferred"]
+
+
+@pytest.mark.asyncio
+async def test_malformed_qwen_xml_is_rejected_instead_of_exposed():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": "<tool_call><function=archive_search>"}}],
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = OpenAICompatibleProvider(
+            base_url="https://example.test/v1", api_key="secret", model="qwen3.8-flash", client=client
+        )
+        with pytest.raises(ProviderError, match="文本工具调用协议"):
+            await provider.generate([Message(role=Role.USER, content="run")])
+
+
+@pytest.mark.asyncio
 async def test_malformed_dsml_is_rejected_instead_of_exposed():
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={

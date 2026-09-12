@@ -1,6 +1,6 @@
 # 文档索引与事实源
 
-## 当前文档（v1.1.8）
+## 当前文档（v1.1.9）
 
 - [当前状态与设置](CURRENT_STATUS.md)：优先阅读；汇总最新预算、思考开关、前端行为及诊断结论。
 - [ACTIVE 排查记录](ACTIVE_Beat_Diagnostics_Fix.md)：按时间保留实机证据与修复经过。
@@ -55,3 +55,5 @@
 ## 历史文档
 
 文件名以 `v0.1`～`v0.9` 开头的开发计划和任务书是当时的设计记录，不是当前状态清单。其未勾选项、旧测试数量、旧版本号和“留给后续版本”等文字保留历史语境，不应据此判断当前版本是否完成。发生冲突时，以本页“当前文档（v1.1.8）”列表及 `CODEBASE_STATUS.md` 为准。
+- [`Zhaoxi_v1.1.9_Release_Notes.md`](Zhaoxi_v1.1.9_Release_Notes.md)：Tool Context Router、回滚配置、可观察性与验证状态。
+- [`Zhaoxi_v1.1.9_Tool_Context_Router_Task_v2.md`](Zhaoxi_v1.1.9_Tool_Context_Router_Task_v2.md)：本版本开发任务书。

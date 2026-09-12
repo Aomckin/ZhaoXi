@@ -79,3 +79,10 @@ def test_reflection_defaults_are_bounded_and_automatic_delivery_is_opt_in():
 
     with pytest.raises(ValidationError):
         Settings(_env_file=None, reflection_max_evidence=0)
+
+
+def test_tool_router_defaults_dynamic_and_supports_all_mode():
+    assert Settings(_env_file=None).tool_router_mode == "dynamic"
+    assert Settings(_env_file=None, tool_router_mode="all").tool_router_mode == "all"
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, tool_router_mode="disabled")

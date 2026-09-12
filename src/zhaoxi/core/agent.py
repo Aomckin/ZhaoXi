@@ -19,6 +19,7 @@ from zhaoxi.permission.executor import ToolExecutor
 from zhaoxi.permission.models import InvocationOrigin, PendingConfirmation
 from zhaoxi.tools.base import ToolResult
 from zhaoxi.tools.registry import ToolRegistry
+from zhaoxi.tools.router import ToolContext, safe_resolve_tool_context
 
 if TYPE_CHECKING:
     from zhaoxi.cognitive.coordinator import CognitiveCoordinator, CognitiveResponse
@@ -79,6 +80,7 @@ class ZhaoxiAgent:
         proactive=None,
         proactive_scheduler=None,
         proactive_state=None,
+        tool_router_mode: str = "dynamic",
     ) -> None:
         self.provider = provider
         self.registry = registry
@@ -93,6 +95,7 @@ class ZhaoxiAgent:
         self.proactive = proactive
         self.proactive_scheduler = proactive_scheduler
         self.proactive_state = proactive_state
+        self.tool_router_mode = tool_router_mode
         self._pending_permissions: dict[str, PendingAgentInvocation] = {}
         self.cognitive: "CognitiveCoordinator | None" = None
 
@@ -339,7 +342,7 @@ class ZhaoxiAgent:
         return False
 
     async def run_direct(self, user_message: str) -> AgentResponse:
-        """Answer without exposing tools, for turns classified as DIRECT."""
+        """Answer a direct turn while preserving the always-on memory tools."""
         if not user_message.strip():
             raise ValueError("消息不能为空。")
         request_id = uuid4().hex
@@ -356,29 +359,27 @@ class ZhaoxiAgent:
                     exc=exc,
                 )
         try:
-            response = await asyncio.wait_for(
-                self.provider.generate(self.context_builder.build(self.conversation, memories), None),
+            return await asyncio.wait_for(
+                self._run_loop(request_id, memories, clean_message),
                 timeout=self.timeout_seconds,
             )
         except TimeoutError as exc:
             raise AgentLoopError(f"请求超过 {self.timeout_seconds:g} 秒，已停止。") from exc
-        except ProviderError as exc:
-            log_internal_failure("request=%s provider error", request_id, exc=exc)
-            raise AgentLoopError("模型服务当前不可访问，请稍后重试。") from exc
-        content = self.quick_suggestions.extract(response.content or "模型没有返回可显示的内容。")
-        if response.tool_calls or self._promises_lookup(content):
-            logger.warning("request=%s direct lookup commitment; promoting to tool loop", request_id)
-            # The user is already in Conversation. Do not persist the unfinished promise.
-            try:
-                result = await asyncio.wait_for(
-                    self._run_loop(request_id, memories, clean_message, require_tool_call=True,
-                                   lookup_commitment=content), timeout=self.timeout_seconds)
-            except TimeoutError as exc:
-                raise AgentLoopError("工具查询超时，这次没有得到完整结果。") from exc
-            result.used_tool_path = True
-            return result
-        self.conversation.add_assistant(content)
-        return AgentResponse(content=content, request_id=request_id, steps=1)
+
+    def _recent_tool_context(self, limit: int = 6) -> list[str]:
+        return [
+            message.content[:600]
+            for message in self.conversation.recent(limit)
+            if message.role.value in {"user", "assistant"} and message.content
+        ]
+
+    def _tool_context(self, user_intent: str) -> ToolContext:
+        context = safe_resolve_tool_context(
+            user_intent, self._recent_tool_context(), self.registry, mode=self.tool_router_mode
+        )
+        if context.fallback:
+            logger.error("tool router failed; using persistent fallback")
+        return context
 
     async def _run_loop(
         self,
@@ -388,12 +389,16 @@ class ZhaoxiAgent:
         require_tool_call: bool = False,
         lookup_commitment: str = "",
     ) -> AgentResponse:
-        schemas = self.registry.schemas()
         tool_called = False
         corrective_retry = bool(lookup_commitment)
         for step in range(1, self.max_steps + 1):
             model_logger.info("request=%s step=%d calling model", request_id, step)
             try:
+                routing_intent = (
+                    f"{user_intent}\n{lookup_commitment}" if lookup_commitment else user_intent
+                )
+                tool_context = self._tool_context(routing_intent)
+                schemas = list(tool_context.schemas)
                 messages = self.context_builder.build(self.conversation, memories)
                 if lookup_commitment and not tool_called:
                     messages[0].content = (messages[0].content or "") + (
@@ -407,7 +412,9 @@ class ZhaoxiAgent:
                         + "\n本轮用户明确要求真实查询或检查。你上一尝试没有调用工具；"
                         "现在必须调用一个最相关的可用工具，不得只描述将要检查。"
                     )
-                response = await self.provider.generate(messages, schemas)
+                response = await self.provider.generate(
+                    messages, schemas or None, tool_router=tool_context.diagnostics()
+                )
             except ProviderError as exc:
                 log_internal_failure("request=%s provider error", request_id, exc=exc)
                 raise AgentLoopError(
@@ -426,7 +433,10 @@ class ZhaoxiAgent:
                 content = self.quick_suggestions.extract(response.content or "模型没有返回可显示的内容。")
                 self.conversation.add_assistant(content)
                 logger.info("request=%s final response step=%d", request_id, step)
-                return AgentResponse(content=content, request_id=request_id, steps=step)
+                return AgentResponse(
+                    content=content, request_id=request_id, steps=step,
+                    used_tool_path=tool_called,
+                )
 
             self.conversation.add_assistant(response.content, tool_calls=response.tool_calls,
                 metadata={"reasoning_content": response.raw_metadata["reasoning_content"]} if "reasoning_content" in response.raw_metadata else {})

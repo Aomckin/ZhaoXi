@@ -9,7 +9,7 @@ import secrets
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -47,6 +47,25 @@ class ChatRequest(BaseModel):
 
 class ThinkingRequest(BaseModel):
     enabled: bool
+
+
+class InterfaceSettingsRequest(BaseModel):
+    input_merge_seconds: int = Field(default=15, ge=0, le=30)
+    reply_interval_seconds: int = Field(default=5, ge=0, le=15)
+
+
+def _load_interface_settings(path: Path) -> InterfaceSettingsRequest:
+    try:
+        return InterfaceSettingsRequest.model_validate_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return InterfaceSettingsRequest()
+
+
+def _save_interface_settings(path: Path, value: InterfaceSettingsRequest) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(value.model_dump_json(indent=2), encoding="utf-8")
+    temporary.replace(path)
 
 
 class ChatResponse(BaseModel):
@@ -104,6 +123,7 @@ def create_app(
     api_token: str | None = None,
     voice_runtime=None,
     now_provider=None,
+    restart_callback: Callable[[], bool] | None = None,
 ) -> FastAPI:
     configured = settings or Settings()
     if agent is not None:
@@ -120,6 +140,7 @@ def create_app(
     speech_policy = SpeechPolicy()
     supervisor = TaskSupervisor()
     current_time = now_provider or (lambda: datetime.now().astimezone())
+    interface_settings_path = Path(configured.interface_settings_path)
 
     def voice_policy(*, text: str, explicit: bool, permission_pending: bool = False):
         now = current_time()
@@ -261,6 +282,19 @@ def create_app(
             raise HTTPException(status_code=422, detail="当前模型接口尚未支持思考开关")
         provider.set_thinking(request.enabled)
         return {"supported": True, "enabled": provider.thinking_enabled}
+
+    @app.get("/api/settings/interface")
+    async def interface_settings():
+        return _load_interface_settings(interface_settings_path)
+
+    @app.put("/api/settings/interface")
+    async def change_interface_settings(request: InterfaceSettingsRequest):
+        try:
+            _save_interface_settings(interface_settings_path, request)
+        except OSError as exc:
+            logger.warning("interface settings persistence failed type=%s", type(exc).__name__)
+            raise HTTPException(status_code=500, detail="界面设置保存失败。") from exc
+        return request
 
     @app.post("/api/proactive/active/poke")
     async def poke():
@@ -430,6 +464,19 @@ def create_app(
     @app.get("/api/session")
     async def session():
         return {"messages": await adapter.gateway.history()}
+
+    @app.post("/api/core/restart")
+    async def restart_core():
+        if restart_callback is None:
+            raise HTTPException(status_code=409, detail="当前运行方式不支持从页面重启 Core。")
+        try:
+            scheduled = restart_callback()
+        except Exception as exc:
+            logger.warning("core restart scheduling failed type=%s", type(exc).__name__)
+            raise HTTPException(status_code=500, detail="Core 重启请求未能启动。") from exc
+        if not scheduled:
+            raise HTTPException(status_code=409, detail="Core 已在重启中。")
+        return {"status": "restarting"}
 
     @app.delete("/api/session")
     async def clear_session():

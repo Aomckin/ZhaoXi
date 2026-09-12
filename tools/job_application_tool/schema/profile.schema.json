@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zhaoxi.local/schema/job-application-profile-v1.json",
+  "title": "Zhaoxi Browser Job Application Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "profileId", "revision", "name", "locale", "basic", "job_preference",
+    "education", "internships", "work_experiences", "projects",
+    "family_members", "declarations", "custom_sections"
+  ],
+  "properties": {
+    "profileId": {"type": "string", "minLength": 1, "maxLength": 160},
+    "revision": {"type": "integer", "minimum": 0},
+    "name": {"type": "string", "maxLength": 160},
+    "locale": {"type": "string", "default": "zh-CN"},
+    "createdAt": {"type": "string", "format": "date-time"},
+    "updatedAt": {"type": "string", "format": "date-time"},
+    "basic": {"$ref": "#/$defs/basic"},
+    "job_preference": {"$ref": "#/$defs/jobPreference"},
+    "education": {"type": "array", "items": {"$ref": "#/$defs/education"}},
+    "internships": {"type": "array", "items": {"$ref": "#/$defs/work"}},
+    "work_experiences": {"type": "array", "items": {"$ref": "#/$defs/work"}},
+    "projects": {"type": "array", "items": {"$ref": "#/$defs/project"}},
+    "campus_experiences": {"type": "array", "items": {"$ref": "#/$defs/work"}},
+    "awards": {"type": "array", "items": {"$ref": "#/$defs/openItem"}},
+    "languages": {"type": "array", "items": {"$ref": "#/$defs/openItem"}},
+    "skills": {"type": "object", "additionalProperties": true},
+    "certificates": {"type": "array", "items": {"$ref": "#/$defs/openItem"}},
+    "publications": {"type": "array", "items": {"$ref": "#/$defs/openItem"}},
+    "patents": {"type": "array", "items": {"$ref": "#/$defs/openItem"}},
+    "family_members": {"type": "array", "items": {"$ref": "#/$defs/openItem"}, "x-zhaoxi-policy": "manual_only"},
+    "declarations": {"type": "object", "additionalProperties": true, "x-zhaoxi-policy": "never_fill"},
+    "custom_sections": {"type": "array", "items": {"$ref": "#/$defs/customSection"}}
+  },
+  "$defs": {
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "value"],
+      "properties": {
+        "id": {"type": "string"},
+        "value": {"type": "string"},
+        "label": {"type": "string"},
+        "is_default": {"type": "boolean", "default": false},
+        "domain_preferences": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "basic": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "full_name": {"type": "string"},
+        "surname": {"type": "string"},
+        "given_name": {"type": "string"},
+        "english_name": {"type": "string"},
+        "phone": {"oneOf": [{"type": "string"}, {"type": "array", "items": {"$ref": "#/$defs/candidate"}}]},
+        "email": {"oneOf": [{"type": "string"}, {"type": "array", "items": {"$ref": "#/$defs/candidate"}}]},
+        "gender": {"type": "string"},
+        "birth_date": {"type": "string"},
+        "nationality": {"type": "string"},
+        "ethnicity": {"type": "string"},
+        "political_status": {"type": "string", "x-zhaoxi-policy": "manual_only"},
+        "marital_status": {"type": "string", "x-zhaoxi-policy": "manual_only"},
+        "current_city": {"type": ["string", "object"]},
+        "current_address": {"type": "string", "x-zhaoxi-policy": "manual_only"},
+        "hukou_location": {"type": ["string", "object"], "x-zhaoxi-policy": "manual_only"},
+        "student_origin": {"type": ["string", "object"], "x-zhaoxi-policy": "manual_only"},
+        "summary": {"type": "string"},
+        "sensitive": {"type": "object", "additionalProperties": true, "x-zhaoxi-policy": "manual_only"}
+      }
+    },
+    "jobPreference": {"type": "object", "additionalProperties": true},
+    "education": {
+      "type": "object", "additionalProperties": true,
+      "properties": {
+        "id": {"type": "string"}, "school": {"type": "string"},
+        "college_department": {"type": "string"}, "major": {"type": "string"},
+        "education_level": {"type": "string"}, "degree": {"type": "string"},
+        "start_date": {"type": "string"}, "end_date": {"type": "string"},
+        "gpa": {"type": "string"}, "major_rank": {"type": "string"}
+      }
+    },
+    "work": {
+      "type": "object", "additionalProperties": true,
+      "properties": {
+        "id": {"type": "string"}, "company": {"type": "string"},
+        "department": {"type": "string"}, "title": {"type": "string"},
+        "location": {"type": ["string", "object"]},
+        "start_date": {"type": "string"}, "end_date": {"type": "string"},
+        "responsibilities": {"type": "string"}, "achievements": {"type": "string"}
+      }
+    },
+    "project": {
+      "type": "object", "additionalProperties": true,
+      "properties": {
+        "id": {"type": "string"}, "name": {"type": "string"},
+        "role": {"type": "string"}, "start_date": {"type": "string"},
+        "end_date": {"type": "string"}, "description": {"type": "string"},
+        "responsibilities": {"type": "string"}, "achievements": {"type": "string"}
+      }
+    },
+    "openItem": {"type": "object", "additionalProperties": true},
+    "customSection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "title", "kind"],
+      "properties": {
+        "id": {"type": "string"}, "title": {"type": "string"},
+        "kind": {"enum": ["simple", "repeat"]},
+        "values": {"type": "array", "items": {"$ref": "#/$defs/openItem"}},
+        "items": {"type": "array", "items": {"$ref": "#/$defs/openItem"}}
+      }
+    }
+  }
+}

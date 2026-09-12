@@ -46,6 +46,32 @@ def test_router_fallback_sends_lifehud_and_tool_inspection_to_tools():
 
 
 @pytest.mark.asyncio
+async def test_qwen_text_function_call_routes_archive_query_to_tool_path():
+    requests = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(__import__("json").loads(request.content))
+        return httpx.Response(200, json={
+            "id": "qwen-route",
+            "choices": [{"message": {"content": (
+                "<tool_call><function=route_cognition>"
+                "<parameter=route>tool</parameter>"
+                "<parameter=reason>需要查询潮庭书库</parameter>"
+                "</function></tool_call>"
+            )}}],
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = OpenAICompatibleProvider(
+            base_url="https://example.test/v1", api_key="secret", model="qwen3.8-flash", client=client
+        )
+        decision = await CognitiveRouter(provider, archive_enabled=True).route("潮庭里有几把钥匙？")
+
+    assert requests[0]["tools"][0]["function"]["name"] == "route_cognition"
+    assert decision.route is CognitiveRoute.TOOL
+
+
+@pytest.mark.asyncio
 async def test_contextual_lifehud_followup_forces_a_real_tool_call():
     hints = __import__("tools.lifehud_tool.package", fromlist=["create_package"]).create_package().routing_hints()
     provider = FakeProvider([
@@ -153,7 +179,9 @@ async def test_stable_preference_is_created_automatically(tmp_path):
     assert response.memory_action == MemoryAction.CREATE
     assert len(records) == 1
     assert "晚上开发" in records[0].record.content
-    assert provider.tool_schemas[1] is None
+    assert {schema["function"]["name"] for schema in provider.tool_schemas[1]} == {
+        "remember_memory", "update_memory",
+    }
 
 
 @pytest.mark.asyncio
@@ -402,7 +430,9 @@ async def test_direct_dinner_guess_promoting_own_lookup_finishes_same_turn(tmp_p
     result = await agent.run_natural('猜猜我晚上吃的啥')
     assert result.route == CognitiveRoute.TOOL
     assert result.content == '查完了，这是完整的最终回复。'
-    assert provider.tool_schemas[1] is None
+    assert {schema["function"]["name"] for schema in provider.tool_schemas[1]} == {
+        "remember_memory", "update_memory",
+    }
     assert provider.tool_schemas[2]
     assert sum(m.role.value == 'user' for m in agent.conversation.messages) == 1
     assert not any(m.content == promise for m in agent.conversation.messages)
@@ -419,7 +449,9 @@ async def test_guess_without_lookup_remains_direct(tmp_path):
     ])
     result = await make_cognitive(provider, service).run_natural('猜猜我晚上吃的啥')
     assert result.route == CognitiveRoute.DIRECT
-    assert provider.tool_schemas[1] is None
+    assert {schema["function"]["name"] for schema in provider.tool_schemas[1]} == {
+        "remember_memory", "update_memory",
+    }
 
 
 @pytest.mark.asyncio

@@ -91,6 +91,7 @@ class DesktopHost:
         self._server = None
         self._server_thread: threading.Thread | None = None
         self._stopping = threading.Event()
+        self._restart_lock = threading.Lock()
 
     def _initialize_core(self) -> None:
         settings = self.settings
@@ -159,11 +160,17 @@ class DesktopHost:
                 settings=self.settings,
                 api_token=self.api_token,
                 voice_runtime=self.voice,
+                restart_callback=self.request_restart,
             ),
             host=self.settings.web_host,
             port=self.settings.web_port,
             log_level=self.settings.log_level.lower(),
             log_config=None,
+            # EventSource is intentionally long-lived. Bound graceful shutdown so
+            # an open browser stream cannot make every in-process restart time out.
+            timeout_graceful_shutdown=min(
+                5.0, float(getattr(self.settings, "shutdown_grace_seconds", 5.0))
+            ),
         )
         self._server = uvicorn.Server(config)
         self._server_thread = threading.Thread(
@@ -179,6 +186,38 @@ class DesktopHost:
             time.sleep(0.01)
         if not self._server_thread.is_alive():
             raise RuntimeError("本地 Desktop 服务启动失败。")
+
+    def request_restart(self) -> bool:
+        """Schedule a Core rebuild after the HTTP acknowledgement is sent."""
+        if self._stopping.is_set() or not self._restart_lock.acquire(blocking=False):
+            return False
+        threading.Thread(
+            target=self._restart_core,
+            name="zhaoxi-desktop-restart",
+            daemon=True,
+        ).start()
+        return True
+
+    def _restart_core(self) -> None:
+        try:
+            time.sleep(0.25)
+            logger.info("desktop core restart requested")
+            if self._server is not None:
+                self._server.should_exit = True
+            if self._server_thread is not None:
+                self._server_thread.join(timeout=self.settings.shutdown_grace_seconds + 5)
+                if self._server_thread.is_alive():
+                    raise RuntimeError("Core 停止超时。")
+            self._server = None
+            self._server_thread = None
+            self.agent = None
+            self._initialize_core()
+            self._start_server()
+            logger.info("desktop core restart completed")
+        except Exception:
+            logger.exception("desktop core restart failed")
+        finally:
+            self._restart_lock.release()
 
     def _on_window_closed(self) -> None:
         if not self._stopping.is_set():

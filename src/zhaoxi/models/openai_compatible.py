@@ -11,6 +11,7 @@ from zhaoxi.core.message import Message
 from zhaoxi.errors import ProviderError
 from zhaoxi.models.base import ModelProvider
 from zhaoxi.models.text_tool_calls import normalize_text_tool_calls
+from zhaoxi.models.prompt_diagnostics import log_prompt_diagnostics, log_prompt_usage
 from zhaoxi.models.types import ModelResponse, ToolCall
 
 
@@ -91,6 +92,10 @@ class OpenAICompatibleProvider(ModelProvider):
         if response_format is not None:
             payload["response_format"] = response_format
 
+        log_prompt_diagnostics(
+            messages, tools, model=self.model, tool_router=kwargs.get("tool_router")
+        )
+
         owns_client = self._client is None
         client = self._client or httpx.AsyncClient(timeout=self.timeout)
         try:
@@ -103,6 +108,8 @@ class OpenAICompatibleProvider(ModelProvider):
             data = response.json()
             choice = data["choices"][0]
             message = choice["message"]
+            usage = data.get("usage", {})
+            log_prompt_usage(usage, model=str(data.get("model") or self.model))
             calls = []
             for call in message.get("tool_calls", []):
                 function = call.get("function", {})
@@ -121,7 +128,7 @@ class OpenAICompatibleProvider(ModelProvider):
                 content=content,
                 tool_calls=calls,
                 finish_reason=choice.get("finish_reason"),
-                usage=data.get("usage", {}),
+                usage=usage,
                 raw_metadata={"id": data.get("id"), "model": data.get("model"),
                               **({"reasoning_content": message["reasoning_content"]} if isinstance(message.get("reasoning_content"), str) else {})},
             )

@@ -69,9 +69,15 @@ try {
 
 def launch_config() -> dict[str, str]:
     root = Path(__file__).resolve().parents[3]
-    executable = Path(sys.executable).absolute().with_name('pythonw.exe')
-    if sys.prefix == sys.base_prefix or not executable.is_file():
-        raise RuntimeError('请使用项目虚拟环境的 Python 安装自启动；需要同目录 pythonw.exe。')
+    current_pythonw = Path(sys.executable).absolute().with_name('pythonw.exe')
+    project_pythonw = root / '.venv' / 'Scripts' / 'pythonw.exe'
+    executable = (
+        current_pythonw
+        if sys.prefix != sys.base_prefix and current_pythonw.is_file()
+        else project_pythonw
+    )
+    if not executable.is_file():
+        raise RuntimeError('找不到项目虚拟环境 .venv\\Scripts\\pythonw.exe，请先创建虚拟环境。')
     if not (root / 'main.py').is_file():
         raise RuntimeError('找不到项目 main.py，请从源码项目的虚拟环境安装。')
     return {

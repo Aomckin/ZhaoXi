@@ -13,7 +13,7 @@ class AmbientContextSnapshot:
     current_activity: dict | None
     activity_duration: float
     recent_activity_transition: dict | None
-    input_shape: dict
+    activity_state: dict
     recent_conversation_topics: str
     tool_signals: list
     time: str
@@ -50,7 +50,7 @@ class ModelDecision:
             current_activity=activity.inference.model_dump() if activity.inference else None,
             activity_duration=activity.context.activity_duration if activity.context else 0,
             recent_activity_transition=activity.diagnostics()['last_transition'],
-            input_shape=activity.diagnostics(), recent_conversation_topics=conversation[:1200],
+            activity_state=activity.activity_abstraction(now), recent_conversation_topics=conversation[:1200],
             tool_signals=state.interaction.signals.snapshot(now), time=now.isoformat(), current_intents=intents,
             recent_proactive_history=[str(m.content or '')[:300] for m in self.conversation.recent() if m.delivery_id][-3:] if self.conversation else [],
         ))

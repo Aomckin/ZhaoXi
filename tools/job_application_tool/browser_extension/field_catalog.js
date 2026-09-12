@@ -1,0 +1,73 @@
+(() => {
+  "use strict";
+  const J = globalThis.ZhaoxiJobApplication;
+  const field = (key, section, label, aliases, valueType = "text", sensitivity = "personal") => ({
+    key, section, label, aliases: [label, ...aliases], valueType, sensitivity,
+    autoFillPolicy: ["sensitive", "declaration", "prohibited"].includes(sensitivity) ? "never" : "high_confidence"
+  });
+
+  // Canonical paths follow a typed profile while aliases preserve the Chinese
+  // field coverage proven in ResumeBridge.
+  J.FIELD_CATALOG = [
+    field("basic.full_name", "basic", "姓名", ["真实姓名", "中文姓名", "full name", "name"]),
+    field("basic.surname", "basic", "姓", ["姓氏", "中文姓", "last name"]),
+    field("basic.given_name", "basic", "名", ["名字", "中文名", "first name"]),
+    field("basic.english_name", "basic", "英文名", ["英文姓名", "english name"]),
+    field("basic.phone", "basic", "手机号码", ["手机号", "手机", "联系电话", "联系方式", "电话", "mobile", "phone"], "phone", "contact"),
+    field("basic.email", "basic", "邮箱", ["电子邮箱", "邮件", "email", "e-mail"], "email", "contact"),
+    field("basic.wechat", "basic", "微信", ["微信号", "微信账号", "wechat"], "text", "contact"),
+    field("basic.gender", "basic", "性别", ["男女性别"], "choice"),
+    field("basic.birth_date", "basic", "出生日期", ["生日", "出生年月", "出生年月日"], "date"),
+    field("basic.nationality", "basic", "国籍", ["国家", "国籍地区", "国家或地区"]),
+    field("basic.ethnicity", "basic", "民族", []),
+    field("basic.political_status", "basic", "政治面貌", ["政治身份"], "choice", "sensitive"),
+    field("basic.marital_status", "basic", "婚姻状况", ["婚姻状态"], "choice", "sensitive"),
+    field("basic.current_city", "basic", "现居住城市", ["当前居住城市", "居住城市", "现居地", "所在地"], "location"),
+    field("basic.current_address", "basic", "现居住详细地址", ["当前地址", "居住地址", "现住址"], "text", "sensitive"),
+    field("basic.hukou_location", "basic", "户籍", ["户口所在地", "户籍所在地", "现户口所在地"], "location", "sensitive"),
+    field("basic.student_origin", "basic", "生源地", ["生源所在地", "生源户口"], "location", "sensitive"),
+    field("basic.highest_education", "basic", "最高学历", ["最高全日制学历", "学历层次"], "choice"),
+    field("basic.work_start_date", "basic", "参加工作时间", ["工作起始时间", "工作年限"], "month"),
+    field("basic.current_employer", "basic", "现工作单位", ["当前单位", "目前单位"]),
+    field("basic.current_title", "basic", "当前职务", ["当前职位", "目前职位"]),
+    field("basic.current_salary", "basic", "当前薪资", ["目前薪资", "现薪资"], "text", "sensitive"),
+    field("basic.summary", "basic", "个人优势", ["优势内容", "优势亮点", "自我评价", "个人简介"], "textarea"),
+    field("job_preference.positions", "job_preference", "意向岗位", ["目标岗位", "应聘岗位", "申请岗位", "投递岗位"]),
+    field("job_preference.cities", "job_preference", "期望工作城市", ["意向工作城市", "期望城市", "意向城市", "期望工作地点"], "location"),
+    field("job_preference.salary", "job_preference", "期望薪资", ["期望年薪", "期望月薪", "期望年收入"], "text", "sensitive"),
+    field("job_preference.available_date", "job_preference", "预计入职时间", ["可入职时间", "到岗时间", "预计报到时间"], "date"),
+    field("education[].school", "education", "学校", ["学校名称", "毕业院校", "院校名称"]),
+    field("education[].college_department", "education", "学院", ["学院名称", "院系", "院系名称"]),
+    field("education[].major", "education", "专业", ["专业名称", "所学专业", "专业方向"]),
+    field("education[].education_level", "education", "学历", ["学历层次"]),
+    field("education[].degree", "education", "学位", ["学位类型"]),
+    field("education[].start_date", "education", "入学时间", ["教育开始时间", "在校开始时间"], "month"),
+    field("education[].end_date", "education", "毕业时间", ["教育结束时间", "在校结束时间"], "month"),
+    field("education[].gpa", "education", "GPA", ["绩点", "平均学分成绩"], "text"),
+    field("education[].major_rank", "education", "专业排名", ["绩点排名", "GPA排名", "成绩排名"]),
+    field("work_experiences[].company", "work", "公司", ["公司名称", "单位名称", "工作单位"]),
+    field("work_experiences[].department", "work", "部门", ["部门名称", "所在部门"]),
+    field("work_experiences[].title", "work", "职位", ["职位名称", "岗位", "职务"]),
+    field("work_experiences[].location", "work", "工作地点", ["工作城市"], "location"),
+    field("work_experiences[].start_date", "work", "工作开始时间", ["入职时间", "任职开始时间"], "month"),
+    field("work_experiences[].end_date", "work", "工作结束时间", ["离职时间", "任职结束时间"], "month"),
+    field("work_experiences[].responsibilities", "work", "工作内容", ["职责描述", "工作职责"], "textarea"),
+    field("work_experiences[].achievements", "work", "工作成果", ["工作业绩", "主要成果"], "textarea"),
+    field("internships[].company", "internship", "实习单位", ["实习公司", "实践单位"]),
+    field("internships[].title", "internship", "实习岗位", ["实习职位"]),
+    field("internships[].start_date", "internship", "实习开始时间", ["实践开始时间"], "month"),
+    field("internships[].end_date", "internship", "实习结束时间", ["实践结束时间"], "month"),
+    field("internships[].responsibilities", "internship", "实习内容", ["实践内容", "实习职责"], "textarea"),
+    field("projects[].name", "project", "项目名称", ["项目", "项目标题", "项目名", "课题名称"]),
+    field("projects[].role", "project", "项目角色", ["本人角色", "担任角色"]),
+    field("projects[].start_date", "project", "项目开始时间", ["项目起始时间"], "month"),
+    field("projects[].end_date", "project", "项目结束时间", ["项目截止时间"], "month"),
+    field("projects[].description", "project", "项目内容", ["项目描述", "项目简介", "项目概述"], "textarea"),
+    field("projects[].responsibilities", "project", "本人职责", ["个人职责", "个人贡献", "负责内容"], "textarea"),
+    field("projects[].achievements", "project", "项目成果", ["项目产出", "成果描述", "主要成果"], "textarea"),
+    field("family_members[].name", "family", "家庭成员姓名", ["家属姓名", "亲属姓名"], "text", "sensitive"),
+    field("family_members[].phone", "family", "家庭成员电话", ["家属电话", "亲属电话"], "phone", "sensitive"),
+    field("declarations.*", "declarations", "有关声明", ["本人声明", "背景调查", "真实性承诺", "合规问答"], "choice", "declaration"),
+    field("prohibited.submit", "prohibited", "提交申请", ["最终提交", "确认投递", "立即申请", "apply now", "submit application"], "action", "prohibited")
+  ];
+})();

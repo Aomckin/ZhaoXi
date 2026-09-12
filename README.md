@@ -1,6 +1,6 @@
 # Zhaoxi / 朝汐
 
-Zhaoxi 1.1.8 是一个可扩展的本地个人 Agent Core，提供对话、联想记忆、潮庭书库、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与可选 Tool Package 能力。
+Zhaoxi 1.1.9 是一个可扩展的本地个人 Agent Core，提供对话、联想记忆、潮庭书库、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与可选 Tool Package 能力。
 
 最新界面设置、模型思考开关、Beat 预算和验收边界统一见 [当前状态](docs/CURRENT_STATUS.md)。
 
@@ -301,7 +301,7 @@ CLI 支持 `/tools`、`/permissions`、`/approve`、`/deny`、`/revoke`、`/audi
 - 可重复查询的 Tool 事实默认不复制进长期 Memory
 - SQLite schema v1/v2 自动迁移至 v3，不丢失旧记录
 
-长期记忆默认保存到 `.zhaoxi/memory.db`，可通过 `ZHAOXI_MEMORY_DB_PATH` 修改，数据库目录已被 Git 忽略。主 Agent 不会在普通对话中自行调用记忆写入工具；最终回复生成后，独立 Auto Memory Extractor 会宽松提取值得留下的生活痕迹，再由 Cluster、Graph 与 Hybrid Retrieval 控制召回。用户明确要求记住、禁止记忆或遗忘时，其意图拥有最高优先级。
+长期记忆默认保存到 `.zhaoxi/memory.db`，可通过 `ZHAOXI_MEMORY_DB_PATH` 修改，数据库目录已被 Git 忽略。普通对话始终向主 Agent 暴露 `remember_memory` 与 `update_memory`，是否写入仍由模型判断；独立 Auto Memory Extractor 继续宽松提取值得留下的生活痕迹，再由 Cluster、Graph 与 Hybrid Retrieval 控制召回。用户明确要求记住、禁止记忆或遗忘时，其意图拥有最高优先级。
 
 CLI 可直接检查记忆：
 

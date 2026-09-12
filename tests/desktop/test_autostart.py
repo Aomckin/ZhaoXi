@@ -12,13 +12,14 @@ from zhaoxi.desktop.window import DesktopWindow
 
 def test_launch_config_uses_venv_pythonw_and_absolute_project():
     config = autostart.launch_config()
-    assert config['executable'].endswith('pythonw.exe')
+    assert config['executable'].endswith(r'.venv\Scripts\pythonw.exe')
     assert '--desktop --background' in config['arguments']
     assert config['directory'] in config['arguments']
 
 
-def test_install_requires_venv(monkeypatch):
+def test_install_requires_project_venv_when_current_python_is_global(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, 'prefix', sys.base_prefix)
+    monkeypatch.setattr(autostart, '__file__', str(tmp_path / 'src/zhaoxi/desktop/autostart.py'))
     with pytest.raises(RuntimeError, match='虚拟环境'):
         autostart.launch_config()
 
