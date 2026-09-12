@@ -226,6 +226,10 @@ def create_app(
                     return JSONResponse(status_code=401, content={"detail": "本地 Desktop 会话令牌无效。"})
             return await call_next(request)
 
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
     @app.get("/", include_in_schema=False)
     async def index():
         return FileResponse(static_dir / "index.html")

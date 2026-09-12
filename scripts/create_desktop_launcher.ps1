@@ -1,4 +1,4 @@
-﻿# Regenerate the double-click launcher after moving the project or rebuilding .venv.
+# Regenerate the double-click launcher after moving the project or rebuilding .venv.
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $pythonw = Join-Path $projectRoot '.venv\Scripts\pythonw.exe'
@@ -16,6 +16,6 @@ $shortcut.TargetPath = $pythonw
 $shortcut.Arguments = '"' + $main + '" --desktop'
 $shortcut.WorkingDirectory = $projectRoot
 $shortcut.Description = '打开朝汐；已运行时唤起现有窗口'
-$shortcut.IconLocation = (Join-Path $projectRoot 'src\zhaoxi\web\static\zhaoxi.ico') + ',0'
+$shortcut.IconLocation = (Join-Path $projectRoot 'src\zhaoxi\web\static\sunflower.ico') + ',0'
 $shortcut.Save()
 Write-Output $launcherPath

@@ -375,8 +375,8 @@ def test_web_shell_has_keyboard_and_live_status_accessibility_baseline():
     assert 'id="connection" role="status" aria-live="polite"' in page
     assert 'id="restartCore" type="button">重启 Core</button>' in page
     assert 'id="interactionBadge" class="interaction-badge" role="status" aria-live="polite" hidden' in page
-    assert "if(state==='ACTIVE')return {label:'活跃'" in page
-    assert "if(state==='SEMI_ACTIVE')return {label:'半活跃'" in page
+    assert "if(state==='ACTIVE')return {label:'活跃 · 还在聊呢'" in page
+    assert "if(state==='SEMI_ACTIVE')return {label:'半活跃 · 就在附近'" in page
     assert "if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing)" in page
     assert ".send,.mic{flex:0 0 34px;width:34px;height:34px" in page
     assert "#attachImage{flex:0 0 34px;width:34px;height:34px" in page
@@ -501,3 +501,12 @@ def test_voice_api_is_disabled_without_runtime():
             "status": "disabled",
         }
         assert client.post("/api/voice/record/start").status_code == 409
+
+
+def test_theme_assets_are_served_and_data_directory_is_not_exposed():
+    with TestClient(create_app(agent=FakeAgent())) as client:
+        for asset, media in [('themes.css', 'text/css'), ('scene.css', 'text/css'), ('autumn-wheat.webp', 'image/webp'), ('avatar-default.webp', 'image/webp'), ('deskboard.js', 'javascript')]:
+            response = client.get('/static/' + asset)
+            assert response.status_code == 200
+            assert media in response.headers['content-type']
+        assert client.get('/static/golden%20field.png').status_code == 404

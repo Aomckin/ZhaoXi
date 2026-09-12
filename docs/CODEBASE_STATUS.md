@@ -2,7 +2,15 @@
 
 > 当前配置、界面行为与最新限制见 [当前状态](CURRENT_STATUS.md)。下文保留分阶段实现与验收记录；其中旧预算和测试数量不代表当前值。
 
-> **当前开发分支：`v1.1.8`，运行时版本 `1.1.8`**。Core 已增加协议无关的动态 ToolProvider 扩展点，MCP 实现完整隔离在 `tools/mcp/`；原 Desktop Activity 与 ACTIVE 能力保持不变。
+> **当前开发分支：`v1.2`，运行时版本 `1.2.0`**。以下旧版本章节是历史切片，其“当前”指当时状态。
+
+## v1.2.0 当前增量
+
+- 完成 Visual Refresh Phase 1–3：Autumn Wheat、动作分组、专用头像、收束的聊天/输入区和默认关闭的右侧公告栏。
+- 新主动留言只亮金点；可见后复用既有 activate 接口保存已读，不刷新聊天 DOM。
+- 窗口、托盘、网页和快捷方式使用向日葵图标；快捷方式仍由脚本在本机生成。
+- 本次回归：502 项 Python 通过、1 项跳过；29 项 Node 通过。浏览器覆盖 8 种尺寸、已读联动、头像回退与高 DPI；图标相关专项测试 3 项通过。
+- 原生标题栏保留，真实桌面长时间 GPU/语音体验未验收。详细文件、截图和限制见 [Phase 3 报告](Zhaoxi_v1.2.0_Phase3_Release_Notes.md)。
 
 ## v1.1.8 当前增量
 
@@ -19,7 +27,7 @@
 - Conversation Beat Scheduler 不要求 open thread，按会话维护 SILENT/发送结果、预算、momentum 和调度时间。
 - Gateway 记录普通回复完成时间；ACTIVE TTL 不被无人回应的 Beat 续期，用户回应可延续同一会话并补预算。
 - 发送前复核并复用 Gateway 会话锁；延期普通消息也遵守与 Beat 的冷却，显式提醒保留优先级。
-- `active` diagnostics 与 `/api/proactive/active/inspect` 已提供；完整验证和真实模型验收结果见 [开发报告](Zhaoxi_v1.1.7_Release_Notes.md)。
+- `active` diagnostics 与 `/api/proactive/active/inspect` 已提供；完整验证和真实模型验收结果见 [开发报告](v1.1.x/Zhaoxi_v1.1.7_Release_Notes.md)。
 - 用户授权后的真实 DeepSeek 隔离验收通过：无 open thread，首次 Beat 为 CONTINUE，成功投递 1 条；共 2 次模型调用。Desktop UI 长时人工体验仍待验收。v1.1.x 功能范围冻结。
 
 ## v1.1.6.1 当前增量
@@ -28,7 +36,7 @@
 - 当前前台、标题、输入频率与有效推测缓存一起注入；不触发额外采样或 Activity LLM。
 - 15 秒过期标记 stale，缺失/锁屏/关闭标记 unavailable；原始注入区块不进入 Conversation、Session 或 AutoMemory 输入。
 - 本补丁全量回归：431 passed、1 skipped、1 warning。
-- 测试与限制见 [v1.1.6.1 补丁报告](Zhaoxi_v1.1.6.1_Release_Notes.md)。
+- 测试与限制见 [v1.1.6.1 补丁报告](v1.1.x/Zhaoxi_v1.1.6.1_Release_Notes.md)。
 
 ## v1.1.6 当前增量
 
@@ -39,7 +47,7 @@
 - 普通 diagnostics 无标题，显式 inspect 复用 Desktop 随机令牌。
 - 查询承诺提前结束修复：DIRECT 可在同轮提升为 TOOL，未兑现承诺不作为最终回复；Memory 时间统一为 aware UTC，兼容旧无偏移值。
 - 最新自动回归：422 passed、1 skipped；真实 Memory 隔离副本检索与后续写入验证通过。
-- 完整修改清单、性能冒烟及测试结果见 [v1.1.6 开发报告](Zhaoxi_v1.1.6_Release_Notes.md)。
+- 完整修改清单、性能冒烟及测试结果见 [v1.1.6 开发报告](v1.1.x/Zhaoxi_v1.1.6_Release_Notes.md)。
 
 ## v1.1.5 当前增量
 
@@ -95,7 +103,7 @@ v1.0 前置解耦已完成：Life HUD 实现与铁幕 Workflow 位于独立 `too
 - Agent 规则明确 Archive、Memory、Conversation 边界、事实优先级、canonical 冲突和未知细节不得编造；认知路由对正式资料事实问题要求真实 Tool Call。
 - `--archive-status`、`--reindex-archive` 与 Web diagnostics 已接入；Archive DB 纳入现有验证式备份。
 - 首份角色身世文档迁入 `data/archive/zhaoxi/` 并标记 canonical；两张设定图配有只索引文本的 Sidecar Markdown。
-- 当前验证：**362 项 Python 测试通过，1 项 symlink 权限相关测试跳过**；compileall、CLI 重建/状态和 `git diff --check` 通过。完整报告见 [`Zhaoxi_v1.1.3_Release_Notes.md`](Zhaoxi_v1.1.3_Release_Notes.md)。
+- 当前验证：**362 项 Python 测试通过，1 项 symlink 权限相关测试跳过**；compileall、CLI 重建/状态和 `git diff --check` 通过。完整报告见 [`Zhaoxi_v1.1.3_Release_Notes.md`](v1.1.x/Zhaoxi_v1.1.3_Release_Notes.md)。
 
 ## v1.1.2 当前增量
 
@@ -103,7 +111,7 @@ v1.0 前置解耦已完成：Life HUD 实现与铁幕 Workflow 位于独立 `too
 - Desktop 轻量 Win32 状态采样，ACTIVE / SEMI_ACTIVE / IDLE / AWAY 与变化事件、动态 Gate、Natural Check-in 集成。
 - 动态建议复用既有回复/主动决策，额外模型调用为0；时间显示统一，图片按钮和“汐”字应用图标已接入。
 - 当前验证：**351项 Python、17项 Node 通过**；compileall、diff检查、验证wheel与隔离安装导入通过。浏览器样例已验收，真实桌面长时场景待人工验证。
-- 完整方案、文件清单、API、配置及限制见 [`Zhaoxi_v1.1.2_Release_Notes.md`](Zhaoxi_v1.1.2_Release_Notes.md)。
+- 完整方案、文件清单、API、配置及限制见 [`Zhaoxi_v1.1.2_Release_Notes.md`](v1.1.x/Zhaoxi_v1.1.2_Release_Notes.md)。
 
 ## v1.1.2 前置清理
 
@@ -126,7 +134,7 @@ v1.0 前置解耦已完成：Life HUD 实现与铁幕 Workflow 位于独立 `too
 - 模型每次最多接收 20 个摘要，返回 silent / defer / speak；单次 provider attempt、30 秒超时，失败静默，事件最多两次决策。回复完成后再次检查打扰状态和 Focus 事实。
 - Inbox 展示时间与读状态；点击通知 / Inbox 经鉴权 API 和 Gateway 锁，将消息及简短背景补入并持久化当前 Session，不把原始 Event JSON 交给用户。
 - diagnostics 提供 `proactive.*` 进程内计数，重启清零；测试 **321 项 Python、17 项 Node 通过**，1 项既有 Starlette/httpx 弃用警告。
-- 完整变更、配置与手动步骤见 [`Zhaoxi_v1.1.1_Release_Notes.md`](Zhaoxi_v1.1.1_Release_Notes.md)。
+- 完整变更、配置与手动步骤见 [`Zhaoxi_v1.1.1_Release_Notes.md`](v1.1.x/Zhaoxi_v1.1.1_Release_Notes.md)。
 
 ## v1.1 当前增量
 
@@ -403,12 +411,12 @@ LifeHUD-Tool 的具体配置校验归独立 Tool 包所有；旧 `ZHAOXI_LIFEHUD
 
 ```powershell
 python main.py
-\.venv\Scripts\python.exe -m pytest
-\.venv\Scripts\python.exe -m compileall -q src tests
+.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\python.exe -m compileall -q src tests
 git diff --check
 ```
 
-当前自动化测试基线：**397 项 Python 通过、1 项 symlink 权限相关测试跳过；19 项 Node 前端测试通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
+当前自动化测试基线：**502 项 Python 通过、1 项跳过；29 项 Node 前端测试通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
 
 ## 接手建议
 
@@ -420,7 +428,8 @@ git diff --check
 
 ## Git 基线
 
-- 当前开发分支：`v1.1.5`
+- 当前开发分支：`v1.2`；版本 `1.2.0`。
+- 本次提交包含 Visual Refresh Phase 1–3、向日葵图标和文档校对；父提交为 `23f397d`。
 - v1.1.5：本体主权、公共 SDK、显式 Capability、StateSignal、Interruptibility、Conversation Continuation 与 LifeHUD 可选化随当前版本切片归档。
 - v1.1.4.1：自动 Consolidation、开放式 Cluster、Entity/EDGE 闭环与专项测试已纳入当前代码基线。
 - v1.1.4：联想记忆结构重构、专项测试和开发报告已纳入当前代码基线。

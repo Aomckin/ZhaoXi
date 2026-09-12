@@ -8,7 +8,7 @@ const source=html.slice(html.indexOf('let pendingDeliveryTimer='),html.indexOf('
 function setup(){
   const nodes=new Map(),requests=[],rendered=[],timers=[];
   const notices={children:[],querySelector(){return null},prepend(n){nodes.set(n.id,n);this.children.unshift(n)}};
-  const context=vm.createContext({seenDeliveries:new Set(),busy:false,pendingInput:[],activity:{},debug:{},setupCapabilities:async()=>{},clearTimeout(){},setTimeout(fn){timers.push(fn)},
+  const context=vm.createContext({showProactiveNote:()=>{},seenDeliveries:new Set(),busy:false,pendingInput:[],activity:{},debug:{},setupCapabilities:async()=>{},clearTimeout(){},setTimeout(fn){timers.push(fn)},
     document:{getElementById:id=>nodes.get(id),createElement:()=>({style:{},querySelector:()=>({textContent:''})})},
     $:()=>notices,markdown:s=>s,escapeHtml:s=>s,formatTime:s=>s,input:{focus(){}},
     messages:{replaceChildren(){rendered.length=0}},addMessage:(...args)=>rendered.push(args),

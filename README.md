@@ -1,8 +1,16 @@
 # Zhaoxi / 朝汐
 
-Zhaoxi 1.1.9 是一个可扩展的本地个人 Agent Core，提供对话、联想记忆、潮庭书库、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与可选 Tool Package 能力。
+Zhaoxi 1.2.0 是一个可扩展的本地个人 Agent Core，提供对话、联想记忆、潮庭书库、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与可选 Tool Package 能力。
 
 最新界面设置、模型思考开关、Beat 预算和验收边界统一见 [当前状态](docs/CURRENT_STATUS.md)。
+
+## v1.2.0 秋日麦田
+
+已完成 Phase 1–3：麦田背景、暖玻璃聊天区、专用朝汐头像、动作描写分组，以及默认收起的右侧小桌边公告栏。新留言只亮金点，可见后沿用现有接口确认已读；输入托盘与聊天区对齐，系统消息、设置和维护功能收在公告栏下方。
+
+窗口、托盘、网页与快捷方式统一使用向日葵图标。运行中的窗口和托盘需彻底退出朝汐后重新启动；快捷方式使用独立图标路径，重新生成方式见下方启动说明。
+
+当前实现、前后截图与验收边界见 [Phase 3 开发报告](docs/Zhaoxi_v1.2.0_Phase3_Release_Notes.md)。[Phase 1](docs/Zhaoxi_v1.2.0_Release_Notes.md) 和 [Phase 2](docs/Zhaoxi_v1.2.0_Phase2_Release_Notes.md) 报告保留各阶段设计与验证记录，不代表当前布局。
 
 ## v1.1.8 动态 ToolProvider 与 MCP 接入
 
@@ -11,7 +19,7 @@ Zhaoxi 1.1.9 是一个可扩展的本地个人 Agent Core，提供对话、联�
 - 每个远程 MCP Tool 都转换成独立 Zhaoxi Tool，Agent、Planner、Workflow 继续复用现有 Registry、ToolExecutor 与 PermissionGateway。
 - 当前安装的 9 个 MCP Server 可发现 78 个独立 Tool；Package 默认只发现、不启用，设置 `ZHAOXI_TOOL_MCP_ENABLED=true` 后装配。
 
-设计边界、配置和验证结果见 [v1.1.8 开发报告](docs/Zhaoxi_v1.1.8_Release_Notes.md)。
+设计边界、配置和验证结果见 [v1.1.8 开发报告](docs/v1.1.x/Zhaoxi_v1.1.8_Release_Notes.md)。
 
 ## v1.1.7 ACTIVE 对话闭环
 
@@ -19,13 +27,13 @@ ACTIVE 现在独立调度 Conversation Beat：沉默默认 180 秒后获得判�
 
 每段会话初始预算 2、上限 3，主动发送扣 1，用户有效回应后补 1。持续极高输入、BLOCKED、Quiet、夜间、待确认或正在处理请求时不调用常规 Beat 模型；LOW 不再自动阻断；普通主动消息与 Beat 共享发送历史和冷却。无人回应时不会靠主动发送无限续期，约 20 分钟后冷却到 SEMI_ACTIVE。
 
-诊断包含 `active` 会话、Beat 时间、预算及拦截原因；`/api/proactive/active/inspect` 可查看最近模型决策。配置及验收状态见 [v1.1.7 开发报告](docs/Zhaoxi_v1.1.7_Release_Notes.md)。本版为 v1.1.x 功能收尾，之后仅修复缺陷。
+诊断包含 `active` 会话、Beat 时间、预算及拦截原因；`/api/proactive/active/inspect` 可查看最近模型决策。配置及验收状态见 [v1.1.7 开发报告](docs/v1.1.x/Zhaoxi_v1.1.7_Release_Notes.md)。本版为 v1.1.x 功能收尾，之后仅修复缺陷。
 
 ## v1.1.6.1 普通对话桌面上下文
 
 普通聊天现在通过独立 `[Desktop Activity]` Runtime 区块获得当前前台进程、标题、输入频率和已有活动推测。只复用现有采样与缓存，不增加 Activity LLM 调用；超过 15 秒的观察明确标记 stale，无法采样或模块关闭时标记 unavailable。原始区块不写入 Session / Memory，diagnostics 保持脱敏。
 
-实现、测试与人工验收见 [v1.1.6.1 补丁报告](docs/Zhaoxi_v1.1.6.1_Release_Notes.md)。
+实现、测试与人工验收见 [v1.1.6.1 补丁报告](docs/v1.1.x/Zhaoxi_v1.1.6.1_Release_Notes.md)。
 
 ## v1.1.6 桌面活动感知
 
@@ -35,7 +43,7 @@ ACTIVE 现在独立调度 Conversation Beat：沉默默认 180 秒后获得判�
 - 持续高输入降低 Interruptibility 并暂缓 ACTIVE Continuation；长时间高输入结束可生成 SEMI_ACTIVE 候选。全屏退出不再单独形成高权重提醒。
 - 普通 diagnostics 不含完整标题；显式 `/api/desktop/activity/inspect` 可查看短期上下文，Desktop 会话继续要求本地令牌。
 
-开关、计数单位、自动测试、手动验收及限制见 [v1.1.6 开发报告](docs/Zhaoxi_v1.1.6_Release_Notes.md)。
+开关、计数单位、自动测试、手动验收及限制见 [v1.1.6 开发报告](docs/v1.1.x/Zhaoxi_v1.1.6_Release_Notes.md)。
 
 ## v1.1.5 本体主权与能力边界
 
@@ -45,7 +53,7 @@ ACTIVE 现在独立调度 Conversation Beat：沉默默认 180 秒后获得判�
 - ACTIVE 表示仍在持续的对话，拥有独立的 Conversation Continuation、静默时间、冷却和每窗口预算。
 - Memory 与 Life HUD 采用分域权威：精确结构化生活事实优先 Life HUD，经历与对话语境优先 Memory，两者不互相覆盖。
 
-完整实现与验收见 [v1.1.5 开发报告](docs/Zhaoxi_v1.1.5_Release_Notes.md)。
+完整实现与验收见 [v1.1.5 开发报告](docs/v1.1.x/Zhaoxi_v1.1.5_Release_Notes.md)。
 
 ## v1.1.4.1 联想记忆闭环修正
 
@@ -53,7 +61,7 @@ ACTIVE 现在独立调度 Conversation Beat：沉默默认 180 秒后获得判�
 - Cluster 使用 tag、entity、lexical、embedding centroid 与时间接近度综合匹配，并支持可追溯合并。
 - AutoMemory 可输出实体名称型 EDGE Candidate；Service 负责 Concept/alias 解析、建边与缺字段降级。
 
-完整实现与验收见 [v1.1.4.1 开发报告](docs/Zhaoxi_v1.1.4.1_Release_Notes.md)。
+完整实现与验收见 [v1.1.4.1 开发报告](docs/v1.1.x/Zhaoxi_v1.1.4.1_Release_Notes.md)。
 
 ## v1.1.4 联想记忆
 
@@ -63,7 +71,7 @@ ACTIVE 现在独立调度 Conversation Beat：沉默默认 180 秒后获得判�
 - 召回组合 keyword、O(n) local embedding、时间有效性、2-hop graph expansion 和 cluster diversity rerank。
 - Consolidation 保留原 Episode，并通过 EVIDENCE_FOR / DERIVED_FROM 边记录可追溯证据。
 
-设计、实现与验收结果见 [v1.1.4 开发报告](docs/Zhaoxi_v1.1.4_Release_Notes.md)。
+设计、实现与验收结果见 [v1.1.4 开发报告](docs/v1.1.x/Zhaoxi_v1.1.4_Release_Notes.md)。
 
 ## v1.1.3 潮庭书库
 
@@ -76,7 +84,7 @@ python main.py --archive-status
 python main.py --reindex-archive
 ```
 
-配置、实现边界与验收结果见 [v1.1.3 开发报告](docs/Zhaoxi_v1.1.3_Release_Notes.md)。
+配置、实现边界与验收结果见 [v1.1.3 开发报告](docs/v1.1.x/Zhaoxi_v1.1.3_Release_Notes.md)。
 
 Life HUD 通过独立的 `tools/lifehud_tool` 包接入，Core Registry 只注册一个 `lifehud` Tool；各能力由封闭 `operation` 区分，并按调用动态解析 READ/WRITE 权限。Life HUD API 的时间戳按原始 UTC 契约读取且不改写；发送给模型的 Tool observation 默认转换为 `Asia/Shanghai`，可通过 `ZHAOXI_TOOL_LIFEHUD_DISPLAY_TIMEZONE` 配置。
 
@@ -84,7 +92,7 @@ Life HUD 通过独立的 `tools/lifehud_tool` 包接入，Core Registry 只注�
 
 常驻 Web / Desktop 现在每 30 秒进行纯代码观察，LifeHUD Focus / 任务快照每 2 分钟读取一次；候选事件聚合、去重并经过 Quiet Mode、夜间、最近交互和冷却筛选后，才允许模型判断是否开口。普通主动消息默认冷却 45 分钟，自然关心最多每天一次。
 
-右侧主动消息支持时间、未读 / 已读和点击续聊；Windows 通知点击进入同一上下文。配置见 `.env.example`，实现与验收详见 [v1.1.1 开发报告](docs/Zhaoxi_v1.1.1_Release_Notes.md)。
+右侧主动消息支持时间、未读 / 已读和点击续聊；Windows 通知点击进入同一上下文。配置见 `.env.example`，实现与验收详见 [v1.1.1 开发报告](docs/v1.1.x/Zhaoxi_v1.1.1_Release_Notes.md)。
 
 ## v1.1 入口体验
 
@@ -94,7 +102,7 @@ Life HUD 通过独立的 `tools/lifehud_tool` 包接入，Core Registry 只注�
 - 连续文字/图片输入以 15 秒防抖合并，回复期间输入排队。
 - 支持选择/粘贴 PNG、JPEG、WebP，每次最多 20 张，每张 100 MB，图片随会话保存。
 
-详情见 [v1.1 发布说明](docs/Zhaoxi_v1.1_Release_Notes.md)；登录自启动命令与验收见 [常驻说明](docs/presence-autostart.md)。
+详情见 [v1.1 发布说明](docs/v1.1.x/Zhaoxi_v1.1_Release_Notes.md)；登录自启动命令与验收见 [常驻说明](docs/presence-autostart.md)。
 
 ## Architecture
 
@@ -375,4 +383,4 @@ powershell -NoProfile -File .\scripts\create_desktop_launcher.ps1
 
 ## v1.1.2 潮间态
 
-新增消息时间上下文、桌面轻量状态采样与 ACTIVE / SEMI_ACTIVE / IDLE / AWAY 互动状态。主动门槛随状态变化，动态快捷建议复用现有回复（额外模型调用为0）。统一消息时间、图片按钮及“汐”字应用图标。开发验证结果、配置和人工验收步骤见 [v1.1.2报告](docs/Zhaoxi_v1.1.2_Release_Notes.md)。
+新增消息时间上下文、桌面轻量状态采样与 ACTIVE / SEMI_ACTIVE / IDLE / AWAY 互动状态。主动门槛随状态变化，动态快捷建议复用现有回复（额外模型调用为0）。统一消息时间、图片按钮及“汐”字应用图标。开发验证结果、配置和人工验收步骤见 [v1.1.2报告](docs/v1.1.x/Zhaoxi_v1.1.2_Release_Notes.md)。

@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="autumn-wheat">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>朝汐 · Local Shell</title>
+  <title>朝汐 · 秋日麦田</title>
   <link rel="icon" href="/favicon.ico">
   <style>
     :root{color-scheme:light;--bg:#eef5ff;--panel:#fff;--ink:#17233c;--muted:#71809b;--line:#dbe7f7;--blue:#3977e8;--blue2:#6ca6ff;--soft:#edf5ff;--danger:#c54d5c;--shadow:0 18px 60px rgba(49,87,146,.14)}
@@ -26,16 +26,31 @@
     .bubble img.attachment{display:block;max-width:100%;max-height:360px;object-fit:contain;border-radius:10px;margin-top:8px}
       .recall{background:transparent;color:inherit;font-size:12px;padding:2px 0;margin-left:10px;opacity:.75;text-decoration:underline}
 </style>
+  <link rel="stylesheet" href="/static/themes.css">
+  <link rel="stylesheet" href="/static/scene.css">
 </head>
 <body>
+<div class="scene-background" aria-hidden="true"></div><div class="scene-ambient" aria-hidden="true"></div>
 <main class="shell">
+    <header class="top character-anchor" data-state="unknown"><div class="identity"><div class="character-portrait"><span id="avatarFallback" role="img" aria-label="朝汐">汐</span><img id="characterAvatar" alt="朝汐，戴向日葵发卡的金发犬耳少女" width="512" height="512" hidden></div><div><div class="name-line"><div class="name">朝汐</div><span id="interactionBadge" class="interaction-badge" role="status" aria-live="polite" hidden></span></div><div class="sub">潮庭女仆长 · 我在这里</div></div></div></header>
   <section class="chat">
-    <header class="top"><div class="identity"><div class="avatar">汐</div><div><div class="name-line"><div class="name">朝汐</div><span id="interactionBadge" class="interaction-badge" role="status" aria-live="polite" hidden></span></div><div class="sub">Local Interaction Shell · 127.0.0.1:4913</div></div></div><button id="clear" class="ghost">清空会话</button></header>
+
     <div id="messages" class="messages"><div id="empty" class="empty"><b>晚上好，暗苟酱。</b>我在这里。想聊点什么，还是看看今天？</div></div>
-    <footer class="composer"><div id="activity" class="activity" role="status" aria-live="polite"></div><div id="voiceReview" class="voice-review"><textarea id="voiceText" aria-label="语音识别结果"></textarea><div class="actions"><button id="voiceConfirm" class="allow">发送</button><button id="voiceRetry" class="ghost">重新录音</button><button id="voiceCancel" class="deny">取消</button></div></div><div id="imagePreview" class="image-preview" aria-label="待发送图片"></div><input id="imageFiles" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden><div class="inputbox"><button id="attachImage" class="ghost" aria-label="添加图片" title="添加图片（最多20张，每张100MB）"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 4-6 5 7"/></svg></button><textarea id="input" rows="1" aria-label="发送给朝汐的消息" placeholder="和朝汐说点什么…"></textarea><button id="mic" class="mic" aria-label="开始录音">●</button><button id="send" class="send" aria-label="发送">↑</button></div></footer>
+    <footer class="composer"><div id="activity" class="activity" role="status" aria-live="polite"></div><div id="voiceReview" class="voice-review"><textarea id="voiceText" aria-label="语音识别结果"></textarea><div class="actions"><button id="voiceConfirm" class="allow">发送</button><button id="voiceRetry" class="ghost">重新录音</button><button id="voiceCancel" class="deny">取消</button></div></div><div id="imagePreview" class="image-preview" aria-label="待发送图片"></div><input id="imageFiles" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden><div class="inputbox"><button id="attachImage" class="ghost" aria-label="添加图片" title="添加图片（最多20张，每张100MB）"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 4-6 5 7"/></svg></button><textarea id="input" rows="1" aria-label="发送给朝汐的消息" placeholder="和朝汐说点什么……"></textarea><button id="mic" class="mic" aria-label="开始录音">●</button><button id="send" class="send" aria-label="发送">↑</button></div></footer>
   </section>
-  <aside class="side"><h2>连接状态</h2><div class="status"><span class="dot" aria-hidden="true"></span><span id="connection" role="status" aria-live="polite">本地 Core 已连接</span></div><details open><summary>可以这样找我</summary><div id="capabilities"><div class="sub">正在准备建议…</div></div></details><details open><summary>系统消息</summary><div id="notices" aria-live="polite"><div class="sub">暂无新的系统消息。</div></div></details><details><summary>设置</summary><p><label><input id="thinkingToggle" type="checkbox" disabled> 模型思考</label> <small id="thinkingStatus">正在读取…</small></p><p><label>输入合并 <output id="mergeValue">15 秒</output><input id="mergeRange" type="range" min="0" max="30" step="1" value="15" style="width:100%"></label></p><p><label>分段回复间隔 <output id="replyValue">5–10 秒</output><input id="replyRange" type="range" min="0" max="15" step="1" value="5" style="width:100%"></label></p></details><details><summary>Debug</summary><button id="poke" type="button">戳一戳</button> <button id="restartCore" type="button">重启 Core</button><span id="pokeStatus" role="status"></span><div id="debug" class="debug">等待首次请求…</div></details></aside>
+
 </main>
+<button id="sideToggle" class="desk-handle" type="button" aria-controls="desk" aria-expanded="false" aria-label="打开小桌边"><span id="deskUnread" class="note-unread" hidden aria-hidden="true"></span><span>小桌边</span><span aria-hidden="true">‹</span></button>
+<aside id="desk" class="side deskboard" aria-labelledby="deskTitle" aria-hidden="true" inert>
+  <header class="desk-heading"><button id="deskClose" type="button" class="ghost" aria-label="收起小桌边">‹</button><div><h2 id="deskTitle">朝汐的小桌边</h2><p class="desk-caption">风经过麦田，我在你身边。</p></div></header>
+  <div class="desk-content">
+    <section aria-labelledby="notesTitle"><h3 id="notesTitle">朝汐留下的话</h3><div id="proactiveNotes" aria-live="polite"><div class="desk-note"><p>想说的话，慢慢说就好。</p><small>她留下的小纸条，就收在这里。</small></div></div><p id="noteReadStatus" role="status" class="sub"></p></section>
+    <section class="quick-prompts" aria-labelledby="promptHeading"><h3 id="promptHeading">可以这样找我</h3><div id="capabilities"><div class="sub">正在准备建议…</div></div></section>
+    <div class="desk-tools"><details><summary>系统消息</summary><div id="notices" aria-live="polite"><div class="sub">暂无新的系统消息。</div></div></details><details><summary>设置</summary><p><label><input id="thinkingToggle" type="checkbox" disabled> 模型思考</label> <small id="thinkingStatus">正在读取…</small></p><p><label>输入合并 <output id="mergeValue">15 秒</output><input id="mergeRange" type="range" min="0" max="30" step="1" value="15" style="width:100%"></label></p><p><label>分段回复间隔 <output id="replyValue">5–10 秒</output><input id="replyRange" type="range" min="0" max="15" step="1" value="5" style="width:100%"></label></p></details><details class="maintenance"><summary>维护抽屉</summary><button id="clear" class="ghost">清空会话</button><p class="sub" id="endpoint"></p><h2>连接状态</h2><div class="status"><span class="dot" aria-hidden="true"></span><span id="connection" role="status" aria-live="polite">本地 Core 已连接</span></div><details><summary>Debug</summary><button id="poke" type="button">戳一戳</button> <button id="restartCore" type="button">重启 Core</button><span id="pokeStatus" role="status"></span><div id="debug" class="debug">等待首次请求…</div></details></details></div>
+  </div>
+</aside>
+<script id="characterConfig" type="application/json">{"avatar":"/static/avatar-default.webp"}</script>
+<script src="/static/deskboard.js"></script>
 <script>
 const $=s=>document.querySelector(s), messages=$('#messages'), input=$('#input'), send=$('#send'), mic=$('#mic'), activity=$('#activity'), debug=$('#debug'), voiceReview=$('#voiceReview'), voiceText=$('#voiceText');let busy=false,voiceEnabled=false,voiceRecording=false,speechActive=false;
 function escapeHtml(v){const d=document.createElement('div');d.textContent=v??'';return d.innerHTML}
@@ -51,29 +66,35 @@ function splitReply(content){
       if(!fence)fence={char:marker[1][0],length:marker[1].length};
       else if(marker[1][0]===fence.char&&marker[1].length>=fence.length&&!marker[2].trim())fence=null;
       paragraph.push(line);
-    }else if(!fence&&!line.trim())flush();
+    }else if(!fence&&isActionSegment(line)){flush();segments.push(line.trim())}
+    else if(!fence&&!line.trim())flush();
     else paragraph.push(line);
   }
   flush();return segments;
 }
+function isActionSegment(text){
+  const value=String(text??'').trim();
+  return /^(（[^\r\n]*）|\([^\r\n]*\))$/.test(value);
+}
 function addMessage(role,content,kind='',images=[],timestamp=null){
   const parts=role==='assistant'&&kind!=='system'?splitReply(content):[content];
-  return parts.map(part=>addMessageBubble(role,part,kind,images,timestamp));
+  const group=role==='assistant'&&kind!=='system'?{}:null;
+  return parts.map(part=>addMessageBubble(role,part,kind,images,timestamp,group));
 }
 // New replies are paced; session restoration continues to use addMessage directly.
 async function sendReply(content,timestamp=null){
-  const parts=splitReply(content);
+  const parts=splitReply(content),group={};
   for(let i=0;i<parts.length;i++){
     if(i>0){
       activity.textContent='朝汐正在继续回复…';
       await new Promise(resolve=>setTimeout(resolve,(typeof replyIntervalMs==='undefined'?5000:replyIntervalMs)+Math.floor(Math.random()*((typeof replyIntervalMs==='undefined'?5000:replyIntervalMs)+1))));
     }
-    addMessageBubble('assistant',parts[i],'',[],timestamp);
+    addMessageBubble('assistant',parts[i],'',[],timestamp,group);
   }
 }
 let displayTimezone='Asia/Shanghai';
 function formatTime(value){return value?new Intl.DateTimeFormat('zh-CN',{timeZone:displayTimezone,year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(value)):''}
-function addMessageBubble(role,content,kind='',images=[],timestamp=null){ $('#empty')?.remove();const row=document.createElement('div');row.className=`row ${role} ${kind}`;row.innerHTML=`<div class="bubble">${kind==='system'?'<div class="badge">系统消息</div>':''}${markdown(content)}<time class="message-time">${escapeHtml(formatTime(timestamp||new Date().toISOString()))}</time></div>`;if(role==='assistant'&&kind!=='system'&&voiceEnabled){const b=document.createElement('button');b.className='speak';b.textContent='朗读';b.onclick=()=>speakText(content,b);row.querySelector('.bubble').append(b)}for(const src of images){if(!/^data:image\/(png|jpeg|webp);base64,/.test(src))continue;const image=document.createElement('img');image.className='attachment';image.alt='用户发送的图片';image.src=src;image.onload=()=>{messages.scrollTop=messages.scrollHeight};row.querySelector('.bubble').append(image)}messages.append(row);messages.scrollTop=messages.scrollHeight;return row }
+function addMessageBubble(role,content,kind='',images=[],timestamp=null,group=null){ $('#empty')?.remove();const row=document.createElement('div');row.className=`row ${role} ${kind}${role==='assistant'&&kind!=='system'&&isActionSegment(content)?' stage-direction':''}`;row.innerHTML=`<div class="bubble">${kind==='system'?'<div class="badge">系统消息</div>':''}${markdown(content)}<time class="message-time">${escapeHtml(formatTime(timestamp||new Date().toISOString()))}</time></div>`;if(role==='assistant'&&kind!=='system'&&voiceEnabled){const b=document.createElement('button');b.className='speak';b.textContent='朗读';b.onclick=()=>speakText(content,b);row.querySelector('.bubble').append(b)}for(const src of images){if(!/^data:image\/(png|jpeg|webp);base64,/.test(src))continue;const image=document.createElement('img');image.className='attachment';image.alt='用户发送的图片';image.src=src;image.onload=()=>{messages.scrollTop=messages.scrollHeight};row.querySelector('.bubble').append(image)}if(group){if(!group.element){group.element=document.createElement('div');group.element.className='message-group';messages.append(group.element)}group.element.append(row)}else messages.append(row);messages.scrollTop=messages.scrollHeight;return row }
 function permissionCard(p){const box=document.createElement('div');box.className='permission';box.innerHTML=`<h3>朝汐想执行</h3><div>${escapeHtml(p.action)}</div><p>权限：${escapeHtml(p.permission.toUpperCase())}</p><p>范围：${escapeHtml(p.resource_scope)}</p><div class="actions"><button class="allow">允许</button><button class="deny">拒绝</button></div>`;messages.append(box);box.querySelector('.allow').onclick=()=>resolve(p.confirmation_id,'approve',box);box.querySelector('.deny').onclick=()=>resolve(p.confirmation_id,'deny',box);messages.scrollTop=messages.scrollHeight}
 async function request(url,options={}){const r=await fetch(url,{headers:{'Content-Type':'application/json'},...options});const data=await r.json();if(!r.ok)throw new Error(data.detail||'请求失败');return data}
 let INPUT_MERGE_MS=15000;
@@ -167,22 +188,26 @@ $('#clear').onclick=async()=>{if(busy||imagesReading||pendingInput.length)return
 const seenDeliveries=new Set(), deliveryQueue=[];let historyReady=false;
 async function restore(){try{const data=await request('/api/session');data.messages.forEach(m=>{if(m.delivery_id)seenDeliveries.add(m.delivery_id);if(m.kind==='system')return;if(m.role==='user'&&m.display_parts?.length){let offset=0;for(const p of m.display_parts){addMessage('user',p.text,'',(m.images||[]).slice(offset,offset+p.image_count),p.timestamp);offset+=p.image_count}}else addMessage(m.role,m.content,m.kind==='system'?'system':'',m.images||[],m.timestamp)});const p=await request('/api/proactive');p.deliveries.filter(d=>['delivered','acknowledged'].includes(d.status)).reverse().forEach(d=>showNotice(d))}catch(e){$('#connection').textContent='Core 暂时不可用'}finally{historyReady=true;void drainDeliveries()}}
 function interactionBadgeView(state){
-  if(state==='ACTIVE')return {label:'活跃',className:'active',title:'当前对话仍在持续'};
-  if(state==='SEMI_ACTIVE')return {label:'半活跃',className:'semi-active',title:'朝汐醒着，在附近'};
+  if(state==='ACTIVE')return {label:'活跃 · 还在聊呢',className:'active',title:'当前对话仍在持续'};
+  if(state==='SEMI_ACTIVE')return {label:'半活跃 · 就在附近',className:'semi-active',title:'朝汐醒着，在附近'};
+  if(state==='IDLE')return {label:'休憩 · 安静待着',className:'idle',title:'朝汐安静待着'};
+  if(state==='AWAY')return {label:'离开 · 暂时不在',className:'away',title:'暂时不在'};
   return null;
 }
 function renderInteractionBadge(presence){
   const badge=$('#interactionBadge'),view=interactionBadgeView(presence?.interaction_state);
+  const anchor=document.querySelector('.character-anchor');if(anchor)anchor.dataset.state=view?String(presence.interaction_state).toLowerCase():'unknown';
   if(!view){badge.hidden=true;badge.className='interaction-badge';badge.textContent='';badge.removeAttribute('title');badge.removeAttribute('aria-label');return}
   badge.hidden=false;badge.className=`interaction-badge ${view.className}`;badge.textContent=view.label;badge.title=view.title;badge.setAttribute('aria-label',`当前互动状态：${view.label}`);
 }
 let setupNoticeShown=false;
 async function setupDiagnostics(){try{const data=await request('/api/diagnostics');debug.textContent=JSON.stringify(data,null,2);renderInteractionBadge(data.presence);if(data.startup&&data.startup.status!=='ready'){const model=data.startup.checks?.model||{};$('#connection').textContent='需要完成首次配置';input.placeholder='完成配置后即可和朝汐对话';if(!setupNoticeShown){addMessage('assistant',`朝汐尚未完成启动配置。${model.action||'请运行 python main.py --doctor 查看具体问题。'}`);setupNoticeShown=true}}}catch(e){renderInteractionBadge(null);$('#connection').textContent='启动诊断不可用'}}
-async function setupCapabilities(){try{const data=await request('/api/suggestions');displayTimezone=data.timezone||displayTimezone;const box=$('#capabilities');box.innerHTML='';(data.suggestions||[]).slice(0,4).forEach(example=>{const item=document.createElement('button');item.type='button';item.className='notice';item.style.width='100%';item.style.textAlign='left';item.textContent=example;item.onclick=()=>{input.value=example;input.focus()};box.append(item)});if(!box.children.length)box.innerHTML='<div class="sub">当前没有可展示的能力。</div>'}catch(e){$('#capabilities').innerHTML='<div class="sub">建议暂时不可用。</div>'}}
+async function setupCapabilities(){try{const data=await request('/api/suggestions');displayTimezone=data.timezone||displayTimezone;const box=$('#capabilities');box.innerHTML='';(data.suggestions||[]).slice(0,4).forEach(example=>{const item=document.createElement('button');item.type='button';item.className='prompt-card';item.textContent=example;item.onclick=()=>{input.value=example;input.focus()};box.append(item)});if(!box.children.length)box.innerHTML='<div class="sub">当前没有可展示的能力。</div>'}catch(e){$('#capabilities').innerHTML='<div class="sub">建议暂时不可用。</div>'}}
 let pendingDeliveryTimer=null;
 async function openDelivery(id){clearTimeout(pendingDeliveryTimer);if(busy||pendingInput.length){activity.textContent='当前回复结束后打开系统消息…';pendingDeliveryTimer=setTimeout(()=>openDelivery(id),500);return}try{await request('/api/proactive/'+encodeURIComponent(id)+'/activate',{method:'POST'});const data=await request('/api/session');messages.replaceChildren();data.messages.forEach(m=>{if(m.delivery_id)seenDeliveries.add(m.delivery_id);if(m.kind==='system')return;if(m.role==='user'&&m.display_parts?.length){let offset=0;for(const p of m.display_parts){addMessage('user',p.text,'',(m.images||[]).slice(offset,offset+p.image_count),p.timestamp);offset+=p.image_count}}else addMessage(m.role,m.content,m.kind==='system'?'system':'',m.images||[],m.timestamp)});debug.textContent=JSON.stringify(await request('/api/proactive/'+encodeURIComponent(id)+'/inspect'),null,2);const n=document.getElementById('notice-'+id);if(n)n.querySelector('.badge').textContent='已读';void setupCapabilities();input.focus()}catch(e){activity.textContent='暂时无法打开系统消息，请稍后重试'}}
-function showNotice(d){if(d.kind!=='system'&&!String(d.event_type||'').startsWith('system.'))return;if(!['delivered','acknowledged'].includes(d.status)||document.getElementById('notice-'+d.delivery_id))return;const n=document.createElement('button');n.id='notice-'+d.delivery_id;n.className='notice';n.style.cssText='display:block;width:100%;text-align:left';n.innerHTML=`<div class="badge">${d.status==='acknowledged'?'已读':'未读'}</div><div>${markdown(d.content)}</div><small>${escapeHtml(formatTime(d.delivered_at||d.available_at))}</small>`;n.onclick=()=>openDelivery(d.delivery_id);$('#notices').querySelector('.sub')?.remove();$('#notices').prepend(n);while($('#notices').children.length>100)$('#notices').lastElementChild.remove()}
+function showNotice(d){showProactiveNote(d);if(d.kind!=='system'&&!String(d.event_type||'').startsWith('system.'))return;if(!['delivered','acknowledged'].includes(d.status)||document.getElementById('notice-'+d.delivery_id))return;const n=document.createElement('button');n.id='notice-'+d.delivery_id;n.className='notice';n.style.cssText='display:block;width:100%;text-align:left';n.innerHTML=`<div class="badge">${d.status==='acknowledged'?'已读':'未读'}</div><div>${markdown(d.content)}</div><small>${escapeHtml(formatTime(d.delivered_at||d.available_at))}</small>`;n.onclick=()=>openDelivery(d.delivery_id);$('#notices').querySelector('.sub')?.remove();$('#notices').prepend(n);while($('#notices').children.length>100)$('#notices').lastElementChild.remove()}
 function receiveDelivery(d){
+  showProactiveNote(d);
   if(d.kind==='system'||String(d.event_type||'').startsWith('system.')){showNotice(d);return}
   if(!['delivered','acknowledged'].includes(d.status)||seenDeliveries.has(d.delivery_id)||deliveryQueue.some(x=>x.delivery_id===d.delivery_id))return;
   deliveryQueue.push(d);void drainDeliveries();

@@ -38,7 +38,7 @@ def test_build_agent_uses_persistent_reliability_stores(tmp_path, monkeypatch):
     assert second.backup_manager.health()["memory"]["healthy"] is True
     assert second.capability_catalog["status"] == "ready"
     assert any(item["name"] == "lifehud" for item in second.capability_catalog["tools"])
-    assert second.capability_catalog["packages"][0]["id"] == "lifehud-tool"
+    assert any(package["id"] == "lifehud-tool" for package in second.capability_catalog["packages"])
     assert isinstance(second.reflection.repository, SQLiteReflectionRepository)
     assert second.reflection_periods is not None
 

@@ -71,3 +71,15 @@ test('single-segment live reply has no delay',async()=>{
   await paced.sendReply('你好');
   assert.equal(displayed.length,1);
 });
+
+
+test('alternating action lines form segments without requiring blank lines',()=>{
+ assert.deepEqual(split('（尾巴摇了摇。）\n正文\n（顿了两秒。）\n正文\n（耳朵转了转。）\n正文'),['（尾巴摇了摇。）','正文','（顿了两秒。）','正文','（耳朵转了转。）','正文']);
+ assert.equal(context.isActionSegment('我今天用了 VS Code（主要是在改朝汐）。'),false);
+ assert.equal(context.isActionSegment('  (nods)  '),true);
+ assert.deepEqual(split('```\n（代码内容）\n```'),['```\n（代码内容）\n```']);
+});
+test('one assistant turn shares a group, separate turns never share it',()=>{
+ calls.length=0;context.addMessage('assistant','（点头。）\n你好');context.addMessage('assistant','下一轮');
+ assert.equal(calls[0][5],calls[1][5]);assert.notEqual(calls[1][5],calls[2][5]);
+});
