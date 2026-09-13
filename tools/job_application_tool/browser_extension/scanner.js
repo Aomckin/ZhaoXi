@@ -2,7 +2,7 @@
   "use strict";
   const J = globalThis.ZhaoxiJobApplication;
   const RUNTIME_ATTR = "data-zhaoxi-ja-field";
-  const skippedTypes = new Set(["hidden"]);
+  const skippedTypes = new Set(["hidden", "file", "submit", "button", "reset", "image", "password"]);
 
   const isVisible = (element) => {
     const style = getComputedStyle(element);
@@ -22,6 +22,17 @@
     return { hasCurrentValue: Boolean(J.normalizeText(value, 2)) };
   };
 
+  const excludedField = (element, context, control) => {
+    const type = (element.getAttribute("type") || "").toLowerCase();
+    const text = J.normalizeText([context.label, context.section, context.nearbyText, element.getAttribute("placeholder"), element.getAttribute("name")].join(" "), 500);
+    if (skippedTypes.has(type) || ["file", "submit", "button", "reset", "image", "action"].includes(control.kind)) return true;
+    if (/验证码|短信验证|图形验证|captcha|verification\s*code|one.?time.?password/i.test(text)) return true;
+    if (/登录|用户名|账号密码|login|sign\s*in|username/i.test(text) && !/应聘|申请|网申|简历/i.test(context.section)) return true;
+    const frameworkSearch = element.closest(".ant-select,.el-select,[role='combobox']");
+    if (!frameworkSearch && (type === "search" || /^搜索(?:职位|公司|岗位|人才)/.test(context.label || element.placeholder || ""))) return true;
+    return false;
+  };
+
   J.scanPage = async () => {
     const selected = J.selectPageAdapter();
     const adapter = selected.adapter;
@@ -32,16 +43,19 @@
         if (seen.has(element)) continue;
         seen.add(element);
         const inputType = (element.getAttribute("type") || "").toLowerCase();
-        if (skippedTypes.has(inputType) || element.closest("#zhaoxi-job-application-review")) continue;
+        if (element.closest("#zhaoxi-job-application-review")) continue;
         const controlAdapter = J.selectControlAdapter(element);
         if (!controlAdapter) continue;
         const pageContext = adapter.extractFieldContext(element);
         const control = controlAdapter.describe(element);
+        if (excludedField(element, pageContext, control)) continue;
         const runtimeId = element.getAttribute(RUNTIME_ATTR) || J.randomId("fld");
         element.setAttribute(RUNTIME_ATTR, runtimeId);
         const identity = [
           location.origin, location.pathname, pageContext.section, pageContext.label,
-          element.getAttribute("name"), element.getAttribute("id"), control.kind
+          element.getAttribute("name"), element.getAttribute("id"), control.kind,
+          pageContext.repeatContext?.index, pageContext.repeatContext?.label,
+          J.normalizeText(pageContext.nearbyText, 120)
         ].join("|");
         fields.push({
           runtimeId,
@@ -55,9 +69,11 @@
           idHint: J.normalizeText(element.getAttribute("id"), 120),
           controlKind: control.kind,
           controlAdapterId: controlAdapter.id,
+          pageExactPath: pageContext.exactPath,
+          repeatContext: pageContext.repeatContext,
           options: optionsFor(element),
           required: element.required || element.getAttribute("aria-required") === "true",
-          visible: isVisible(element),
+          visible: control.visible ?? isVisible(element),
           enabled: Boolean(control.enabled),
           ...safeCurrentState(element, controlAdapter)
         });
@@ -71,6 +87,7 @@
       inspectionId: J.randomId("insp"),
       page: {
         origin: `${location.protocol}//${location.host}/`,
+        url: `${location.origin}${location.pathname}`,
         title: J.normalizeText(document.title, 160),
         fingerprint: pageFingerprint,
         adapter: { id: adapter.id, confidence: selected.result.confidence }

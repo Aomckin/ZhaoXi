@@ -113,6 +113,11 @@ def public_tool_name(server_name: str, remote_name: str) -> str:
 
 
 class MCPTool(Tool):
+    @property
+    def available(self) -> bool:
+        """Expose cached process health without issuing an MCP request."""
+        return bool(getattr(self.client, "running", True))
+
     def __init__(self, client: MCPStdioClient, server_name: str, definition: dict[str, Any]) -> None:
         self.client = client
         self.server_name = server_name

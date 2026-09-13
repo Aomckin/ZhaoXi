@@ -61,6 +61,8 @@ class ToolExecutor:
             tool = self.registry.get(name)
         except ToolNotFoundError as exc:
             return ToolExecution(ToolResult(success=False, content="请求的工具不存在。", error=str(exc)))
+        if not self.registry.usable(name):
+            return ToolExecution(ToolResult(success=False, content="这把钥匙已停用或当前依赖不可用。", error="tool_unavailable"))
         try:
             normalized_arguments = tool.input_model.model_validate(arguments).model_dump(mode="json")
         except ValidationError as exc:

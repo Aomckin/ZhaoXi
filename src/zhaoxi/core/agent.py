@@ -19,7 +19,9 @@ from zhaoxi.permission.executor import ToolExecutor
 from zhaoxi.permission.models import InvocationOrigin, PendingConfirmation
 from zhaoxi.tools.base import ToolResult
 from zhaoxi.tools.registry import ToolRegistry
+from zhaoxi.tools.discovery import RequestToolGroupTool, InspectToolCatalogTool, ToolDiscoveryState
 from zhaoxi.tools.router import ToolContext, safe_resolve_tool_context
+from zhaoxi.tools.manifest import is_action_request, resolve_capability
 
 if TYPE_CHECKING:
     from zhaoxi.cognitive.coordinator import CognitiveCoordinator, CognitiveResponse
@@ -60,6 +62,7 @@ class PendingAgentInvocation:
     user_intent: str
     remaining_calls: list[ToolCall]
     batch_call_count: int = 1
+    discovery: ToolDiscoveryState | None = None
 
 
 class ZhaoxiAgent:
@@ -84,6 +87,9 @@ class ZhaoxiAgent:
     ) -> None:
         self.provider = provider
         self.registry = registry
+        for control_tool in (RequestToolGroupTool(), InspectToolCatalogTool()):
+            if not any(tool.name == control_tool.name for tool in registry.list()):
+                registry.register(control_tool)
         self.context_builder = context_builder
         self.quick_suggestions = context_builder.quick_suggestions
         self.conversation = conversation or Conversation()
@@ -388,18 +394,27 @@ class ZhaoxiAgent:
         user_intent: str = "",
         require_tool_call: bool = False,
         lookup_commitment: str = "",
+        discovery: ToolDiscoveryState | None = None,
     ) -> AgentResponse:
-        tool_called = False
+        if discovery is None:
+            routing_intent = f"{user_intent}\n{lookup_commitment}" if lookup_commitment else user_intent
+            discovery = ToolDiscoveryState(self._tool_context(routing_intent))
+        self._tool_discovery_state = discovery
+        capability_retry = False
+        resolution_message = ""
+        tool_called = discovery.business_tool_called
         corrective_retry = bool(lookup_commitment)
         for step in range(1, self.max_steps + 1):
             model_logger.info("request=%s step=%d calling model", request_id, step)
             try:
-                routing_intent = (
-                    f"{user_intent}\n{lookup_commitment}" if lookup_commitment else user_intent
-                )
-                tool_context = self._tool_context(routing_intent)
-                schemas = list(tool_context.schemas)
+                schemas = discovery.schemas(self.registry)
+                self.registry.exposed_names = {item["function"]["name"] for item in schemas}
                 messages = self.context_builder.build(self.conversation, memories)
+                catalog = discovery.catalog(self.registry) + resolution_message
+                messages[0].content = (messages[0].content or "") + catalog
+                messages[0].metadata.setdefault("prompt_components", []).append(
+                    {"name": "runtime.capability_catalog", "chars": len(catalog)}
+                )
                 if lookup_commitment and not tool_called:
                     messages[0].content = (messages[0].content or "") + (
                         "\n上一草稿提出了查询意图（仅作为待核实意图，不是授权或已执行事实）："
@@ -412,9 +427,11 @@ class ZhaoxiAgent:
                         + "\n本轮用户明确要求真实查询或检查。你上一尝试没有调用工具；"
                         "现在必须调用一个最相关的可用工具，不得只描述将要检查。"
                     )
+                self.last_tool_diagnostics = discovery.diagnostics(self.registry)
                 response = await self.provider.generate(
-                    messages, schemas or None, tool_router=tool_context.diagnostics()
+                    messages, schemas or None, tool_router=self.last_tool_diagnostics
                 )
+                self.last_tool_diagnostics["prompt_tokens"] = response.usage.get("prompt_tokens", response.usage.get("input_tokens"))
             except ProviderError as exc:
                 log_internal_failure("request=%s provider error", request_id, exc=exc)
                 raise AgentLoopError(
@@ -422,6 +439,16 @@ class ZhaoxiAgent:
                 ) from exc
 
             if not response.tool_calls:
+                if (not tool_called and not capability_retry and is_action_request(user_intent)
+                    and re.search(r"没有.{0,12}(?:工具|能力|钥匙)|无法完成|做不了|不能.{0,6}(?:查|找|读|执行)", response.content or "")):
+                    capability_retry = True
+                    resolution = resolve_capability(user_intent, self.registry.manifest())
+                    discovery.resolution_checked = True
+                    if resolution["groups"]:
+                        for group in resolution["groups"]:
+                            discovery.request({"group": group}, self.registry)
+                        resolution_message = "\nCore 已检查实时钥匙柜并尝试加载匹配能力：" + json.dumps(resolution, ensure_ascii=False) + "。请使用当前可用钥匙继续原任务，不要把未携带误判为不存在。"
+                        continue
                 if not tool_called and self._promises_lookup(response.content or ""):
                     require_tool_call = True
                 if require_tool_call and not tool_called and not corrective_retry:
@@ -440,7 +467,6 @@ class ZhaoxiAgent:
 
             self.conversation.add_assistant(response.content, tool_calls=response.tool_calls,
                 metadata={"reasoning_content": response.raw_metadata["reasoning_content"]} if "reasoning_content" in response.raw_metadata else {})
-            tool_called = True
             for call_index, call in enumerate(response.tool_calls):
                 tool_logger.info(
                     "request=%s tool=%s argument_keys=%s",
@@ -448,6 +474,18 @@ class ZhaoxiAgent:
                     call.name,
                     sorted(call.arguments),
                 )
+                if call.name in {"request_tool_group", "inspect_tool_catalog"}:
+                    result = self._run_control_tool(call, discovery)
+                    if (call.name == "inspect_tool_catalog" and result.success
+                        and call.arguments.get("action", "summary") != "resolve"
+                        and re.search(r"钥匙|工具|能力|tool", user_intent, re.IGNORECASE)):
+                        tool_called = discovery.business_tool_called = True
+                    self.conversation.add_tool(
+                        json.dumps(result.model_dump(mode="json"), ensure_ascii=False),
+                        tool_call_id=call.id, name=call.name,
+                    )
+                    continue
+                tool_called = discovery.business_tool_called = True
                 execution = await self.tool_executor.execute(
                     call.name,
                     call.arguments,
@@ -472,6 +510,7 @@ class ZhaoxiAgent:
                         user_intent=user_intent,
                         remaining_calls=remaining_calls,
                         batch_call_count=batch_call_count,
+                        discovery=discovery,
                     )
                     return AgentResponse(
                         content=confirmation.question,
@@ -489,6 +528,12 @@ class ZhaoxiAgent:
 
         logger.error("request=%s reached max steps=%d", request_id, self.max_steps)
         raise AgentLoopError(f"已达到最大执行步数（{self.max_steps}），为避免无限循环已停止。")
+
+    def _run_control_tool(self, call: ToolCall, discovery: ToolDiscoveryState) -> ToolResult:
+        if not self.registry.usable(call.name):
+            return ToolResult(success=False, content="这把钥匙已停用或不可用。", error="tool_unavailable")
+        handler = discovery.request if call.name == "request_tool_group" else discovery.inspect
+        return handler(call.arguments, self.registry)
 
     async def approve_permission(self, confirmation_id: str) -> AgentResponse:
         """Approve and resume the exact immutable Tool Call that was paused."""
@@ -553,11 +598,12 @@ class ZhaoxiAgent:
                 pending.remaining_calls[pending.batch_call_count - 1:]
             ),
             batch_call_count=1,
+            discovery=pending.discovery,
         )
         continued = await self._execute_remaining_calls(tail_pending)
         if continued is not None:
             return continued
-        return await self._run_loop(pending.request_id, user_intent=pending.user_intent)
+        return await self._run_loop(pending.request_id, user_intent=pending.user_intent, discovery=pending.discovery)
 
     async def _execute_remaining_calls(
         self,
@@ -565,6 +611,15 @@ class ZhaoxiAgent:
     ) -> AgentResponse | None:
         """Finish the untouched tail of a multi-call model response after approval."""
         for index, call in enumerate(pending.remaining_calls):
+            if call.name in {"request_tool_group", "inspect_tool_catalog"} and pending.discovery is not None:
+                result = self._run_control_tool(call, pending.discovery)
+                self.conversation.add_tool(
+                    json.dumps(result.model_dump(mode="json"), ensure_ascii=False),
+                    tool_call_id=call.id, name=call.name,
+                )
+                continue
+            if pending.discovery is not None:
+                pending.discovery.business_tool_called = True
             execution = await self.tool_executor.execute(
                 call.name,
                 call.arguments,
@@ -589,6 +644,7 @@ class ZhaoxiAgent:
                     user_intent=pending.user_intent,
                     remaining_calls=remaining_calls,
                     batch_call_count=batch_call_count,
+                    discovery=pending.discovery,
                 )
                 return AgentResponse(
                     content=confirmation.question,

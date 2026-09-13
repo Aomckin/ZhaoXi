@@ -1,0 +1,9 @@
+{
+  "name": "com.zhaoxi.job_application",
+  "description": "Zhaoxi Job Application Browser Bridge",
+  "path": "E:\\桌面\\改变世界的魔法\\朝汐ZhaoXi\\tools\\job_application_tool\\.native_host\\job_application_native_host.cmd",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://kepaaomjggibddknhggfinopiedkccjp/"
+  ]
+}

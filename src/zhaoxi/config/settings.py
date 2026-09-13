@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     log_backup_count: int = Field(default=5, ge=1, le=100)
     shutdown_grace_seconds: float = Field(default=15, gt=0, le=300)
     max_agent_steps: int = Field(default=8, ge=1, le=100)
+    tool_overrides_path: str = "data/debug/tool_overrides.json"
     tool_router_mode: str = Field(default="dynamic", pattern="^(dynamic|all)$")
     request_timeout_seconds: float = Field(default=60, gt=0)
     retry_max_attempts: int = Field(default=3, ge=1, le=10)
@@ -156,6 +157,9 @@ class Settings(BaseSettings):
     session_db_path: str = ".zhaoxi/session.db"
     backup_directory: str = ".zhaoxi/backups"
     backup_retention_count: int = Field(default=14, ge=1, le=365)
+    dev_browser_ui: bool = False
+    desktop_geometry_path: str = ".zhaoxi/window-geometry.json"
+    desktop_system_notifications: bool = False
     desktop_enabled: bool = True
     desktop_instance_path: str = ".zhaoxi/desktop-instance.json"
     desktop_activation_port: int = Field(default=4914, ge=1, le=65535)

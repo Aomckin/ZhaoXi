@@ -1,9 +1,0 @@
-{
-  "name": "com.zhaoxi.job_application",
-  "description": "Zhaoxi JobApplication Native Messaging Host",
-  "path": "REPLACE_WITH_ABSOLUTE_LAUNCHER_PATH",
-  "type": "stdio",
-  "allowed_origins": [
-    "chrome-extension://REPLACE_WITH_EXTENSION_ID/"
-  ]
-}

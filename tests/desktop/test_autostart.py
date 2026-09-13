@@ -49,13 +49,16 @@ def test_window_initial_visibility_and_early_activation(monkeypatch, background)
     class Event:
         def __iadd__(self, callback):
             return self
-    native = Mock(events=SimpleNamespace(loaded=Event(), closing=Event(), closed=Event(), minimized=Event(), restored=Event(), maximized=Event()))
+    native = Mock(events=SimpleNamespace(shown=Mock(), loaded=Event(), closing=Event(), closed=Event(), minimized=Event(), restored=Event(), maximized=Event()))
     view = Mock()
     view.create_window.return_value = native
     view.start.side_effect = lambda callback, **kwargs: callback()
     monkeypatch.setitem(sys.modules, 'webview', view)
     window = DesktopWindow('http://localhost', width=1000, height=700)
     window.show()  # Activation arriving while the Core/server is still starting.
+    frame = Mock()
+    frame.snapshot.return_value = dict(x=100,y=100,width=1000,height=700,maximized=False)
+    monkeypatch.setattr('zhaoxi.desktop.native.WindowsFrame', lambda _: frame)
     window.run(background=background)
     assert view.create_window.call_args.kwargs['hidden'] is background
     native.show.assert_called_once()

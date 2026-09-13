@@ -65,13 +65,16 @@ def public_record(record: Any) -> dict[str, Any]:
 
 class RememberMemoryTool(Tool):
     name = "remember_memory"
-    description = "仅在用户明确要求记住长期信息时使用。保存事实、偏好或事件并返回记忆 ID。"
+    description = "记录值得保留的生活记忆并返回记忆 ID。可根据对话自主记录日常小事、偏好、近期变化、阶段性事件、习惯及关系信息，无需等待用户说“记住”，不要默认忽略琐事；遵守用户禁止记忆的要求。"
     input_model = RememberInput
     permission = PermissionLevel.WRITE
     side_effects = frozenset({SideEffect.LOCAL_STATE})
 
     def __init__(self, service: MemoryService) -> None:
         self.service = service
+
+    def confirmation_description(self, arguments: dict[str, Any]) -> str:
+        return "朝汐想记录一条长期记忆"
 
     async def execute(self, arguments: RememberInput) -> ToolResult:
         result = await self.service.remember(MemoryCreate(**arguments.model_dump()))
@@ -96,7 +99,7 @@ class RememberMemoryTool(Tool):
 
 class SearchMemoriesTool(Tool):
     name = "search_memories"
-    description = "搜索朝汐的长期记忆，并返回内容、记忆 ID、记录时间和来源。"
+    description = "搜索朝汐的长期记忆，返回内容、记忆 ID、时间和来源。话题与过去经历、偏好、人物、地点、计划或近期事件自然相关，且可能改善当前对话时可主动检索；不要为了展示记忆能力而频繁检索。"
     input_model = SearchMemoryInput
 
     def __init__(self, service: MemoryService) -> None:
@@ -124,13 +127,16 @@ class SearchMemoriesTool(Tool):
 
 class UpdateMemoryTool(Tool):
     name = "update_memory"
-    description = "按记忆 ID 修正一条长期记忆。若用户想用新事实替换旧事实，优先明确确认。"
+    description = "按记忆 ID 修正一条长期记忆。用户自然修正、补充或改变已有信息时可更新，无需明确说“更新记忆”；目标或含义不清时先核实。"
     input_model = UpdateMemoryInput
     permission = PermissionLevel.WRITE
     side_effects = frozenset({SideEffect.LOCAL_STATE})
 
     def __init__(self, service: MemoryService) -> None:
         self.service = service
+
+    def confirmation_description(self, arguments: dict[str, Any]) -> str:
+        return "朝汐想更新一条已有记忆"
 
     async def execute(self, arguments: UpdateMemoryInput) -> ToolResult:
         values = arguments.model_dump(exclude={"memory_id"}, exclude_none=True)

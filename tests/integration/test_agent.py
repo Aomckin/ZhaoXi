@@ -45,7 +45,7 @@ async def test_ordinary_agent_turn_exposes_persistent_memory_tools(
     await make_agent(provider, registry, context_builder, conversation).run_direct("周六早上了呀")
 
     names = {item["function"]["name"] for item in provider.tool_schemas[0]}
-    assert names == {"remember_memory", "update_memory"}
+    assert names == {"remember_memory", "update_memory", "search_memories", "request_tool_group", "inspect_tool_catalog"}
 
 
 @pytest.mark.asyncio

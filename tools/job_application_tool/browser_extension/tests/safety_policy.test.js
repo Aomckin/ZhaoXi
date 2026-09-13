@@ -24,7 +24,7 @@ test("high-confidence standard fields can be planned for autofill", () => {
 
 test("existing values are preserved", () => {
   const definition = J.FIELD_CATALOG.find((item) => item.key === "basic.full_name");
-  assert.equal(J.decideCandidate({ field: { ...baseField, hasCurrentValue: true }, definition, confidence: 0.99 }).decision, "preserve_existing");
+  assert.equal(J.decideCandidate({ field: { ...baseField, hasCurrentValue: true }, definition, confidence: 0.99 }).decision, "existing_value_preserved");
 });
 
 test("sensitive and declaration fields are always manual", () => {

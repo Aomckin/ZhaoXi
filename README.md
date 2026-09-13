@@ -1,8 +1,20 @@
 # Zhaoxi / 朝汐
 
-Zhaoxi 1.2.0 是一个可扩展的本地个人 Agent Core，提供对话、联想记忆、潮庭书库、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与可选 Tool Package 能力。
+Zhaoxi 1.2.2 是一个可扩展的本地个人 Agent Core，提供对话、联想记忆、潮庭书库、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与可选 Tool Package 能力。
 
 最新界面设置、模型思考开关、Beat 预算和验收边界统一见 [当前状态](docs/CURRENT_STATUS.md)。
+
+## v1.2.2 钥匙柜与广记修复
+
+补齐 v1.1.9 的工具系统：记忆“记、改、想”三件套与两把目录/发现钥匙默认常驻；Registry 自动生成实时清单，支持能力解析与按轮扩展。小桌边 → 维护抽屉 → Debug · 钥匙柜可启停工具、强制暴露和恢复默认，设置自动保存到 `data/debug/tool_overrides.json`。详见 [v1.2.2 开发报告](docs/Zhaoxi_v1.2.2_Release_Notes.md)。
+
+## v1.2.1 桌面壳与陪伴模式
+
+同一个窗口在主界面和陪伴模式间切换，保留聊天、草稿与 WebView。陪伴模式直接显示最近对话，无头像抬头，输入栏仅保留文字与发送；图片和语音位于右上角菜单。菜单可切换陪伴置顶，关闭按钮隐藏到托盘，快捷键呼出陪伴模式，再按快捷键或 Esc 隐藏。
+
+正式模式默认关闭浏览器 UI，桌面使用独立会话令牌进入，localhost API 保留。浏览器开发调试需设置 `ZHAOXI_DEV_BROWSER_UI=true`；`ZHAOXI_DESKTOP_SYSTEM_NOTIFICATIONS=true` 可显式改用 Windows Toast。两种窗口尺寸与位置保存在 `.zhaoxi/window-geometry.json`。
+
+实现、测试、原生边框与手动验收边界见 [v1.2.1 开发报告](docs/Zhaoxi_v1.2.1_Release_Notes.md)。
 
 ## v1.2.0 秋日麦田
 
@@ -262,7 +274,7 @@ CLI 支持 `/tools`、`/permissions`、`/approve`、`/deny`、`/revoke`、`/audi
 - `READ / WRITE / DELETE / EXTERNAL_ACTION / DANGEROUS` 权限等级
 - Tool 权限、资源范围与副作用声明
 - Agent 与 Planner 共用 `ToolExecutor` 和 `PermissionGateway`
-- READ 默认自动允许，WRITE / DELETE 默认确认，DANGEROUS 默认拒绝
+- READ 默认自动允许；记忆新增与更新默认允许，用户禁止记忆或显式 WRITE deny 时拒绝；其他 WRITE / DELETE 默认确认，DANGEROUS 默认拒绝
 - 用户明确的同范围记住/忘记命令可作为窄范围本轮授权
 - 确认绑定原始 Tool、参数摘要、资源范围和 invocation ID
 - 单个待确认操作支持自然语言“允许/确认/执行”和“拒绝/不要/取消”，回复在进入模型前处理
@@ -309,7 +321,7 @@ CLI 支持 `/tools`、`/permissions`、`/approve`、`/deny`、`/revoke`、`/audi
 - 可重复查询的 Tool 事实默认不复制进长期 Memory
 - SQLite schema v1/v2 自动迁移至 v3，不丢失旧记录
 
-长期记忆默认保存到 `.zhaoxi/memory.db`，可通过 `ZHAOXI_MEMORY_DB_PATH` 修改，数据库目录已被 Git 忽略。普通对话始终向主 Agent 暴露 `remember_memory` 与 `update_memory`，是否写入仍由模型判断；独立 Auto Memory Extractor 继续宽松提取值得留下的生活痕迹，再由 Cluster、Graph 与 Hybrid Retrieval 控制召回。用户明确要求记住、禁止记忆或遗忘时，其意图拥有最高优先级。
+长期记忆默认保存到 `.zhaoxi/memory.db`，可通过 `ZHAOXI_MEMORY_DB_PATH` 修改，数据库目录已被 Git 忽略。普通对话默认向主 Agent 暴露 `remember_memory`、`update_memory` 与 `search_memories`（Debug 显式停用除外），是否写入仍由模型判断；独立 Auto Memory Extractor 继续宽松提取值得留下的生活痕迹，再由 Cluster、Graph 与 Hybrid Retrieval 控制召回。用户明确要求记住、禁止记忆或遗忘时，其意图拥有最高优先级。
 
 CLI 可直接检查记忆：
 

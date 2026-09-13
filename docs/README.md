@@ -1,6 +1,10 @@
 # 文档索引与事实源
 
-## 当前文档（v1.2.0）
+## 当前文档（v1.2.2）
+
+- [v1.2.2 开发报告](Zhaoxi_v1.2.2_Release_Notes.md)：广记与广想、完整 Manifest、能力解析、动态发现、Debug 控制和验收。
+
+- [v1.2.1 开发报告](Zhaoxi_v1.2.1_Release_Notes.md)：单窗口桌面壳、陪伴模式、原生通知、浏览器入口及验收边界。
 
 - [Phase 3 开发报告](Zhaoxi_v1.2.0_Phase3_Release_Notes.md)：专用头像、默认收起公告栏、已读联动、宽屏布局和验收结果。
 
@@ -30,6 +34,12 @@
 - [`presence-autostart.md`](presence-autostart.md)：登录常驻机制与手动验收。
 
 ## 当前任务书
+
+- [v1.2.2 整合修订任务书](Zhaoxi_v1.2.2_Tool_System_Completion_Task.md)：当前验收依据。
+- [v1.2.2 原版任务书](Zhaoxi_v1.2.2_Tool_Discovery_Memory_Semantics_Task.md)：历史需求，差异以整合修订版为准。
+- [v1.1.9 路由任务书](v1.1.x/Zhaoxi_v1.1.9_Tool_Context_Router_Task_v2.md)：本次修复的原始设计依据。
+
+- [v1.2.1 重做任务书](Zhaoxi_v1.2.1_Desktop_Shell_and_Companion_Mode_Rebuild_Task.md)：本次开发依据；陪伴头像与输入区按用户后续要求简化。
 
 - [Phase 3 Deskboard & Character Integration](Zhaoxi_v1.2.0_Visual_Refresh_Phase3_Deskboard_Character_Integration_Task.md)：当前公告栏与角色整合任务书。
 
@@ -66,6 +76,6 @@
 
 ## 历史文档
 
-文件名以 `v0.1`～`v0.9` 开头的开发计划和任务书是当时的设计记录，不是当前状态清单。其未勾选项、旧测试数量、旧版本号和“留给后续版本”等文字保留历史语境，不应据此判断当前版本是否完成。发生冲突时，以本页“当前文档（v1.2.0）”列表及 `CODEBASE_STATUS.md` 为准。
+文件名以 `v0.1`～`v0.9` 开头的开发计划和任务书是当时的设计记录，不是当前状态清单。其未勾选项、旧测试数量、旧版本号和“留给后续版本”等文字保留历史语境，不应据此判断当前版本是否完成。发生冲突时，以本页“当前文档（v1.2.1）”列表及 `CODEBASE_STATUS.md` 为准。
 - [`Zhaoxi_v1.1.9_Release_Notes.md`](v1.1.x/Zhaoxi_v1.1.9_Release_Notes.md)：Tool Context Router、回滚配置、可观察性与验证状态。
 - [`Zhaoxi_v1.1.9_Tool_Context_Router_Task_v2.md`](v1.1.x/Zhaoxi_v1.1.9_Tool_Context_Router_Task_v2.md)：v1.1.9 历史开发任务书。

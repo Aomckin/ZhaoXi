@@ -8,15 +8,39 @@ from zhaoxi.errors import ToolNotFoundError, ToolValidationError
 from zhaoxi.tools.base import Tool
 from zhaoxi.permission.models import PermissionLevel, SideEffect
 from zhaoxi.sdk.protocols import ToolProviderProtocol
+from zhaoxi.tools.manifest import ToolControl, tool_metadata
 
 
 class ToolRegistry:
     """Name-indexed collection used by the agent runtime."""
 
-    def __init__(self) -> None:
+    def __init__(self, override_path=None) -> None:
         self._tools: dict[str, Tool] = {}
         self._providers: dict[str, ToolProviderProtocol] = {}
         self._provider_tools: dict[str, set[str]] = {}
+        self.control = ToolControl(override_path)
+        self.exposed_names: set[str] = set()
+
+    def manifest(self, exposed=None) -> list[dict]:
+        visible = self.exposed_names if exposed is None else set(exposed)
+        sources = {name: provider for provider, names in self._provider_tools.items() for name in names}
+        return [tool_metadata(tool, sources.get(tool.name, getattr(tool, "source", "builtin")),
+                              self.control.overrides.get(tool.name, {}), visible) for tool in self.list()]
+
+    def usable(self, name: str) -> bool:
+        return any(item["name"] == name and item["enabled"] and item["available"] for item in self.manifest())
+
+    def update_tools(self, *, name=None, group=None, enabled=None, force_expose=None, reset=False):
+        if name is not None:
+            self.get(name)
+            names = [name]
+        elif group is not None:
+            names = [t["name"] for t in self.manifest() if t["group"] == group]
+            if not names:
+                raise ToolNotFoundError("钥匙组不存在")
+        else:
+            names = set(self._tools) | set(self.control.overrides)
+        self.control.update(names, enabled=enabled, force_expose=force_expose, reset=reset)
 
     @staticmethod
     def _validate(tool: Tool) -> None:
@@ -121,7 +145,8 @@ class ToolRegistry:
         return list(self._tools.values())
 
     def schemas(self) -> list[dict[str, Any]]:
-        return [tool.schema() for tool in self._tools.values()]
+        usable = {t["name"] for t in self.manifest() if t["enabled"] and t["available"]}
+        return [tool.schema() for tool in self._tools.values() if tool.name in usable]
 
     def providers(self) -> list[ToolProviderProtocol]:
         return list(self._providers.values())

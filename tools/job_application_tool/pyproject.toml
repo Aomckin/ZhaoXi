@@ -17,13 +17,25 @@ dependencies = [
 job-application = "tools.job_application_tool.package:create_package"
 
 [tool.setuptools]
-packages = ["tools.job_application_tool"]
-package-dir = {"tools.job_application_tool" = "."}
+packages = [
+  "tools.job_application_tool",
+  "tools.job_application_tool.client",
+  "tools.job_application_tool.native_host",
+]
+
+[tool.setuptools.package-dir]
+"tools.job_application_tool" = "."
+"tools.job_application_tool.client" = "client"
+"tools.job_application_tool.native_host" = "native_host"
 
 [tool.setuptools.package-data]
 "tools.job_application_tool" = [
   "browser_extension/*.json",
   "browser_extension/*.js",
+  "browser_extension/*.html",
+  "browser_extension/*.md",
   "browser_extension/adapters/*.js",
+  "browser_extension/scripts/*.mjs",
   "schema/*.json",
+  "native_host/manifests/*.json",
 ]

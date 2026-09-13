@@ -180,7 +180,7 @@ async def test_stable_preference_is_created_automatically(tmp_path):
     assert len(records) == 1
     assert "晚上开发" in records[0].record.content
     assert {schema["function"]["name"] for schema in provider.tool_schemas[1]} == {
-        "remember_memory", "update_memory",
+        "remember_memory", "update_memory", "search_memories", "request_tool_group", "inspect_tool_catalog",
     }
 
 
@@ -431,7 +431,7 @@ async def test_direct_dinner_guess_promoting_own_lookup_finishes_same_turn(tmp_p
     assert result.route == CognitiveRoute.TOOL
     assert result.content == '查完了，这是完整的最终回复。'
     assert {schema["function"]["name"] for schema in provider.tool_schemas[1]} == {
-        "remember_memory", "update_memory",
+        "remember_memory", "update_memory", "search_memories", "request_tool_group", "inspect_tool_catalog",
     }
     assert provider.tool_schemas[2]
     assert sum(m.role.value == 'user' for m in agent.conversation.messages) == 1
@@ -450,7 +450,7 @@ async def test_guess_without_lookup_remains_direct(tmp_path):
     result = await make_cognitive(provider, service).run_natural('猜猜我晚上吃的啥')
     assert result.route == CognitiveRoute.DIRECT
     assert {schema["function"]["name"] for schema in provider.tool_schemas[1]} == {
-        "remember_memory", "update_memory",
+        "remember_memory", "update_memory", "search_memories", "request_tool_group", "inspect_tool_catalog",
     }
 
 

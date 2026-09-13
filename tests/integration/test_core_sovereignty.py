@@ -44,7 +44,8 @@ def test_lifehud_can_be_completely_disabled(monkeypatch, tmp_path):
     record = next(item for item in agent.tool_packages if item["id"] == "lifehud-tool")
     assert record["installed"] is True and record["enabled"] is False
     assert record["capabilities"] == []
-    assert "lifehud" not in [tool.name for tool in agent.registry.list()]
+    assert not agent.registry.usable("lifehud")
+    assert next(t for t in agent.registry.manifest() if t["name"] == "lifehud")["enabled"] is False
     assert not any(item.id.startswith("lifehud.") for item in agent.workflow.registry.list())
     assert "lifehud-tool" not in agent.tool_package_instances
 

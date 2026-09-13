@@ -9,11 +9,13 @@ import secrets
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict, StrictBool, model_validator
+from zhaoxi.tools.manifest import group_inventory, inventory_summary
+from zhaoxi.tools.router import safe_resolve_tool_context
 
 from zhaoxi.cli import build_agent
 from zhaoxi import __version__
@@ -47,6 +49,27 @@ class ChatRequest(BaseModel):
 
 class ThinkingRequest(BaseModel):
     enabled: bool
+
+
+class ToolControlRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scope: Literal["tool", "group", "all"]
+    target: str | None = None
+    enabled: StrictBool | None = None
+    force_expose: StrictBool | None = None
+    reset: bool = False
+
+    @model_validator(mode="after")
+    def validate_target(self):
+        if self.scope != "all" and not self.target:
+            raise ValueError("必须指定钥匙或组")
+        if self.scope == "all" and self.target:
+            raise ValueError("全部操作不接受 target")
+        if self.reset and (self.enabled is not None or self.force_expose is not None):
+            raise ValueError("恢复默认不能同时指定开关")
+        if not self.reset and self.enabled is None and self.force_expose is None:
+            raise ValueError("没有指定修改")
+        return self
 
 
 class InterfaceSettingsRequest(BaseModel):
@@ -230,9 +253,31 @@ def create_app(
 
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
+    @app.middleware("http")
+    async def desktop_entry_guard(request: Request, call_next):
+        import posixpath
+        normalized_path = posixpath.normpath(request.url.path.replace("\\", "/")).lower().rstrip(" .")
+        if (normalized_path == "/" or normalized_path.startswith("/static/") and normalized_path.endswith(".html")) and not configured.dev_browser_ui:
+            supplied = request.cookies.get("zhaoxi_session", "")
+            if not api_token or not secrets.compare_digest(supplied, api_token):
+                return JSONResponse(status_code=403, content={"detail": "请从桌面或托盘打开朝汐。开发调试可设置 ZHAOXI_DEV_BROWSER_UI=true。"})
+        return await call_next(request)
+
+    @app.get("/desktop-entry", include_in_schema=False)
+    async def desktop_entry(request: Request):
+        from fastapi.responses import RedirectResponse
+        supplied = request.query_params.get("token", "")
+        if not api_token or not secrets.compare_digest(supplied, api_token):
+            raise HTTPException(status_code=403, detail="Desktop session required")
+        response = RedirectResponse("/", status_code=303)
+        response.set_cookie("zhaoxi_session", api_token, httponly=True, samesite="strict", path="/")
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        return response
+
     @app.get("/", include_in_schema=False)
     async def index():
-        return FileResponse(static_dir / "index.html")
+        return FileResponse(static_dir / "index.html", headers={"Cache-Control": "no-store"})
 
     @app.post("/api/bootstrap", include_in_schema=False)
     async def bootstrap(request: Request):
@@ -372,6 +417,8 @@ def create_app(
             "memory": await memory_service.diagnostics() if memory_service is not None else None,
             "tool_packages": package_statuses,
             "tool_package_errors": getattr(core, "tool_package_errors", []),
+            "tool_router": getattr(core, "last_tool_diagnostics", None),
+            "tool_inventory": tool_snapshot()["summary"] if getattr(core, "registry", None) is not None else None,
             "startup": getattr(core, "startup_diagnostics", None),
             "storage": backup_manager.health() if backup_manager is not None else {},
         }
@@ -380,19 +427,51 @@ def create_app(
     async def capabilities():
         """Describe installed capabilities without exposing schemas or user data."""
         catalog = getattr(core, "capability_catalog", None)
-        if catalog is not None:
-            return catalog
         registry = getattr(core, "registry", None)
+        if catalog is not None and registry is None:
+            return catalog
         return {
+            **(catalog or {}),
             "status": "ready",
             "tools": [
-                {"name": tool.name, "description": tool.description}
-                for tool in (registry.list() if registry is not None else [])
+                {**tool, "description": tool["summary"]}
+                for tool in (registry.manifest() if registry is not None else [])
             ],
-            "workflows": [],
-            "packages": [],
-            "examples": [],
+            "workflows": (catalog or {}).get("workflows", []),
+            "packages": (catalog or {}).get("packages", []),
+            "examples": (catalog or {}).get("examples", []),
         }
+
+    def tool_snapshot():
+        registry = getattr(core, "registry", None)
+        if registry is None:
+            raise HTTPException(status_code=409, detail="Tool Registry 尚未就绪。")
+        state = getattr(core, "_tool_discovery_state", None)
+        schemas = state.schemas(registry) if state else safe_resolve_tool_context(
+            "", [], registry, mode=getattr(core, "tool_router_mode", "dynamic")
+        ).schemas
+        manifest = registry.manifest([s["function"]["name"] for s in schemas])
+        return {"tools": manifest, "groups": group_inventory(manifest), "summary": inventory_summary(manifest),
+                "diagnostics": getattr(core, "last_tool_diagnostics", None)}
+
+    @app.get("/api/debug/tools")
+    async def debug_tools():
+        return tool_snapshot()
+
+    @app.post("/api/debug/tools/control")
+    async def control_tools(body: ToolControlRequest):
+        tool_snapshot()
+        try:
+            core.registry.update_tools(
+                name=body.target if body.scope == "tool" else None,
+                group=body.target if body.scope == "group" else None,
+                enabled=body.enabled, force_expose=body.force_expose, reset=body.reset,
+            )
+        except ZhaoxiError as exc:
+            raise HTTPException(status_code=404, detail="钥匙或分组不存在。") from exc
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=409, detail="Tool 设置保存失败，运行状态未修改。") from exc
+        return tool_snapshot()
 
     @app.get("/api/reflections")
     async def reflections(limit: int = 20):

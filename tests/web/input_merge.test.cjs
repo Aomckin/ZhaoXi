@@ -9,6 +9,7 @@ function setup(){
   let id=0;const timers=new Map(),requests=[],payloads=[],bubbles=[],clear={replaceChildren(){},append(){}};
   const node=()=>({removed:false,append(){},setAttribute(){},remove(){this.removed=true},querySelector(){return this}});
   const context=vm.createContext({busy:false,send:{},input:{value:'',focus(){}},activity:{},debug:{},
+    showActivityHint:text=>{context.activity.textContent=text},
     $:()=>clear,document:{createElement:node},addMessage:(...args)=>{bubbles.push(args);return [node()]},permissionCard(){},
     setTimeout:(fn,ms)=>{assert.equal(ms,15000);timers.set(++id,fn);return id},clearTimeout:id=>timers.delete(id),
     request:async(url,options)=>{payloads.push(JSON.parse(options.body));requests.push(JSON.parse(options.body).message);return {content:'回复'}},

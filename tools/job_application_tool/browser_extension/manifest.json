@@ -2,13 +2,14 @@
   "manifest_version": 3,
   "name": "Zhaoxi JobApplication Companion",
   "version": "0.1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtZzyTIjLDjIJ7FKEfIvnqB+qVb3r+rbCTBKvGBYh2fp9htbJe1Dw8IAlU6lk08tps4JcK4uPow8Nn/Vp95t8vy+VgOaHCmw4LENqlhsC3oy4ASV24nAIX7ZDE/Swpx8R0Pc8aAfbBvNagB2qS1ysVcCFvuV1MSW/E6inSilmyihi6kaqmCz5cBLtuJvevx2hUbS78763oSbXdj+6ZI5Bga52mzcra8eeKKCVneZIhgu/A7C4aXLKOhXQxIa0S5yiv9L3f27iuNmbIoDWzNymsq1DUKt0sUEQSX6xl+NfFrPI4dRwohwjfBMINiTUm4K5dtVUe2/u6ItN+m3i05rtJQIDAQAB",
   "description": "Browser-local, safety-gated assistance for job application forms.",
-  "permissions": ["activeTab", "nativeMessaging", "scripting", "storage", "tabs"],
-  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "permissions": ["activeTab", "nativeMessaging", "scripting", "storage"],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Zhaoxi JobApplication"
+    "default_title": "Zhaoxi JobApplication",
+    "default_popup": "popup.html"
   }
 }

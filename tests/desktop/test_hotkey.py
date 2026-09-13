@@ -64,13 +64,13 @@ def test_hotkey_toggle_hides_then_restores_window():
     window = DesktopWindow('http://localhost', width=1000, height=700)
     window._window = Mock()
     window._ready.set()
-    window.show()
+    window.show_companion()
     window.toggle()
     window._window.hide.assert_called_once()
     assert not window._visible
     window.toggle()
     assert window._visible
-    assert window._window.restore.call_count == 2
+    assert window._window.restore.call_count == 0
 
 
 def test_hotkey_restores_minimized_window_instead_of_hiding():
@@ -83,6 +83,6 @@ def test_hotkey_restores_minimized_window_instead_of_hiding():
     window.toggle()
     window._window.hide.assert_not_called()
     assert not window._minimized
-    assert window._window.restore.call_count == 2
+    assert window._window.restore.call_count == 1
     window.toggle()
     window._window.hide.assert_called_once()

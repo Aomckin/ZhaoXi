@@ -2,7 +2,7 @@
 
 from zhaoxi.sdk import CapabilityDeclaration
 
-from tools.job_application_tool.client import JobApplicationClient, LocalBrokerTransport
+from tools.job_application_tool.client import BrowserBridgeClient, LocalBrokerTransport
 from tools.job_application_tool.tool import create_tools
 
 
@@ -12,7 +12,7 @@ class JobApplicationToolPackage:
     requires_sdk = ">=1,<2"
 
     def __init__(self) -> None:
-        self.client: JobApplicationClient | None = None
+        self.client: BrowserBridgeClient | None = None
 
     def capability_declaration(self) -> CapabilityDeclaration:
         return CapabilityDeclaration(tool=True, router_hints=True)
@@ -20,7 +20,7 @@ class JobApplicationToolPackage:
     def configure(self, config: dict[str, object]) -> None:
         address = str(config["pipe_address"]) if config.get("pipe_address") else None
         timeout = float(config.get("timeout_seconds", 15))
-        self.client = JobApplicationClient(LocalBrokerTransport(address), timeout=timeout)
+        self.client = BrowserBridgeClient(LocalBrokerTransport(address), timeout=timeout)
 
     def create_tools(self, config: dict[str, object]):
         if self.client is None:
@@ -57,6 +57,25 @@ class JobApplicationToolPackage:
 
     def reflection_sources(self):
         return []
+
+    def health_check(self, config: dict[str, object]) -> dict[str, object]:
+        if self.client is None:
+            self.configure(config)
+        return {
+            "configured": True,
+            "reachable": self.client.reachable,
+            "healthy": self.client.reachable is True,
+        }
+
+    def status(self) -> dict[str, object]:
+        if self.client is None:
+            return {"reachable": None, "last_error": None, "active_session": None}
+        return {
+            "reachable": self.client.reachable,
+            "last_error": self.client.last_error,
+            "last_success_at": self.client.last_success_at,
+            "active_session": self.client.active_session,
+        }
 
 
 def create_package() -> JobApplicationToolPackage:

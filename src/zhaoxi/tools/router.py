@@ -10,34 +10,8 @@ from typing import Any, Iterable, Sequence
 from zhaoxi.tools.registry import ToolRegistry
 
 
-PERSISTENT_CORE = ("remember_memory", "update_memory")
-
-TOOL_GROUPS: dict[str, tuple[str, ...]] = {
-    "memory_search": ("search_memories",),
-    "memory_admin": (
-        "pin_memory", "forget_memory", "archive_memory",
-        "reactivate_memory", "consolidate_memories",
-    ),
-    "archive": ("archive_search", "archive_list_documents", "archive_read"),
-    "search": ("mcp_everything-search_search", "mcp_everything-search_get_file_info"),
-    "filesystem_read": (
-        "mcp_filesystem_read_text_file", "mcp_filesystem_read_file",
-        "mcp_filesystem_read_multiple_files", "mcp_filesystem_read_media_file",
-        "mcp_filesystem_get_file_info", "mcp_filesystem_list_directory",
-        "mcp_filesystem_list_directory_with_sizes", "mcp_filesystem_directory_tree",
-        "mcp_filesystem_search_files", "mcp_filesystem_list_allowed_directories",
-    ),
-    "filesystem_write": (
-        "mcp_filesystem_write_file", "mcp_filesystem_edit_file",
-        "mcp_filesystem_create_directory", "mcp_filesystem_move_file",
-    ),
-    "web": ("mcp_fetch_fetch",),
-    "time": ("current_time", "mcp_time_get_current_time", "mcp_time_convert_time"),
-    "calculator": ("calculator",),
-    "lifehud": ("lifehud",),
-    # Built-in developer utility. It is intentionally absent from normal turns.
-    "echo": ("echo",),
-}
+from zhaoxi.tools.metadata import PERSISTENT_CORE, TOOL_GROUPS
+from zhaoxi.tools.manifest import is_action_request, resolve_capability
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,7 +74,7 @@ def _dynamic_groups(user_message: str, recent_context: Sequence[str] | str | Non
         add("archive", "archive_access_request")
     if _matches(r"(?:文件|文件夹|目录|桌面|磁盘|路径|\.\w{1,8}\b|yaml|json|markdown|md文档)", contextual) and action:
         if _matches(r"(?:找|查|搜|定位|哪里|在哪)", current):
-            add("search", "file_search_request")
+            add("local_search", "file_search_request")
         add("filesystem_read", "filesystem_read_request")
         if _matches(r"(?:修改|改一下|编辑|写入|保存|新建|创建|移动|重命名)", current):
             add("filesystem_write", "filesystem_write_request")
@@ -130,17 +104,24 @@ def resolve_tool_context(
     tools = registry.list()
     by_name = {tool.name: tool for tool in tools}
     all_schemas = [tool.schema() for tool in tools]
-    persistent = tuple(name for name in PERSISTENT_CORE if name in by_name)
+    manifest = registry.manifest()
+    usable = {t["name"] for t in manifest if t["enabled"] and t["available"]}
+    persistent = tuple(t["name"] for t in manifest if t["persistent"] and t["name"] in usable)
+    forced = [t["name"] for t in manifest if t["force_expose"] and t["name"] in usable]
     if mode == "all":
         return ToolContext(
             mode=mode, persistent_tools=persistent, dynamic_groups=("all",),
-            exposed_tools=tuple(by_name), reason_tags=("all_mode",), schemas=tuple(all_schemas),
+            exposed_tools=tuple(name for name in by_name if name in usable), reason_tags=("all_mode",), schemas=tuple(by_name[name].schema() for name in by_name if name in usable),
             registered_tools_count=len(tools), registered_schema_chars=_schema_chars(all_schemas),
         )
     groups, reasons = _dynamic_groups(user_message, recent_context)
-    names = list(persistent)
+    if is_action_request(user_message):
+        groups = tuple(dict.fromkeys((*groups, *resolve_capability(user_message, manifest)["groups"])))
+    names = list(dict.fromkeys((*persistent, *forced)))
     for group in groups:
-        names.extend(name for name in TOOL_GROUPS[group] if name in by_name and name not in names)
+        names.extend(t["name"] for t in manifest if t["group"] == group and t["name"] in usable and t["name"] not in names)
+    normal = {t["name"] for t in manifest if t["persistent"] or t["group"] in groups}
+    reasons = (*reasons, *("force:" + name for name in forced if name not in normal))
     schemas = [by_name[name].schema() for name in names]
     return ToolContext(
         mode=mode, persistent_tools=persistent, dynamic_groups=groups,
@@ -163,7 +144,7 @@ def safe_resolve_tool_context(
         tools = registry.list()
         by_name = {tool.name: tool for tool in tools}
         all_schemas = [tool.schema() for tool in tools]
-        names = tuple(name for name in PERSISTENT_CORE if name in by_name)
+        names = tuple(t["name"] for t in registry.manifest() if (t["persistent"] or t["force_expose"]) and t["enabled"] and t["available"])
         schemas = tuple(by_name[name].schema() for name in names)
         return ToolContext(
             mode=mode, persistent_tools=names, dynamic_groups=(), exposed_tools=names,

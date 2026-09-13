@@ -3,7 +3,8 @@
   const J = globalThis.ZhaoxiJobApplication;
 
   const dispatch = (element) => {
-    for (const type of ["input", "change", "blur"]) element.dispatchEvent(new Event(type, { bubbles: true }));
+    for (const type of ["input", "change"]) element.dispatchEvent(new Event(type, { bubbles: true }));
+    element.blur?.();
   };
   const nativeSetter = (element, value) => {
     const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -35,13 +36,15 @@
       let kind = tag === "select" ? "select" : tag === "textarea" ? "textarea" : type;
       if (element.hasAttribute("contenteditable")) kind = "contenteditable";
       if (["submit", "button", "reset", "image", "file"].includes(type)) kind = type;
-      return { kind, enabled: !element.disabled && !element.readOnly };
+      const visibleProxy = element.closest("label,[role='radio'],[role='checkbox'],.ant-radio-wrapper,.ant-checkbox-wrapper,.el-radio,.el-checkbox");
+      return { kind, enabled: !element.disabled && !element.readOnly, visible: visible(element) || Boolean(visibleProxy && visible(visibleProxy)) };
     },
     read(element) {
       if (element instanceof HTMLInputElement && ["checkbox", "radio"].includes(element.type)) return element.checked ? element.value || "true" : "";
       return element.value ?? element.textContent ?? "";
     },
     async fill(element, value) {
+      element.focus?.();
       if (element instanceof HTMLSelectElement) {
         const option = Array.from(element.options).find((item) => optionMatch(item.textContent, value) || optionMatch(item.value, value));
         if (!option) return { ok: false, code: "option_not_found" };
@@ -63,6 +66,13 @@
     },
     async verify(element, expected) {
       const actual = this.read(element);
+      if (element instanceof HTMLSelectElement) {
+        const selected = element.selectedOptions[0];
+        return { ok: Boolean(selected && (optionMatch(selected.value, expected) || optionMatch(selected.textContent, expected))), actualPresent: Boolean(selected) };
+      }
+      if (element instanceof HTMLInputElement && ["checkbox", "radio"].includes(element.type)) {
+        return { ok: element.checked && optionMatch(element.value || element.parentElement?.textContent, expected), actualPresent: element.checked };
+      }
       return { ok: optionMatch(actual, expected), actualPresent: Boolean(String(actual || "").trim()) };
     }
   };
@@ -73,9 +83,17 @@
     describe(element) {
       const root = element.closest(rootSelector);
       const role = element.getAttribute("role") || root?.getAttribute("role");
-      return { kind: role === "combobox" || /select|cascader|picker/i.test(root?.className || "") ? "combobox" : nativeAdapter.describe(element).kind, enabled: !element.disabled };
+      return {
+        kind: role === "combobox" || /select|cascader|picker/i.test(root?.className || "") ? "combobox" : nativeAdapter.describe(element).kind,
+        enabled: !element.disabled,
+        visible: visible(root || element)
+      };
     },
-    read: nativeAdapter.read.bind(nativeAdapter),
+    read(element) {
+      const root = element.closest(rootSelector);
+      const displayed = root?.querySelector(".ant-select-selection-item,.ant-picker-input input,.el-input__inner,.el-select__selected-item,.el-cascader__tags");
+      return displayed?.value || displayed?.textContent || nativeAdapter.read(element);
+    },
     async fill(element, value) {
       const description = this.describe(element);
       if (description.kind !== "combobox") return nativeAdapter.fill(element, value);
@@ -91,7 +109,16 @@
       await new Promise((resolve) => setTimeout(resolve, 40));
       return { ok: true };
     },
-    verify: nativeAdapter.verify.bind(nativeAdapter)
+    async verify(element, expected) {
+      const root = element.closest(rootSelector);
+      const displayed = this.read(element);
+      const selectedState = root?.querySelector("[aria-selected='true'],.ant-select-selection-item,.el-select__selected-item,.is-checked,.is-selected");
+      const nativeValue = nativeAdapter.read(element);
+      return {
+        ok: optionMatch(displayed, expected) && Boolean(selectedState || optionMatch(nativeValue, expected)),
+        actualPresent: Boolean(J.normalizeText(displayed))
+      };
+    }
   });
 
   J.CONTROL_ADAPTERS = [

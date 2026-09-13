@@ -11,11 +11,7 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class BrowserTarget(StrictModel):
-    tab_id: int | None = Field(default=None, ge=0)
-
-
-class InspectPageInput(BrowserTarget):
+class InspectPageInput(StrictModel):
     include_options: bool = True
 
 

@@ -19,8 +19,17 @@ class DefaultPermissionPolicy:
         }
 
     def evaluate(self, request: PermissionRequest) -> PermissionDecision:
+        memory_write = request.tool_name in {"remember_memory", "update_memory"} and request.permission == PermissionLevel.WRITE
+        if memory_write and any(marker in request.user_intent for marker in (
+            "不要记", "别记", "不用记", "不许记", "不要保存", "别保存", "不要更新记忆", "别更新记忆",
+        )):
+            return PermissionDecision(status=PermissionStatus.DENY, reason_code="memory_forbidden_intent")
         if self._is_read_only(request.user_intent) and request.permission != PermissionLevel.READ:
             return PermissionDecision(status=PermissionStatus.DENY, reason_code="read_only_intent")
+        if memory_write:
+            if self.policies.get(PermissionLevel.WRITE) == PermissionStatus.DENY:
+                return PermissionDecision(status=PermissionStatus.DENY, reason_code="default_deny")
+            return PermissionDecision(status=PermissionStatus.ALLOW, reason_code="memory_write_default_allow")
         if self._is_explicit_user_authorization(request):
             return PermissionDecision(status=PermissionStatus.ALLOW, reason_code="explicit_user_intent")
         status = self.policies.get(request.permission, PermissionStatus.DENY)

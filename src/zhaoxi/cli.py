@@ -170,7 +170,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         min_edge_weight=settings.memory_graph_min_edge_weight,
     )
     archive_service = build_archive(settings)
-    registry = ToolRegistry()
+    registry = ToolRegistry(settings.tool_overrides_path)
     for tool in create_builtin_tools(memory_service, archive_service):
         registry.register(tool)
     tool_package_errors: list[dict[str, str]] = []
@@ -208,14 +208,19 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
                 "backoff_until": None,
             }
             package_records.append(record)
+            configure = getattr(package, "configure", None)
+            if configure is not None and (enabled or declaration.tool):
+                configure(config)
+            # Register ordinary tool definitions even when disabled by startup defaults.
+            # Constructing a definition does not invoke it; providers still start only when enabled.
+            if declaration.tool:
+                for tool in create_package_tools(package, config):
+                    tool.source = package.package_id
+                    tool.default_enabled = flags["tool"]
+                    registry.register(tool)
             if not enabled:
                 continue
-            configure = getattr(package, "configure", None)
-            if configure is not None:
-                configure(config)
             if flags["tool"]:
-                for tool in create_package_tools(package, config):
-                    registry.register(tool)
                 provider_tools = []
                 for tool_provider in create_package_tool_providers(package, config):
                     try:

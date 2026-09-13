@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from zhaoxi.config.settings import Settings
 from zhaoxi.desktop.hotkey import GlobalHotkey
 from zhaoxi.desktop.instance import InstanceCoordinator
-from zhaoxi.desktop.notifications import DesktopNotificationSink, WindowsToastNotifier
+from zhaoxi.desktop.notifications import DesktopNotificationSink, NativeNotifier
 from zhaoxi.desktop.tray import TrayIcon
 from zhaoxi.desktop.window import DesktopWindow
 from zhaoxi.proactive.notifications import InboxNotificationSink
@@ -67,7 +67,7 @@ class DesktopHost:
     def __init__(self, settings: Settings, *, agent=None) -> None:
         self.settings = settings
         self.api_token = secrets.token_urlsafe(32)
-        self.url = f"http://{settings.web_host}:{settings.web_port}#token={self.api_token}"
+        self.url = f"http://{settings.web_host}:{settings.web_port}/desktop-entry?token={self.api_token}"
         self.instance = InstanceCoordinator(
             settings.desktop_instance_path,
             settings.desktop_activation_port,
@@ -76,16 +76,21 @@ class DesktopHost:
             self.url,
             width=settings.desktop_window_width,
             height=settings.desktop_window_height,
+            geometry_path=getattr(settings, "desktop_geometry_path", ".zhaoxi/window-geometry.json"),
         )
         self.tray = TrayIcon(
-            on_show=self.window.show,
+            on_show=self.window.show_main,
+            on_companion=self.window.show_companion,
+            on_hide=self.window.hide,
+            on_settings=self.window.show_settings,
             on_quit=self.stop,
             on_toggle_quiet=self._toggle_quiet,
             is_quiet=self._is_quiet,
             status_text=self._status_text,
         )
         self.hotkey = GlobalHotkey(settings.desktop_hotkey, self.window.toggle)
-        self.notifier = WindowsToastNotifier(self._open_delivery)
+        self.notifier = NativeNotifier(self.window, self._open_delivery, system_mode=getattr(settings, "desktop_system_notifications", False))
+        self._notification_modes = {}
         self.agent = agent
         self.voice = None
         self._server = None
@@ -122,10 +127,10 @@ class DesktopHost:
             store = self.agent.proactive.store
             self.agent.proactive.sink = DesktopNotificationSink(
                 InboxNotificationSink(store),
-                self.notifier.show,
+                self._notify_delivery,
             )
     def run(self, *, background: bool = False) -> bool:
-        if not self.instance.acquire(self.window.show):
+        if not self.instance.acquire(self.window.show_main):
             return False
         try:
             self._initialize_core()
@@ -166,6 +171,7 @@ class DesktopHost:
             port=self.settings.web_port,
             log_level=self.settings.log_level.lower(),
             log_config=None,
+            access_log=False,  # Desktop bootstrap URL carries a session credential.
             # EventSource is intentionally long-lived. Bound graceful shutdown so
             # an open browser stream cannot make every in-process restart time out.
             timeout_graceful_shutdown=min(
@@ -223,8 +229,16 @@ class DesktopHost:
         if not self._stopping.is_set():
             logger.info("desktop window closed; core remains available from tray")
 
+    def _notify_delivery(self, title, message, delivery_id):
+        mode = "main" if title in {"朝汐 · 重要提醒", "朝汐 · 紧急提醒"} else "companion"
+        self._notification_modes[delivery_id] = mode
+        while len(self._notification_modes) > 128:
+            self._notification_modes.pop(next(iter(self._notification_modes)))
+        self.notifier.show(title, message, delivery_id)
+
     def _open_delivery(self, delivery_id: str) -> None:
         logger.info("desktop notification opened delivery_id=%s", delivery_id)
+        self.window.switch_mode(self._notification_modes.pop(delivery_id, "main"))
         self.window.open_delivery(delivery_id)
 
     def _is_quiet(self) -> bool:
@@ -255,6 +269,7 @@ class DesktopHost:
         if self._server_thread is not None:
             self._server_thread.join(timeout=5)
         self.instance.close()
+        self.notifier.stop()
         self.window.destroy()
 
 

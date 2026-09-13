@@ -1,18 +1,23 @@
 "use strict";
 
-const PROTOCOL = "zhaoxi.job-application.native";
+importScripts("plan_policy.js");
+
 const PROTOCOL_VERSION = 1;
 const NATIVE_HOST = "com.zhaoxi.job_application";
+const EXTENSION_VERSION = chrome.runtime.getManifest().version;
 const PROFILE_KEY = "jobApplication:profiles";
+const SESSION_KEY = "jobApplication:activeSession";
 const INSPECTION_PREFIX = "jobApplication:inspection:";
 const PLAN_PREFIX = "jobApplication:plan:";
 const PLAN_STATE_PREFIX = "jobApplication:planState:";
 const PLAN_TTL_MS = 10 * 60 * 1000;
 const INSPECTION_TTL_MS = 5 * 60 * 1000;
-const ALLOWED_TYPES = new Set(["inspect_page", "build_plan", "apply_safe_fields", "get_review", "get_profile", "update_profile"]);
+const ALLOWED_TYPES = new Set(["bridge_status", "inspect_page", "build_plan", "apply_safe_fields", "get_review", "get_profile", "update_profile", "end_session", "clear_expired_plans"]);
 
 let nativePort = null;
 let reconnectTimer = null;
+let lastError = "";
+let lastInspectionSummary = null;
 
 const emptyProfile = () => ({
   schemaVersion: 1,
@@ -41,22 +46,13 @@ async function ensureProfiles() {
 chrome.runtime.onInstalled.addListener(ensureProfiles);
 ensureProfiles().catch(() => {});
 
-// Optional site access is granted only from an explicit extension-button click.
-// Tool calls never trigger permission prompts or silently widen host access.
-chrome.action.onClicked.addListener(async (tab) => {
-  if (!tab?.id || !/^https?:/i.test(tab.url || "")) return;
-  const url = new URL(tab.url);
-  const originPattern = `${url.protocol}//${url.host}/*`;
-  const granted = await chrome.permissions.request({ origins: [originPattern] });
-  await chrome.action.setBadgeText({ tabId: tab.id, text: granted ? "ON" : "!" });
-  await chrome.action.setBadgeBackgroundColor({ tabId: tab.id, color: granted ? "#13795b" : "#b42318" });
-});
-
 function connectNative() {
   if (nativePort) return;
   try {
     nativePort = chrome.runtime.connectNative(NATIVE_HOST);
-  } catch {
+    lastError = "";
+  } catch (error) {
+    lastError = `extension_not_connected: ${String(error?.message || error)}`;
     scheduleReconnect();
     return;
   }
@@ -67,6 +63,7 @@ function connectNative() {
     );
   });
   nativePort.onDisconnect.addListener(() => {
+    lastError = `extension_not_connected: ${chrome.runtime.lastError?.message || "Native Host disconnected"}`;
     nativePort = null;
     scheduleReconnect();
   });
@@ -78,22 +75,27 @@ function scheduleReconnect() {
 }
 
 function responseEnvelope(request, ok, data, error = null) {
+  const code = errorCode(error);
   return {
-    protocol: PROTOCOL,
-    version: PROTOCOL_VERSION,
+    protocol_version: PROTOCOL_VERSION,
     request_id: typeof request?.request_id === "string" ? request.request_id : "invalid",
+    session_id: typeof request?.session_id === "string" ? request.session_id : "current",
     ok,
-    data: ok ? data : null,
-    error: ok ? null : String(error?.code || error?.message || "browser_request_failed"),
-    message: ok ? undefined : String(error?.message || "浏览器操作失败。")
+    result: ok ? data : null,
+    error: ok ? null : {
+      code,
+      message: String(error?.message || error || "浏览器操作失败。"),
+      retryable: ["extension_not_connected", "content_script_unavailable", "timeout"].includes(code)
+    }
   };
 }
 
 function assertEnvelope(message) {
   const keys = new Set(Object.keys(message || {}));
-  const allowed = new Set(["protocol", "version", "request_id", "type", "payload", "deadline_ms"]);
+  const allowed = new Set(["protocol_version", "request_id", "session_id", "type", "payload", "deadline_ms"]);
   if ([...keys].some((key) => !allowed.has(key))) throw new Error("unknown_message_fields");
-  if (message?.protocol !== PROTOCOL || message?.version !== PROTOCOL_VERSION) throw new Error("protocol_mismatch");
+  if (message?.protocol_version !== PROTOCOL_VERSION) throw new Error("protocol_mismatch");
+  if (typeof message?.request_id !== "string" || typeof message?.session_id !== "string") throw new Error("protocol_mismatch");
   if (!ALLOWED_TYPES.has(message?.type)) throw new Error("unsupported_message_type");
   if (!message.payload || Object.getPrototypeOf(message.payload) !== Object.prototype) throw new Error("invalid_payload");
 }
@@ -101,21 +103,46 @@ function assertEnvelope(message) {
 async function handleEnvelope(message) {
   assertEnvelope(message);
   switch (message.type) {
+    case "bridge_status": return getBridgeStatus();
     case "inspect_page": return inspectPage(message.payload);
     case "build_plan": return buildPlan(message.payload);
     case "apply_safe_fields": return applySafeFields(message.payload);
     case "get_review": return getReview(message.payload);
     case "get_profile": return getProfile(message.payload);
     case "update_profile": return updateProfile(message.payload);
+    case "end_session": return endSession();
+    case "clear_expired_plans": return clearExpiredPlans();
     default: throw new Error("unsupported_message_type");
   }
 }
 
-async function targetTab(tabId) {
-  if (Number.isInteger(tabId)) return await chrome.tabs.get(tabId);
+async function targetTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id) throw new Error("active_tab_unavailable");
+  if (!tab?.id) throw new Error("no_active_supported_tab");
   return tab;
+}
+
+function cleanPageUrl(rawUrl) {
+  const url = new URL(rawUrl);
+  return { origin: url.origin, pathname: url.pathname, cleanUrl: `${url.origin}${url.pathname}` };
+}
+
+async function getSession() {
+  const stored = await storageArea().get(SESSION_KEY);
+  return stored[SESSION_KEY] || null;
+}
+
+async function requireActiveSession() {
+  const tab = await targetTab();
+  const session = await getSession();
+  if (!session || session.tabId !== tab.id) throw new Error("permission_denied: 请先在当前页面点击扩展图标并选择启用并扫描。");
+  if (!tab.url) throw new Error("permission_denied: 当前页授权已失效，请重新点击扩展图标。");
+  const current = cleanPageUrl(tab.url);
+  if (current.origin !== session.origin || current.pathname !== session.pathname) {
+    await invalidateSession(session, "navigation_changed");
+    throw new Error("page_changed");
+  }
+  return { tab, session };
 }
 
 async function sendToTab(tabId, message) {
@@ -125,34 +152,41 @@ async function sendToTab(tabId, message) {
     return response.data;
   } catch (error) {
     if (!String(error).includes("Receiving end does not exist")) throw error;
-    const tab = await chrome.tabs.get(tabId);
-    const url = new URL(tab.url);
-    const originPattern = `${url.protocol}//${url.host}/*`;
-    const granted = await chrome.permissions.contains({ origins: [originPattern] });
-    if (!granted) {
-      throw new Error("host_permission_required: 请先在目标页面点击扩展图标并允许该站点访问。");
-    }
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      files: [
-        "namespace.js", "field_catalog.js", "safety_policy.js",
-        "adapters/page_adapters.js", "adapters/control_adapters.js",
-        "scanner.js", "orchestrator.js", "content.js"
-      ]
-    });
+    try { await injectContentScript(tabId); }
+    catch (injectionError) { throw new Error(`content_script_unavailable: ${String(injectionError?.message || injectionError)}`); }
     const response = await chrome.tabs.sendMessage(tabId, message);
     if (!response?.ok) throw new Error(response?.error || "content_request_failed");
     return response.data;
   }
 }
 
+async function injectContentScript(tabId) {
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: [
+      "namespace.js", "field_catalog.js", "safety_policy.js",
+      "adapters/page_adapters.js", "adapters/control_adapters.js",
+      "scanner.js", "orchestrator.js", "content.js"
+    ]
+  });
+}
+
+async function ensureContentScript(tabId) {
+  try {
+    await sendToTab(tabId, { type: "JA_PING" });
+  } catch (error) {
+    throw new Error(`content_script_unavailable: ${String(error?.message || error)}`);
+  }
+}
+
 async function inspectPage(payload) {
-  rejectUnknown(payload, ["tab_id", "include_options"]);
-  const tab = await targetTab(payload.tab_id);
-  if (!/^https?:/i.test(tab.url || "")) throw new Error("unsupported_page_scheme");
+  rejectUnknown(payload, ["include_options"]);
+  const { tab, session } = await requireActiveSession();
+  if (!/^https?:/i.test(tab.url || session.cleanUrl || "")) throw new Error("no_active_supported_tab");
   const inspection = await sendToTab(tab.id, { type: "JA_SCAN", includeOptions: payload.include_options !== false });
-  const stored = { ...inspection, tabId: tab.id, expiresAt: now() + INSPECTION_TTL_MS };
+  const stored = { ...inspection, tabId: tab.id, sessionId: session.sessionId, expiresAt: now() + INSPECTION_TTL_MS };
   await storageArea().set({ [`${INSPECTION_PREFIX}${inspection.inspectionId}`]: stored });
+  lastInspectionSummary = { adapter: inspection.page.adapter.id, fieldCount: inspection.fields.length, at: now() };
   const { profile } = await getActiveProfile();
   return sanitizeInspection(stored, createProfileRedactor(profile));
 }
@@ -180,7 +214,7 @@ function canonicalCatalog() {
 
 function valueAtPath(profile, path) {
   if (!path || path.includes("*") || path.startsWith("prohibited.")) return "";
-  const parts = path.replace(/\[\]/g, ".0").split(".");
+  const parts = path.replace(/\[(\d+)\]/g, ".$1").replace(/\[\]/g, ".0").split(".");
   let value = profile;
   for (const part of parts) {
     if (value == null) return "";
@@ -203,7 +237,7 @@ function flattenProfilePaths(profile) {
         paths.push({ path: prefix, hasValue: Boolean(valueAtPath(profile, prefix)) });
         return;
       }
-      if (value.length) walk(value[0], `${prefix}[]`);
+      value.forEach((item, index) => walk(item, `${prefix}[${index}]`));
       return;
     }
     if (value && typeof value === "object" && !("value" in value)) {
@@ -229,6 +263,8 @@ async function loadInspection(inspectionId) {
 async function buildPlan(payload) {
   rejectUnknown(payload, ["inspection_id", "profile_id", "allow_ai_mapping"]);
   const inspection = await loadInspection(payload.inspection_id);
+  const { tab: activeTab, session } = await requireActiveSession();
+  if (inspection.tabId !== activeTab.id || inspection.sessionId !== session.sessionId) throw new Error("inspection_expired");
   const { profileId, profile } = await getActiveProfile(payload.profile_id);
   const profileCatalog = flattenProfilePaths(profile);
   const candidates = await sendToTab(inspection.tabId, {
@@ -245,6 +281,7 @@ async function buildPlan(payload) {
     planId,
     createdAt: now(), expiresAt: now() + PLAN_TTL_MS,
     tabId: inspection.tabId,
+    sessionId: inspection.sessionId,
     pageFingerprint: inspection.page.fingerprint,
     profileId, profileRevision: profile.revision,
     inspectionId: inspection.inspectionId,
@@ -276,11 +313,19 @@ async function loadPlan(planId) {
 async function applySafeFields(payload) {
   rejectUnknown(payload, ["plan_id", "expected_page_fingerprint", "expected_profile_revision"]);
   const { plan, state, stateKey } = await loadPlan(payload.plan_id);
-  if (state.state !== "ready") throw new Error("plan_not_ready");
-  if (payload.expected_page_fingerprint !== plan.pageFingerprint) throw new Error("page_fingerprint_mismatch");
-  if (payload.expected_profile_revision !== plan.profileRevision) throw new Error("profile_revision_mismatch");
+  const { tab: activeTab, session } = await requireActiveSession();
   const { profile } = await getActiveProfile(plan.profileId);
-  if (profile.revision !== plan.profileRevision) throw new Error("profile_changed");
+  const binding = globalThis.ZhaoxiPlanPolicy.validate(plan, state, {
+    tabId: activeTab.id,
+    sessionId: session.sessionId,
+    pageFingerprint: payload.expected_page_fingerprint,
+    profileRevision: payload.expected_profile_revision
+  });
+  if (!binding.ok) {
+    await storageArea().set({ [stateKey]: { state: "invalidated", result: { reason: binding.code } } });
+    throw new Error(binding.code);
+  }
+  if (profile.revision !== plan.profileRevision) throw new Error("profile_revision_changed");
 
   const rescanned = await sendToTab(plan.tabId, { type: "JA_SCAN" });
   if (rescanned.page.fingerprint !== plan.pageFingerprint) {
@@ -330,7 +375,7 @@ function reviewFor(plan, state) {
     else if (execution) groups.failed.push(candidate);
     else if (candidate.decision === "manual_sensitive") groups.sensitive_manual.push(candidate);
     else if (candidate.decision === "manual_declaration") groups.declaration_manual.push(candidate);
-    else if (candidate.decision === "preserve_existing") groups.existing_value_preserved.push(candidate);
+    else if (candidate.decision === "existing_value_preserved") groups.existing_value_preserved.push(candidate);
     else if (candidate.decision === "blocked") groups.blocked.push(candidate);
     else if (candidate.decision === "unsupported") groups.unsupported.push(candidate);
     else groups.needs_review.push(candidate);
@@ -342,7 +387,11 @@ async function getReview(payload) {
   rejectUnknown(payload, ["plan_id", "show_overlay"]);
   const { plan, state } = await loadPlan(payload.plan_id);
   const review = reviewFor(plan, state);
-  if (payload.show_overlay !== false) await sendToTab(plan.tabId, { type: "JA_SHOW_REVIEW", review });
+  if (payload.show_overlay !== false) {
+    const { tab, session } = await requireActiveSession();
+    if (tab.id !== plan.tabId || session.sessionId !== plan.sessionId) throw new Error("page_changed");
+    await sendToTab(plan.tabId, { type: "JA_SHOW_REVIEW", review });
+  }
   return review;
 }
 
@@ -487,5 +536,122 @@ function rejectUnknown(value, allowedKeys) {
   const allowed = new Set(allowedKeys);
   if (Object.keys(value).some((key) => !allowed.has(key))) throw new Error("unknown_payload_fields");
 }
+
+function errorCode(error) {
+  const text = String(error?.code || error?.message || error || "browser_request_failed");
+  const prefix = text.split(":", 1)[0];
+  const known = new Set([
+    "browser_bridge_unavailable", "extension_not_connected", "no_active_supported_tab",
+    "content_script_unavailable", "page_changed", "inspection_expired", "plan_expired",
+    "profile_revision_changed", "profile_revision_mismatch", "unsafe_field",
+    "unsupported_control", "write_verification_failed", "permission_denied",
+    "protocol_mismatch", "timeout", "plan_not_found", "plan_not_ready", "profile_not_found"
+  ]);
+  return known.has(prefix) ? (prefix === "profile_revision_mismatch" ? "profile_revision_changed" : prefix) : "browser_request_failed";
+}
+
+async function enableCurrentTab() {
+  const tab = await targetTab();
+  if (!tab.url || !/^https?:/i.test(tab.url)) throw new Error("no_active_supported_tab");
+  await ensureContentScript(tab.id);
+  const inspection = await sendToTab(tab.id, { type: "JA_SCAN", includeOptions: true });
+  const cleaned = cleanPageUrl(tab.url);
+  const session = {
+    sessionId: `session_${crypto.randomUUID().replace(/-/g, "")}`,
+    tabId: tab.id,
+    origin: cleaned.origin,
+    pathname: cleaned.pathname,
+    cleanUrl: cleaned.cleanUrl,
+    title: inspection.page.title,
+    pageFingerprint: inspection.page.fingerprint,
+    createdAt: now(),
+    lastSeenAt: now()
+  };
+  await storageArea().set({ [SESSION_KEY]: session });
+  lastInspectionSummary = { adapter: inspection.page.adapter.id, fieldCount: inspection.fields.length, at: now() };
+  lastError = "";
+  return { session_id: session.sessionId, page: inspection.page, fields_discovered: inspection.fields.length };
+}
+
+async function getBridgeStatus() {
+  const session = await getSession();
+  return {
+    extension_connected: Boolean(nativePort),
+    browser: /Edg\//.test(navigator.userAgent) ? "Edge" : "Chrome",
+    extension_version: EXTENSION_VERSION,
+    protocol_version: PROTOCOL_VERSION,
+    active_session: session?.sessionId || null,
+    current_adapter: lastInspectionSummary?.adapter || null,
+    fields_discovered: lastInspectionSummary?.fieldCount || 0,
+    last_inspection: lastInspectionSummary?.at || null,
+    last_error: lastError,
+    page: session ? { origin: session.origin, pathname: session.pathname, title: session.title || "已启用页面" } : null,
+    control_adapters: ["native-html", "ant-design", "element-ui"]
+  };
+}
+
+async function endSession() {
+  const session = await getSession();
+  if (session) await invalidateSession(session, "session_ended");
+  await storageArea().remove(SESSION_KEY);
+  return { ended: true };
+}
+
+async function rescanCurrentSession() {
+  const { tab, session } = await requireActiveSession();
+  const inspection = await sendToTab(tab.id, { type: "JA_SCAN", includeOptions: true });
+  await invalidateSession(session, "manual_rescan");
+  const updated = { ...session, pageFingerprint: inspection.page.fingerprint, lastSeenAt: now() };
+  await storageArea().set({ [SESSION_KEY]: updated });
+  lastInspectionSummary = { adapter: inspection.page.adapter.id, fieldCount: inspection.fields.length, at: now() };
+  return { page: inspection.page, fields_discovered: inspection.fields.length };
+}
+
+async function invalidateSession(session, reason) {
+  const all = await storageArea().get(null);
+  const updates = {};
+  for (const [key, plan] of Object.entries(all)) {
+    if (!key.startsWith(PLAN_PREFIX) || plan?.sessionId !== session.sessionId) continue;
+    const stateKey = `${PLAN_STATE_PREFIX}${plan.planId}`;
+    if (all[stateKey]?.state === "ready") updates[stateKey] = { state: "invalidated", result: { reason } };
+  }
+  if (Object.keys(updates).length) await storageArea().set(updates);
+}
+
+async function clearExpiredPlans() {
+  const all = await storageArea().get(null);
+  const remove = [];
+  for (const [key, value] of Object.entries(all)) {
+    if ((key.startsWith(PLAN_PREFIX) || key.startsWith(INSPECTION_PREFIX)) && value?.expiresAt < now()) {
+      remove.push(key);
+      if (key.startsWith(PLAN_PREFIX)) remove.push(`${PLAN_STATE_PREFIX}${value.planId}`);
+    }
+    if (key.startsWith(PLAN_STATE_PREFIX)) {
+      const planId = key.slice(PLAN_STATE_PREFIX.length);
+      if (!all[`${PLAN_PREFIX}${planId}`]) remove.push(key);
+    }
+  }
+  if (remove.length) await storageArea().remove(remove);
+  return { removed: remove.length };
+}
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  (async () => {
+    if (message?.type === "JA_POPUP_STATUS") return await getBridgeStatus();
+    if (message?.type === "JA_POPUP_ENABLE") return await enableCurrentTab();
+    if (message?.type === "JA_POPUP_RECONNECT") {
+      nativePort?.disconnect();
+      nativePort = null;
+      connectNative();
+      return await getBridgeStatus();
+    }
+    if (message?.type === "JA_CONTENT_RESCAN") return await rescanCurrentSession();
+    throw new Error("unsupported_popup_message");
+  })().then(
+    (data) => sendResponse({ ok: true, data }),
+    (error) => { lastError = String(error?.message || error); sendResponse({ ok: false, error: lastError }); }
+  );
+  return true;
+});
 
 connectNative();

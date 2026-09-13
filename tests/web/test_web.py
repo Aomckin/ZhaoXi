@@ -367,7 +367,8 @@ def test_failed_chat_persists_user_turn_for_session_restore():
 
 
 def test_web_shell_has_keyboard_and_live_status_accessibility_baseline():
-    app = create_app(agent=FakeAgent())
+    from zhaoxi.config.settings import Settings
+    app = create_app(agent=FakeAgent(), settings=Settings(dev_browser_ui=True))
     with TestClient(app) as client:
         page = client.get("/").text
     assert 'aria-label="发送给朝汐的消息"' in page
@@ -436,7 +437,7 @@ def test_desktop_api_token_guards_local_core_routes():
         assert anonymous.get("/api/session", headers={"X-Zhaoxi-Token": "wrong"}).status_code == 401
         assert anonymous.post("/api/bootstrap", headers={"X-Zhaoxi-Token": "wrong"}).status_code == 401
     with TestClient(app) as client:
-        assert client.get("/").status_code == 200
+        assert client.get("/").status_code == 403
         assert client.get("/api/session").status_code == 401
         bootstrap = client.post(
             "/api/bootstrap", headers={"X-Zhaoxi-Token": "desktop-secret"}

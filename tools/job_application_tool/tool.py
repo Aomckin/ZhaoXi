@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from zhaoxi.sdk import PermissionLevel, SideEffect, Tool, ToolResult
 
-from tools.job_application_tool.client import JobApplicationClient
+from tools.job_application_tool.client import BrowserBridgeClient
 from tools.job_application_tool.errors import JobApplicationError
 from tools.job_application_tool.models import (
     ApplySafeFieldsInput,
@@ -24,7 +24,7 @@ class BrowserTool(Tool):
     message_type: ClassVar[str]
     success_content: ClassVar[str]
 
-    def __init__(self, client: JobApplicationClient) -> None:
+    def __init__(self, client: BrowserBridgeClient) -> None:
         self.client = client
 
     async def execute(self, arguments: BaseModel) -> ToolResult:
@@ -112,7 +112,7 @@ class UpdateProfileTool(BrowserTool):
         return False
 
 
-def create_tools(client: JobApplicationClient) -> list[Tool]:
+def create_tools(client: BrowserBridgeClient) -> list[Tool]:
     return [
         InspectPageTool(client),
         BuildPlanTool(client),

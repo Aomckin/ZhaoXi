@@ -15,6 +15,13 @@
       const explicit = document.querySelector(`label[for="${CSS.escape(id)}"]`);
       if (explicit) return J.normalizeText(explicit.textContent, 120);
     }
+    const wrapping = element.closest("label");
+    if (wrapping) {
+      const copy = wrapping.cloneNode(true);
+      copy.querySelectorAll("input,textarea,select,button,[contenteditable]").forEach((child) => child.remove());
+      const text = J.normalizeText(copy.textContent, 120);
+      if (text) return text;
+    }
     const container = element.closest(".form-item,.ant-form-item,.el-form-item,[class*='form-item'],[class*='field'],[class*='Field']");
     const found = container?.querySelector(selectors);
     return J.normalizeText(found?.textContent || element.getAttribute("aria-label") || element.getAttribute("placeholder"), 120);
@@ -30,7 +37,18 @@
     return "";
   };
 
-  const makeAdapter = ({ id, domains = [], indicators = [], confidence, labelSelectors, sectionSelectors }) => ({
+  const repeatContextFor = (element) => {
+    const selector = "[class*='experience-item'],[class*='record-item'],[class*='resume-item'],[class*='list-item'],.ant-card,.el-card";
+    const item = element.closest(selector);
+    if (!item) return null;
+    const parent = item.parentElement;
+    const siblings = parent ? Array.from(parent.children).filter((child) => child.matches?.(selector)) : [item];
+    const index = Math.max(0, siblings.indexOf(item));
+    const heading = item.querySelector("h3,h4,[class*='title'],[class*='header']");
+    return { index, label: J.normalizeText(heading?.textContent, 100) };
+  };
+
+  const makeAdapter = ({ id, domains = [], indicators = [], confidence, labelSelectors, sectionSelectors, exactMappings = {} }) => ({
     id,
     version: "0.1.0",
     match(context) {
@@ -49,7 +67,8 @@
         label: labelFor(element, labelSelectors),
         section: sectionFor(element, sectionSelectors),
         nearbyText: J.normalizeText(container?.textContent, 240),
-        repeatContext: null
+        repeatContext: repeatContextFor(element),
+        exactPath: exactMappings[J.normalizeKey(labelFor(element, labelSelectors))] || ""
       };
     }
   });
@@ -63,6 +82,11 @@
       confidence: 0.92,
       labelSelectors: ".ant-form-item-label,label,[class*='field-label'],[class*='question-title']",
       sectionSelectors: `.ant-card-head-title,${commonSections}`
+      ,exactMappings: {
+        "姓名": "basic.full_name", "手机": "basic.phone", "手机号": "basic.phone",
+        "邮箱": "basic.email", "性别": "basic.gender", "出生日期": "basic.birth_date",
+        "民族": "basic.ethnicity", "政治面貌": "basic.political_status"
+      }
     }),
     makeAdapter({
       id: "beisen-page",
@@ -71,6 +95,7 @@
       confidence: 0.94,
       labelSelectors: ".form-item__text,.form-item__title,.el-form-item__label,.ant-form-item-label,label",
       sectionSelectors: `.form-part-head,.head-title,${commonSections}`
+      ,exactMappings: { "姓名": "basic.full_name", "手机号码": "basic.phone", "电子邮箱": "basic.email" }
     }),
     makeAdapter({
       id: "feishu-page",
@@ -79,6 +104,7 @@
       confidence: 0.93,
       labelSelectors: ".ud-formily-item-label-content,label,[data-form-field-i18n-name],[class*='label']",
       sectionSelectors: `.applyFormModuleWrapper-text,${commonSections}`
+      ,exactMappings: { "姓名": "basic.full_name", "手机号": "basic.phone", "邮箱": "basic.email" }
     })
   ];
 

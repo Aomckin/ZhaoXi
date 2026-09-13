@@ -1,4 +1,10 @@
-# v1.2.0 当前状态与使用说明
+# v1.2.2 当前状态与使用说明
+
+2026-09-13 v1.2.2：修复 v1.1.9 遗留的广记描述与动态能力发现问题。三把 Memory Core 与目录/发现两把钥匙默认常驻；统一 Manifest、能力解析及按轮加载，最多两次扩展；Debug 可实时启停、Force Expose 和恢复默认，override 持久化。详见 [v1.2.2 报告](Zhaoxi_v1.2.2_Release_Notes.md)。
+
+2026-09-13 v1.2.1：单窗口 MAIN / COMPANION、原生八向缩放、独立 geometry、一次性置顶与临时通知。陪伴模式按用户要求移除头像抬头，输入栏仅保留文字和发送。浏览器 UI 默认关闭，开发可设置 `ZHAOXI_DEV_BROWSER_UI=true`。完整实现与验收边界见 [v1.2.1 报告](Zhaoxi_v1.2.1_Release_Notes.md)。
+
+以下保留 v1.2.0 阶段记录。
 
 2026-09-12 Phase 3：已使用 `data/ACTIVE头像.png` 的专用头像；小桌边在所有窗口尺寸下默认收起，通过右侧把手打开。系统消息、设置、维护抽屉位于公告栏下方；新的主动留言点亮金点，不自动展开，可见后沿用现有 activate 接口确认已读。最新布局及验收见 [Phase 3 报告](Zhaoxi_v1.2.0_Phase3_Release_Notes.md)。
 

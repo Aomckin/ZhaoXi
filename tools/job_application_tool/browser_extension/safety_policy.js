@@ -23,7 +23,7 @@
     if (risk === "prohibited") return { risk, decision: "blocked", reasons: ["prohibited_control"] };
     if (risk === "declaration") return { risk, decision: "manual_declaration", reasons: ["declaration_requires_user"] };
     if (risk === "sensitive") return { risk, decision: "manual_sensitive", reasons: ["sensitive_requires_user"] };
-    if (field.hasCurrentValue) return { risk, decision: "preserve_existing", reasons: ["existing_value_preserved"] };
+    if (field.hasCurrentValue) return { risk, decision: "existing_value_preserved", reasons: ["existing_value_preserved"] };
     if (!field.enabled || !field.visible) return { risk, decision: "unsupported", reasons: ["not_interactable"] };
     if (confidence < 0.85) return { risk, decision: "needs_review", reasons: ["confidence_below_threshold"] };
     return { risk, decision: "auto_fill", reasons };

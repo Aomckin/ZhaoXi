@@ -9,9 +9,10 @@ from pydantic import ValidationError
 
 from zhaoxi.permission.models import PermissionLevel, SideEffect
 
-from tools.job_application_tool.client import JobApplicationClient, PROTOCOL, PROTOCOL_VERSION
+from tools.job_application_tool.client import BrowserBridgeClient
 from tools.job_application_tool.models import ApplySafeFieldsInput
 from tools.job_application_tool.native_host import NativeHostBroker
+from tools.job_application_tool.native_host.protocol import PROTOCOL_VERSION
 from tools.job_application_tool.package import create_package
 from tools.job_application_tool.tool import ApplySafeFieldsTool, create_tools
 
@@ -23,17 +24,18 @@ class FakeTransport:
     async def request(self, message, timeout):
         self.messages.append((message, timeout))
         return {
-            "protocol": PROTOCOL,
-            "version": PROTOCOL_VERSION,
+            "protocol_version": PROTOCOL_VERSION,
             "request_id": message["request_id"],
+            "session_id": message["session_id"],
             "ok": True,
-            "data": {"type": message["type"]},
+            "result": {"type": message["type"]},
+            "error": None,
         }
 
 
 def test_package_exposes_six_high_level_tools_and_no_submit_capability():
     package = create_package()
-    client = JobApplicationClient(FakeTransport())
+    client = BrowserBridgeClient(FakeTransport())
     names = [tool.name for tool in create_tools(client)]
     assert names == [
         "job_application_inspect_page",
@@ -49,7 +51,7 @@ def test_package_exposes_six_high_level_tools_and_no_submit_capability():
 
 
 def test_apply_tool_is_write_non_replayable_and_has_no_bypass_inputs():
-    tool = ApplySafeFieldsTool(JobApplicationClient(FakeTransport()))
+    tool = ApplySafeFieldsTool(BrowserBridgeClient(FakeTransport()))
     assert tool.permission is PermissionLevel.WRITE
     assert tool.side_effects == frozenset({SideEffect.EXTERNAL_SERVICE_WRITE})
     assert tool.safe_to_replay({}) is False
@@ -68,7 +70,7 @@ def test_apply_tool_is_write_non_replayable_and_has_no_bypass_inputs():
 
 def test_tool_sends_only_validated_high_level_request():
     transport = FakeTransport()
-    tool = create_tools(JobApplicationClient(transport))[0]
+    tool = create_tools(BrowserBridgeClient(transport))[0]
     result = asyncio.run(tool.run({"include_options": False}))
     assert result.success is True
     message, _ = transport.messages[0]
@@ -78,9 +80,9 @@ def test_tool_sends_only_validated_high_level_request():
 
 def test_native_host_rejects_unknown_actions_and_fields():
     valid = {
-        "protocol": PROTOCOL,
-        "version": PROTOCOL_VERSION,
+        "protocol_version": PROTOCOL_VERSION,
         "request_id": "request-123",
+        "session_id": "current",
         "type": "inspect_page",
         "payload": {},
         "deadline_ms": 1000,
@@ -108,3 +110,14 @@ def test_extension_contains_only_v01_page_and_control_adapters():
         assert adapter in control_source
     for forbidden in ("submit_after_fill", "ignore_policy", "fill_declarations"):
         assert forbidden not in (page_source + control_source)
+
+
+def test_extension_manifest_is_minimal_and_has_no_site_wide_access():
+    extension = Path(__file__).parents[1] / "browser_extension"
+    manifest = json.loads((extension / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["manifest_version"] == 3
+    assert set(manifest["permissions"]) == {"activeTab", "nativeMessaging", "scripting", "storage"}
+    assert "host_permissions" not in manifest
+    assert "optional_host_permissions" not in manifest
+    assert manifest["background"] == {"service_worker": "background.js"}
+    assert manifest["action"]["default_popup"] == "popup.html"

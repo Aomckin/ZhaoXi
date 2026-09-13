@@ -13,8 +13,23 @@
     declarations: /声明|合规|背景调查|附加问题/i
   };
 
-  const profileHasPath = (catalog, path) => catalog.some((item) => item.path === path && item.hasValue);
+  const pathPattern = (path) => new RegExp(`^${path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace("\\[\\]", "\\[\\d+\\]")}$`);
+  const resolveProfilePath = (catalog, definitionPath, field) => {
+    if (!definitionPath.includes("[]")) return catalog.some((item) => item.path === definitionPath && item.hasValue) ? definitionPath : "";
+    const preferred = definitionPath.replace("[]", `[${field.repeatContext?.index || 0}]`);
+    if (catalog.some((item) => item.path === preferred && item.hasValue)) return preferred;
+    return catalog.find((item) => pathPattern(definitionPath).test(item.path) && item.hasValue)?.path || "";
+  };
+
+  const controlCompatible = (field, definition) => {
+    if (["file", "submit", "button", "action"].includes(field.controlKind)) return false;
+    if (definition.valueType === "textarea") return ["textarea", "text", "contenteditable"].includes(field.controlKind);
+    if (["date", "month"].includes(definition.valueType)) return ["date", "month", "text", "combobox", "select"].includes(field.controlKind);
+    if (definition.valueType === "choice") return ["radio", "checkbox", "select", "combobox", "text"].includes(field.controlKind);
+    return true;
+  };
   const scoreDefinition = (field, definition) => {
+    if (!controlCompatible(field, definition)) return 0;
     const label = field.normalizedLabel;
     const aliases = definition.aliases.map(J.normalizeKey).filter(Boolean);
     let confidence = 0;
@@ -32,8 +47,14 @@
   };
 
   const bestDefinition = (field, profileCatalog) => {
-    const candidates = J.FIELD_CATALOG.map((definition) => ({ definition, confidence: scoreDefinition(field, definition) }))
-      .filter(({ definition, confidence }) => confidence > 0 && (definition.key.includes("*") || profileHasPath(profileCatalog, definition.key)))
+    const pageContext = `${field.section} ${field.nearbyText}`;
+    const exactAllowed = field.pageExactPath && !(field.pageExactPath.startsWith("basic.") && /家庭|紧急联系人|证明人|推荐人/.test(pageContext));
+    const candidates = J.FIELD_CATALOG.map((definition) => {
+      const profilePath = resolveProfilePath(profileCatalog, definition.key, field);
+      const confidence = exactAllowed && definition.key === field.pageExactPath ? 0.99 : scoreDefinition(field, definition);
+      return { definition, profilePath, confidence };
+    })
+      .filter(({ definition, profilePath, confidence }) => confidence > 0 && (definition.key.includes("*") || profilePath))
       .sort((left, right) => right.confidence - left.confidence);
     return candidates[0] || null;
   };
@@ -56,7 +77,7 @@
       const safety = J.decideCandidate({ field, definition: match.definition, confidence: match.confidence });
       candidates.push({
         candidateId: J.randomId("cand"), fieldRuntimeId: field.runtimeId,
-        fieldFingerprint: field.fingerprint, profilePath: match.definition.key,
+        fieldFingerprint: field.fingerprint, profilePath: match.profilePath || match.definition.key,
         fieldLabel: field.label, section: field.section, controlKind: field.controlKind,
         controlAdapterId: field.controlAdapterId, mappingSource: "local_rule",
         confidence: match.confidence, risk: safety.risk, decision: safety.decision,
@@ -70,7 +91,7 @@
     summary[candidate.decision] = (summary[candidate.decision] || 0) + 1;
     summary.total += 1;
     return summary;
-  }, { total: 0, auto_fill: 0, needs_review: 0, manual_sensitive: 0, manual_declaration: 0, preserve_existing: 0, unsupported: 0, blocked: 0 });
+  }, { total: 0, auto_fill: 0, needs_review: 0, manual_sensitive: 0, manual_declaration: 0, existing_value_preserved: 0, unsupported: 0, blocked: 0 });
 
   J.applyPlanCandidates = async (candidates, valuesByPath) => {
     const results = [];

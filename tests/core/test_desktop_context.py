@@ -47,7 +47,8 @@ async def test_direct_receives_activity_abstraction_and_optional_cached_inferenc
     agent = ZhaoxiAgent(provider=provider, registry=ToolRegistry(), context_builder=context)
     result = await agent.run_direct('你现在能看到我在哪个软件吗？')
     assert result.content == '能看到，焦点在 VS Code。'
-    assert len(provider.calls) == 1 and provider.tool_schemas == [None]
+    assert len(provider.calls) == 1
+    assert {item["function"]["name"] for item in provider.tool_schemas[0]} == {"request_tool_group", "inspect_tool_catalog"}
     data = desktop_data(provider.calls[0])
     assert data['available'] and not data['stale']
     assert data['foreground_process'] == 'Code.exe'

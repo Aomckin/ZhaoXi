@@ -1,0 +1,30 @@
+/* Desktop chrome is enabled only after the native bridge handshake. */
+#windowChrome,#currentConversation,#companionFooter,.resize-zone{display:none}
+html[data-desktop] #windowChrome{position:fixed;inset:0 0 auto;height:36px;z-index:30;display:flex;align-items:center;padding:0 8px;background:#f8f1da;color:var(--forest);user-select:none}
+#windowTitle{flex:1;padding:0 8px;touch-action:none;font-size:12px}#windowChrome button{height:28px;min-width:32px;background:transparent;color:inherit;border-radius:6px}#windowChrome button:hover{background:#dccca2}#windowChrome .close:hover{background:#cf5b4e;color:white}
+html[data-desktop][data-window-mode=main] .shell{margin-top:calc(var(--scene-inset) + 36px);height:calc(100dvh - var(--scene-inset)*2 - 36px)}
+html[data-desktop] #desk{top:44px;height:calc(100dvh - 60px)}
+html[data-desktop] .resize-zone{display:block;position:fixed;z-index:100;touch-action:none}
+.resize-zone[data-edge=left]{left:0;top:8px;bottom:8px;width:5px;cursor:ew-resize}.resize-zone[data-edge=right]{right:0;top:8px;bottom:8px;width:5px;cursor:ew-resize}
+.resize-zone[data-edge=top]{top:0;left:8px;right:8px;height:5px;cursor:ns-resize}.resize-zone[data-edge=bottom]{bottom:0;left:8px;right:8px;height:5px;cursor:ns-resize}
+.resize-zone[data-edge=top-left],.resize-zone[data-edge=bottom-right]{width:8px;height:8px;cursor:nwse-resize}.resize-zone[data-edge=top-right],.resize-zone[data-edge=bottom-left]{width:8px;height:8px;cursor:nesw-resize}
+.resize-zone[data-edge=top-left]{top:0;left:0}.resize-zone[data-edge=top-right]{top:0;right:0}.resize-zone[data-edge=bottom-left]{bottom:0;left:0}.resize-zone[data-edge=bottom-right]{bottom:0;right:0}
+html[data-window-mode=companion] .shell{width:calc(100vw - 20px);max-width:none;height:calc(100dvh - 82px);max-height:none;margin:42px 10px 0;gap:6px;grid-template-rows:minmax(0,1fr)}
+html[data-window-mode=companion] .character-anchor,html[data-window-mode=companion] #messages,html[data-window-mode=companion] #desk,html[data-window-mode=companion] #sideToggle{display:none}
+html[data-window-mode=companion] .chat{grid-row:1;gap:6px;overflow:hidden;grid-template-rows:minmax(0,1fr) auto}
+html[data-window-mode=companion] #currentConversation{display:flex;flex-direction:column;gap:10px;min-height:0;overflow:hidden;padding:12px;background:#fffcf0e8;border-radius:18px;font-size:14px}
+#currentConversation article{min-height:0;overflow:hidden;flex:1}#currentConversation p{margin:4px 0;white-space:pre-wrap;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:20;overflow-wrap:anywhere}#currentConversation button{background:none;color:var(--forest);font-size:12px;text-align:left;flex-shrink:0}
+html[data-window-mode=companion] .composer{padding:0 6px 6px;border-radius:18px}html[data-window-mode=companion] .activity{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:20px}html[data-window-mode=companion] #input{max-height:64px}html[data-window-mode=companion] .image-preview{max-height:56px}html[data-window-mode=companion] .image-preview img{width:44px;height:44px}html[data-window-mode=companion] .voice-review{max-height:100px;overflow:hidden}
+html[data-window-mode=companion] #companionFooter{position:fixed;bottom:6px;left:10px;right:10px;display:flex;justify-content:space-between;height:28px}#companionFooter button{background:#f8f1da;color:var(--forest);border-radius:8px;font-size:12px}
+#shellMenu{position:fixed;right:10px;top:36px;z-index:50;background:#fffaf0;padding:12px;border-radius:12px;box-shadow:0 4px 20px #46372322}#shellMenu[hidden]{display:none}
+/* Companion keeps one compact composer; secondary actions live in the menu. */
+html[data-window-mode=companion] .composer{padding:4px 6px;border-radius:14px}
+html[data-window-mode=companion] .inputbox{padding:4px 6px;gap:6px;min-height:36px;border-radius:10px}
+html[data-window-mode=companion] #input{font-size:13px;line-height:22px;height:22px!important;min-height:22px;max-height:22px;overflow-y:auto}
+html[data-window-mode=companion] .send{width:28px;height:28px;min-height:28px;flex-basis:28px;border-radius:8px;font-size:15px}
+html[data-window-mode=companion] #attachImage,html[data-window-mode=companion] #mic{display:none!important}
+html[data-window-mode=companion] .activity{height:auto;max-height:18px;font-size:11px;line-height:18px}
+html[data-window-mode=companion] .activity:empty{display:none}
+#shellMenu button{display:block;background:transparent;padding:6px 0;color:var(--forest);font-size:13px}
+
+#currentConversation article[data-role=user]{flex:0 1 auto;max-height:35%}

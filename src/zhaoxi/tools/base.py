@@ -26,6 +26,12 @@ class Tool(ABC):
     input_model: type[BaseModel]
     permission: PermissionLevel = PermissionLevel.READ
     side_effects: frozenset[SideEffect] = frozenset({SideEffect.NONE})
+    group: str | None = None
+    source: str = "builtin"
+    default_enabled: bool = True
+    available: bool = True
+    aliases: tuple[str, ...] = ()
+    intents: tuple[str, ...] = ()
 
     @property
     def mutates_state(self) -> bool:
