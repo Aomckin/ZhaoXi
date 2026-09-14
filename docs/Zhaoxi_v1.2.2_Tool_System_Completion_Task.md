@@ -1,6 +1,8 @@
 # Zhaoxi v1.2.2 开发任务书（整合修订版）
 ## Tool Manifest / Memory Core / Dynamic Discovery / Debug Tool Control
 
+> 后续实现决策（2026-09-13）：`remember_memory` 与 `update_memory` 默认允许执行，不再请求 WRITE 确认；用户明确禁止记忆、只读要求、全局 WRITE deny 或 Debug 停用仍会拦截。此决策覆盖本文未明确规定的记忆写入确认行为，其他写入权限不变。
+
 > 版本定位：修复 v1.1.9 动态工具路由遗留问题，并把 Tool 系统补成真正可长期扩展的“钥匙柜”。
 
 ---

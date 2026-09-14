@@ -60,6 +60,9 @@ def test_dynamic_domains_are_selected_by_action_intent():
         ("去潮庭翻一下之前的人设文档", {"archive"}),
         ("帮我读一下今天 Life HUD 的数据", {"lifehud"}),
         ("计算 17*23", {"calculator"}),
+        ("你觉得我今天一天吃得如何？", {"lifehud"}),
+        ("帮我找一下昨天那个面试复盘", {"local_search", "filesystem_read"}),
+        ("之前我怎么说暑假结束来着？", {"memory_search"}),
     ]
     for message, expected in cases:
         names, groups = exposed(message)
@@ -83,3 +86,24 @@ def test_diagnostics_report_schema_reduction_without_content():
     assert report["total_exposed_tools_count"] == 5
     assert report["filtered_tools_count"] > 0
     assert report["registered_schema_chars"] > 0
+    assert report["semantic_route_matched"] is False
+    assert report["semantic_route_groups"] == []
+    assert report["semantic_route_reason"] == ""
+
+
+def test_semantic_route_diagnostics_report_groups_and_reason_without_user_text():
+    context = resolve_tool_context("你觉得我今天一天吃得如何？", [], make_registry())
+    report = context.diagnostics()
+    assert report["semantic_route_matched"] is True
+    assert report["semantic_route_groups"] == ["lifehud"]
+    assert report["semantic_route_reason"] == "daily_diet_query"
+    assert "吃得" not in str(report)
+
+
+def test_disabled_semantic_group_is_not_premounted():
+    registry = make_registry()
+    registry.update_tools(group="lifehud", enabled=False)
+    context = resolve_tool_context("你觉得我今天一天吃得如何？", [], registry)
+    assert "lifehud" not in context.dynamic_groups
+    assert "lifehud" not in context.exposed_tools
+    assert context.diagnostics()["semantic_route_matched"] is False

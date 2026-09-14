@@ -27,6 +27,8 @@ class ToolContext:
     fallback: bool = False
 
     def diagnostics(self) -> dict[str, Any]:
+        semantic_reasons = [reason for reason in self.reason_tags if not reason.startswith("force:")]
+        semantic_matched = bool(self.dynamic_groups and self.dynamic_groups != ("all",))
         return {
             "router_mode": self.mode,
             "persistent_tools": list(self.persistent_tools),
@@ -38,6 +40,9 @@ class ToolContext:
             "filtered_tools_count": self.registered_tools_count - len(self.exposed_tools),
             "registered_schema_chars": self.registered_schema_chars,
             "reason_tags": list(self.reason_tags),
+            "semantic_route_matched": semantic_matched,
+            "semantic_route_groups": list(self.dynamic_groups) if semantic_matched else [],
+            "semantic_route_reason": ",".join(semantic_reasons) if semantic_matched else "",
             "fallback": self.fallback,
         }
 
@@ -66,13 +71,14 @@ def _dynamic_groups(user_message: str, recent_context: Sequence[str] | str | Non
             reasons.append(reason)
 
     action = _matches(r"(?:帮我|请|能否|可以|麻烦|去|把|给我|替我|我要|我想).{0,10}(?:找|查|搜|看|翻|读|打开|列出|修改|改一下|编辑|写入|新建|移动|计算|算一下|获取)|(?:找|查|搜|翻|读取|打开|修改|改一下|编辑|写入|新建|移动|计算|几点|什么时间|几号)", current)
-    if _matches(r"(?:还记得|记不记得|之前聊过|上次那|以前记过|回忆一下|查.*记忆)", current):
+    if _matches(r"(?:还记得|记不记得|之前聊过|上次那|以前记过|回忆一下|查.*记忆|(?:之前|以前|上次).{0,16}(?:怎么说|说过|提过|讲过).{0,8}(?:来着|吗|呢)?)", current):
         add("memory_search", "memory_recall_request")
     if _matches(r"(?:置顶|固定|忘掉|忘记这|删除.*记忆|归档.*记忆|恢复.*记忆|重新激活.*记忆|整理.*记忆|合并.*记忆)", current):
         add("memory_admin", "memory_management_request")
     if _matches(r"(?:潮庭|archive|档案库)", current) and action:
         add("archive", "archive_access_request")
-    if _matches(r"(?:文件|文件夹|目录|桌面|磁盘|路径|\.\w{1,8}\b|yaml|json|markdown|md文档)", contextual) and action:
+    file_subject = _matches(r"(?:文件|文件夹|目录|桌面|磁盘|路径|复盘|笔记|报告|文档|\.\w{1,8}\b|yaml|json|markdown|md文档)", contextual)
+    if file_subject and action:
         if _matches(r"(?:找|查|搜|定位|哪里|在哪)", current):
             add("local_search", "file_search_request")
         add("filesystem_read", "filesystem_read_request")
@@ -84,8 +90,15 @@ def _dynamic_groups(user_message: str, recent_context: Sequence[str] | str | Non
         add("time", "time_request")
     if _matches(r"(?:算一下|计算|等于多少|\d\s*[-+*/%^]\s*\d)", current):
         add("calculator", "calculation_request")
-    if _matches(r"(?:life\s*hud|铁幕)", current) and _matches(r"(?:帮我|请|看看|查看|读取|查|记录|数据|状态|打开|执行|开始|结束)", current):
-        add("lifehud", "lifehud_access_request")
+    lifehud_named = _matches(r"(?:life\s*hud|铁幕)", current)
+    life_domain = _matches(
+        r"(?:吃(?:了|得|过|的)?什么|吃得|饮食|睡眠|睡得|做过什么|任务.{0,6}(?:完成|进度|情况)|focus\s*session|能量|经验|生活状态)",
+        current,
+    )
+    life_query = _matches(r"(?:帮我|请|看看|查看|读取|查询|查一下|记录|数据|状态|评价|评估|怎么样|如何|多少|完成情况|做过什么)", current)
+    if life_query and (lifehud_named or life_domain):
+        reason = "daily_diet_query" if _matches(r"(?:吃|饮食)", current) else "lifehud_natural_language_query"
+        add("lifehud", reason)
     if _matches(r"(?:回显|echo)", current):
         add("echo", "echo_request")
     return tuple(groups), tuple(reasons)
@@ -116,7 +129,19 @@ def resolve_tool_context(
         )
     groups, reasons = _dynamic_groups(user_message, recent_context)
     if is_action_request(user_message):
-        groups = tuple(dict.fromkeys((*groups, *resolve_capability(user_message, manifest)["groups"])))
+        resolved = resolve_capability(user_message, manifest)["groups"]
+        for group in resolved:
+            if group not in groups:
+                groups = (*groups, group)
+                reasons = (*reasons, "manifest_capability_match")
+    usable_groups = {t["group"] for t in manifest if t["enabled"] and t["available"]}
+    selected = [
+        (group, reason)
+        for group, reason in zip(groups, reasons)
+        if group in usable_groups or (group == "memory_search" and "memory_core" in usable_groups)
+    ]
+    groups = tuple(group for group, _ in selected)
+    reasons = tuple(reason for _, reason in selected)
     names = list(dict.fromkeys((*persistent, *forced)))
     for group in groups:
         names.extend(t["name"] for t in manifest if t["group"] == group and t["name"] in usable and t["name"] not in names)

@@ -35,6 +35,21 @@ def test_quiet_and_night_policy_are_deterministic():
     assert InterruptPolicy(night_start=time(23), night_end=time(8)).decide(notice, night, PolicyState()).reason == "night_mode"
 
 
+def test_event_time_is_distinct_from_recorded_and_known_time():
+    happened = datetime(2020, 1, 1, tzinfo=UTC)
+    learned = datetime(2026, 9, 14, tzinfo=UTC)
+    event = ProactiveEvent(
+        event_type="diary.imported",
+        source="imported_diary",
+        occurred_at=happened,
+        received_at=learned,
+    )
+    assert event.event_at == happened
+    assert event.recorded_at == learned
+    assert event.known_at == learned
+    assert event.source == "imported_diary"
+
+
 async def test_runtime_delivers_and_deduplicates_delivery():
     now = datetime(2026, 8, 31, 12, tzinfo=UTC)
     store = InMemoryProactiveStore()
@@ -75,4 +90,3 @@ async def test_runtime_defers_during_quiet_mode():
     )
     assert deliveries[0].status == DeliveryStatus.DEFERRED
     assert deliveries[0].decision_reason == "quiet_mode"
-

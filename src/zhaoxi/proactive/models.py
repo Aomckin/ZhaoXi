@@ -101,6 +101,21 @@ class ProactiveEvent(BaseModel):
                 setattr(self, name, value.astimezone(UTC))
         return self
 
+    @property
+    def event_at(self) -> datetime:
+        """Canonical event time; compatibility name remains occurred_at."""
+        return self.occurred_at
+
+    @property
+    def recorded_at(self) -> datetime:
+        """Time the event entered Zhaoxi, not the time it happened."""
+        return self.received_at
+
+    @property
+    def known_at(self) -> datetime:
+        """For ingested events, first-known time equals received_at."""
+        return self.received_at
+
 
 class Schedule(BaseModel):
     schedule_id: str = Field(default_factory=lambda: uuid4().hex, pattern=r"^[A-Za-z0-9_.:-]+$")

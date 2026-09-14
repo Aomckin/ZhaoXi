@@ -1,8 +1,12 @@
 # Zhaoxi / 朝汐
 
-Zhaoxi 1.2.2 是一个可扩展的本地个人 Agent Core，提供对话、联想记忆、潮庭书库、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与可选 Tool Package 能力。
+Zhaoxi 1.2.3 是一个可扩展的本地个人 Agent Core，提供对话、联想记忆、潮庭书库、规划、确定性工作流、权限确认、主动提醒、语音入口、Reflection 与可选 Tool Package 能力。
 
 最新界面设置、模型思考开关、Beat 预算和验收边界统一见 [当前状态](docs/CURRENT_STATUS.md)。
+
+## v1.2.3 自然语言能力预路由
+
+在既有动态 Tool Router 前补齐轻量语义匹配：饮食、睡眠、任务、生活状态等自然问法可直接预挂 Life HUD；带时间指代的复盘查找会预挂本地搜索与文件读取；“之前怎么说”类问题直接保留记忆检索能力。未命中时继续使用 v1.2.2 Discovery，不新增 LLM 调用。详见 [v1.2.3 开发报告](docs/Zhaoxi_v1.2.3_Release_Notes.md)。
 
 ## v1.2.2 钥匙柜与广记修复
 

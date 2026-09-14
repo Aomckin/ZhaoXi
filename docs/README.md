@@ -13,6 +13,7 @@
 - [v1.2.0 开发报告](Zhaoxi_v1.2.0_Release_Notes.md)：秋日麦田视觉焕新、截图、主题配置与验收边界。
 
 - [当前状态与设置](CURRENT_STATUS.md)：优先阅读；汇总最新预算、思考开关、前端行为及诊断结论。
+
 - [ACTIVE 排查记录](ACTIVE_Beat_Diagnostics_Fix.md)：按时间保留实机证据与修复经过。
 
 - [`Zhaoxi_v1.1.8_Release_Notes.md`](v1.1.x/Zhaoxi_v1.1.8_Release_Notes.md)：动态 ToolProvider、MCP 隔离边界、安装配置与验证状态。
@@ -24,19 +25,32 @@
 - [`Zhaoxi_v1.1.6_Release_Notes.md`](v1.1.x/Zhaoxi_v1.1.6_Release_Notes.md)：桌面活动感知、数据边界、验证与已知限制。
 
 - [`CODEBASE_STATUS.md`](CODEBASE_STATUS.md)：当前实现与验证事实。
+
 - [`Zhaoxi_v1.1.5_Release_Notes.md`](v1.1.x/Zhaoxi_v1.1.5_Release_Notes.md)：本体主权、Tool Package 能力边界、互动状态、人格/表达方式分层及验证结果。
+
 - [`Zhaoxi_v1.1.4.1_Release_Notes.md`](v1.1.x/Zhaoxi_v1.1.4.1_Release_Notes.md)：联想记忆自动闭环修正。
+
 - [`Zhaoxi_v1.1.4_Release_Notes.md`](v1.1.x/Zhaoxi_v1.1.4_Release_Notes.md)：联想记忆结构重构。
+
 - [`Zhaoxi_v1.1.3_Release_Notes.md`](v1.1.x/Zhaoxi_v1.1.3_Release_Notes.md)：潮庭书库实现、测试、验收和限制。
+
 - [`Zhaoxi_v1.1.2_Release_Notes.md`](v1.1.x/Zhaoxi_v1.1.2_Release_Notes.md)：潮间态实现、验证与人工验收说明。
+
 - [`Zhaoxi_v1.1.1_Release_Notes.md`](v1.1.x/Zhaoxi_v1.1.1_Release_Notes.md)：潮汐心跳实现、测试、验收和限制。
+
 - [`Zhaoxi_v1.1_Release_Notes.md`](v1.1.x/Zhaoxi_v1.1_Release_Notes.md)：v1.1 入口与图文消息基线。
+
 - [`presence-autostart.md`](presence-autostart.md)：登录常驻机制与手动验收。
 
 ## 当前任务书
 
+- [v1.2.3 语义能力路由任务书](Zhaoxi_v1.2.3_Semantic_Capability_Routing_Task.md)：当前验收依据。
+- [v1.2.3 开发报告](Zhaoxi_v1.2.3_Release_Notes.md)：实现、回归测试与边界。
+
 - [v1.2.2 整合修订任务书](Zhaoxi_v1.2.2_Tool_System_Completion_Task.md)：当前验收依据。
+
 - [v1.2.2 原版任务书](Zhaoxi_v1.2.2_Tool_Discovery_Memory_Semantics_Task.md)：历史需求，差异以整合修订版为准。
+
 - [v1.1.9 路由任务书](v1.1.x/Zhaoxi_v1.1.9_Tool_Context_Router_Task_v2.md)：本次修复的原始设计依据。
 
 - [v1.2.1 重做任务书](Zhaoxi_v1.2.1_Desktop_Shell_and_Companion_Mode_Rebuild_Task.md)：本次开发依据；陪伴头像与输入区按用户后续要求简化。
@@ -56,10 +70,15 @@
 - [`Zhaoxi_v1.1.6_Desktop_Activity_Awareness_Development_Task.md`](v1.1.x/Zhaoxi_v1.1.6_Desktop_Activity_Awareness_Development_Task.md)：桌面活动感知任务书。
 
 - [`Zhaoxi_v1.1.5_Core_Sovereignty_Development_Task.md`](v1.1.x/Zhaoxi_v1.1.5_Core_Sovereignty_Development_Task.md)：本体主权与能力边界任务书。
+
 - [`Zhaoxi_v1.1.4.1_Associative_Memory_Closure_Patch.md`](v1.1.x/Zhaoxi_v1.1.4.1_Associative_Memory_Closure_Patch.md)：联想记忆闭环修正任务书。
+
 - [`Zhaoxi_v1.1.4_Associative_Memory_Development_Task.md`](v1.1.x/Zhaoxi_v1.1.4_Associative_Memory_Development_Task.md)：联想记忆重构任务书。
+
 - [`Zhaoxi_v1.1.3_Tidecourt_Archive_Development_Task.md`](v1.1.x/Zhaoxi_v1.1.3_Tidecourt_Archive_Development_Task.md)：潮庭书库任务书。
+
 - [`Zhaoxi_v1.1.2_Intertidal_Presence_Development_Task.md`](v1.1.x/Zhaoxi_v1.1.2_Intertidal_Presence_Development_Task.md)：本版本任务书。
+
 - [`Zhaoxi_v1.1.1_Tidal_Heartbeat_Development_Task.md`](v1.1.x/Zhaoxi_v1.1.1_Tidal_Heartbeat_Development_Task.md)：心跳任务书；实现与验证结果见 v1.1.1 开发报告。
 
 ## v1.0 基线文档
@@ -76,6 +95,7 @@
 
 ## 历史文档
 
-文件名以 `v0.1`～`v0.9` 开头的开发计划和任务书是当时的设计记录，不是当前状态清单。其未勾选项、旧测试数量、旧版本号和“留给后续版本”等文字保留历史语境，不应据此判断当前版本是否完成。发生冲突时，以本页“当前文档（v1.2.1）”列表及 `CODEBASE_STATUS.md` 为准。
+文件名以 `v0.1`～`v0.9` 开头的开发计划和任务书是当时的设计记录，不是当前状态清单。其未勾选项、旧测试数量、旧版本号和“留给后续版本”等文字保留历史语境，不应据此判断当前版本是否完成。发生冲突时，以本页“当前文档（v1.2.2）”列表及 `CODEBASE_STATUS.md` 为准。
+
 - [`Zhaoxi_v1.1.9_Release_Notes.md`](v1.1.x/Zhaoxi_v1.1.9_Release_Notes.md)：Tool Context Router、回滚配置、可观察性与验证状态。
 - [`Zhaoxi_v1.1.9_Tool_Context_Router_Task_v2.md`](v1.1.x/Zhaoxi_v1.1.9_Tool_Context_Router_Task_v2.md)：v1.1.9 历史开发任务书。

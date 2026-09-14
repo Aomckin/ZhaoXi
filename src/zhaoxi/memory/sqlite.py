@@ -20,7 +20,7 @@ from zhaoxi.memory.models import (
 from zhaoxi.memory.repository import MemoryRepository
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS memories (
@@ -28,10 +28,11 @@ CREATE TABLE IF NOT EXISTS memories (
     content TEXT NOT NULL, normalized_content TEXT NOT NULL, summary TEXT,
     tags_json TEXT NOT NULL, entities_json TEXT NOT NULL DEFAULT '[]',
     participants_json TEXT NOT NULL DEFAULT '[]', source_type TEXT NOT NULL,
-    source_ref TEXT, confidence REAL NOT NULL, importance REAL NOT NULL DEFAULT 0.6,
+    source_ref TEXT, source TEXT, confidence REAL NOT NULL, importance REAL NOT NULL DEFAULT 0.6,
     relevance REAL NOT NULL DEFAULT 0.7, activation REAL NOT NULL DEFAULT 0.7,
     pinned INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, supersedes_id TEXT,
     cluster_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, event_at TEXT,
+    recorded_at TEXT, known_at TEXT,
     valid_from TEXT, valid_until TEXT, last_confirmed_at TEXT, derived_at TEXT,
     accessed_at TEXT, access_count INTEGER NOT NULL DEFAULT 0, source_message_id TEXT,
     source_message_ids_json TEXT NOT NULL DEFAULT '[]', source_name TEXT,
@@ -431,10 +432,13 @@ class SQLiteMemoryRepository(MemoryRepository):
             tags=json.loads(row["tags_json"]), entities=json.loads(row["entities_json"]) if "entities_json" in keys else [],
             participants=json.loads(row["participants_json"]) if "participants_json" in keys else [],
             source_type=row["source_type"], source_ref=row["source_ref"], confidence=row["confidence"],
+            source=(row["source"] if "source" in keys and row["source"] else row["source_name"] or row["source_type"]),
             importance=row["importance"], activation=row["activation"] if "activation" in keys else row["relevance"],
             pinned=bool(row["pinned"]), status=row["status"], supersedes_id=row["supersedes_id"],
             cluster_id=row["cluster_id"] if "cluster_id" in keys else None, created_at=row["created_at"],
             updated_at=row["updated_at"], event_at=row["event_at"] if "event_at" in keys else None,
+            recorded_at=(row["recorded_at"] if "recorded_at" in keys and row["recorded_at"] else row["created_at"]),
+            known_at=(row["known_at"] if "known_at" in keys and row["known_at"] else row["created_at"]),
             valid_from=row["valid_from"], valid_until=row["valid_until"],
             last_confirmed_at=row["last_confirmed_at"] if "last_confirmed_at" in keys else None,
             derived_at=row["derived_at"] if "derived_at" in keys else None, accessed_at=row["accessed_at"],
@@ -474,6 +478,7 @@ class SQLiteMemoryRepository(MemoryRepository):
             "source_name": "TEXT", "evidence_reference": "TEXT", "evidence_memory_ids_json": "TEXT NOT NULL DEFAULT '[]'",
             "source_requeryable": "INTEGER NOT NULL DEFAULT 0", "entities_json": "TEXT NOT NULL DEFAULT '[]'",
             "participants_json": "TEXT NOT NULL DEFAULT '[]'", "cluster_id": "TEXT", "event_at": "TEXT",
+            "recorded_at": "TEXT", "known_at": "TEXT", "source": "TEXT",
             "valid_from": "TEXT", "valid_until": "TEXT", "last_confirmed_at": "TEXT", "derived_at": "TEXT",
         }
         for name, definition in additions.items():
@@ -481,6 +486,9 @@ class SQLiteMemoryRepository(MemoryRepository):
                 connection.execute(f"ALTER TABLE memories ADD COLUMN {name} {definition}")
         if "relevance" in columns:
             connection.execute("UPDATE memories SET activation=relevance WHERE activation=0.7 AND relevance<>0.7")
+        connection.execute("UPDATE memories SET recorded_at=created_at WHERE recorded_at IS NULL")
+        connection.execute("UPDATE memories SET known_at=created_at WHERE known_at IS NULL")
+        connection.execute("UPDATE memories SET source=COALESCE(source_name, source_type) WHERE source IS NULL")
         cluster_columns = {row["name"] for row in connection.execute("PRAGMA table_info(memory_clusters)")}
         for name, definition in {
             "centroid_embedding_json": "TEXT NOT NULL DEFAULT '[]'",

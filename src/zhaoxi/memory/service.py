@@ -79,6 +79,12 @@ class MemoryService:
             return MemoryWriteResult(record=conflicts[0], created=False, conflict_candidates=conflicts)
 
         data = value.model_dump(exclude={"relevance"})
+        recorded_at = value.recorded_at or utc_now()
+        data.update({
+            "recorded_at": recorded_at,
+            "known_at": value.known_at or recorded_at,
+            "source": value.source or value.source_name or value.source_type.value,
+        })
         record = MemoryRecord(**data, normalized_content=normalized)
         if value.supersedes_id:
             previous = await self.require(value.supersedes_id)
@@ -385,9 +391,9 @@ class MemoryService:
             best_score = 1.0
         previous_count = cluster.member_count
         cluster.member_count += 1
-        moment = record.event_at or record.created_at
-        cluster.time_start = min(filter(None, (cluster.time_start, moment)), default=moment)
-        cluster.time_end = max(filter(None, (cluster.time_end, moment)), default=moment)
+        if record.event_at is not None:
+            cluster.time_start = min(filter(None, (cluster.time_start, record.event_at)), default=record.event_at)
+            cluster.time_end = max(filter(None, (cluster.time_end, record.event_at)), default=record.event_at)
         cluster.importance = max(cluster.importance, record.importance)
         cluster.activation = max(cluster.activation, record.activation)
         cluster.tags = list(dict.fromkeys([*cluster.tags, *record.tags]))[:30]
@@ -436,12 +442,14 @@ class MemoryService:
         embedding_score = cosine(vector, cluster.centroid_embedding) if (
             self.cluster_embedding_enabled and vector and cluster.centroid_embedding
         ) else 0.0
-        moment = record.event_at or record.created_at
-        distance_days = min(
-            abs((moment - edge).total_seconds()) / 86_400
-            for edge in (cluster.time_start, cluster.time_end) if edge
-        ) if (cluster.time_start or cluster.time_end) else 365.0
-        time_score = max(0.0, 1.0 - distance_days / 90.0)
+        if record.event_at is not None and (cluster.time_start or cluster.time_end):
+            distance_days = min(
+                abs((record.event_at - edge).total_seconds()) / 86_400
+                for edge in (cluster.time_start, cluster.time_end) if edge
+            )
+            time_score = max(0.0, 1.0 - distance_days / 90.0)
+        else:
+            time_score = 0.0
         if self.embedding_provider.model == "local-hash-v1":
             weights = (0.35, 0.35, 0.20, 0.05, 0.05)
         else:
@@ -614,7 +622,9 @@ class MemoryService:
             return 0.05
         if record.valid_until and now > record.valid_until:
             return 0.05 if record.kind in {MemoryKind.STATE, MemoryKind.INTENT} else 0.3
-        moment = record.event_at or record.last_confirmed_at or record.created_at
+        moment = record.event_at or record.last_confirmed_at
+        if moment is None:
+            return 0.5
         days = max((now - moment).total_seconds() / 86_400, 0)
         return max(0.15, 1.0 / (1.0 + days / 180.0))
 

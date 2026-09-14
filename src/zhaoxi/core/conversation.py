@@ -1,6 +1,6 @@
 """Short-lived conversation state."""
 
-from zhaoxi.core.message import Message, Role
+from zhaoxi.core.message import Message, Role, strip_echoed_timeline_header
 
 
 class Conversation:
@@ -15,6 +15,10 @@ class Conversation:
         return list(self._messages)
 
     def add(self, message: Message) -> Message:
+        if message.role == Role.ASSISTANT and message.content:
+            message = message.model_copy(update={
+                "content": strip_echoed_timeline_header(message.content)
+            })
         self._messages.append(message)
         self._trim()
         return message

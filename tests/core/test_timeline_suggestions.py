@@ -30,12 +30,29 @@ async def test_timeline_roundtrip_crosses_midnight_without_mutating_visible_cont
     restored = await SQLiteSessionStore(store.path).get(session.id)
     assert [m.timestamp for m in restored.conversation.messages] == [user.timestamp, assistant.timestamp, proactive.timestamp, NOW + timedelta(hours=18)]
     context = ContextBuilder('朝汐', timezone='Asia/Shanghai').build(restored.conversation)
-    assert '2026-09-06T22:00:00+08:00' in context[1].content
-    assert '2026-09-07T00:00:00+08:00' in context[3].to_provider_dict()['content']
-    assert '2026-09-07T16:00:00+08:00' in context[4].content
+    assert context[1].content == '昨晚的问题'
+    assert context[2].content == '我们明天接着聊。'
+    assert context[4].content == '第二天了。'
     assert '专注已超过90分钟' in context[3].content
     assert restored.conversation.messages[2].content == '休息一下吧。'
-    assert context[0].content.find('当前时间：') >= 0
+    assert '[Temporal Context]' not in context[0].content
+
+
+def test_temporal_context_treats_cross_day_messages_as_points_not_an_interval():
+    from zhaoxi.core.conversation import Conversation
+
+    conversation = Conversation()
+    conversation.add_user('晚上好').timestamp = datetime(2026, 9, 13, 15, 0, tzinfo=UTC)
+    conversation.add_assistant('下午好。', timestamp=datetime(2026, 9, 14, 6, 0, tzinfo=UTC))
+    conversation.add_user('这两条消息能说明我连续清醒了多久吗？').timestamp = datetime(2026, 9, 14, 6, 1, tzinfo=UTC)
+    context = ContextBuilder('朝汐', timezone='Asia/Shanghai').build(conversation)
+    system = context[0].content
+    assert '[Temporal Context]' in system
+    assert '2026-09-13T23:00:00+08:00' in system
+    assert '2026-09-14T14:00:00+08:00' in system
+    assert 'observation_kind":"point"' in system
+    assert '禁止由两个消息时点推断中间持续清醒' in system
+    assert context[1].content == '晚上好'
 
 
 async def test_old_activation_text_is_migrated_on_session_load(tmp_path):
@@ -101,6 +118,7 @@ def test_echoed_internal_timeline_header_is_removed_from_model_reply():
     assert cache.extract(leaked) == '真正应该显示的回复。'
     assert cache.extract('[提示]\n这是正常正文。') == '[提示]\n这是正常正文。'
     assert cache.extract('正文里的 [2026-09-07T16:56:46+08:00 · assistant] 保留。').startswith('正文里的')
+    assert cache.extract('[2026-09-13T23:59:41+08:00 · 朝汐]\n真正正文。') == '真正正文。'
 
 
 async def test_session_load_cleans_leaked_timeline_header(tmp_path):
@@ -112,3 +130,54 @@ async def test_session_load_cleans_leaked_timeline_header(tmp_path):
     await store.save(session)
     restored = await store.get(session.id)
     assert restored.conversation.messages[0].content == '真正应该显示的回复。'
+
+
+async def test_session_v2_migrates_polluted_assistant_headers_on_disk(tmp_path):
+    import sqlite3
+
+    path = tmp_path / 'sessions.db'
+    store = SQLiteSessionStore(path)
+    session = await store.create()
+    session.conversation.add_assistant('原始正文。')
+    await store.save(session)
+    with sqlite3.connect(path) as connection:
+        payload = json.loads(connection.execute('SELECT messages_json FROM sessions').fetchone()[0])
+        payload[0]['content'] = '[2026-09-13T23:59:41+08:00 · 朝汐]\n原始正文。'
+        connection.execute('UPDATE sessions SET messages_json=?', (json.dumps(payload, ensure_ascii=False),))
+        connection.execute('UPDATE schema_version SET version=1')
+    migrated = SQLiteSessionStore(path)
+    restored = await migrated.get(session.id)
+    assert restored.conversation.messages[0].content == '原始正文。'
+    with sqlite3.connect(path) as connection:
+        raw = connection.execute('SELECT messages_json FROM sessions').fetchone()[0]
+        assert '23:59:41' not in raw
+        assert connection.execute('SELECT version FROM schema_version').fetchone()[0] == 2
+
+
+async def test_history_read_repairs_late_pollution_after_schema_migration(tmp_path):
+    import sqlite3
+
+    path = tmp_path / 'sessions.db'
+    store = SQLiteSessionStore(path)
+    session = await store.create()
+    session.conversation.add_assistant('原始正文。')
+    await store.save(session)
+    with sqlite3.connect(path) as connection:
+        payload = json.loads(connection.execute('SELECT messages_json FROM sessions').fetchone()[0])
+        payload[0]['content'] = '[2026-09-13T23:59:41+08:00 · 朝汐]\n原始正文。'
+        connection.execute('UPDATE sessions SET messages_json=?', (json.dumps(payload, ensure_ascii=False),))
+    restored = await store.get(session.id)
+    assert restored.conversation.messages[0].content == '原始正文。'
+    with sqlite3.connect(path) as connection:
+        assert '23:59:41' not in connection.execute('SELECT messages_json FROM sessions').fetchone()[0]
+
+
+async def test_model_reply_cannot_send_or_persist_internal_zhaoxi_header():
+    class Provider(ModelProvider):
+        async def generate(self, messages, tools=None, **kwargs):
+            return ModelResponse(content='[2026-09-13T23:59:41+08:00 · 朝汐]\n只显示这句。')
+
+    agent = ZhaoxiAgent(provider=Provider(), registry=ToolRegistry(), context_builder=ContextBuilder('朝汐'))
+    result = await agent.run_direct('你好')
+    assert result.content == '只显示这句。'
+    assert agent.conversation.messages[-1].content == '只显示这句。'

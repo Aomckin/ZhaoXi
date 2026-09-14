@@ -49,7 +49,7 @@ Tool 可声明 `group`、`source`、`summary`、`aliases`、`intents`、`default
 
 2026-09-13，在保留已有 v1.2.1 桌面改动的工作区验证：
 
-- 全量 Python：`.venv/Scripts/python.exe -m pytest`，530 passed、1 skipped；一项既有 Starlette/httpx 弃用提示。
+- 全量 Python：`.venv/Scripts/python.exe -m pytest`，540 passed、1 skipped；一项既有 Starlette/httpx 弃用提示。
 - Node：`node --test tests/web/*.test.cjs`，32 passed。
 - 独立包回归：`tools/mcp/tests` 与 `tools/job_application_tool/tests`，12 passed。
 - Edge 浏览器连接隔离测试 Core：单个启用、Force Expose、刷新页面、整组停用、单个/整组/全部恢复默认全部通过，无页面脚本错误。

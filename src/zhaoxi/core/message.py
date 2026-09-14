@@ -20,7 +20,7 @@ class Role(StrEnum):
 
 _TIMELINE_HEADER = re.compile(
     r"^\s*\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?"
-    r"(?:Z|[+-]\d{2}:\d{2})\s*·\s*(?:assistant|user|朝汐主动消息)\]\s*\r?\n"
+    r"(?:Z|[+-]\d{2}:\d{2})\s*·\s*(?:朝汐|assistant|user|朝汐主动消息)\]\s*\r?\n"
 )
 
 

@@ -25,6 +25,14 @@ def test_discovery_exposes_exactly_one_lifehud_tool():
     assert [tool.name for tool in create_package_tools(packages[0])] == ["lifehud"]
 
 
+def test_lifehud_manifest_describes_natural_language_intents():
+    registry = ToolRegistry()
+    registry.register(LifeHudTool(None))
+    record = registry.manifest()[0]
+    assert record["group"] == "lifehud"
+    assert {"评价今天饮食", "查询睡眠记录", "查询任务完成情况", "查看近期生活状态"} <= set(record["intents"])
+
+
 async def test_one_tool_resolves_read_and_write_permissions_per_invocation():
     client = LifeHudClient(
         "http://lifehud.test",

@@ -2,6 +2,8 @@
 ## Tool Discovery & Memory Semantics Fix
 ### 修复“广记”语义冲突，并补齐动态工具路由的能力发现闭环
 
+> 当前实现说明（2026-09-13）：本文件是早期任务书，完整验收以 [整合修订版](Zhaoxi_v1.2.2_Tool_System_Completion_Task.md) 为准。后续决定将 `remember_memory` 与 `update_memory` 改为默认允许，不再请求 WRITE 确认；用户明确禁止记忆时仍会拦截。因此下文第 14 节关于“如果仍需确认”的条件建议不代表当前行为。
+
 ## 1. 背景
 
 当前版本已推进至 v1.2.1，但在实际使用中发现两个架构级问题。

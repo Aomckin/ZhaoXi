@@ -14,7 +14,7 @@ from zhaoxi.core.message import Message, Role, strip_echoed_timeline_header
 from zhaoxi.session.base import Session, SessionStore
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS sessions (
@@ -50,6 +50,37 @@ class SQLiteSessionStore(SessionStore):
                 connection.execute("INSERT INTO schema_version(version) VALUES (?)", (SCHEMA_VERSION,))
             elif row["version"] > SCHEMA_VERSION:
                 raise RuntimeError("Session 数据库版本高于当前程序支持版本。")
+            if row is not None and row["version"] < 2:
+                self._migrate_timeline_headers(connection)
+                connection.execute("UPDATE schema_version SET version=?", (SCHEMA_VERSION,))
+
+    @staticmethod
+    def _clean_serialized_messages(value: str) -> tuple[str, bool]:
+        messages = json.loads(value)
+        changed = False
+        for item in messages:
+            content = item.get("content")
+            if item.get("role") == Role.ASSISTANT.value and isinstance(content, str):
+                clean = strip_echoed_timeline_header(content)
+                if clean != content:
+                    item["content"] = clean
+                    changed = True
+        return json.dumps(messages, ensure_ascii=False, separators=(",", ":")), changed
+
+    @classmethod
+    def _migrate_timeline_headers(cls, connection: sqlite3.Connection) -> None:
+        """Remove exact leaked internal headers from all stored assistant replies."""
+        rows = connection.execute("SELECT session_id, messages_json FROM sessions").fetchall()
+        for row in rows:
+            try:
+                cleaned, changed = cls._clean_serialized_messages(row["messages_json"])
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            if changed:
+                connection.execute(
+                    "UPDATE sessions SET messages_json=? WHERE session_id=?",
+                    (cleaned, row["session_id"]),
+                )
 
     async def create(self) -> Session:
         session = Session(conversation=Conversation(max_messages=self.max_messages))
@@ -69,7 +100,14 @@ class SQLiteSessionStore(SessionStore):
             ).fetchone()
         if row is None:
             return None
-        messages = [Message.model_validate(item) for item in json.loads(row["messages_json"])]
+        serialized, changed = self._clean_serialized_messages(row["messages_json"])
+        if changed:
+            with self._connect() as connection:
+                connection.execute(
+                    "UPDATE sessions SET messages_json=? WHERE session_id=?",
+                    (serialized, session_id),
+                )
+        messages = [Message.model_validate(item) for item in json.loads(serialized)]
         for message in messages:
             # v1.1.1 stored activation context inside the assistant body.
             prefix = "[朝汐主动消息 · "
@@ -100,7 +138,10 @@ class SQLiteSessionStore(SessionStore):
     def save_sync(self, session: Session) -> None:
         session.updated_at = datetime.now(UTC)
         safe_messages = [
-            message.model_dump(mode="json", exclude={"metadata", "tool_calls", "tool_call_id", "name"})
+            message.model_copy(update={
+                "content": strip_echoed_timeline_header(message.content or "")
+                if message.role == Role.ASSISTANT else message.content
+            }).model_dump(mode="json", exclude={"metadata", "tool_calls", "tool_call_id", "name"})
             for message in session.conversation.recent(self.max_messages)
             if message.role in {Role.USER, Role.ASSISTANT} and message.content is not None
         ]

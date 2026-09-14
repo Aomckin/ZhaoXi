@@ -90,6 +90,7 @@ class MemoryCreate(MemoryTimeModel):
     participants: list[str] = Field(default_factory=list, max_length=30)
     source_type: MemorySourceType = MemorySourceType.USER
     source_ref: str | None = Field(default=None, max_length=500)
+    source: str | None = Field(default=None, max_length=200)
     confidence: float = Field(default=1.0, ge=0, le=1)
     importance: float = Field(default=0.6, ge=0, le=1)
     activation: float | None = Field(default=None, ge=0, le=1)
@@ -104,6 +105,8 @@ class MemoryCreate(MemoryTimeModel):
     evidence_memory_ids: list[str] = Field(default_factory=list, max_length=200)
     source_requeryable: bool = False
     event_at: datetime | None = None
+    recorded_at: datetime | None = None
+    known_at: datetime | None = None
     valid_from: datetime | None = None
     valid_until: datetime | None = None
     last_confirmed_at: datetime | None = None
@@ -158,6 +161,7 @@ class MemoryUpdate(MemoryTimeModel):
     tags: list[str] | None = Field(default=None, max_length=30)
     entities: list[str] | None = Field(default=None, max_length=50)
     participants: list[str] | None = Field(default=None, max_length=30)
+    source: str | None = Field(default=None, max_length=200)
     confidence: float | None = Field(default=None, ge=0, le=1)
     importance: float | None = Field(default=None, ge=0, le=1)
     activation: float | None = Field(default=None, ge=0, le=1)
@@ -171,6 +175,8 @@ class MemoryUpdate(MemoryTimeModel):
     evidence_memory_ids: list[str] | None = Field(default=None, max_length=200)
     source_requeryable: bool | None = None
     event_at: datetime | None = None
+    recorded_at: datetime | None = None
+    known_at: datetime | None = None
     valid_from: datetime | None = None
     valid_until: datetime | None = None
     last_confirmed_at: datetime | None = None
@@ -209,6 +215,7 @@ class MemoryRecord(MemoryTimeModel):
     participants: list[str] = Field(default_factory=list)
     source_type: MemorySourceType
     source_ref: str | None = None
+    source: str
     confidence: float
     importance: float = Field(default=0.6, ge=0, le=1)
     activation: float = Field(default=0.7, ge=0, le=1)
@@ -219,6 +226,8 @@ class MemoryRecord(MemoryTimeModel):
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
     event_at: datetime | None = None
+    recorded_at: datetime = Field(default_factory=utc_now)
+    known_at: datetime = Field(default_factory=utc_now)
     valid_from: datetime | None = None
     valid_until: datetime | None = None
     last_confirmed_at: datetime | None = None

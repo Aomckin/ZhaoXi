@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from zhaoxi.core.context import ContextBuilder
 from zhaoxi.core.conversation import Conversation
+from zhaoxi.core.message import strip_echoed_timeline_header
 from zhaoxi.errors import AgentLoopError, ProviderError
 from zhaoxi.models.base import ModelProvider
 from zhaoxi.models.types import ToolCall
@@ -50,6 +51,9 @@ class AgentResponse:
     steps: int
     permission_confirmation: PendingConfirmation | None = None
     used_tool_path: bool = False
+
+    def __post_init__(self) -> None:
+        self.content = strip_echoed_timeline_header(self.content)
 
 
 @dataclass(slots=True)

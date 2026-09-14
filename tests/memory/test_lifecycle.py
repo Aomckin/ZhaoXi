@@ -202,4 +202,4 @@ def test_v1_database_is_migrated_to_associative_schema_without_losing_records(tm
     assert record.relevance == 0.7
     assert record.access_count == 0
     with sqlite3.connect(path) as connection:
-        assert connection.execute("SELECT version FROM schema_version").fetchone()[0] == 4
+        assert connection.execute("SELECT version FROM schema_version").fetchone()[0] == 5

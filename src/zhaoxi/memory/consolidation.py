@@ -152,10 +152,10 @@ class AutoConsolidator:
                 recent_episode_ids=[item.id for item in uncovered],
                 existing_semantic_ids=[item.id for item in semantics],
                 time_range=[
-                    min((item.event_at or item.created_at for item in episodes), default=None).isoformat()
-                    if episodes else None,
-                    max((item.event_at or item.created_at for item in episodes), default=None).isoformat()
-                    if episodes else None,
+                    min((item.event_at for item in episodes if item.event_at), default=None).isoformat()
+                    if any(item.event_at for item in episodes) else None,
+                    max((item.event_at for item in episodes if item.event_at), default=None).isoformat()
+                    if any(item.event_at for item in episodes) else None,
                 ],
                 member_count=len(members),
                 representative_memories=[{"id": item.id, "content": item.content}

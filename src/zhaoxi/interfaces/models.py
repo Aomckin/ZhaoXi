@@ -90,3 +90,11 @@ class UnifiedResponse(BaseModel):
     content: str = ""
     activity: dict[str, Any] = Field(default_factory=dict)
     permission: PermissionView | None = None
+
+    @field_validator("content")
+    @classmethod
+    def clean_internal_timeline_header(cls, value: str) -> str:
+        # Final defense at every interface boundary, including planner/workflow paths.
+        from zhaoxi.core.message import strip_echoed_timeline_header
+
+        return strip_echoed_timeline_header(value)

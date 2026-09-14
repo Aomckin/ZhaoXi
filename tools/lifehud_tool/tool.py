@@ -34,6 +34,20 @@ class LifeHudInput(BaseModel):
 
 class LifeHudTool(Tool):
     name = "lifehud"
+    aliases = ("Life HUD", "生活面板", "生活记录")
+    intents = (
+        "查看今天吃了什么",
+        "评价今天饮食",
+        "查询饮食记录",
+        "查看今天做过什么",
+        "查询睡眠记录",
+        "查询任务完成情况",
+        "查询 FocusSession",
+        "查询铁幕记录",
+        "查看能量",
+        "查看经验",
+        "查看近期生活状态",
+    )
     description = (
         "读取或更新 Life HUD 事实源。通过 operation 选择受限能力：context.today/recent/status/"
         "tasks/dreams/life/journal/media/growth、focus.current/start/complete。"

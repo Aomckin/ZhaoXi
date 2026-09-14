@@ -158,7 +158,7 @@ def test_v2_relevance_is_migrated_to_activation(tmp_path):
     record = __import__("asyncio").run(repository.get("old"))
     assert record.activation == pytest.approx(0.42)
     with sqlite3.connect(path) as connection:
-        assert connection.execute("SELECT version FROM schema_version").fetchone()[0] == 4
+        assert connection.execute("SELECT version FROM schema_version").fetchone()[0] == 5
 
 
 @pytest.mark.asyncio

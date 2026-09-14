@@ -2,11 +2,17 @@
 
 > 当前配置、界面行为与最新限制见 [当前状态](CURRENT_STATUS.md)。下文保留分阶段实现与验收记录；其中旧预算和测试数量不代表当前值。
 
-> **当前开发分支：`v1.2.2`，运行时版本 `1.2.2`**。以下旧版本章节是历史切片，其“当前”指当时状态。
+> **当前开发分支：`v1.2.3`，运行时版本 `1.2.3`**。以下旧版本章节是历史切片，其“当前”指当时状态。
+
+## v1.2.3 当前增量
+
+在 v1.2.2 Tool Router 前补齐无额外 LLM 调用的语义能力预路由。Life HUD Manifest 提供面向用户自然任务的 aliases/intents；饮食、睡眠、任务、FocusSession、能量、经验与近期生活状态查询可预挂 `lifehud`，复盘类查找可预挂 `local_search + filesystem_read`，历史表达询问可直接使用记忆检索。可用性过滤优先于预挂，未命中继续走既有 Discovery；普通“今天铁幕做得累死了”等陈述不会因单一关键词误触发。
+
+时间上下文改为按需注入的独立 Temporal Context；普通 Conversation History 只保留结构化 role 和原始正文。聊天 timestamp 是离散 observation，不构成连续状态证据。Memory schema v5 区分 `event_at`、`recorded_at`、`known_at`、`source`；Session schema v2 迁移并清理 assistant 内部 timestamp header，发送、保存与历史读取均有防线。
 
 ## v1.2.2 当前增量
 
-补齐 v1.1.9 的 Memory Core、Registry Manifest、Inventory、能力解析与按轮 Discovery；新增 Debug 工具启停、Force Expose 和持久化恢复默认。实现与验证见 [v1.2.2 报告](Zhaoxi_v1.2.2_Release_Notes.md)。
+补齐 v1.1.9 的 Memory Core、Registry Manifest、Inventory、能力解析与按轮 Discovery；新增 Debug 工具启停、Force Expose 和持久化恢复默认。`remember_memory` 与 `update_memory` 默认允许执行，不再发起 WRITE 确认；用户明确禁止记忆、只读要求、全局 WRITE deny 或 Debug 停用仍会拦截。实现与验证见 [v1.2.2 报告](Zhaoxi_v1.2.2_Release_Notes.md)。
 
 ## v1.2.1 历史增量
 
@@ -197,7 +203,7 @@ v1.0 前置解耦已完成：Life HUD 实现与铁幕 Workflow 位于独立 `too
 - Planner 支持 Goal / Plan / Step、线性执行、重试、fallback、版本化 replan、等待用户、恢复、取消和 trace；当前 Goal/Plan/等待状态保存在 SQLite。
 - SQLite 长期记忆支持跨会话检索和上下文注入，以及显式记住、搜索、更新、忘记、归档、再激活、固定和整合。
 - `AutoMemory` 在每轮回复后独立判断 `CREATE / UPDATE / MERGE / CONFLICT / REACTIVATE / ARCHIVE / FORGET / CONSOLIDATE / IGNORE`；稳定身份和偏好另有保守的确定性兜底。
-- Agent 与 Planner 通过同一 `ToolExecutor` / `PermissionGateway` 执行工具；READ 默认允许，WRITE/DELETE 默认确认，DANGEROUS 默认拒绝。
+- Agent 与 Planner 通过同一 `ToolExecutor` / `PermissionGateway` 执行工具；READ 默认允许；`remember_memory`、`update_memory` 默认允许并继续审计；其他 WRITE/DELETE 默认确认，DANGEROUS 默认拒绝。
 - 确认绑定原始 invocation、参数摘要和资源范围；Planner 可在 `WAITING_FOR_PERMISSION` 暂停并恢复同一个 Goal。
 - 单个 Pending Permission 会在 Cognitive Router 与模型调用前拦截自然语言允许/拒绝；无论批准还是拒绝都会补齐原 `tool_call_id` 的 Tool Message 后再恢复 Agent Loop。
 - 同一 assistant 响应中连续、同 Tool/同权限的冻结调用会合并成一次批量确认；确认展示数量与资源范围，不跨 Tool 或跨模型响应合并。
@@ -335,7 +341,7 @@ ContextBuilder / MemoryRetriever
 - `/clear`：清空当前会话；不会物理删除长期记忆。
 - `/exit`：退出 CLI。
 
-代码侧记忆工具包括 `remember_memory`、`search_memory`、`update_memory`、`forget_memory`、`archive_memory`、`reactivate_memory`、`pin_memory` 和 `consolidate_memories`。
+代码侧记忆工具包括 `remember_memory`、`search_memories`、`update_memory`、`forget_memory`、`archive_memory`、`reactivate_memory`、`pin_memory` 和 `consolidate_memories`。
 
 ## 数据与兼容性
 

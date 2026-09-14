@@ -71,6 +71,8 @@ class AutoMemory:
         "绝不输出或猜测 source_node_id、target_node_id 或任何内部数据库 ID；程序会解析实体。"
         "宽松记录有生活痕迹的普通事件、吃喝、娱乐、短期状态、情绪、小型推进和计划；"
         "一条只表达一个主要事实，不复制整段聊天，不丢失明确时间，也不要过度拆碎。"
+        "只有原文明确支持事件发生时间时才填写 event_at；消息时间、导入时间和当前获知时间都不是 event_at。"
+        "recorded_at/known_at/source 由系统记录，不要据此推断朝汐当时存在、在场或亲历。"
         "工具噪声、无意义 filler、模型猜测、系统日志和没有新增信息的重复事实不记录。"
         "发生过什么优先 episodic；暂时状态用 state 并设置有效期；计划用 intent；"
         "稳定归纳才用 semantic；人与人或人与事物的高层理解用 relationship。"

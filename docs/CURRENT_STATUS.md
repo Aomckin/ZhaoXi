@@ -1,6 +1,10 @@
-# v1.2.2 当前状态与使用说明
+# v1.2.3 当前状态与使用说明
 
-2026-09-13 v1.2.2：修复 v1.1.9 遗留的广记描述与动态能力发现问题。三把 Memory Core 与目录/发现两把钥匙默认常驻；统一 Manifest、能力解析及按轮加载，最多两次扩展；Debug 可实时启停、Force Expose 和恢复默认，override 持久化。详见 [v1.2.2 报告](Zhaoxi_v1.2.2_Release_Notes.md)。
+2026-09-14 v1.2.3：新增轻量 Semantic Capability Routing。自然语言中的饮食、睡眠、任务、FocusSession、生活状态、历史表达和本地复盘查找可在模型调用前预挂对应 Tool Group；普通生活陈述不触发查询。Diagnostics 新增 `semantic_route_matched`、`semantic_route_groups`、`semantic_route_reason`。未命中仍沿用 v1.2.2 Discovery。详见 [v1.2.3 报告](Zhaoxi_v1.2.3_Release_Notes.md)。
+
+同日时间语义修复：普通对话正文不再注入逐条 timestamp header；仅在明确需要时注入独立 Temporal Context，并把聊天时间限制为离散 observation。Memory 区分 event/recorded/known/source，禁止从导入时间推断事件或朝汐 presence；Session v2 会迁移并持续清理已泄漏的 assistant 内部时间头。
+
+2026-09-13 v1.2.2：修复 v1.1.9 遗留的广记描述与动态能力发现问题。三把 Memory Core 与目录/发现两把钥匙默认常驻；统一 Manifest、能力解析及按轮加载，最多两次扩展；Debug 可实时启停、Force Expose 和恢复默认，override 持久化。记忆新增与更新默认允许，不再显示 WRITE 确认；明确禁止记忆时仍不写入。详见 [v1.2.2 报告](Zhaoxi_v1.2.2_Release_Notes.md)。
 
 2026-09-13 v1.2.1：单窗口 MAIN / COMPANION、原生八向缩放、独立 geometry、一次性置顶与临时通知。陪伴模式按用户要求移除头像抬头，输入栏仅保留文字和发送。浏览器 UI 默认关闭，开发可设置 `ZHAOXI_DEV_BROWSER_UI=true`。完整实现与验收边界见 [v1.2.1 报告](Zhaoxi_v1.2.1_Release_Notes.md)。
 

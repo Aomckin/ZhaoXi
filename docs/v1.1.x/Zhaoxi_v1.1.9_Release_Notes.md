@@ -1,5 +1,7 @@
 # Zhaoxi v1.1.9 发布说明
 
+> 历史版本说明：本文记录 v1.1.9 当时行为。当前 v1.2.2 已将 `search_memories` 纳入 Memory Core，并将记忆新增与更新改为默认允许；现行行为见 [v1.2.2 开发报告](../Zhaoxi_v1.2.2_Release_Notes.md)。
+
 ## Tool Context Router
 
 本版本在 Agent 与 ToolRegistry 之间加入只负责 schema 可见性的确定性 Router。Registry 注册、工具权限与执行路径保持不变。

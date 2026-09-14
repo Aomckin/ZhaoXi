@@ -27,7 +27,7 @@ def test_startup_diagnostics_lists_lifehud_package_without_user_content(tmp_path
     assert result["status"] == "ready"
     package = next(item for item in result["tool_packages"] if item["id"] == "lifehud-tool")
     assert package["id"] == "lifehud-tool"
-    assert package["version"] == "1.1.0"
+    assert package["version"] == "1.1.1"
     assert package["installed"] is package["enabled"] is package["configured"] is True
     assert package["tools"] == ["lifehud"]
     assert package["requires_sdk"] == ">=1,<2"

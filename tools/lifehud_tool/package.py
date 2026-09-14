@@ -12,7 +12,7 @@ from tools.lifehud_tool.tool import LifeHudTool
 
 class LifeHudToolPackage:
     package_id = "lifehud-tool"
-    package_version = "1.1.0"
+    package_version = "1.1.1"
     requires_sdk = ">=1,<2"
 
     def __init__(self) -> None:
