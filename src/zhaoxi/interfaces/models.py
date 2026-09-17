@@ -88,6 +88,7 @@ class UnifiedResponse(BaseModel):
     trace_id: str | None = None
     status: str = "completed"
     content: str = ""
+    message_id: str | None = None
     activity: dict[str, Any] = Field(default_factory=dict)
     permission: PermissionView | None = None
 

@@ -8,6 +8,12 @@ from zhaoxi.personality import (
 )
 
 
+def _stage_lines(text: str) -> list[str]:
+    return [line.strip() for line in text.splitlines()
+            if (line.strip().startswith("（") and line.strip().endswith("）"))
+            or (line.strip().startswith("(") and line.strip().endswith(")"))]
+
+
 def test_personality_and_expression_are_independent_versioned_prompts():
     personality = PersonalityLoader.load_prompt()
     expression = ExpressionLoader.load_prompt()
@@ -42,7 +48,7 @@ def test_canine_expression_is_loaded_as_a_separate_prompt():
     assert "犬娘行为与情绪" in prompt
     assert "golden_retriever_traits:" in prompt
     assert "犬娘感主要来自行为和情绪" in prompt
-    assert "不必每句话描写" in prompt
+    assert "普通回复通常不写，不能形成固定括号节拍" in prompt
 
 
 def test_few_shot_dialogues_load_all_scenes_and_render_as_examples():
@@ -54,3 +60,22 @@ def test_few_shot_dialogues_load_all_scenes_and_render_as_examples():
     assert all(f"场景：{item['scene']}" in prompt for item in dialogues)
     assert all(f"用户：{item['user']}" in prompt for item in dialogues)
     assert "学习其反应方式与节奏，不要照抄内容" in prompt
+
+
+def test_few_shot_stage_directions_are_low_frequency_and_agent_work_has_none():
+    dialogues = FewShotDialoguesLoader.load()
+    counts = [_stage_lines(item["assistant"]) for item in dialogues]
+    assert sum(not lines for lines in counts) >= len(dialogues) // 2
+    assert all(len(lines) <= 1 for lines in counts)
+    work = [item for item in dialogues if item["scene"] in {"技术错误诊断", "工具执行与任务确认"}]
+    assert len(work) == 2
+    assert all(not _stage_lines(item["assistant"]) for item in work)
+    plain_character = next(item["assistant"] for item in dialogues if item["scene"] == "用户卖关子")
+    assert "暗苟酱" in plain_character and not _stage_lines(plain_character)
+
+
+def test_expression_rules_keep_character_while_rejecting_fixed_action_rhythm():
+    prompt = ExpressionLoader.load_prompt()
+    assert "舞台描写是情绪真正变化时的低频强调手段" in prompt
+    assert "技术解释、工具执行、错误诊断" in prompt
+    assert "减少动作不等于去角色化" in prompt

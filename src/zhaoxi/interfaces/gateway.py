@@ -92,6 +92,7 @@ class InterfaceGateway:
                         response,
                         request_id=message.request_id,
                         session_id=message.session_id,
+                        message_id=self._new_assistant_id(previous_messages),
                     )
                 beat = getattr(getattr(state, "interaction", None), "beat_loop", None)
                 if beat:
@@ -119,6 +120,86 @@ class InterfaceGateway:
                     state.interacting = False
                     state.last_interaction_at = datetime.now(UTC)
                 self.metrics.observe_duration("interface.chat", monotonic() - started)
+
+    async def regenerate(self, message_id: str, *, request_id: str) -> UnifiedResponse:
+        """Regenerate the latest assistant turn without forging a second user turn."""
+        async with self._lock:
+            messages = self.agent.conversation.messages
+            target_index = next(
+                (index for index, item in enumerate(messages) if item.message_id == message_id),
+                None,
+            )
+            if target_index is None or messages[target_index].role not in {Role.USER, Role.ASSISTANT}:
+                raise KeyError("找不到要重新生成的回复。")
+            target = messages[target_index]
+            if target.role == Role.ASSISTANT and (target.delivery_id or any(
+                item.role in {Role.USER, Role.ASSISTANT} for item in messages[target_index + 1:]
+            )):
+                raise ValueError("只能重新生成当前最后一条普通回复。")
+            pending = getattr(
+                getattr(getattr(self.agent, "tool_executor", None), "gateway", None),
+                "store", None,
+            )
+            if any(not item.resolved for item in getattr(pending, "pending", {}).values()):
+                raise ValueError("当前有操作等待确认，不能重新生成这条回复。")
+            if target.role == Role.USER:
+                if any(item.role in {Role.USER, Role.ASSISTANT}
+                       for item in messages[target_index + 1:]):
+                    raise ValueError("只能重试当前最后一条未回复消息。")
+                user_index = target_index
+            else:
+                user_index = next(
+                    (index for index in range(target_index - 1, -1, -1)
+                     if messages[index].role == Role.USER),
+                    None,
+                )
+            if user_index is None:
+                raise ValueError("这条回复没有可重试的用户消息。")
+
+            original = messages
+            source_user = messages[user_index].model_copy(deep=True)
+            resume_in_place = target.role == Role.ASSISTANT and bool(target.tool_calls)
+            if not resume_in_place:
+                self.agent.conversation.replace(messages[:user_index])
+            previous_messages = {id(item) for item in self.agent.conversation.messages}
+            started = monotonic()
+            self.metrics.increment("interface.regenerate.started")
+            context = CorrelationContext(
+                trace_id=request_id, request_id=request_id, session_id="local"
+            )
+            try:
+                provider = getattr(self.agent, "provider", None)
+                max_calls = getattr(provider, "max_calls", 12)
+                max_total_tokens = getattr(provider, "max_total_tokens", 100_000)
+                with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens):
+                    if resume_in_place:
+                        response = await self.agent.resume_current_turn(
+                            source_user.content or "请查看这些图片。"
+                        )
+                    else:
+                        response = await self.agent.run_natural(
+                            source_user.content or "请查看这些图片。",
+                            **({"images": source_user.images} if source_user.images else {}),
+                        )
+                if not resume_in_place:
+                    self._restore_user_metadata(source_user, previous_messages)
+                result = self._result(
+                    response,
+                    request_id=request_id,
+                    session_id="local",
+                    message_id=self._new_assistant_id(previous_messages),
+                )
+                self._cache(result)
+                await self._persist_session()
+                self.metrics.increment("interface.regenerate.completed")
+                return result
+            except Exception:
+                self.agent.conversation.replace(original)
+                await self._persist_session()
+                self.metrics.increment("interface.regenerate.failed")
+                raise
+            finally:
+                self.metrics.observe_duration("interface.regenerate", monotonic() - started)
 
     async def activate_delivery(self, delivery_id: str):
         async with self._lock:
@@ -232,14 +313,20 @@ class InterfaceGateway:
         raise KeyError("找不到待确认操作的原始 Workflow。")
 
     def session(self) -> list[dict[str, Any]]:
+        visible = [
+            item for item in self.agent.conversation.messages
+            if item.role.value in {"user", "assistant"}
+        ]
+        latest = visible[-1] if visible else None
         return [
-            {"role": item.role.value, "content": item.content or "", "timestamp": item.timestamp.isoformat(),
+            {"message_id": item.message_id,
+             "role": item.role.value, "content": item.content or "", "timestamp": item.timestamp.isoformat(),
              "delivery_id": item.delivery_id,
              "kind": item.metadata.get("kind", ""),
+             "regeneratable": item is latest and item.role == Role.ASSISTANT and not item.delivery_id,
              "display_parts": item.metadata.get("display_parts", []) if item.role == Role.USER else [],
              **({"images": item.images} if item.images else {})}
-            for item in self.agent.conversation.messages
-            if item.role.value in {"user", "assistant"}
+            for item in visible
         ]
 
     def clear(self) -> None:
@@ -279,6 +366,21 @@ class InterfaceGateway:
                 ]
                 return
 
+    def _restore_user_metadata(self, source: Message, previous_messages: set[int]) -> None:
+        for item in self.agent.conversation.messages:
+            if id(item) not in previous_messages and item.role == Role.USER:
+                item.message_id = source.message_id
+                item.timestamp = source.timestamp
+                item.metadata = dict(source.metadata)
+                return
+
+    def _new_assistant_id(self, previous_messages: set[int]) -> str | None:
+        return next(
+            (item.message_id for item in reversed(self.agent.conversation.messages)
+             if id(item) not in previous_messages and item.role == Role.ASSISTANT),
+            None,
+        )
+
     def _cache(self, response: UnifiedResponse) -> None:
         self._responses[response.request_id] = response.model_copy(deep=True)
         self._responses.move_to_end(response.request_id)
@@ -291,6 +393,7 @@ class InterfaceGateway:
         *,
         request_id: str,
         session_id: str,
+        message_id: str | None = None,
     ) -> UnifiedResponse:
         route = getattr(response, "route", None)
         permission = getattr(response, "permission_confirmation", None)
@@ -317,6 +420,7 @@ class InterfaceGateway:
             trace_id=getattr(response, "request_id", None),
             status="waiting_for_permission" if permission_view else "completed",
             content=str(getattr(response, "content", "")),
+            message_id=message_id,
             activity={key: value for key, value in activity.items() if value is not None},
             permission=permission_view,
         )

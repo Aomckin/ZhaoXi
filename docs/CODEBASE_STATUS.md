@@ -10,6 +10,12 @@
 
 时间上下文改为按需注入的独立 Temporal Context；普通 Conversation History 只保留结构化 role 和原始正文。聊天 timestamp 是离散 observation，不构成连续状态证据。Memory schema v5 区分 `event_at`、`recorded_at`、`known_at`、`source`；Session schema v2 迁移并清理 assistant 内部 timestamp header，发送、保存与历史读取均有防线。
 
+人格 few-shot 与表达规则已降低括号舞台描写密度，同时保留朝汐的关系感、情绪和独立判断。ContextBuilder 对旧 assistant 历史应用只读 normalization：连续、重复、模板化动作在模型可见副本中收敛，单个有效情绪动作及普通括号保留，数据库与界面原文不变。
+
+Web 对模型失败等可重试错误显示独立 `🔄`；正常回复的按钮是 Debug 临时选项且默认关闭。Core 以持久化 Message ID 定位回复或失败后尚未得到回复的最后 user turn，成功时替换该轮、保留原 user 元数据，失败时回滚；此链路不调用 Proactive Beat 的“戳一戳”。
+
+维护抽屉将钥匙柜与 Debug 分为独立面板。Tool Manifest 增加中文显示名和简短用途；Filesystem 读取与修改目录独立持久化，修改目录必须是读取目录的子范围，Core 对每次写工具调用再次校验路径。当前工具包集合不再包含 `job_application_tool`，ResumeBridge 与 form-pilot 不受影响。
+
 ## v1.2.2 当前增量
 
 补齐 v1.1.9 的 Memory Core、Registry Manifest、Inventory、能力解析与按轮 Discovery；新增 Debug 工具启停、Force Expose 和持久化恢复默认。`remember_memory` 与 `update_memory` 默认允许执行，不再发起 WRITE 确认；用户明确禁止记忆、只读要求、全局 WRITE deny 或 Debug 停用仍会拦截。实现与验证见 [v1.2.2 报告](Zhaoxi_v1.2.2_Release_Notes.md)。
@@ -430,7 +436,7 @@ python main.py
 git diff --check
 ```
 
-当前自动化测试基线：**502 项 Python 通过、1 项跳过；29 项 Node 前端测试通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
+当前自动化测试基线：**563 项 Python 通过、1 项跳过；32 项 Node 前端测试通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
 
 ## 接手建议
 

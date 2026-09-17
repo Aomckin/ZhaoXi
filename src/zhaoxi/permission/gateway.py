@@ -30,13 +30,29 @@ class PermissionGateway:
         self.audit = audit or InMemoryAuditSink()
         self.confirmation_ttl_seconds = confirmation_ttl_seconds
 
-    def evaluate(self, request: PermissionRequest) -> tuple[PermissionDecision, PendingConfirmation | None]:
+    def evaluate(
+        self,
+        request: PermissionRequest,
+        *,
+        confirm_write: bool | None = None,
+    ) -> tuple[PermissionDecision, PendingConfirmation | None]:
         self._audit(request, "permission_requested")
         if self.store.consume_matching(request):
             decision = PermissionDecision(status=PermissionStatus.ALLOW, reason_code="approved_once")
             self._audit(request, "policy_allowed", reason_code=decision.reason_code)
             return decision, None
         decision = self.policy.evaluate(request)
+        if request.permission.value == "write" and decision.status != PermissionStatus.DENY:
+            if confirm_write is True:
+                decision = PermissionDecision(
+                    status=PermissionStatus.REQUIRE_CONFIRMATION,
+                    reason_code="tool_write_confirmation_required",
+                )
+            elif confirm_write is False:
+                decision = PermissionDecision(
+                    status=PermissionStatus.ALLOW,
+                    reason_code="tool_write_confirmation_disabled",
+                )
         if decision.status == PermissionStatus.ALLOW:
             self._audit(request, "policy_allowed", reason_code=decision.reason_code)
             return decision, None

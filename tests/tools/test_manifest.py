@@ -46,6 +46,16 @@ def test_memory_core_inventory_and_dynamic_registration():
     assert "future_tool" not in names(current, registry)
 
 
+def test_known_tools_expose_short_chinese_labels_and_usage():
+    registry = make_registry()
+    record = next(
+        item for item in registry.manifest()
+        if item["name"] == "mcp_filesystem_write_file"
+    )
+    assert record["display_name"] == "新建或覆盖文件"
+    assert record["usage"] == "新建文件或完整覆盖已有文件。"
+
+
 async def test_disabled_state_propagates_to_every_layer_and_executor():
     registry = make_registry()
     current = state(registry)
@@ -88,9 +98,12 @@ def test_overrides_survive_restart_and_all_reset_scopes(tmp_path):
         registry.register(tool)
         return registry
     registry = build()
-    registry.update_tools(name="new_tool", enabled=True, force_expose=True)
+    registry.update_tools(
+        name="new_tool", enabled=True, force_expose=True, confirm_write=False
+    )
     restarted = build()
     assert restarted.manifest()[0]["enabled"] and restarted.manifest()[0]["force_expose"]
+    assert restarted.manifest()[0]["confirm_write"] is False
     for kwargs in ({"name": "new_tool"}, {"group": "new"}, {}):
         registry.update_tools(name="new_tool", enabled=True)
         registry.update_tools(**kwargs, reset=True)

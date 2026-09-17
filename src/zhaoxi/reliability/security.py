@@ -53,7 +53,9 @@ def _walk(value, *, depth: int, max_depth: int, allowed_path_roots: tuple[Path, 
     elif isinstance(value, str):
         if "url" in key or key in {"uri", "endpoint"}:
             _validate_url(value)
-        if key in {"path", "file_path", "directory", "root"} and allowed_path_roots:
+        if key in {
+            "path", "paths", "file_path", "directory", "root", "source", "destination"
+        } and allowed_path_roots:
             _validate_path(value, allowed_path_roots)
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import mimetypes
 import secrets
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -15,6 +16,12 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, ConfigDict, StrictBool, model_validator
 from zhaoxi.tools.manifest import group_inventory, inventory_summary
+from zhaoxi.tools.filesystem_access import (
+    load_filesystem_access,
+    resolve_access_directories,
+    save_filesystem_access,
+    validate_write_subset,
+)
 from zhaoxi.tools.router import safe_resolve_tool_context
 
 from zhaoxi.cli import build_agent
@@ -51,12 +58,18 @@ class ThinkingRequest(BaseModel):
     enabled: bool
 
 
+class RegenerateRequest(BaseModel):
+    message_id: str = Field(min_length=1, max_length=128)
+    request_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+
 class ToolControlRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     scope: Literal["tool", "group", "all"]
     target: str | None = None
     enabled: StrictBool | None = None
     force_expose: StrictBool | None = None
+    confirm_write: StrictBool | None = None
     reset: bool = False
 
     @model_validator(mode="after")
@@ -65,9 +78,9 @@ class ToolControlRequest(BaseModel):
             raise ValueError("必须指定钥匙或组")
         if self.scope == "all" and self.target:
             raise ValueError("全部操作不接受 target")
-        if self.reset and (self.enabled is not None or self.force_expose is not None):
+        if self.reset and (self.enabled is not None or self.force_expose is not None or self.confirm_write is not None):
             raise ValueError("恢复默认不能同时指定开关")
-        if not self.reset and self.enabled is None and self.force_expose is None:
+        if not self.reset and self.enabled is None and self.force_expose is None and self.confirm_write is None:
             raise ValueError("没有指定修改")
         return self
 
@@ -75,6 +88,11 @@ class ToolControlRequest(BaseModel):
 class InterfaceSettingsRequest(BaseModel):
     input_merge_seconds: int = Field(default=15, ge=0, le=30)
     reply_interval_seconds: int = Field(default=5, ge=0, le=15)
+
+
+class FilesystemAccessRequest(BaseModel):
+    read_directories: list[str] = Field(min_length=1, max_length=20)
+    write_directories: list[str] = Field(min_length=1, max_length=20)
 
 
 def _load_interface_settings(path: Path) -> InterfaceSettingsRequest:
@@ -99,6 +117,7 @@ class ChatResponse(BaseModel):
     request_id: str | None = None
     trace_id: str | None = None
     status: str = "completed"
+    message_id: str | None = None
 
 
 class VoiceConfirmRequest(BaseModel):
@@ -119,6 +138,7 @@ def _response(result: WebResult) -> ChatResponse:
         trace_id=result.trace_id,
         status=result.status,
         timestamp=result.timestamp,
+        message_id=result.message_id,
     )
 
 
@@ -164,6 +184,7 @@ def create_app(
     supervisor = TaskSupervisor()
     current_time = now_provider or (lambda: datetime.now().astimezone())
     interface_settings_path = Path(configured.interface_settings_path)
+    filesystem_access_path = Path(configured.filesystem_access_path)
 
     def voice_policy(*, text: str, explicit: bool, permission_pending: bool = False):
         now = current_time()
@@ -251,6 +272,7 @@ def create_app(
 
     from fastapi.staticfiles import StaticFiles
 
+    mimetypes.add_type("image/webp", ".webp")
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
     @app.middleware("http")
@@ -452,6 +474,10 @@ def create_app(
         ).schemas
         manifest = registry.manifest([s["function"]["name"] for s in schemas])
         return {"tools": manifest, "groups": group_inventory(manifest), "summary": inventory_summary(manifest),
+                "filesystem_access": {
+                    **load_filesystem_access(filesystem_access_path),
+                    "restart_required_after_change": True,
+                },
                 "diagnostics": getattr(core, "last_tool_diagnostics", None)}
 
     @app.get("/api/debug/tools")
@@ -465,13 +491,39 @@ def create_app(
             core.registry.update_tools(
                 name=body.target if body.scope == "tool" else None,
                 group=body.target if body.scope == "group" else None,
-                enabled=body.enabled, force_expose=body.force_expose, reset=body.reset,
+                enabled=body.enabled,
+                force_expose=body.force_expose,
+                confirm_write=body.confirm_write,
+                reset=body.reset,
             )
         except ZhaoxiError as exc:
             raise HTTPException(status_code=404, detail="钥匙或分组不存在。") from exc
         except (ValueError, OSError) as exc:
             raise HTTPException(status_code=409, detail="Tool 设置保存失败，运行状态未修改。") from exc
         return tool_snapshot()
+
+    @app.put("/api/tools/filesystem-access")
+    async def change_filesystem_access(body: FilesystemAccessRequest):
+        try:
+            read_directories = resolve_access_directories(body.read_directories)
+            write_directories = resolve_access_directories(body.write_directories)
+            validate_write_subset(read_directories, write_directories)
+            save_filesystem_access(
+                filesystem_access_path,
+                read_directories=read_directories,
+                write_directories=write_directories,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except OSError as exc:
+            logger.warning("filesystem access persistence failed type=%s", type(exc).__name__)
+            raise HTTPException(status_code=500, detail="允许目录保存失败。") from exc
+        return {
+            "read_directories": read_directories,
+            "write_directories": write_directories,
+            "restart_required": True,
+            "message": "已保存，重启 Core 后生效。",
+        }
 
     @app.get("/api/reflections")
     async def reflections(limit: int = 20):
@@ -527,6 +579,26 @@ def create_app(
         except Exception as exc:
             logger.exception("unexpected web chat failure")
             raise HTTPException(status_code=500, detail="这次操作遇到了内部错误，请稍后重试。") from exc
+        await events.publish({"type": "activity", "label": "完成", "detail": result.activity})
+        return _response(result)
+
+    @app.post("/api/chat/regenerate", response_model=ChatResponse)
+    async def regenerate(request: RegenerateRequest):
+        await events.publish({"type": "activity", "label": "正在重新生成…"})
+        try:
+            result = await adapter.regenerate(
+                request.message_id, request_id=request.request_id
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ZhaoxiError as exc:
+            logger.warning("web regenerate core error type=%s", type(exc).__name__)
+            raise HTTPException(status_code=422, detail=f"重新生成失败：{exc}") from exc
+        except Exception as exc:
+            logger.exception("unexpected web regenerate failure")
+            raise HTTPException(status_code=500, detail="重新生成遇到了内部错误，请稍后重试。") from exc
         await events.publish({"type": "activity", "label": "完成", "detail": result.activity})
         return _response(result)
 

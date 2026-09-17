@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     shutdown_grace_seconds: float = Field(default=15, gt=0, le=300)
     max_agent_steps: int = Field(default=8, ge=1, le=100)
     tool_overrides_path: str = "data/debug/tool_overrides.json"
+    filesystem_access_path: str = ".zhaoxi/filesystem-access.json"
     tool_router_mode: str = Field(default="dynamic", pattern="^(dynamic|all)$")
     request_timeout_seconds: float = Field(default=60, gt=0)
     retry_max_attempts: int = Field(default=3, ge=1, le=10)

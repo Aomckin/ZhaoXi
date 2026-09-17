@@ -46,6 +46,11 @@ class Conversation:
     def clear(self) -> None:
         self._messages.clear()
 
+    def replace(self, messages: list[Message]) -> None:
+        """Replace the in-memory timeline while preserving this shared instance."""
+        self._messages[:] = messages
+        self._trim()
+
     def _trim(self) -> None:
         overflow = len(self._messages) - self.max_messages
         if overflow > 0:

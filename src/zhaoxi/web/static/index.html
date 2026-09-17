@@ -25,6 +25,7 @@
     .image-preview img{width:80px;height:80px;object-fit:cover;border-radius:10px}
     .image-preview button{position:absolute;right:0;top:0;border-radius:50%;background:white;color:var(--danger)}
     .bubble img.attachment{display:block;max-width:100%;max-height:360px;object-fit:contain;border-radius:10px;margin-top:8px}
+    .message-group{position:relative}.regenerate{display:block;margin:2px 0 0 8px;padding:2px 5px;background:transparent;color:var(--muted);font-size:16px;line-height:1;border-radius:7px;opacity:.7}.regenerate[hidden]{display:none}.regenerate:hover,.regenerate:focus-visible{color:var(--blue);background:var(--soft);opacity:1}.regenerate:disabled{cursor:wait;opacity:.35}
       .recall{background:transparent;color:inherit;font-size:12px;padding:2px 0;margin-left:10px;opacity:.75;text-decoration:underline}
 </style>
   <link rel="stylesheet" href="/static/themes.css">
@@ -48,13 +49,13 @@
   <div class="desk-content">
     <section aria-labelledby="notesTitle"><h3 id="notesTitle">朝汐留下的话</h3><div id="proactiveNotes" aria-live="polite"><div class="desk-note"><p>想说的话，慢慢说就好。</p><small>她留下的小纸条，就收在这里。</small></div></div><p id="noteReadStatus" role="status" class="sub"></p></section>
     <section class="quick-prompts" aria-labelledby="promptHeading"><h3 id="promptHeading">可以这样找我</h3><div id="capabilities"><div class="sub">正在准备建议…</div></div></section>
-    <div class="desk-tools"><details><summary>系统消息</summary><div id="notices" aria-live="polite"><div class="sub">暂无新的系统消息。</div></div></details><details><summary>设置</summary><p><label><input id="thinkingToggle" type="checkbox" disabled> 模型思考</label> <small id="thinkingStatus">正在读取…</small></p><p><label>输入合并 <output id="mergeValue">15 秒</output><input id="mergeRange" type="range" min="0" max="30" step="1" value="15" style="width:100%"></label></p><p><label>分段回复间隔 <output id="replyValue">5–10 秒</output><input id="replyRange" type="range" min="0" max="15" step="1" value="5" style="width:100%"></label></p></details><details class="maintenance"><summary>维护抽屉</summary><button id="clear" class="ghost">清空会话</button><p class="sub" id="endpoint"></p><h2>连接状态</h2><div class="status"><span class="dot" aria-hidden="true"></span><span id="connection" role="status" aria-live="polite">本地 Core 已连接</span></div><details id="toolDebugPanel"><summary>Debug · 钥匙柜</summary><section id="toolControls" aria-label="钥匙柜控制"><p id="toolControlStatus" role="status">打开后读取实时钥匙清单。</p><button id="refreshTools" type="button">刷新钥匙柜</button> <button id="resetTools" type="button">全部恢复默认</button><div id="toolInventory"></div></section><button id="poke" type="button">戳一戳</button> <button id="restartCore" type="button">重启 Core</button><span id="pokeStatus" role="status"></span><div id="debug" class="debug">等待首次请求…</div></details></details></div>
+    <div class="desk-tools"><details><summary>系统消息</summary><div id="notices" aria-live="polite"><div class="sub">暂无新的系统消息。</div></div></details><details><summary>设置</summary><p><label><input id="thinkingToggle" type="checkbox" disabled> 模型思考</label> <small id="thinkingStatus">正在读取…</small></p><p><label>输入合并 <output id="mergeValue">15 秒</output><input id="mergeRange" type="range" min="0" max="30" step="1" value="15" style="width:100%"></label></p><p><label>分段回复间隔 <output id="replyValue">5–10 秒</output><input id="replyRange" type="range" min="0" max="15" step="1" value="5" style="width:100%"></label></p></details><details class="maintenance"><summary>维护抽屉</summary><button id="clear" class="ghost">清空会话</button><p class="sub" id="endpoint"></p><h2>连接状态</h2><div class="status"><span class="dot" aria-hidden="true"></span><span id="connection" role="status" aria-live="polite">本地 Core 已连接</span></div><details id="toolCabinetPanel"><summary>钥匙柜</summary><section id="toolControls" aria-label="钥匙柜控制"><p id="toolControlStatus" role="status">打开后读取实时钥匙清单。</p><button id="refreshTools" type="button">刷新钥匙柜</button> <button id="resetTools" type="button">全部恢复默认</button><div id="toolInventory"></div></section></details><details id="debugPanel"><summary>Debug</summary><p><label><input id="regenerateDebugToggle" type="checkbox"> 显示普通回复的重新生成按钮</label></p><button id="poke" type="button">戳一戳</button> <button id="restartCore" type="button">重启 Core</button><span id="pokeStatus" role="status"></span><div id="debug" class="debug">等待首次请求…</div></details></details></div>
   </div>
 </aside>
 <script id="characterConfig" type="application/json">{"avatar":"/static/avatar-default.webp"}</script>
 <script src="/static/deskboard.js"></script>
 <script>
-const $=s=>document.querySelector(s), messages=$('#messages'), input=$('#input'), send=$('#send'), mic=$('#mic'), activity=$('#activity'), debug=$('#debug'), voiceReview=$('#voiceReview'), voiceText=$('#voiceText');let busy=false,voiceEnabled=false,voiceRecording=false,speechActive=false;
+const $=s=>document.querySelector(s), messages=$('#messages'), input=$('#input'), send=$('#send'), mic=$('#mic'), activity=$('#activity'), debug=$('#debug'), voiceReview=$('#voiceReview'), voiceText=$('#voiceText');let busy=false,voiceEnabled=false,voiceRecording=false,speechActive=false,normalRegenerationEnabled=false;
 let activityHintTimer=null;
 function showActivityHint(text){
   clearTimeout(activityHintTimer);
@@ -88,14 +89,18 @@ function isActionSegment(text){
   const value=String(text??'').trim();
   return /^(（[^\r\n]*）|\([^\r\n]*\))$/.test(value);
 }
-function addMessage(role,content,kind='',images=[],timestamp=null){
+function addMessage(role,content,kind='',images=[],timestamp=null,messageId=null,regeneratable=false,debugOnly=true){
   const parts=role==='assistant'&&kind!=='system'?splitReply(content):[content];
   const group=role==='assistant'&&kind!=='system'?{}:null;
-  return parts.map(part=>addMessageBubble(role,part,kind,images,timestamp,group));
+  if(group&&regeneratable&&messageId)document.querySelectorAll('.regenerate').forEach(item=>item.remove());
+  const rows=parts.map(part=>addMessageBubble(role,part,kind,images,timestamp,group));
+  if(group&&regeneratable)attachRegenerate(group,messageId,debugOnly);
+  return rows;
 }
 // New replies are paced; session restoration continues to use addMessage directly.
-async function sendReply(content,timestamp=null){
+async function sendReply(content,timestamp=null,messageId=null,regeneratable=true){
   const parts=splitReply(content),group={};
+  if(regeneratable&&messageId)document.querySelectorAll('.regenerate').forEach(item=>item.remove());
   for(let i=0;i<parts.length;i++){
     if(i>0){
       activity.textContent='朝汐正在继续回复…';
@@ -103,14 +108,38 @@ async function sendReply(content,timestamp=null){
     }
     addMessageBubble('assistant',parts[i],'',[],timestamp,group);
   }
+  if(regeneratable&&messageId)attachRegenerate(group,messageId,true);
+  return group.element;
 }
 let displayTimezone='Asia/Shanghai';
 function formatTime(value){return value?new Intl.DateTimeFormat('zh-CN',{timeZone:displayTimezone,year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(value)):''}
 function addMessageBubble(role,content,kind='',images=[],timestamp=null,group=null){ $('#empty')?.remove();const row=document.createElement('div');row.className=`row ${role} ${kind}${role==='assistant'&&kind!=='system'&&isActionSegment(content)?' stage-direction':''}`;row.innerHTML=`<div class="bubble">${kind==='system'?'<div class="badge">系统消息</div>':''}${markdown(content)}<time class="message-time">${escapeHtml(formatTime(timestamp||new Date().toISOString()))}</time></div>`;if(role==='assistant'&&kind!=='system'&&voiceEnabled){const b=document.createElement('button');b.className='speak';b.textContent='朗读';b.onclick=()=>speakText(content,b);row.querySelector('.bubble').append(b)}for(const src of images){if(!/^data:image\/(png|jpeg|webp);base64,/.test(src))continue;const image=document.createElement('img');image.className='attachment';image.alt='用户发送的图片';image.src=src;image.onload=()=>{messages.scrollTop=messages.scrollHeight};row.querySelector('.bubble').append(image)}if(group){if(!group.element){group.element=document.createElement('div');group.element.className='message-group';messages.append(group.element)}group.element.append(row)}else messages.append(row);messages.scrollTop=messages.scrollHeight;return row }
+function attachRegenerate(group,messageId,debugOnly=true){
+  if(!group?.element||!messageId)return;
+  const button=document.createElement('button');button.type='button';button.className='regenerate';button.textContent='🔄';button.title='重新生成这条回复';button.setAttribute('aria-label','重新生成这条回复');
+  if(debugOnly){button.classList.add('normal-regenerate');button.hidden=!normalRegenerationEnabled}
+  button.onclick=()=>regenerateReply(messageId,group.element);group.element.append(button);
+}
+async function regenerateReply(messageId,oldGroup){
+  if(busy||pendingInput.length){showActivityHint('请等当前消息处理完成');return}
+  busy=true;$('#clear').disabled=true;document.querySelectorAll('.regenerate').forEach(item=>item.disabled=true);activity.textContent='正在重新生成…';
+  try{
+    const data=await request('/api/chat/regenerate',{method:'POST',body:JSON.stringify({message_id:messageId})});
+    oldGroup.remove();await sendReply(data.content,data.timestamp,data.message_id,true);
+    if(data.permission)permissionCard(data.permission);
+    debug.textContent=JSON.stringify(data.activity,null,2);void setupCapabilities();void setupDiagnostics();
+  }catch(e){showActivityHint(e.message)}
+  finally{document.querySelectorAll('.regenerate').forEach(item=>item.disabled=false);finishTurn();input.focus()}
+}
 function permissionCard(p){const box=document.createElement('div');box.className='permission';box.innerHTML=`<h3>朝汐想执行</h3><div>${escapeHtml(p.action)}</div><p>权限：${escapeHtml(p.permission.toUpperCase())}</p><p>范围：${escapeHtml(p.resource_scope)}</p><div class="actions"><button class="allow">允许</button><button class="deny">拒绝</button></div>`;messages.append(box);box.querySelector('.allow').onclick=()=>resolve(p.confirmation_id,'approve',box);box.querySelector('.deny').onclick=()=>resolve(p.confirmation_id,'deny',box);messages.scrollTop=messages.scrollHeight}
 async function request(url,options={}){const r=await fetch(url,{headers:{'Content-Type':'application/json'},...options});const data=await r.json();if(!r.ok)throw new Error(data.detail||'请求失败');return data}
 let INPUT_MERGE_MS=15000;
 let pendingInput=[], inputTimer=null;
+async function addRetryableError(content){
+  let messageId=null;
+  try{const data=await request('/api/session');const latest=[...(data.messages||[])].reverse().find(item=>item.role==='user'||item.role==='assistant');messageId=latest?.message_id||null}catch{}
+  addMessage('assistant',content,'',[],null,messageId,!!messageId,false);
+}
 function recallInput(item){
   const index=pendingInput.indexOf(item);if(index<0)return;
   pendingInput.splice(index,1);item.row.remove();
@@ -179,16 +208,16 @@ async function flushInput(){
   busy=true;$('#clear').disabled=true;activity.textContent='正在思考…';
   try{
     const data=await request('/api/chat',{method:'POST',body:JSON.stringify({message:text,images,display_parts})});
-    await sendReply(data.content,data.timestamp);
+    await sendReply(data.content,data.timestamp,data.message_id);
     if(data.permission)permissionCard(data.permission);
     debug.textContent=JSON.stringify(data.activity,null,2);void setupCapabilities();void setupDiagnostics();
-  }catch(e){addMessage('assistant',e.message)}
+  }catch(e){await addRetryableError(e.message)}
   finally{finishTurn();input.focus()}
 }
-async function resolve(id,action,box){if(busy)return;busy=true;$('#clear').disabled=true;box.querySelectorAll('button').forEach(b=>b.disabled=true);activity.textContent=action==='approve'?'正在执行已允许的操作…':'正在处理拒绝…';try{const data=await request(`/api/permission/${id}/${action}`,{method:'POST'});box.remove();await sendReply(data.content,data.timestamp);if(data.permission)permissionCard(data.permission);debug.textContent=JSON.stringify(data.activity,null,2);void setupDiagnostics()}catch(e){addMessage('assistant',e.message)}finally{finishTurn()}}
+async function resolve(id,action,box){if(busy)return;busy=true;$('#clear').disabled=true;box.querySelectorAll('button').forEach(b=>b.disabled=true);activity.textContent=action==='approve'?'正在执行已允许的操作…':'正在处理拒绝…';try{const data=await request(`/api/permission/${id}/${action}`,{method:'POST'});box.remove();await sendReply(data.content,data.timestamp,data.message_id);if(data.permission)permissionCard(data.permission);debug.textContent=JSON.stringify(data.activity,null,2);void setupDiagnostics()}catch(e){addMessage('assistant',e.message)}finally{finishTurn()}}
 async function setupVoice(){try{const v=await request('/api/voice/status');voiceEnabled=!!v.enabled;mic.style.display=voiceEnabled?'block':'none'}catch(e){voiceEnabled=false}}
 async function toggleVoice(){if(busy)return;mic.disabled=true;try{if(!voiceRecording){await request('/api/voice/record/start',{method:'POST'});voiceRecording=true;mic.classList.add('recording');mic.textContent='■';activity.textContent='正在录音… 点击方块停止'}else{activity.textContent='正在识别…';const data=await request('/api/voice/record/stop',{method:'POST'});voiceRecording=false;mic.classList.remove('recording');mic.textContent='●';voiceText.value=data.text||'';voiceReview.style.display='block';activity.textContent='请检查识别结果'}}catch(e){voiceRecording=false;mic.classList.remove('recording');mic.textContent='●';showActivityHint(e.message)}finally{mic.disabled=false}}
-async function confirmVoice(){const text=voiceText.value.trim();if(!text||busy)return;busy=true;$('#clear').disabled=true;voiceReview.style.display='none';addMessage('user',text);activity.textContent='正在思考…';try{const data=await request('/api/voice/transcript/confirm',{method:'POST',body:JSON.stringify({text})});await sendReply(data.content,data.timestamp);if(data.permission)permissionCard(data.permission);debug.textContent=JSON.stringify(data.activity,null,2);void setupDiagnostics()}catch(e){addMessage('assistant',e.message)}finally{finishTurn();input.focus()}}
+async function confirmVoice(){const text=voiceText.value.trim();if(!text||busy)return;busy=true;$('#clear').disabled=true;voiceReview.style.display='none';addMessage('user',text);activity.textContent='正在思考…';try{const data=await request('/api/voice/transcript/confirm',{method:'POST',body:JSON.stringify({text})});await sendReply(data.content,data.timestamp,data.message_id);if(data.permission)permissionCard(data.permission);debug.textContent=JSON.stringify(data.activity,null,2);void setupDiagnostics()}catch(e){addMessage('assistant',e.message)}finally{finishTurn();input.focus()}}
 async function cancelVoice(){await request('/api/voice/cancel',{method:'POST'});voiceRecording=false;mic.classList.remove('recording');mic.textContent='●';voiceReview.style.display='none';voiceText.value='';activity.textContent=''}
 async function speakText(text,button){try{if(speechActive){await request('/api/voice/speak/stop',{method:'POST'});speechActive=false;button.textContent='朗读'}else{await request('/api/voice/speak',{method:'POST',body:JSON.stringify({text})});speechActive=true;button.textContent='停止朗读'}}catch(e){showActivityHint(e.message)}}
 $('#attachImage').onclick=()=>$('#imageFiles').click();
@@ -198,7 +227,7 @@ send.onclick=submit;input.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isCo
 mic.onclick=toggleVoice;$('#voiceConfirm').onclick=confirmVoice;$('#voiceCancel').onclick=cancelVoice;$('#voiceRetry').onclick=async()=>{await cancelVoice();await toggleVoice()};
 $('#clear').onclick=async()=>{if(busy||imagesReading||pendingInput.length)return;await request('/api/session',{method:'DELETE'});draftImages=[];renderImagePreview();messages.innerHTML='<div id="empty" class="empty"><b>会话已清空。</b>重新开始吧。</div>';debug.textContent='Session cleared'};
 const seenDeliveries=new Set(), deliveryQueue=[];let historyReady=false;
-async function restore(){try{const data=await request('/api/session');data.messages.forEach(m=>{if(m.delivery_id)seenDeliveries.add(m.delivery_id);if(m.kind==='system')return;if(m.role==='user'&&m.display_parts?.length){let offset=0;for(const p of m.display_parts){addMessage('user',p.text,'',(m.images||[]).slice(offset,offset+p.image_count),p.timestamp);offset+=p.image_count}}else addMessage(m.role,m.content,m.kind==='system'?'system':'',m.images||[],m.timestamp)});const p=await request('/api/proactive');p.deliveries.filter(d=>['delivered','acknowledged'].includes(d.status)).reverse().forEach(d=>showNotice(d))}catch(e){$('#connection').textContent='Core 暂时不可用'}finally{historyReady=true;void drainDeliveries()}}
+async function restore(){try{const data=await request('/api/session');data.messages.forEach(m=>{if(m.delivery_id)seenDeliveries.add(m.delivery_id);if(m.kind==='system')return;if(m.role==='user'&&m.display_parts?.length){let offset=0;for(const p of m.display_parts){addMessage('user',p.text,'',(m.images||[]).slice(offset,offset+p.image_count),p.timestamp);offset+=p.image_count}}else addMessage(m.role,m.content,m.kind==='system'?'system':'',m.images||[],m.timestamp,m.message_id,m.regeneratable)});const p=await request('/api/proactive');p.deliveries.filter(d=>['delivered','acknowledged'].includes(d.status)).reverse().forEach(d=>showNotice(d))}catch(e){$('#connection').textContent='Core 暂时不可用'}finally{historyReady=true;void drainDeliveries()}}
 function interactionBadgeView(state){
   if(state==='ACTIVE')return {label:'活跃 · 还在聊呢',className:'active',title:'当前对话仍在持续'};
   if(state==='SEMI_ACTIVE')return {label:'半活跃 · 就在附近',className:'semi-active',title:'朝汐醒着，在附近'};
@@ -216,7 +245,7 @@ let setupNoticeShown=false;
 async function setupDiagnostics(){try{const data=await request('/api/diagnostics');debug.textContent=JSON.stringify(data,null,2);renderInteractionBadge(data.presence);if(data.startup&&data.startup.status!=='ready'){const model=data.startup.checks?.model||{};$('#connection').textContent='需要完成首次配置';input.placeholder='完成配置后即可和朝汐对话';if(!setupNoticeShown){addMessage('assistant',`朝汐尚未完成启动配置。${model.action||'请运行 python main.py --doctor 查看具体问题。'}`);setupNoticeShown=true}}}catch(e){renderInteractionBadge(null);$('#connection').textContent='启动诊断不可用'}}
 async function setupCapabilities(){try{const data=await request('/api/suggestions');displayTimezone=data.timezone||displayTimezone;const box=$('#capabilities');box.innerHTML='';(data.suggestions||[]).slice(0,4).forEach(example=>{const item=document.createElement('button');item.type='button';item.className='prompt-card';item.textContent=example;item.onclick=()=>{input.value=example;input.focus()};box.append(item)});if(!box.children.length)box.innerHTML='<div class="sub">当前没有可展示的能力。</div>'}catch(e){$('#capabilities').innerHTML='<div class="sub">建议暂时不可用。</div>'}}
 let pendingDeliveryTimer=null;
-async function openDelivery(id){clearTimeout(pendingDeliveryTimer);if(busy||pendingInput.length){activity.textContent='当前回复结束后打开系统消息…';pendingDeliveryTimer=setTimeout(()=>openDelivery(id),500);return}try{await request('/api/proactive/'+encodeURIComponent(id)+'/activate',{method:'POST'});const data=await request('/api/session');messages.replaceChildren();data.messages.forEach(m=>{if(m.delivery_id)seenDeliveries.add(m.delivery_id);if(m.kind==='system')return;if(m.role==='user'&&m.display_parts?.length){let offset=0;for(const p of m.display_parts){addMessage('user',p.text,'',(m.images||[]).slice(offset,offset+p.image_count),p.timestamp);offset+=p.image_count}}else addMessage(m.role,m.content,m.kind==='system'?'system':'',m.images||[],m.timestamp)});debug.textContent=JSON.stringify(await request('/api/proactive/'+encodeURIComponent(id)+'/inspect'),null,2);const n=document.getElementById('notice-'+id);if(n)n.querySelector('.badge').textContent='已读';void setupCapabilities();input.focus()}catch(e){showActivityHint('暂时无法打开系统消息，请稍后重试')}}
+async function openDelivery(id){clearTimeout(pendingDeliveryTimer);if(busy||pendingInput.length){activity.textContent='当前回复结束后打开系统消息…';pendingDeliveryTimer=setTimeout(()=>openDelivery(id),500);return}try{await request('/api/proactive/'+encodeURIComponent(id)+'/activate',{method:'POST'});const data=await request('/api/session');messages.replaceChildren();data.messages.forEach(m=>{if(m.delivery_id)seenDeliveries.add(m.delivery_id);if(m.kind==='system')return;if(m.role==='user'&&m.display_parts?.length){let offset=0;for(const p of m.display_parts){addMessage('user',p.text,'',(m.images||[]).slice(offset,offset+p.image_count),p.timestamp);offset+=p.image_count}}else addMessage(m.role,m.content,m.kind==='system'?'system':'',m.images||[],m.timestamp,m.message_id,m.regeneratable)});debug.textContent=JSON.stringify(await request('/api/proactive/'+encodeURIComponent(id)+'/inspect'),null,2);const n=document.getElementById('notice-'+id);if(n)n.querySelector('.badge').textContent='已读';void setupCapabilities();input.focus()}catch(e){showActivityHint('暂时无法打开系统消息，请稍后重试')}}
 function showNotice(d){showProactiveNote(d);if(d.kind!=='system'&&!String(d.event_type||'').startsWith('system.'))return;if(!['delivered','acknowledged'].includes(d.status)||document.getElementById('notice-'+d.delivery_id))return;const n=document.createElement('button');n.id='notice-'+d.delivery_id;n.className='notice';n.style.cssText='display:block;width:100%;text-align:left';n.innerHTML=`<div class="badge">${d.status==='acknowledged'?'已读':'未读'}</div><div>${markdown(d.content)}</div><small>${escapeHtml(formatTime(d.delivered_at||d.available_at))}</small>`;n.onclick=()=>openDelivery(d.delivery_id);$('#notices').querySelector('.sub')?.remove();$('#notices').prepend(n);while($('#notices').children.length>100)$('#notices').lastElementChild.remove()}
 function receiveDelivery(d){
   showProactiveNote(d);
@@ -249,6 +278,7 @@ async function setupInterfaceSettings(){
   applySettings();
 }
 $('#mergeRange').oninput=applySettings;$('#replyRange').oninput=e=>applySettings(e);$('#mergeRange').onchange=e=>applySettings(e,true);$('#replyRange').onchange=e=>applySettings(e,true);applySettings();
+const regenerateDebugToggle=$('#regenerateDebugToggle');regenerateDebugToggle.checked=false;regenerateDebugToggle.onchange=e=>{normalRegenerationEnabled=e.target.checked;document.querySelectorAll('.normal-regenerate').forEach(button=>button.hidden=!normalRegenerationEnabled)};
 $('#poke').onclick=async()=>{if(busy||pendingInput.length){$('#pokeStatus').textContent='请等当前消息处理完成';return}$('#poke').disabled=true;try{const r=await request('/api/proactive/active/poke',{method:'POST'});$('#pokeStatus').textContent=r.delivered?'已投递':r.trace?.model_diagnostics?.provider_error_code||r.trace?.model_error||r.trace?.gate_reason||'本次选择沉默';void setupDiagnostics()}catch(e){$('#pokeStatus').textContent=e.message}finally{$('#poke').disabled=false}};
 $('#restartCore').onclick=async()=>{
   if(busy||pendingInput.length){$('#pokeStatus').textContent='请等当前消息处理完成';return}

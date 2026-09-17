@@ -30,7 +30,7 @@ class ToolRegistry:
     def usable(self, name: str) -> bool:
         return any(item["name"] == name and item["enabled"] and item["available"] for item in self.manifest())
 
-    def update_tools(self, *, name=None, group=None, enabled=None, force_expose=None, reset=False):
+    def update_tools(self, *, name=None, group=None, enabled=None, force_expose=None, confirm_write=None, reset=False):
         if name is not None:
             self.get(name)
             names = [name]
@@ -40,7 +40,17 @@ class ToolRegistry:
                 raise ToolNotFoundError("钥匙组不存在")
         else:
             names = set(self._tools) | set(self.control.overrides)
-        self.control.update(names, enabled=enabled, force_expose=force_expose, reset=reset)
+        self.control.update(
+            names,
+            enabled=enabled,
+            force_expose=force_expose,
+            confirm_write=confirm_write,
+            reset=reset,
+        )
+
+    def write_confirmation_required(self, name: str) -> bool:
+        """Per-tool WRITE confirmation defaults to on."""
+        return self.control.overrides.get(name, {}).get("confirm_write", True)
 
     @staticmethod
     def _validate(tool: Tool) -> None:

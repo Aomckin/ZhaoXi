@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from enum import StrEnum
 import re
 from typing import Any
+from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -32,6 +33,7 @@ def strip_echoed_timeline_header(content: str) -> str:
 class Message(BaseModel):
     """Provider-independent message used throughout the core."""
 
+    message_id: str = Field(default_factory=lambda: uuid4().hex)
     role: Role
     content: str | None = None
     images: ImageList = Field(default_factory=list)

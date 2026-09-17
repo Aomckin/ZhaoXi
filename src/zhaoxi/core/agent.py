@@ -376,6 +376,32 @@ class ZhaoxiAgent:
         except TimeoutError as exc:
             raise AgentLoopError(f"请求超过 {self.timeout_seconds:g} 秒，已停止。") from exc
 
+    async def resume_current_turn(self, user_message: str) -> AgentResponse:
+        """Continue an interrupted model turn without replaying completed tools."""
+        request_id = uuid4().hex
+        memories = []
+        if self.context_builder.memory_retriever:
+            try:
+                memories = await self.context_builder.memory_retriever.retrieve(user_message)
+            except Exception as exc:
+                log_internal_failure(
+                    "request=%s memory retrieval failed while resuming",
+                    request_id,
+                    exc=exc,
+                )
+        try:
+            return await asyncio.wait_for(
+                self._run_loop(
+                    request_id,
+                    memories,
+                    user_message,
+                    discovery=getattr(self, "_tool_discovery_state", None),
+                ),
+                timeout=self.timeout_seconds,
+            )
+        except TimeoutError as exc:
+            raise AgentLoopError(f"请求超过 {self.timeout_seconds:g} 秒，已停止。") from exc
+
     def _recent_tool_context(self, limit: int = 6) -> list[str]:
         return [
             message.content[:600]
@@ -439,7 +465,12 @@ class ZhaoxiAgent:
             except ProviderError as exc:
                 log_internal_failure("request=%s provider error", request_id, exc=exc)
                 raise AgentLoopError(
-                    "模型服务当前不可访问，请稍后重试；这次没有执行任何新的工具操作。"
+                    "模型服务当前不可访问，请稍后重试；"
+                    + (
+                        "已经完成的工具操作会保留，重新生成只会继续生成回复。"
+                        if tool_called
+                        else "这次没有执行任何新的工具操作。"
+                    )
                 ) from exc
 
             if not response.tool_calls:

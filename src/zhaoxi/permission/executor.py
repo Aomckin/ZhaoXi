@@ -3,6 +3,7 @@
 import hashlib
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from zhaoxi.errors import ToolNotFoundError
@@ -16,6 +17,7 @@ from zhaoxi.permission.models import (
     SideEffect,
 )
 from zhaoxi.tools.base import ToolResult
+from zhaoxi.tools.metadata import TOOL_GROUPS
 from zhaoxi.tools.registry import ToolRegistry
 from pydantic import ValidationError
 from zhaoxi.reliability.security import UnsafeToolArgument, validate_tool_arguments
@@ -39,10 +41,12 @@ class ToolExecutor:
         gateway: PermissionGateway | None = None,
         *,
         max_output_chars: int = 12_000,
+        filesystem_write_roots: tuple[Path, ...] = (),
     ) -> None:
         self.registry = registry
         self.gateway = gateway or PermissionGateway()
         self.max_output_chars = max_output_chars
+        self.filesystem_write_roots = filesystem_write_roots
 
     async def execute(
         self,
@@ -77,7 +81,12 @@ class ToolExecutor:
         if permission is not PermissionLevel.READ and side_effects == frozenset({SideEffect.NONE}):
             return ToolExecution(ToolResult(success=False, content="工具权限声明无效。", error="invalid_tool_policy"))
         try:
-            validate_tool_arguments(arguments)
+            write_roots = (
+                self.filesystem_write_roots
+                if tool.group == "filesystem_write" or name in TOOL_GROUPS["filesystem_write"]
+                else ()
+            )
+            validate_tool_arguments(arguments, allowed_path_roots=write_roots)
         except UnsafeToolArgument as exc:
             return ToolExecution(
                 ToolResult(success=False, content="工具参数触发安全限制。", error=str(exc))
@@ -112,7 +121,14 @@ class ToolExecutor:
         )
         if approved_batch_confirmation_id is not None:
             self.gateway.grant_batch_member(approved_batch_confirmation_id, request)
-        decision, confirmation = self.gateway.evaluate(request)
+        decision, confirmation = self.gateway.evaluate(
+            request,
+            confirm_write=(
+                self.registry.write_confirmation_required(name)
+                if permission is PermissionLevel.WRITE
+                else None
+            ),
+        )
         if confirmation:
             return ToolExecution(None, request=request, confirmation=confirmation)
         if decision.status == PermissionStatus.DENY:

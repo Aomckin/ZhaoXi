@@ -43,9 +43,25 @@ test('reply completion does not shorten a pending debounce window',async()=>{
 });
 test('empty input is ignored; errors release busy state without automatic retries',async()=>{
   const s=setup();s.submit('  ');assert.equal(s.timers.size,0);
-  s.context.request=async()=>{throw Error('离线')};s.submit('你好');await s.fire();
+  s.context.request=async url=>{
+    if(url==='/api/session')return {messages:[{role:'user',message_id:'failed-user'}]};
+    throw Error('离线');
+  };s.submit('你好');await s.fire();
   assert.equal(s.context.busy,false);assert.equal(s.clear.disabled,false);
-  assert.deepEqual(s.bubbles.at(-1),['assistant','离线']);assert.equal(s.timers.size,0);
+  assert.deepEqual(s.bubbles.at(-1).slice(0,2),['assistant','离线']);
+  assert.deepEqual(s.bubbles.at(-1).slice(5),['failed-user',true,false]);assert.equal(s.timers.size,0);
+});
+
+test('errors after a tool call attach retry to the interrupted assistant turn',async()=>{
+  const s=setup();s.context.request=async url=>{
+    if(url==='/api/session')return {messages:[
+      {role:'user',message_id:'failed-user'},
+      {role:'assistant',content:'',message_id:'interrupted-assistant'},
+    ]};
+    throw Error('模型服务当前不可访问');
+  };
+  s.submit('记住这个');await s.fire();
+  assert.deepEqual(s.bubbles.at(-1).slice(5),['interrupted-assistant',true,false]);
 });
 
 test('image-only and following text merge without losing the image',async()=>{

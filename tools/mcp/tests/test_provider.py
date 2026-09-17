@@ -1,5 +1,6 @@
 from pathlib import Path
 import asyncio
+import json
 import shutil
 
 from tools.mcp.provider import MCPServerSpec, MCPToolProvider
@@ -32,7 +33,9 @@ def test_default_servers_use_an_isolated_filesystem_sandbox(monkeypatch, tmp_pat
     monkeypatch.delenv("MCP_PLAYWRIGHT_ENABLED", raising=False)
     root = Path(__file__).parents[1]
 
-    specs = selected_server_specs(root, {})
+    specs = selected_server_specs(root, {
+        "filesystem_access_path": str(tmp_path / "not-configured.json"),
+    })
 
     assert {spec.server_id for spec in specs} == {
         "filesystem",
@@ -52,7 +55,10 @@ def test_filesystem_directories_and_playwright_have_independent_switches(monkeyp
     monkeypatch.setenv("MCP_PLAYWRIGHT_ENABLED", "true")
     root = Path(__file__).parents[1]
 
-    specs = selected_server_specs(root, {"servers": "filesystem,memory"})
+    specs = selected_server_specs(root, {
+        "servers": "filesystem,memory",
+        "filesystem_access_path": str(tmp_path / "not-configured.json"),
+    })
 
     assert {spec.server_id for spec in specs} == {"filesystem", "memory", "playwright"}
     filesystem = next(spec for spec in specs if spec.server_id == "filesystem")
@@ -61,6 +67,46 @@ def test_filesystem_directories_and_playwright_have_independent_switches(monkeyp
     assert "--extension" in playwright.arguments
     assert "--headless" not in playwright.arguments
     assert "--browser" not in playwright.arguments
+
+
+def test_saved_filesystem_directories_override_default_sandbox(tmp_path):
+    first = tmp_path / "资料"
+    second = tmp_path / "项目"
+    first.mkdir()
+    second.mkdir()
+    access = tmp_path / "filesystem-access.json"
+    access.write_text(
+        json.dumps({"directories": [str(first), str(second)]}), encoding="utf-8"
+    )
+    root = Path(__file__).parents[1]
+
+    specs = selected_server_specs(root, {
+        "servers": "filesystem",
+        "filesystem_access_path": str(access),
+    })
+
+    filesystem = next(spec for spec in specs if spec.server_id == "filesystem")
+    assert filesystem.arguments[1:] == (str(first.resolve()), str(second.resolve()))
+
+
+def test_separate_read_and_write_directories_are_both_exposed_to_server(tmp_path):
+    readable = tmp_path / "资料"
+    writable = readable / "可写"
+    writable.mkdir(parents=True)
+    access = tmp_path / "filesystem-access.json"
+    access.write_text(json.dumps({
+        "read_directories": [str(readable)],
+        "write_directories": [str(writable)],
+    }), encoding="utf-8")
+    root = Path(__file__).parents[1]
+
+    specs = selected_server_specs(root, {
+        "servers": "filesystem",
+        "filesystem_access_path": str(access),
+    })
+
+    filesystem = next(spec for spec in specs if spec.server_id == "filesystem")
+    assert filesystem.arguments[1:] == (str(readable.resolve()), str(writable.resolve()))
 
 
 def agent_settings(tmp_path):

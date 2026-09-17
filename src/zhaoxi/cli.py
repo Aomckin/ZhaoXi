@@ -53,6 +53,7 @@ from zhaoxi.proactive import (
 )
 from zhaoxi.tools.builtin import create_builtin_tools
 from zhaoxi.tools.registry import ToolRegistry
+from zhaoxi.tools.filesystem_access import load_filesystem_access
 from zhaoxi.tools.packages import (
     create_package_tool_providers,
     create_package_tools,
@@ -185,6 +186,8 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     for package in discovered_packages:
         try:
             config = config_for_package(package.package_id)
+            if package.package_id == "mcp-tool":
+                config.setdefault("filesystem_access_path", settings.filesystem_access_path)
             enabled = package_enabled(config)
             declaration = declared_capabilities(package)
             requirement = str(getattr(package, "requires_sdk", ""))
@@ -295,6 +298,12 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         registry,
         gateway,
         max_output_chars=settings.permission_max_tool_output_chars,
+        filesystem_write_roots=tuple(
+            Path(item)
+            for item in load_filesystem_access(Path(settings.filesystem_access_path))[
+                "write_directories"
+            ]
+        ),
     )
     session_store = SQLiteSessionStore(
         settings.session_db_path, max_messages=settings.max_context_messages

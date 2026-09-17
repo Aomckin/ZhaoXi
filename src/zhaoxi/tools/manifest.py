@@ -6,7 +6,9 @@ from pathlib import Path
 from threading import RLock
 
 from zhaoxi.permission.models import PermissionLevel, SideEffect
-from zhaoxi.tools.metadata import GROUP_LABELS, PERSISTENT_CORE, TOOL_GROUPS
+from zhaoxi.tools.metadata import (
+    GROUP_LABELS, PERSISTENT_CORE, TOOL_GROUPS, TOOL_LABELS, TOOL_USAGE,
+)
 from zhaoxi.tools.base import Tool
 
 
@@ -18,13 +20,13 @@ class ToolControl:
         if self.path and self.path.exists():
             value = json.loads(self.path.read_text(encoding="utf-8"))
             if not isinstance(value, dict) or any(
-                not isinstance(v, dict) or any(k not in {"enabled", "force_expose"} or type(b) is not bool for k, b in v.items())
+                not isinstance(v, dict) or any(k not in {"enabled", "force_expose", "confirm_write"} or type(b) is not bool for k, b in v.items())
                 for v in value.values()
             ):
                 raise ValueError("无效的 Tool Override 配置")
             self.overrides = value
 
-    def update(self, names, *, enabled=None, force_expose=None, reset=False):
+    def update(self, names, *, enabled=None, force_expose=None, confirm_write=None, reset=False):
         with self.lock:
             updated = {name: dict(value) for name, value in self.overrides.items()}
             for name in names:
@@ -32,7 +34,7 @@ class ToolControl:
                     updated.pop(name, None)
                 else:
                     value = updated.setdefault(name, {})
-                    for key, setting in (("enabled", enabled), ("force_expose", force_expose)):
+                    for key, setting in (("enabled", enabled), ("force_expose", force_expose), ("confirm_write", confirm_write)):
                         if setting is not None:
                             if type(setting) is not bool:
                                 raise ValueError("Tool 开关必须为布尔值")
@@ -58,12 +60,21 @@ def tool_metadata(tool, source: str, override: dict, exposed: set[str]) -> dict:
     except Exception:
         available = False
     enabled = override.get("enabled", getattr(tool, "default_enabled", True))
+    write_capable = (
+        tool.permission == PermissionLevel.WRITE
+        or type(tool).permission_for is not Tool.permission_for
+    )
+    raw_summary = getattr(tool, "summary", tool.description.split("。", 1)[0])
     return {
         "name": tool.name, "group": group, "source": source,
-        "summary": getattr(tool, "summary", tool.description.split("。", 1)[0]),
+        "display_name": TOOL_LABELS.get(tool.name, tool.name),
+        "summary": raw_summary,
+        "usage": TOOL_USAGE.get(tool.name, str(raw_summary).removeprefix(f"[{source}] ")[:160]),
         "registered": True, "enabled": enabled, "available": available,
         "persistent": getattr(tool, "persistent", tool.name in PERSISTENT_CORE),
         "force_expose": override.get("force_expose", False),
+        "confirm_write": override.get("confirm_write", True),
+        "write_capable": write_capable,
         "exposed": tool.name in exposed and enabled and available,
         "read_only": type(tool).permission_for is Tool.permission_for and tool.permission == PermissionLevel.READ and tool.side_effects == frozenset({SideEffect.NONE}),
         "destructive": tool.permission in {PermissionLevel.DELETE, PermissionLevel.DANGEROUS} or SideEffect.DATA_DELETION in tool.side_effects,

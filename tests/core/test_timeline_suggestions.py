@@ -55,6 +55,58 @@ def test_temporal_context_treats_cross_day_messages_as_points_not_an_interval():
     assert context[1].content == '晚上好'
 
 
+def test_model_context_reduces_repeated_stage_directions_without_mutating_history():
+    from zhaoxi.core.conversation import Conversation
+
+    original = (
+        '“先看看。”\n（耳朵动了动。）\n“我在找。”\n（尾巴晃了晃。）\n'
+        '“找到了。”\n（朝汐一下抬起头，眼睛亮了起来。）\n“就是这份。”\n（顿了顿。）'
+    )
+    conversation = Conversation()
+    conversation.add_assistant(original)
+    context = ContextBuilder('朝汐').build(conversation)
+    model_text = context[1].content
+    assert model_text.count('（') == 1
+    assert '眼睛亮了起来' in model_text
+    assert conversation.messages[0].content == original
+
+
+def test_history_normalization_preserves_single_meaningful_action_and_parenthetical_prose():
+    from zhaoxi.core.conversation import Conversation
+
+    content = '（朝汐惊讶得耳朵一下竖了起来。）\n真的过了？！\n接口返回 200（不是缓存结果）。'
+    conversation = Conversation()
+    conversation.add_assistant(content)
+    model_text = ContextBuilder('朝汐').build(conversation)[1].content
+    assert model_text == content
+
+
+def test_technical_history_drops_repeated_filler_actions_only_in_model_context():
+    from zhaoxi.core.conversation import Conversation
+
+    content = '（耳朵动了动。）\n日志里是数据库超时。\n（尾巴晃了晃。）\n先检查连接池配置。'
+    conversation = Conversation()
+    conversation.add_assistant(content)
+    model_text = ContextBuilder('朝汐').build(conversation)[1].content
+    assert '耳朵动了动' not in model_text and '尾巴晃了晃' not in model_text
+    assert '日志里是数据库超时。' in model_text
+    assert conversation.messages[0].content == content
+
+
+def test_repeated_old_turns_do_not_raise_model_visible_action_density():
+    from zhaoxi.core.conversation import Conversation
+
+    conversation = Conversation()
+    for index in range(4):
+        conversation.add_assistant(
+            f'第{index}轮。\n（耳朵动了动。）\n继续说。\n（尾巴晃了晃。）\n'
+            '突然听懂了。\n（朝汐一下抬起头，眼睛亮了起来。）'
+        )
+    context = ContextBuilder('朝汐').build(conversation)
+    assert all((item.content or '').count('（') <= 1 for item in context[1:])
+    assert all((item.content or '').count('（') == 3 for item in conversation.messages)
+
+
 async def test_old_activation_text_is_migrated_on_session_load(tmp_path):
     store = SQLiteSessionStore(tmp_path / 'sessions.db')
     session = await store.create()

@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 
 from tools.mcp.provider import MCPServerSpec
+from zhaoxi.tools.filesystem_access import filesystem_server_directories, load_filesystem_access
 
 
 DEFAULT_SERVER_IDS = frozenset({"filesystem", "everything-search", "fetch", "time"})
@@ -40,6 +41,12 @@ def _filesystem_allowed_directories(root: Path, config: dict[str, object]) -> tu
         "filesystem_allowed_dirs",
         "MCP_FILESYSTEM_ALLOWED_DIRS",
     )
+    access_path = Path(str(
+        config.get("filesystem_access_path") or ".zhaoxi/filesystem-access.json"
+    )).expanduser()
+    if access_path.is_file():
+        saved = filesystem_server_directories(load_filesystem_access(access_path))
+        configured = os.pathsep.join(saved)
     if configured is None or not str(configured).strip():
         sandbox = root / "data" / "filesystem"
         sandbox.mkdir(parents=True, exist_ok=True)

@@ -27,10 +27,10 @@ class EmptyInput(BaseModel):
 
 
 class PreviewTool(Tool):
-    name = "job_application_preview"
-    group = "job_application"
+    name = "local_preview"
+    group = "preview"
     source = "local-preview"
-    description = "检查网申表单的本地演示钥匙"
+    description = "本地演示钥匙"
     default_enabled = False
     input_model = EmptyInput
 

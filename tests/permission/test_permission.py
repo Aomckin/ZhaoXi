@@ -9,7 +9,8 @@ from zhaoxi.models.types import ModelResponse, ToolCall
 from zhaoxi.permission.audit import InMemoryAuditSink
 from zhaoxi.permission.executor import ToolExecutor
 from zhaoxi.permission.gateway import PermissionGateway
-from zhaoxi.permission.models import InvocationOrigin, PermissionLevel, SideEffect
+from zhaoxi.permission.models import InvocationOrigin, PermissionLevel, PermissionStatus, SideEffect
+from zhaoxi.permission.policy import DefaultPermissionPolicy
 from zhaoxi.planner.models import GoalStatus
 from zhaoxi.planner.runtime import PlannerRuntime
 from zhaoxi.tools.base import Tool, ToolResult
@@ -18,6 +19,10 @@ from zhaoxi.tools.registry import ToolRegistry
 
 class WriteInput(BaseModel):
     value: str
+
+
+class PathInput(BaseModel):
+    path: str
 
 
 class WriteTool(Tool):
@@ -38,6 +43,18 @@ class WriteTool(Tool):
 class OtherWriteTool(WriteTool):
     name = "write_other"
     description = "写入另一类测试值。"
+
+
+class FilesystemWriteTool(Tool):
+    name = "mcp_filesystem_write_file"
+    description = "写文件。"
+    input_model = PathInput
+    permission = PermissionLevel.WRITE
+    side_effects = frozenset({SideEffect.LOCAL_STATE})
+    group = "filesystem_write"
+
+    async def execute(self, arguments):
+        return ToolResult(success=True, content="已写入。")
 
 
 class InjectionReadTool(Tool):
@@ -106,6 +123,80 @@ async def test_write_waits_for_confirmation_and_executes_exactly_once():
         "tool_execution_started",
         "tool_execution_succeeded",
     ]
+
+
+async def test_tool_can_disable_write_confirmation_without_disabling_write_policy():
+    registry = ToolRegistry()
+    tool = WriteTool()
+    registry.register(tool)
+    registry.update_tools(name=tool.name, confirm_write=False)
+    executor = ToolExecutor(registry, PermissionGateway())
+
+    completed = await executor.execute(
+        tool.name,
+        {"value": "无需逐次确认"},
+        request_id="write-no-confirm",
+        origin=InvocationOrigin.AGENT,
+    )
+
+    assert not completed.waiting_for_permission
+    assert completed.result.success
+    assert tool.values == ["无需逐次确认"]
+
+
+async def test_default_tool_setting_requires_confirmation_even_if_global_write_allows():
+    registry = ToolRegistry()
+    registry.register(WriteTool())
+    gateway = PermissionGateway(policy=DefaultPermissionPolicy({
+        PermissionLevel.WRITE: PermissionStatus.ALLOW,
+    }))
+
+    waiting = await ToolExecutor(registry, gateway).execute(
+        "write_value",
+        {"value": "仍需确认"},
+        request_id="write-default-confirm",
+        origin=InvocationOrigin.AGENT,
+    )
+
+    assert waiting.waiting_for_permission
+
+
+async def test_disabling_tool_confirmation_does_not_bypass_global_write_deny():
+    registry = ToolRegistry()
+    tool = registry.register(WriteTool())
+    registry.update_tools(name=tool.name, confirm_write=False)
+    gateway = PermissionGateway(policy=DefaultPermissionPolicy({
+        PermissionLevel.WRITE: PermissionStatus.DENY,
+    }))
+
+    denied = await ToolExecutor(registry, gateway).execute(
+        tool.name,
+        {"value": "不能写"},
+        request_id="write-denied",
+        origin=InvocationOrigin.AGENT,
+    )
+
+    assert denied.result.error == "default_deny"
+    assert tool.values == []
+
+
+async def test_filesystem_write_is_blocked_outside_configured_write_roots(tmp_path):
+    writable = tmp_path / "write"
+    writable.mkdir()
+    registry = ToolRegistry()
+    registry.register(FilesystemWriteTool())
+    executor = ToolExecutor(registry, filesystem_write_roots=(writable,))
+
+    blocked = await executor.execute(
+        "mcp_filesystem_write_file",
+        {"path": str(tmp_path / "outside.txt")},
+        request_id="fs-write",
+        origin=InvocationOrigin.AGENT,
+    )
+
+    assert not blocked.result.success
+    assert blocked.result.content == "工具参数触发安全限制。"
+    assert "允许范围" in blocked.result.error
 
 
 async def test_uncertain_write_is_not_automatically_replayable():

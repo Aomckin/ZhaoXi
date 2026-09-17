@@ -1,7 +1,0 @@
-{
-  "name": "com.zhaoxi.job_application",
-  "description": "Zhaoxi Job Application Browser Bridge",
-  "path": "ABSOLUTE_PATH_TO_HOST_LAUNCHER",
-  "type": "stdio",
-  "allowed_origins": ["chrome-extension://EXTENSION_ID/"]
-}

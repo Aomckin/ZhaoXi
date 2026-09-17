@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -205,6 +206,14 @@ def test_web_chat_session_and_clear():
         response = client.post("/api/chat", json={"message": "你是谁？"})
         assert response.status_code == 200
         assert response.json()["content"] == "你好，暗苟酱。"
+        assistant_id = response.json()["message_id"]
+        session = client.get("/api/session").json()["messages"]
+        assert len(session) == 2
+        assert session[-1]["message_id"] == assistant_id
+        assert session[-1]["regeneratable"] is True
+        regenerated = client.post("/api/chat/regenerate", json={"message_id": assistant_id})
+        assert regenerated.status_code == 200
+        assert regenerated.json()["message_id"] != assistant_id
         assert len(client.get("/api/session").json()["messages"]) == 2
         assert client.delete("/api/session").json() == {"status": "cleared"}
         assert client.get("/api/session").json()["messages"] == []
@@ -381,6 +390,20 @@ def test_web_shell_has_keyboard_and_live_status_accessibility_baseline():
     assert "if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing)" in page
     assert ".send,.mic{flex:0 0 34px;width:34px;height:34px" in page
     assert "#attachImage{flex:0 0 34px;width:34px;height:34px" in page
+    assert "button.textContent='🔄'" in page
+    assert "'/api/chat/regenerate'" in page
+    assert "aria-label','重新生成这条回复'" in page
+    assert "async function addRetryableError(content)" in page
+    assert 'id="regenerateDebugToggle" type="checkbox"' in page
+    assert "normalRegenerationEnabled=false" in page
+    assert "button.classList.add('normal-regenerate')" in page
+    with TestClient(app) as client:
+        tool_control = client.get("/static/tool-control.js").text
+    assert "写入前确认" in tool_control
+    assert "regenerateDebugToggle.checked=false" in page
+    assert 'id="toolCabinetPanel"><summary>钥匙柜</summary>' in page
+    assert 'id="debugPanel"><summary>Debug</summary>' in page
+    assert "Debug · 钥匙柜" not in page
 
 
 def test_core_restart_endpoint_schedules_desktop_restart():
@@ -511,3 +534,27 @@ def test_theme_assets_are_served_and_data_directory_is_not_exposed():
             assert response.status_code == 200
             assert media in response.headers['content-type']
         assert client.get('/static/golden%20field.png').status_code == 404
+
+
+async def test_event_stream_pushes_proactive_delivery_without_session_refresh():
+    app = create_app(agent=FakeAgent())
+    endpoint = next(
+        route.endpoint for route in app.routes if getattr(route, "path", None) == "/api/events"
+    )
+    response = await endpoint()
+    stream = response.body_iterator
+    assert "event: ready" in await anext(stream)
+
+    pending = asyncio.create_task(anext(stream))
+    await asyncio.sleep(0)
+    delivery = {
+        "delivery_id": "live-test",
+        "status": "delivered",
+        "content": "主动消息应立即出现",
+    }
+    await app.state.events.publish({"type": "proactive", "delivery": delivery})
+    event = await asyncio.wait_for(pending, timeout=1)
+    payload = json.loads(event.removeprefix("data: ").strip())
+
+    assert payload == {"type": "proactive", "delivery": delivery}
+    await stream.aclose()

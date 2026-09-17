@@ -11,6 +11,7 @@ from zhaoxi.interfaces import (
     MessageOrigin,
     UnifiedMessage,
 )
+from zhaoxi.models.types import ToolCall
 from zhaoxi.reliability import current_correlation
 
 
@@ -42,6 +43,20 @@ class CorrelationAgent(FakeAgent):
         return await super().run_natural(content)
 
 
+class InterruptedToolAgent(FakeAgent):
+    def __init__(self) -> None:
+        super().__init__()
+        self.resumed = 0
+
+    async def resume_current_turn(self, content: str):
+        self.resumed += 1
+        assert [item.role.value for item in self.conversation.messages] == [
+            "user", "assistant", "tool"
+        ]
+        self.conversation.add_assistant(f"续写：{content}")
+        return AgentResponse(content=f"续写：{content}", request_id="core-resumed", steps=1)
+
+
 async def test_gateway_is_idempotent_by_request_id():
     agent = FakeAgent()
     gateway = InterfaceGateway(agent)
@@ -57,7 +72,94 @@ async def test_gateway_is_idempotent_by_request_id():
     assert first == second
     assert first.request_id == "same-request"
     assert first.trace_id == "core-1"
+    assert first.message_id == agent.conversation.messages[-1].message_id
     assert agent.calls == 1
+
+
+async def test_regenerate_replaces_latest_reply_without_duplicating_user_turn():
+    agent = FakeAgent()
+    gateway = InterfaceGateway(agent)
+    original = await gateway.chat(UnifiedMessage(
+        request_id="first", channel=InterfaceChannel.WEB, content="再试一次"
+    ))
+    user = agent.conversation.messages[0].model_copy(deep=True)
+
+    regenerated = await gateway.regenerate(original.message_id, request_id="retry")
+
+    assert regenerated.request_id == "retry"
+    assert regenerated.message_id != original.message_id
+    assert [item.role.value for item in agent.conversation.messages] == ["user", "assistant"]
+    assert agent.conversation.messages[0].message_id == user.message_id
+    assert agent.conversation.messages[0].timestamp == user.timestamp
+    assert agent.calls == 2
+    session = gateway.session()
+    assert session[-1]["message_id"] == regenerated.message_id
+    assert session[-1]["regeneratable"] is True
+    assert session[0]["regeneratable"] is False
+
+
+async def test_regenerate_rejects_an_older_reply_and_keeps_history():
+    agent = FakeAgent()
+    gateway = InterfaceGateway(agent)
+    first = await gateway.chat(UnifiedMessage(channel="web", content="第一条"))
+    await gateway.chat(UnifiedMessage(channel="web", content="第二条"))
+    before = [item.message_id for item in agent.conversation.messages]
+
+    with pytest.raises(ValueError, match="最后一条"):
+        await gateway.regenerate(first.message_id, request_id="retry-old")
+
+    assert [item.message_id for item in agent.conversation.messages] == before
+
+
+async def test_regenerate_can_retry_latest_unanswered_user_after_provider_failure():
+    agent = FakeAgent()
+    unanswered = agent.conversation.add_user("刚才没回出来")
+    gateway = InterfaceGateway(agent)
+
+    regenerated = await gateway.regenerate(unanswered.message_id, request_id="retry-user")
+
+    assert regenerated.content == "回复：刚才没回出来"
+    assert [item.role.value for item in agent.conversation.messages] == ["user", "assistant"]
+    assert agent.conversation.messages[0].message_id == unanswered.message_id
+
+
+async def test_regenerate_resumes_after_completed_tool_without_replaying_it():
+    agent = InterruptedToolAgent()
+    user = agent.conversation.add_user("记住这个")
+    interrupted = agent.conversation.add_assistant(
+        "",
+        tool_calls=[ToolCall(id="call-1", name="remember_memory", arguments={"content": "x"})],
+    )
+    agent.conversation.add_tool(
+        '{"success":true}', tool_call_id="call-1", name="remember_memory"
+    )
+    gateway = InterfaceGateway(agent)
+
+    regenerated = await gateway.regenerate(interrupted.message_id, request_id="resume-tool")
+
+    assert regenerated.content == "续写：记住这个"
+    assert agent.resumed == 1
+    assert agent.conversation.messages[0].message_id == user.message_id
+    assert [item.role.value for item in agent.conversation.messages] == [
+        "user", "assistant", "tool", "assistant"
+    ]
+
+
+async def test_failed_regenerate_restores_original_conversation():
+    agent = FakeAgent()
+    gateway = InterfaceGateway(agent)
+    original = await gateway.chat(UnifiedMessage(channel="web", content="原问题"))
+    before = [(item.message_id, item.content) for item in agent.conversation.messages]
+
+    async def fail(_content):
+        raise RuntimeError("offline")
+
+    agent.run_natural = fail
+
+    with pytest.raises(RuntimeError, match="offline"):
+        await gateway.regenerate(original.message_id, request_id="retry-failed")
+
+    assert [(item.message_id, item.content) for item in agent.conversation.messages] == before
 
 
 async def test_gateway_serializes_same_session_requests():

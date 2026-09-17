@@ -4,6 +4,12 @@
 
 同日时间语义修复：普通对话正文不再注入逐条 timestamp header；仅在明确需要时注入独立 Temporal Context，并把聊天时间限制为离散 observation。Memory 区分 event/recorded/known/source，禁止从导入时间推断事件或朝汐 presence；Session v2 会迁移并持续清理已泄漏的 assistant 内部时间头。
 
+人格表达同步修复：few-shot 以措辞、态度、关系感、调侃和判断为主要角色载体，舞台描写改为低频情绪强调；技术与 Agent 工作示例完全不使用动作。旧 assistant 历史中的连续模板动作只在模型上下文副本中轻量收敛，不修改用户可见记录。
+
+回复重新生成：模型失败等可重试错误旁提供 `🔄`；正常朝汐回复默认不显示，需在维护抽屉的 Debug 区临时开启。它会沿独立重试 API 重新执行对应用户请求并替换回复，不走“戳一戳”主动消息链路。旧回复、主动消息及待确认操作不会被误重放，重试失败保留原会话。
+
+维护抽屉已将“钥匙柜”和“Debug”拆开。钥匙名称与用途改为精简中文，内部 ID 仅作为辅助信息；可写钥匙可独立设置“写入前确认”，默认开启，关闭也不会越过全局拒绝或更高风险权限。Filesystem 的读取目录与修改目录分别配置，修改目录必须属于读取目录，写工具执行前还有 Core 侧路径校验。保存后重启 Core 生效。`job_application_tool` 已从当前工具包集合移除，独立的 ResumeBridge 与 form-pilot 保留。
+
 2026-09-13 v1.2.2：修复 v1.1.9 遗留的广记描述与动态能力发现问题。三把 Memory Core 与目录/发现两把钥匙默认常驻；统一 Manifest、能力解析及按轮加载，最多两次扩展；Debug 可实时启停、Force Expose 和恢复默认，override 持久化。记忆新增与更新默认允许，不再显示 WRITE 确认；明确禁止记忆时仍不写入。详见 [v1.2.2 报告](Zhaoxi_v1.2.2_Release_Notes.md)。
 
 2026-09-13 v1.2.1：单窗口 MAIN / COMPANION、原生八向缩放、独立 geometry、一次性置顶与临时通知。陪伴模式按用户要求移除头像抬头，输入栏仅保留文字和发送。浏览器 UI 默认关闭，开发可设置 `ZHAOXI_DEV_BROWSER_UI=true`。完整实现与验收边界见 [v1.2.1 报告](Zhaoxi_v1.2.1_Release_Notes.md)。

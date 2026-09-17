@@ -28,3 +28,17 @@ def test_tool_arguments_reject_unbounded_depth_and_size():
         validate_tool_arguments(nested)
     with pytest.raises(UnsafeToolArgument, match="大小"):
         validate_tool_arguments({"text": "x" * 100}, max_chars=20)
+
+
+def test_filesystem_write_paths_must_stay_inside_write_roots(tmp_path):
+    writable = tmp_path / "write"
+    writable.mkdir()
+    validate_tool_arguments(
+        {"path": str(writable / "new.txt")},
+        allowed_path_roots=(writable,),
+    )
+    with pytest.raises(UnsafeToolArgument, match="允许范围"):
+        validate_tool_arguments(
+            {"source": str(writable / "old.txt"), "destination": str(tmp_path / "outside.txt")},
+            allowed_path_roots=(writable,),
+        )

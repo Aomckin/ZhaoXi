@@ -20,6 +20,7 @@ class WebResult:
     trace_id: str | None = None
     status: str = "completed"
     timestamp: datetime | None = None
+    message_id: str | None = None
 
 
 class WebInterfaceAdapter:
@@ -47,6 +48,12 @@ class WebInterfaceAdapter:
         )
         return self._result(response)
 
+    async def regenerate(self, message_id: str, *, request_id: str | None = None) -> WebResult:
+        response = await self.gateway.regenerate(
+            message_id, request_id=request_id or str(uuid4())
+        )
+        return self._result(response)
+
     def session(self) -> list[dict[str, Any]]:
         return self.gateway.session()
 
@@ -65,4 +72,5 @@ class WebInterfaceAdapter:
             trace_id=response.trace_id,
             status=response.status,
             timestamp=response.timestamp,
+            message_id=response.message_id,
         )

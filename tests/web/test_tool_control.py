@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+from pydantic import BaseModel
 
 from conftest import FakeProvider
 from zhaoxi.config.settings import Settings
@@ -7,15 +8,40 @@ from zhaoxi.core.context import ContextBuilder
 from zhaoxi.models.types import ModelResponse
 from zhaoxi.tools.builtin import create_builtin_tools
 from zhaoxi.tools.registry import ToolRegistry
+from zhaoxi.tools.base import Tool, ToolResult
+from zhaoxi.permission.models import PermissionLevel, SideEffect
 from zhaoxi.web.app import create_app
+
+
+class WriteInput(BaseModel):
+    path: str
+
+
+class WriteFixtureTool(Tool):
+    name = "write_fixture"
+    description = "测试写钥匙。"
+    input_model = WriteInput
+    permission = PermissionLevel.WRITE
+    side_effects = frozenset({SideEffect.LOCAL_STATE})
+
+    async def execute(self, arguments):
+        return ToolResult(success=True, content="ok")
 
 
 def build(tmp_path):
     registry = ToolRegistry(tmp_path / "tool_overrides.json")
     for tool in create_builtin_tools():
         registry.register(tool)
+    registry.register(WriteFixtureTool())
     agent = ZhaoxiAgent(provider=FakeProvider([ModelResponse(content="你好")]), registry=registry, context_builder=ContextBuilder("朝汐"))
-    app = create_app(agent=agent, settings=Settings(_env_file=None), api_token="test-token")
+    app = create_app(
+        agent=agent,
+        settings=Settings(
+            _env_file=None,
+            filesystem_access_path=str(tmp_path / "filesystem-access.json"),
+        ),
+        api_token="test-token",
+    )
     return registry, TestClient(app)
 
 
@@ -29,6 +55,11 @@ def test_manifest_controls_and_authentication(tmp_path):
     result = client.post("/api/debug/tools/control", json={"scope": "tool", "target": "calculator", "force_expose": True})
     assert result.status_code == 200
     assert next(t for t in result.json()["tools"] if t["name"] == "calculator")["exposed"]
+    result = client.post("/api/debug/tools/control", json={
+        "scope": "tool", "target": "write_fixture", "confirm_write": False,
+    })
+    memory = next(t for t in result.json()["tools"] if t["name"] == "write_fixture")
+    assert memory["write_capable"] and memory["confirm_write"] is False
     result = client.post("/api/debug/tools/control", json={"scope": "group", "target": "calculator", "enabled": False})
     record = next(t for t in result.json()["tools"] if t["name"] == "calculator")
     assert not record["enabled"] and not record["exposed"]
@@ -45,6 +76,45 @@ def test_controls_reject_unknown_targets_and_invalid_mutations(tmp_path):
     client.headers["X-Zhaoxi-Token"] = "test-token"
     for body in ({"scope": "tool", "target": "missing", "enabled": False}, {"scope": "group", "target": "missing", "enabled": False}):
         assert client.post("/api/debug/tools/control", json=body).status_code == 404
-    for body in ({"scope": "tool", "enabled": False}, {"scope": "all"}, {"scope": "all", "enabled": "false"}, {"scope": "all", "reset": True, "enabled": True}):
+    for body in ({"scope": "tool", "enabled": False}, {"scope": "all"}, {"scope": "all", "enabled": "false"}, {"scope": "all", "confirm_write": "false"}, {"scope": "all", "reset": True, "enabled": True}):
         assert client.post("/api/debug/tools/control", json=body).status_code == 422
     assert registry.control.overrides == {}
+
+
+def test_filesystem_access_paths_are_validated_and_persisted(tmp_path):
+    _, client = build(tmp_path)
+    client.headers["X-Zhaoxi-Token"] = "test-token"
+    first = tmp_path / "资料"
+    second = tmp_path / "项目"
+    writable = second / "朝汐输出"
+    first.mkdir()
+    second.mkdir()
+    writable.mkdir()
+
+    response = client.put("/api/tools/filesystem-access", json={
+        "read_directories": [str(first), str(second), str(first)],
+        "write_directories": [str(writable)],
+    })
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "read_directories": [str(first.resolve()), str(second.resolve())],
+        "write_directories": [str(writable.resolve())],
+        "restart_required": True,
+        "message": "已保存，重启 Core 后生效。",
+    }
+    snapshot = client.get("/api/debug/tools").json()
+    assert snapshot["filesystem_access"]["read_directories"] == response.json()["read_directories"]
+    assert snapshot["filesystem_access"]["write_directories"] == response.json()["write_directories"]
+    assert client.put("/api/tools/filesystem-access", json={
+        "read_directories": ["relative/path"],
+        "write_directories": [str(writable)],
+    }).status_code == 422
+    assert client.put("/api/tools/filesystem-access", json={
+        "read_directories": [str(first)],
+        "write_directories": [str(tmp_path / "不存在")],
+    }).status_code == 422
+    assert client.put("/api/tools/filesystem-access", json={
+        "read_directories": [str(first)],
+        "write_directories": [str(second)],
+    }).status_code == 422
