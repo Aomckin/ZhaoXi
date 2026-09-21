@@ -2,7 +2,25 @@
 
 > 当前配置、界面行为与最新限制见 [当前状态](CURRENT_STATUS.md)。下文保留分阶段实现与验收记录；其中旧预算和测试数量不代表当前值。
 
-> **当前开发分支：`v1.2.3`，运行时版本 `1.2.3`**。以下旧版本章节是历史切片，其“当前”指当时状态。
+> **默认分支：`main`，运行时版本 `1.2.4.2`**。以下旧版本章节是历史切片，其“当前”指当时状态。
+
+## v1.2.4.2 当前增量
+
+表情发送链路已补齐运行时 Tool Manifest、真实副作用执行契约、结构化发送结果、独立图片消息持久化、统一 Gateway 消息模型、实时/历史共用 Renderer、请求级 Emoji Trace 与前端渲染回执。完整根因、验证证据和剩余人工验收见 [v1.2.4.2 审计报告](../v1.2.x/Zhaoxi_v1.2.4.2_Emoji_Send_Stability_Audit_Report.md)。
+
+## v1.2.4.1 当前增量
+
+- `EmojiManager` 成为 Registry、正式图片和 Pending 图片的唯一写入口，提供增删改查、SHA-256 去重、原子替换、删除回滚与自动 Reload。
+- `save_emoji` 通过 `latest` / `latest:N` 引用会话附件；模型只生成 description/tags/emotion/intensity，不能传本地路径。
+- `/api/emoji` 提供正式图库 CRUD、搜索和重载；`/api/emoji/pending` 提供批量暂存、预览、丢弃与确认入库；`/api/emoji/analyze` 使用现有视觉模型生成待确认元数据。
+- 小桌边「表情柜」提供最近加入、搜索、详情编辑、enabled 开关、删除确认、批量导入与逐张确认流程。
+
+## v1.2.4 当前增量
+
+- `src/zhaoxi/expression/emoji_service.py` 负责本地 JSON 注册表、受控路径校验、语义检索、低分 no_match 与近期防重复。
+- 内置 `send_emoji` 仅接收 intent/emotion/intensity；命中后 Core 生成 `source=emoji` 的独立 assistant 图片消息。
+- Web 通过 `/api/expression/emoji/{emoji_id}` 安全读取本地图片；纯图片走 `.image-only` 组件，文字图片继续使用 `.bubble`。
+- `/api/debug/emoji` 支持运行时启停、重载与检索诊断；表情配置集中在 `Settings` 的 emoji 字段。
 
 ## v1.2.3 当前增量
 
@@ -18,11 +36,11 @@ Web 对模型失败等可重试错误显示独立 `🔄`；正常回复的按钮
 
 ## v1.2.2 当前增量
 
-补齐 v1.1.9 的 Memory Core、Registry Manifest、Inventory、能力解析与按轮 Discovery；新增 Debug 工具启停、Force Expose 和持久化恢复默认。`remember_memory` 与 `update_memory` 默认允许执行，不再发起 WRITE 确认；用户明确禁止记忆、只读要求、全局 WRITE deny 或 Debug 停用仍会拦截。实现与验证见 [v1.2.2 报告](Zhaoxi_v1.2.2_Release_Notes.md)。
+补齐 v1.1.9 的 Memory Core、Registry Manifest、Inventory、能力解析与按轮 Discovery；新增 Debug 工具启停、Force Expose 和持久化恢复默认。`remember_memory` 与 `update_memory` 默认允许执行，不再发起 WRITE 确认；用户明确禁止记忆、只读要求、全局 WRITE deny 或 Debug 停用仍会拦截。实现与验证见 [v1.2.2 报告](../v1.2.x/Zhaoxi_v1.2.2_Release_Notes.md)。
 
 ## v1.2.1 历史增量
 
-单窗口桌面壳与陪伴模式、原生八向边框、自绘 Chrome、独立 geometry、事件驱动置顶、原生通知及浏览器入口限制。按用户调整移除陪伴抬头并简化输入栏。完整结果和人工验收边界见 [v1.2.1 开发报告](Zhaoxi_v1.2.1_Release_Notes.md)。
+单窗口桌面壳与陪伴模式、原生八向边框、自绘 Chrome、独立 geometry、事件驱动置顶、原生通知及浏览器入口限制。按用户调整移除陪伴抬头并简化输入栏。完整结果和人工验收边界见 [v1.2.1 开发报告](../v1.2.x/Zhaoxi_v1.2.1_Release_Notes.md)。
 
 ## v1.2.0 历史增量
 
@@ -30,7 +48,7 @@ Web 对模型失败等可重试错误显示独立 `🔄`；正常回复的按钮
 - 新主动留言只亮金点；可见后复用既有 activate 接口保存已读，不刷新聊天 DOM。
 - 窗口、托盘、网页和快捷方式使用向日葵图标；快捷方式仍由脚本在本机生成。
 - 本次回归：502 项 Python 通过、1 项跳过；29 项 Node 通过。浏览器覆盖 8 种尺寸、已读联动、头像回退与高 DPI；图标相关专项测试 3 项通过。
-- 原生标题栏保留，真实桌面长时间 GPU/语音体验未验收。详细文件、截图和限制见 [Phase 3 报告](Zhaoxi_v1.2.0_Phase3_Release_Notes.md)。
+- 原生标题栏保留，真实桌面长时间 GPU/语音体验未验收。详细文件、截图和限制见 [Phase 3 报告](../v1.2.x/Zhaoxi_v1.2.0_Phase3_Release_Notes.md)。
 
 ## v1.1.8 当前增量
 
@@ -47,7 +65,7 @@ Web 对模型失败等可重试错误显示独立 `🔄`；正常回复的按钮
 - Conversation Beat Scheduler 不要求 open thread，按会话维护 SILENT/发送结果、预算、momentum 和调度时间。
 - Gateway 记录普通回复完成时间；ACTIVE TTL 不被无人回应的 Beat 续期，用户回应可延续同一会话并补预算。
 - 发送前复核并复用 Gateway 会话锁；延期普通消息也遵守与 Beat 的冷却，显式提醒保留优先级。
-- `active` diagnostics 与 `/api/proactive/active/inspect` 已提供；完整验证和真实模型验收结果见 [开发报告](v1.1.x/Zhaoxi_v1.1.7_Release_Notes.md)。
+- `active` diagnostics 与 `/api/proactive/active/inspect` 已提供；完整验证和真实模型验收结果见 [开发报告](../v1.1.x/Zhaoxi_v1.1.7_Release_Notes.md)。
 - 用户授权后的真实 DeepSeek 隔离验收通过：无 open thread，首次 Beat 为 CONTINUE，成功投递 1 条；共 2 次模型调用。Desktop UI 长时人工体验仍待验收。v1.1.x 功能范围冻结。
 
 ## v1.1.6.1 当前增量
@@ -56,7 +74,7 @@ Web 对模型失败等可重试错误显示独立 `🔄`；正常回复的按钮
 - 当前前台、标题、输入频率与有效推测缓存一起注入；不触发额外采样或 Activity LLM。
 - 15 秒过期标记 stale，缺失/锁屏/关闭标记 unavailable；原始注入区块不进入 Conversation、Session 或 AutoMemory 输入。
 - 本补丁全量回归：431 passed、1 skipped、1 warning。
-- 测试与限制见 [v1.1.6.1 补丁报告](v1.1.x/Zhaoxi_v1.1.6.1_Release_Notes.md)。
+- 测试与限制见 [v1.1.6.1 补丁报告](../v1.1.x/Zhaoxi_v1.1.6.1_Release_Notes.md)。
 
 ## v1.1.6 当前增量
 
@@ -67,7 +85,7 @@ Web 对模型失败等可重试错误显示独立 `🔄`；正常回复的按钮
 - 普通 diagnostics 无标题，显式 inspect 复用 Desktop 随机令牌。
 - 查询承诺提前结束修复：DIRECT 可在同轮提升为 TOOL，未兑现承诺不作为最终回复；Memory 时间统一为 aware UTC，兼容旧无偏移值。
 - 最新自动回归：422 passed、1 skipped；真实 Memory 隔离副本检索与后续写入验证通过。
-- 完整修改清单、性能冒烟及测试结果见 [v1.1.6 开发报告](v1.1.x/Zhaoxi_v1.1.6_Release_Notes.md)。
+- 完整修改清单、性能冒烟及测试结果见 [v1.1.6 开发报告](../v1.1.x/Zhaoxi_v1.1.6_Release_Notes.md)。
 
 ## v1.1.5 当前增量
 
@@ -123,7 +141,7 @@ v1.0 前置解耦已完成：Life HUD 实现与铁幕 Workflow 位于独立 `too
 - Agent 规则明确 Archive、Memory、Conversation 边界、事实优先级、canonical 冲突和未知细节不得编造；认知路由对正式资料事实问题要求真实 Tool Call。
 - `--archive-status`、`--reindex-archive` 与 Web diagnostics 已接入；Archive DB 纳入现有验证式备份。
 - 首份角色身世文档迁入 `data/archive/zhaoxi/` 并标记 canonical；两张设定图配有只索引文本的 Sidecar Markdown。
-- 当前验证：**362 项 Python 测试通过，1 项 symlink 权限相关测试跳过**；compileall、CLI 重建/状态和 `git diff --check` 通过。完整报告见 [`Zhaoxi_v1.1.3_Release_Notes.md`](v1.1.x/Zhaoxi_v1.1.3_Release_Notes.md)。
+- 当前验证：**362 项 Python 测试通过，1 项 symlink 权限相关测试跳过**；compileall、CLI 重建/状态和 `git diff --check` 通过。完整报告见 [`Zhaoxi_v1.1.3_Release_Notes.md`](../v1.1.x/Zhaoxi_v1.1.3_Release_Notes.md)。
 
 ## v1.1.2 当前增量
 
@@ -131,7 +149,7 @@ v1.0 前置解耦已完成：Life HUD 实现与铁幕 Workflow 位于独立 `too
 - Desktop 轻量 Win32 状态采样，ACTIVE / SEMI_ACTIVE / IDLE / AWAY 与变化事件、动态 Gate、Natural Check-in 集成。
 - 动态建议复用既有回复/主动决策，额外模型调用为0；时间显示统一，图片按钮和“汐”字应用图标已接入。
 - 当前验证：**351项 Python、17项 Node 通过**；compileall、diff检查、验证wheel与隔离安装导入通过。浏览器样例已验收，真实桌面长时场景待人工验证。
-- 完整方案、文件清单、API、配置及限制见 [`Zhaoxi_v1.1.2_Release_Notes.md`](v1.1.x/Zhaoxi_v1.1.2_Release_Notes.md)。
+- 完整方案、文件清单、API、配置及限制见 [`Zhaoxi_v1.1.2_Release_Notes.md`](../v1.1.x/Zhaoxi_v1.1.2_Release_Notes.md)。
 
 ## v1.1.2 前置清理
 
@@ -154,7 +172,7 @@ v1.0 前置解耦已完成：Life HUD 实现与铁幕 Workflow 位于独立 `too
 - 模型每次最多接收 20 个摘要，返回 silent / defer / speak；单次 provider attempt、30 秒超时，失败静默，事件最多两次决策。回复完成后再次检查打扰状态和 Focus 事实。
 - Inbox 展示时间与读状态；点击通知 / Inbox 经鉴权 API 和 Gateway 锁，将消息及简短背景补入并持久化当前 Session，不把原始 Event JSON 交给用户。
 - diagnostics 提供 `proactive.*` 进程内计数，重启清零；测试 **321 项 Python、17 项 Node 通过**，1 项既有 Starlette/httpx 弃用警告。
-- 完整变更、配置与手动步骤见 [`Zhaoxi_v1.1.1_Release_Notes.md`](v1.1.x/Zhaoxi_v1.1.1_Release_Notes.md)。
+- 完整变更、配置与手动步骤见 [`Zhaoxi_v1.1.1_Release_Notes.md`](../v1.1.x/Zhaoxi_v1.1.1_Release_Notes.md)。
 
 ## v1.1 当前增量
 
@@ -181,7 +199,7 @@ v1.0 前置解耦已完成：Life HUD 实现与铁幕 Workflow 位于独立 `too
 - Life HUD GET 使用同一 retry primitive；写操作保持不自动重放。任何未声明 `safe_to_replay` 的可重试写失败都会转为 `needs_reconciliation`。
 - `BackupManager` 统一管理 Memory、Planner、Session、Permission、Workflow、Proactive、Reflection 和审计数据；SQLite 使用 Online Backup API，恢复前验证并创建 safeguard。
 - Tool 参数实施大小、深度、集合和 URL 安全限制；日志与审计可轮转，后台任务通过 supervisor 有界关闭。
-- `scripts/` 提供 wheel 构建、当前用户安装、可选自启和保留用户数据的卸载脚本；运维说明见 `docs/Zhaoxi_v1.0_Operations_Runbook.md`。
+- `scripts/` 提供 wheel 构建、当前用户安装、可选自启和保留用户数据的卸载脚本；运维说明见 `docs/v1.0.x/Zhaoxi_v1.0_Operations_Runbook.md`。
 - v1.0 历史测试基线：**240 项通过**；加速 soak 覆盖 500 次请求，响应缓存和会话均保持上限。
 
 ## v1.0 当前切片

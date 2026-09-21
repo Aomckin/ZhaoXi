@@ -197,7 +197,7 @@ async def test_notification_retry_does_not_repeat_popup():
     assert len(popups) == 1
 
 
-async def test_activation_restores_background_once():
+async def test_activation_restores_visible_reply_without_internal_background():
     h, worker, _ = setup()
     await h.buffer.add(candidate())
     delivery = (await worker.tick(NOW))[0]
@@ -206,7 +206,7 @@ async def test_activation_restores_background_once():
     await gateway.activate_delivery(delivery.delivery_id)
     await gateway.activate_delivery(delivery.delivery_id)
     assert len(agent.conversation.messages) == 1
-    assert '100 分钟' in agent.conversation.messages[0].background
+    assert agent.conversation.messages[0].background == ''
     assert agent.conversation.messages[0].content == delivery.content
     assert agent.conversation.messages[0].timestamp == delivery.delivered_at
     assert (await h.runtime.store.get_delivery(delivery.delivery_id)).acknowledged_at
@@ -326,9 +326,10 @@ async def test_activation_context_is_persisted_across_restart(tmp_path):
                             session_store=sessions, session_record=session)
     await InterfaceGateway(agent).activate_delivery(delivery.delivery_id)
     restored = await SQLiteSessionStore(tmp_path / 'sessions.db').get(session.id)
-    assert '100 分钟' in restored.conversation.messages[-1].background
+    assert restored.conversation.messages[-1].background == ''
     assert restored.conversation.messages[-1].content == delivery.content
     assert restored.conversation.messages[-1].delivery_id == delivery.delivery_id
+    assert '100 分钟' in (await h.runtime.store.get_delivery(delivery.delivery_id)).relevant_payload['summaries'][0]
 
 
 async def test_pending_batch_survives_restart(tmp_path):

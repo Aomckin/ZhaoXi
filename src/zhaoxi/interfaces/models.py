@@ -91,6 +91,7 @@ class UnifiedResponse(BaseModel):
     message_id: str | None = None
     activity: dict[str, Any] = Field(default_factory=dict)
     permission: PermissionView | None = None
+    output_messages: list[dict[str, Any]] = Field(default_factory=list)
 
     @field_validator("content")
     @classmethod

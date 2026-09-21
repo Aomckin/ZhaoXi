@@ -1,0 +1,86 @@
+[
+  {
+    "id": "emoji_0001",
+    "file": "images/emoji_0001.png",
+    "description": "朝汐捂着脸、脸颊通红冒汗的害羞表情，适合被夸、被调侃或者不好意思时的反应",
+    "tags": [
+      "朝汐",
+      "害羞",
+      "捂脸",
+      "脸红"
+    ],
+    "emotion": "害羞",
+    "intensity": 0.8,
+    "enabled": true
+  },
+  {
+    "id": "emoji_0002",
+    "file": "images/emoji_0002.png",
+    "description": "朝汐半眯着眼、抱着手臂斜眼无语的表情，适合吐槽、看穿对方小算盘或者无奈时的反应",
+    "tags": [
+      "朝汐",
+      "无语",
+      "斜眼",
+      "吐槽"
+    ],
+    "emotion": "无语",
+    "intensity": 0.7,
+    "enabled": true
+  },
+  {
+    "id": "emoji_0003",
+    "file": "images/emoji_0003.png",
+    "description": "朝汐单眼眨眼、张嘴大笑挥手打招呼的表情，适合开心、嗨起来或者热情回应时的反应",
+    "tags": [
+      "朝汐",
+      "大笑",
+      "挥手",
+      "开心"
+    ],
+    "emotion": "开心",
+    "intensity": 0.9,
+    "enabled": true
+  },
+  {
+    "id": "emoji_0004",
+    "file": "images/emoji_0004.png",
+    "description": "朝汐鼓着脸、攥紧拳头、头上冒十字和怒气符号的气鼓鼓表情，适合被惹到、不服气或者假装生气时的反应",
+    "tags": [
+      "朝汐",
+      "生气",
+      "气鼓鼓",
+      "握拳"
+    ],
+    "emotion": "生气",
+    "intensity": 0.8,
+    "enabled": true
+  },
+  {
+    "id": "emoji_0005",
+    "file": "images/emoji_0005.png",
+    "description": "朝汐单眼眨眼、嘴角上扬、竖起大拇指周围冒星星的得意表情，适合办成事、被夸或者小得意的反应",
+    "tags": [
+      "朝汐",
+      "得意",
+      "眨眼",
+      "竖大拇指"
+    ],
+    "emotion": "得意",
+    "intensity": 0.85,
+    "enabled": true
+  },
+  {
+    "id": "emoji_0006",
+    "file": "images/emoji_0006.png",
+    "description": "朝汐眼睛含泪、抿着嘴、抱着手缩起来眼泪汪汪的委屈表情，适合被欺负、难过或者撒娇求安慰时的反应",
+    "tags": [
+      "朝汐",
+      "委屈",
+      "眼泪汪汪",
+      "难过"
+    ],
+    "emotion": "委屈",
+    "intensity": 0.8,
+    "enabled": true
+  }
+]

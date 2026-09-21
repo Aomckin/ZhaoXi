@@ -192,11 +192,18 @@ class DesktopWindow:
             self._window.evaluate_js(f'openDelivery({json.dumps(delivery_id)})')
             self._pending_delivery_id = None
 
-    def toggle(self):
-        if self._ready.is_set() and self._visible and not self._minimized and self.mode == WindowMode.COMPANION:
+    def _toggle_mode(self, mode: WindowMode):
+        if self._ready.is_set() and self._visible and not self._minimized and self.mode == mode:
             self.hide()
         else:
-            self.show_companion()
+            (self.show_main if mode == WindowMode.MAIN else self.show_companion)()
+
+    def toggle(self):
+        """Toggle the normal window; kept as the primary hotkey callback."""
+        self._toggle_mode(WindowMode.MAIN)
+
+    def toggle_companion(self):
+        self._toggle_mode(WindowMode.COMPANION)
 
     def _on_minimized(self):
         self._minimized = True

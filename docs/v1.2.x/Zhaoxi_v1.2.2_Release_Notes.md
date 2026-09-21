@@ -1,6 +1,6 @@
 # Zhaoxi v1.2.2 开发报告（整合修订版）
 
-当前以 [Tool System Completion 整合任务书](Zhaoxi_v1.2.2_Tool_System_Completion_Task.md) 为验收依据；[原版任务书](Zhaoxi_v1.2.2_Tool_Discovery_Memory_Semantics_Task.md) 和 [v1.1.9 任务书](v1.1.x/Zhaoxi_v1.1.9_Tool_Context_Router_Task_v2.md) 保留为历史需求。开发分支与运行时版本均为 `v1.2.2`。Tool 在对话中继续称为“钥匙”。
+当前以 [Tool System Completion 整合任务书](Zhaoxi_v1.2.2_Tool_System_Completion_Task.md) 为验收依据；[原版任务书](Zhaoxi_v1.2.2_Tool_Discovery_Memory_Semantics_Task.md) 和 [v1.1.9 任务书](../v1.1.x/Zhaoxi_v1.1.9_Tool_Context_Router_Task_v2.md) 保留为历史需求。开发分支与运行时版本均为 `v1.2.2`。Tool 在对话中继续称为“钥匙”。
 
 ## 本次补齐
 
@@ -56,6 +56,6 @@ Tool 可声明 `group`、`source`、`summary`、`aliases`、`intents`、`default
 - 新增覆盖：广想常驻、完整 Inventory 数量、新工具与新组自动发现、Resolver → Discovery → 实际执行、无依据拒绝纠正、停用传播、依赖不可用、运行时 Force Expose 取消、重启持久化、保存失败不应用、权限暂停后停用、API 鉴权和无效输入。
 - 既有 Memory recall、人格、Presence、Function Calling、权限与桌面回归通过。
 
-截图：[Debug 钥匙柜](screenshots/v1.2.2/tool-control.png)。浏览器验收脚本为 `tests/web/tool_control_smoke.cjs`，配合独立 `tool_control_smoke_server.py`；仅使用测试工具和临时状态，没有操作日常 Core 或真实业务。
+截图：[Debug 钥匙柜](../screenshots/v1.2.2/tool-control.png)。浏览器验收脚本为 `tests/web/tool_control_smoke.cjs`，配合独立 `tool_control_smoke_server.py`；仅使用测试工具和临时状态，没有操作日常 Core 或真实业务。
 
 真实模型 API 未调用。结构与执行闭环经过模拟模型及真实本地 API 验证；真实对话措辞下的模型选择和实际 token 用量仍需启动新版朝汐后验收。

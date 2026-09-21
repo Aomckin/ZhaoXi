@@ -57,6 +57,18 @@ class InterruptedToolAgent(FakeAgent):
         return AgentResponse(content=f"续写：{content}", request_id="core-resumed", steps=1)
 
 
+class MultipleEmojiAgent(FakeAgent):
+    async def run_natural(self, content: str):
+        self.calls += 1
+        self.conversation.add_user(content)
+        for emoji_id in ("emoji_a", "emoji_b", "emoji_c"):
+            self.conversation.add_assistant_image(
+                f"/api/expression/emoji/{emoji_id}", source="emoji", emoji_id=emoji_id
+            )
+        self.conversation.add_assistant("三张都已通过真实消息发送。")
+        return AgentResponse(content="三张都已通过真实消息发送。", request_id="multi", steps=2)
+
+
 async def test_gateway_is_idempotent_by_request_id():
     agent = FakeAgent()
     gateway = InterfaceGateway(agent)
@@ -71,9 +83,23 @@ async def test_gateway_is_idempotent_by_request_id():
 
     assert first == second
     assert first.request_id == "same-request"
-    assert first.trace_id == "core-1"
+    assert first.trace_id == "same-request"
+    assert first.activity["core_request_id"] == "core-1"
     assert first.message_id == agent.conversation.messages[-1].message_id
     assert agent.calls == 1
+
+
+async def test_live_and_history_share_ordered_multiple_image_contract():
+    gateway = InterfaceGateway(MultipleEmojiAgent())
+    response = await gateway.chat(UnifiedMessage(
+        request_id="multi-request", channel=InterfaceChannel.WEB, content="发送多张"
+    ))
+
+    images = [item for item in response.output_messages if item["type"] == "image"]
+    assert [item["emoji_id"] for item in images] == ["emoji_a", "emoji_b", "emoji_c"]
+    assert all(item["text"] == "" and item["source"] == "emoji" for item in images)
+    history_images = [item for item in gateway.session() if item["type"] == "image"]
+    assert history_images == images
 
 
 async def test_regenerate_replaces_latest_reply_without_duplicating_user_turn():
@@ -96,6 +122,23 @@ async def test_regenerate_replaces_latest_reply_without_duplicating_user_turn():
     assert session[-1]["message_id"] == regenerated.message_id
     assert session[-1]["regeneratable"] is True
     assert session[0]["regeneratable"] is False
+
+
+async def test_regenerate_updates_matching_emoji_trace():
+    agent = FakeAgent()
+    gateway = InterfaceGateway(agent)
+    original = await gateway.chat(UnifiedMessage(
+        request_id="first", channel=InterfaceChannel.WEB, content="再试一次"
+    ))
+    agent.last_emoji_trace = {
+        "trace_id": "retry",
+        "message_ids": [original.message_id],
+    }
+
+    await gateway.regenerate(original.message_id, request_id="retry")
+
+    assert agent.last_emoji_trace["persisted"] is True
+    assert agent.last_emoji_trace["gateway_emitted"] is False
 
 
 async def test_regenerate_rejects_an_older_reply_and_keeps_history():

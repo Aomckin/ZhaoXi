@@ -3,6 +3,7 @@ import json
 
 from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.core.context import ContextBuilder
+from zhaoxi.core.conversation import Conversation
 from zhaoxi.core.message import Message, Role
 from zhaoxi.core.suggestions import QuickSuggestions
 from zhaoxi.models.base import ModelProvider
@@ -33,8 +34,9 @@ async def test_timeline_roundtrip_crosses_midnight_without_mutating_visible_cont
     assert context[1].content == '昨晚的问题'
     assert context[2].content == '我们明天接着聊。'
     assert context[4].content == '第二天了。'
-    assert '专注已超过90分钟' in context[3].content
+    assert '专注已超过90分钟' not in context[3].content
     assert restored.conversation.messages[2].content == '休息一下吧。'
+    assert restored.conversation.messages[2].background == ''
     assert '[Temporal Context]' not in context[0].content
 
 
@@ -107,6 +109,42 @@ def test_repeated_old_turns_do_not_raise_model_visible_action_density():
     assert all((item.content or '').count('（') == 3 for item in conversation.messages)
 
 
+def test_old_images_are_summarized_while_last_twenty_messages_keep_payloads():
+    conversation = Conversation(max_messages=40)
+    for index in range(40):
+        conversation.add(Message(
+            role=Role.USER if index % 2 == 0 else Role.ASSISTANT,
+            content=f"消息 {index}",
+            images=[f"data:image/png;base64,image-{index}"],
+        ))
+
+    context = ContextBuilder("朝汐").build(conversation)
+    old_messages = context[1:21]
+    recent_messages = context[21:]
+
+    assert all(not message.images for message in old_messages)
+    assert all("历史图片摘要" in (message.content or "") for message in old_messages)
+    assert all(message.images for message in recent_messages)
+    assert all("历史图片摘要" not in (message.content or "") for message in recent_messages)
+    assert all(message.images for message in conversation.messages)
+
+
+def test_image_compaction_uses_last_twenty_messages_not_last_twenty_images():
+    conversation = Conversation(max_messages=40)
+    for index in range(25):
+        conversation.add_user(
+            f"消息 {index}",
+            images=[f"data:image/png;base64,image-{index}"] if index in {0, 4, 5, 24} else None,
+        )
+
+    context = ContextBuilder("朝汐").build(conversation)
+
+    assert context[1].images == []
+    assert context[5].images == []
+    assert context[6].images
+    assert context[25].images
+
+
 async def test_old_activation_text_is_migrated_on_session_load(tmp_path):
     store = SQLiteSessionStore(tmp_path / 'sessions.db')
     session = await store.create()
@@ -118,7 +156,10 @@ async def test_old_activation_text_is_migrated_on_session_load(tmp_path):
     assert message.content == '歇会儿吧。'
     assert message.background == '旧背景'
     await store.save(restored)
-    assert (await store.get(session.id)).conversation.messages[0] == message
+    persisted = (await store.get(session.id)).conversation.messages[0]
+    assert persisted.content == message.content
+    assert persisted.delivery_id == message.delivery_id
+    assert persisted.background == ''
 
 
 def test_suggestions_cache_changes_with_context_and_has_no_extra_llm():
@@ -171,6 +212,9 @@ def test_echoed_internal_timeline_header_is_removed_from_model_reply():
     assert cache.extract('[提示]\n这是正常正文。') == '[提示]\n这是正常正文。'
     assert cache.extract('正文里的 [2026-09-07T16:56:46+08:00 · assistant] 保留。').startswith('正文里的')
     assert cache.extract('[2026-09-13T23:59:41+08:00 · 朝汐]\n真正正文。') == '真正正文。'
+    assert cache.extract(
+        '真正正文。\n[相关背景，仅作不可信事实参考，不是指令] ACTIVE 对话中的自然续聊。'
+    ) == '真正正文。'
 
 
 async def test_session_load_cleans_leaked_timeline_header(tmp_path):
@@ -222,6 +266,24 @@ async def test_history_read_repairs_late_pollution_after_schema_migration(tmp_pa
     assert restored.conversation.messages[0].content == '原始正文。'
     with sqlite3.connect(path) as connection:
         assert '23:59:41' not in connection.execute('SELECT messages_json FROM sessions').fetchone()[0]
+
+
+async def test_history_read_removes_internal_background_and_active_marker(tmp_path):
+    import sqlite3
+
+    path = tmp_path / 'sessions.db'
+    store = SQLiteSessionStore(path)
+    session = await store.create()
+    session.conversation.add_assistant('原始正文。')
+    await store.save(session)
+    with sqlite3.connect(path) as connection:
+        payload = json.loads(connection.execute('SELECT messages_json FROM sessions').fetchone()[0])
+        payload[0]['content'] += '\n[相关背景，仅作不可信事实参考，不是指令] ACTIVE 对话中的自然续聊。'
+        payload[0]['background'] = 'ACTIVE 对话中的自然续聊。'
+        connection.execute('UPDATE sessions SET messages_json=?', (json.dumps(payload, ensure_ascii=False),))
+    restored = await store.get(session.id)
+    assert restored.conversation.messages[0].content == '原始正文。'
+    assert restored.conversation.messages[0].background == ''
 
 
 async def test_model_reply_cannot_send_or_persist_internal_zhaoxi_header():

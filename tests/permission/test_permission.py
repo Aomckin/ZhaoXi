@@ -125,6 +125,25 @@ async def test_write_waits_for_confirmation_and_executes_exactly_once():
     ]
 
 
+async def test_validation_failure_logs_only_field_path_and_error_type(caplog):
+    registry = ToolRegistry()
+    registry.register(WriteTool())
+
+    with caplog.at_level("WARNING", logger="TOOL"):
+        completed = await ToolExecutor(registry).execute(
+            "write_value",
+            {},
+            request_id="validation-log",
+            origin=InvocationOrigin.AGENT,
+        )
+
+    assert not completed.result.success
+    record = next(item for item in caplog.records if "validation_failed" in item.message)
+    assert "value" in record.message
+    assert "missing" in record.message
+    assert "input" not in record.message
+
+
 async def test_tool_can_disable_write_confirmation_without_disabling_write_policy():
     registry = ToolRegistry()
     tool = WriteTool()

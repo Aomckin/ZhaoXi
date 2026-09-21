@@ -33,6 +33,11 @@ logger = logging.getLogger("AGENT")
 tool_logger = logging.getLogger("TOOL")
 model_logger = logging.getLogger("MODEL")
 
+TOOL_QUERY_NOT_COMPLETED_NOTICE = "（提醒：这次没有实际调用工具，回复未经工具核验。）"
+PROVIDER_DEGRADED_NOTICE = "（提醒：模型服务暂时不可用，这段回复可能不完整；已完成的工具操作已保留。）"
+TOOL_ARGUMENTS_DEGRADED_NOTICE = "（提醒：模型生成的后续工具参数格式有误；上面的工具结果已保留。）"
+STEP_LIMIT_NOTICE = "（提醒：工具步骤已达到本轮上限，回复可能不完整；已完成的操作已保留。）"
+
 
 def log_internal_failure(message: str, *args, exc: Exception) -> None:
     """Keep tracebacks out of the normal CLI while retaining them in DEBUG."""
@@ -108,6 +113,7 @@ class ZhaoxiAgent:
         self.tool_router_mode = tool_router_mode
         self._pending_permissions: dict[str, PendingAgentInvocation] = {}
         self.cognitive: "CognitiveCoordinator | None" = None
+        self.last_emoji_trace: dict[str, object] = {}
 
     async def run_planned(self, goal: str) -> "PlannerResponse":
         """Run an explicit multi-step task through the optional planner."""
@@ -309,17 +315,25 @@ class ZhaoxiAgent:
             return None
         return positions
 
-    async def run(self, user_message: str, *, require_tool_call: bool = False, images: list[str] | None = None) -> AgentResponse:
+    async def run(
+        self,
+        user_message: str,
+        *,
+        require_tool_call: bool = False,
+        required_tool: str | None = None,
+        images: list[str] | None = None,
+    ) -> AgentResponse:
         """Accept one user turn and return a final natural-language response."""
         if not user_message.strip():
             raise ValueError("消息不能为空。")
         request_id = uuid4().hex
-        self.conversation.add_user(user_message.strip(), images=images)
+        clean_message = user_message.strip()
+        self.conversation.add_user(clean_message, images=images)
         logger.info("request=%s received user input", request_id)
         memories = []
         if self.context_builder.memory_retriever:
             try:
-                memories = await self.context_builder.memory_retriever.retrieve(user_message.strip())
+                memories = await self.context_builder.memory_retriever.retrieve(clean_message)
                 logger.info("request=%s memory_hits=%d", request_id, len(memories))
             except Exception as exc:
                 log_internal_failure(
@@ -332,8 +346,9 @@ class ZhaoxiAgent:
                 self._run_loop(
                     request_id,
                     memories,
-                    user_message.strip(),
+                    clean_message,
                     require_tool_call=require_tool_call,
+                    required_tool=required_tool,
                 ),
                 timeout=self.timeout_seconds,
             )
@@ -343,7 +358,7 @@ class ZhaoxiAgent:
 
     @staticmethod
     def _promises_lookup(content: str) -> bool:
-        """Catch a current-turn lookup commitment, not a casual guess or capability claim."""
+        """Catch a current-turn tool commitment, not a casual guess or capability claim."""
         for clause in re.split(r"[。！？!?\n]", content):
             if re.search(r"(?:不|没|无法|不能|不用|不必|别)(?:会|能|再|去|用|要)?(?:查|查询|检查|读取|翻|调用)", clause):
                 continue
@@ -409,6 +424,50 @@ class ZhaoxiAgent:
             if message.role.value in {"user", "assistant"} and message.content
         ]
 
+    def _recoverable_turn_content(self, notice: str) -> str | None:
+        """Recover a bounded status reply without exposing raw tool payloads."""
+        draft = ""
+        tool_successes = 0
+        tool_failures = 0
+        for message in reversed(self.conversation.messages):
+            if message.role.value == "user":
+                break
+            if message.role.value == "assistant" and message.content and not draft:
+                draft = message.content.strip()
+            elif message.role.value == "tool" and message.content:
+                try:
+                    payload = json.loads(message.content)
+                except (TypeError, ValueError):
+                    payload = None
+                if isinstance(payload, dict):
+                    if payload.get("success") is True:
+                        tool_successes += 1
+                    else:
+                        tool_failures += 1
+        if tool_successes and tool_failures:
+            body = "部分工具操作已经完成，部分操作未能完成；模型没能整理成自然语言回复。"
+        elif tool_failures:
+            body = "工具操作未能完成，模型也没能生成对应说明。"
+        elif tool_successes:
+            body = "工具操作已经完成，但模型没能整理成自然语言回复。"
+        else:
+            body = draft
+        if not body:
+            return None
+        return f"{body.rstrip()}\n\n{notice}"
+
+    def _return_degraded(self, request_id: str, step: int, notice: str) -> AgentResponse | None:
+        content = self._recoverable_turn_content(notice)
+        if content is None:
+            return None
+        self.conversation.add_assistant(content)
+        return AgentResponse(
+            content=content,
+            request_id=request_id,
+            steps=step,
+            used_tool_path=True,
+        )
+
     def _tool_context(self, user_intent: str) -> ToolContext:
         context = safe_resolve_tool_context(
             user_intent, self._recent_tool_context(), self.registry, mode=self.tool_router_mode
@@ -423,6 +482,7 @@ class ZhaoxiAgent:
         memories: list[MemorySearchResult] | None = None,
         user_intent: str = "",
         require_tool_call: bool = False,
+        required_tool: str | None = None,
         lookup_commitment: str = "",
         discovery: ToolDiscoveryState | None = None,
     ) -> AgentResponse:
@@ -454,16 +514,47 @@ class ZhaoxiAgent:
                 if corrective_retry and not tool_called:
                     messages[0].content = (
                         (messages[0].content or "")
-                        + "\n本轮用户明确要求真实查询或检查。你上一尝试没有调用工具；"
-                        "现在必须调用一个最相关的可用工具，不得只描述将要检查。"
+                        + "\n你上一尝试承诺执行真实工具动作，却没有调用工具；"
+                        "现在必须调用一个最相关的可用工具，不得只描述将要查询、发送或展示。"
                     )
                 self.last_tool_diagnostics = discovery.diagnostics(self.registry)
+                forced_tool = required_tool if (
+                    require_tool_call
+                    and not tool_called
+                    and required_tool
+                    and any(item["function"]["name"] == required_tool for item in schemas)
+                ) else None
                 response = await self.provider.generate(
-                    messages, schemas or None, tool_router=self.last_tool_diagnostics
+                    messages,
+                    schemas or None,
+                    tool_router=self.last_tool_diagnostics,
+                    **({"tool_choice": {"type": "function", "function": {"name": forced_tool}}}
+                       if forced_tool else {"tool_choice": "required"}
+                       if require_tool_call and corrective_retry and not tool_called and schemas else {}),
                 )
                 self.last_tool_diagnostics["prompt_tokens"] = response.usage.get("prompt_tokens", response.usage.get("input_tokens"))
             except ProviderError as exc:
                 log_internal_failure("request=%s provider error", request_id, exc=exc)
+                if tool_called:
+                    notice = (
+                        TOOL_ARGUMENTS_DEGRADED_NOTICE
+                        if exc.code == "provider_tool_arguments_invalid"
+                        else PROVIDER_DEGRADED_NOTICE
+                    )
+                    degraded = self._return_degraded(
+                        request_id, step, notice
+                    )
+                    if degraded is not None:
+                        logger.warning(
+                            "request=%s provider error after tool call; returning tool-aware response code=%s",
+                            request_id,
+                            exc.code,
+                        )
+                        return degraded
+                if exc.code == "provider_tool_arguments_invalid":
+                    raise AgentLoopError(
+                        "模型返回的工具调用参数格式有误，本次未执行该工具。"
+                    ) from exc
                 raise AgentLoopError(
                     "模型服务当前不可访问，请稍后重试；"
                     + (
@@ -490,9 +581,13 @@ class ZhaoxiAgent:
                     corrective_retry = True
                     logger.warning("request=%s required tool call missing; retrying once", request_id)
                     continue
-                if require_tool_call and not tool_called:
-                    raise AgentLoopError("这次没有实际完成工具查询，请换一种更明确的说法重试。")
                 content = self.quick_suggestions.extract(response.content or "模型没有返回可显示的内容。")
+                if require_tool_call and not tool_called:
+                    logger.warning(
+                        "request=%s required tool call missing after retry; returning response with notice",
+                        request_id,
+                    )
+                    content = f"{content.rstrip()}\n\n{TOOL_QUERY_NOT_COMPLETED_NOTICE}"
                 self.conversation.add_assistant(content)
                 logger.info("request=%s final response step=%d", request_id, step)
                 return AgentResponse(
@@ -554,14 +649,13 @@ class ZhaoxiAgent:
                         permission_confirmation=confirmation,
                     )
                 result = execution.result
-                self.conversation.add_tool(
-                    json.dumps(result.model_dump(mode="json"), ensure_ascii=False),
-                    tool_call_id=call.id,
-                    name=call.name,
-                )
+                self._record_tool_result(call, result)
                 tool_logger.info("request=%s tool=%s success=%s", request_id, call.name, result.success)
 
         logger.error("request=%s reached max steps=%d", request_id, self.max_steps)
+        degraded = self._return_degraded(request_id, self.max_steps, STEP_LIMIT_NOTICE)
+        if degraded is not None:
+            return degraded
         raise AgentLoopError(f"已达到最大执行步数（{self.max_steps}），为避免无限循环已停止。")
 
     def _run_control_tool(self, call: ToolCall, discovery: ToolDiscoveryState) -> ToolResult:
@@ -616,11 +710,7 @@ class ZhaoxiAgent:
                     content="用户选择保留该项，工具没有执行。",
                     error="permission_denied",
                 )
-            self.conversation.add_tool(
-                json.dumps(result.model_dump(mode="json"), ensure_ascii=False),
-                tool_call_id=call.id,
-                name=call.name,
-            )
+            self._record_tool_result(call, result)
         del self._pending_permissions[confirmation_id]
         tail_pending = PendingAgentInvocation(
             request_id=pending.request_id,
@@ -639,6 +729,54 @@ class ZhaoxiAgent:
         if continued is not None:
             return continued
         return await self._run_loop(pending.request_id, user_intent=pending.user_intent, discovery=pending.discovery)
+
+    def _capture_expression_result(self, tool_name: str, result: ToolResult | None) -> None:
+        """Turn a matched expression result into a real transport-neutral image message."""
+        if tool_name != "send_emoji" or result is None or not result.success or not isinstance(result.data, dict):
+            return
+        trace = getattr(self, "last_emoji_trace", None)
+        if trace is None:
+            trace = self.last_emoji_trace = {}
+        trace["tool_called"] = True
+        trace["tool_calls_count"] = int(trace.get("tool_calls_count", 0)) + 1
+        trace["tool_status"] = result.data.get("status", "error")
+        if result.data.get("status") != "matched" or not result.data.get("emoji_id"):
+            return
+        emoji_id = str(result.data["emoji_id"])
+        message = self.conversation.add_assistant_image(
+            f"/api/expression/emoji/{emoji_id}", source="emoji", emoji_id=emoji_id
+        )
+        trace.setdefault("emoji_ids", []).append(emoji_id)
+        trace.setdefault("message_ids", []).append(message.message_id)
+        trace["image_message_created"] = True
+        result.data.update({
+            "status": "sent",
+            "message_id": message.message_id,
+            "image_url": message.images[0],
+        })
+        trace["tool_status"] = "sent"
+        logger.info(
+            "emoji status=sent emoji_id=%s message_id=%s",
+            emoji_id,
+            message.message_id,
+        )
+
+    def _record_tool_result(self, call: ToolCall, result: ToolResult) -> None:
+        provider_result = result
+        if not result.success:
+            provider_result = result.model_copy(deep=True)
+            provider_result.metadata["assistant_guidance"] = (
+                "请根据这次失败结果向用户说明未完成及原因；"
+                "除非你已获得修正后的有效参数，否则不要重复调用同一工具。"
+            )
+        tool_message = self.conversation.add_tool(
+            json.dumps(provider_result.model_dump(mode="json"), ensure_ascii=False),
+            tool_call_id=call.id,
+            name=call.name,
+        )
+        self._capture_expression_result(call.name, result)
+        if call.name == "send_emoji":
+            tool_message.content = json.dumps(result.model_dump(mode="json"), ensure_ascii=False)
 
     async def _execute_remaining_calls(
         self,
@@ -687,11 +825,7 @@ class ZhaoxiAgent:
                     steps=0,
                     permission_confirmation=confirmation,
                 )
-            self.conversation.add_tool(
-                json.dumps(execution.result.model_dump(mode="json"), ensure_ascii=False),
-                tool_call_id=call.id,
-                name=call.name,
-            )
+            self._record_tool_result(call, execution.result)
         return None
 
     @staticmethod

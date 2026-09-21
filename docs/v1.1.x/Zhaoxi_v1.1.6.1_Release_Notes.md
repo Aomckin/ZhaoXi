@@ -23,7 +23,7 @@ ContextBuilder 只构造临时模型消息，未向 Conversation 添加原始区
 
 测试：`tests/core/test_desktop_context.py`，新增 9 项：有/无缓存 DIRECT 输入、stale、missing/locked/disabled unavailable、缓存过期、Session/AutoMemory/日志/diagnostics 隐私、普通工具路径。
 
-文档：`README.md`、`docs/README.md`、`docs/CODEBASE_STATUS.md`、本报告。
+文档：`README.md`、`docs/README.md`、`docs/current/CODEBASE_STATUS.md`、本报告。
 
 ## 验证
 

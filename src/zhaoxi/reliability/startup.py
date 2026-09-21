@@ -22,6 +22,20 @@ from zhaoxi.tools.packages import (
 )
 
 
+_SECRET_SETTING_MARKERS = ("api_key", "token", "secret", "password")
+
+
+def effective_settings_snapshot(settings: Settings) -> dict[str, object]:
+    """Expose the effective runtime configuration without leaking credentials."""
+    values = settings.model_dump(mode="json")
+    return {
+        name: ("<configured>" if value else "<unset>")
+        if any(marker in name.casefold() for marker in _SECRET_SETTING_MARKERS)
+        else value
+        for name, value in sorted(values.items())
+    }
+
+
 def _check(ok: bool, *, code: str, message: str, action: str | None = None) -> dict[str, object]:
     value: dict[str, object] = {"ok": ok, "code": code, "message": message}
     if action:
@@ -136,6 +150,7 @@ def startup_diagnostics(settings: Settings, *, tool_root: str | Path = "tools") 
     return {
         "status": status,
         "version": __version__,
+        "effective_settings": effective_settings_snapshot(settings),
         "platform": platform.system(),
         "checks": checks,
         "tool_packages": packages,

@@ -43,9 +43,9 @@
 
 截图采用隔离的示例会话，不含真实聊天记录：
 
-- [桌面](screenshots/v1.2/desktop.png)
-- [维护抽屉](screenshots/v1.2/maintenance.png)
-- [窄窗口](screenshots/v1.2/mobile.png)
+- [桌面](../screenshots/v1.2/desktop.png)
+- [维护抽屉](../screenshots/v1.2/maintenance.png)
+- [窄窗口](../screenshots/v1.2/mobile.png)
 
 复跑浏览器验收：在含 Playwright 的 Node 环境执行 `node tests/web/visual_refresh.cjs`，本机使用已安装的 Edge；必要时通过 NODE_PATH 指向 bundled Node packages。
 

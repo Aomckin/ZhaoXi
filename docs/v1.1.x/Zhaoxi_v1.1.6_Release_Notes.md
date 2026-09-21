@@ -18,7 +18,7 @@
 | `src/zhaoxi/config/settings.py`、`.env.example` | 采样、标题、输入开关、频率阈值和持续时间配置 |
 | `src/zhaoxi/__init__.py`、`pyproject.toml` | 1.1.6 版本号 |
 | `tests/desktop/test_activity.py`、`tests/proactive/test_tidal.py` | 新增回归验证 |
-| `README.md`、`docs/README.md`、`docs/CODEBASE_STATUS.md` | 文档与实现状态 |
+| `README.md`、`docs/README.md`、`docs/current/CODEBASE_STATUS.md` | 文档与实现状态 |
 
 ## 前台与输入
 

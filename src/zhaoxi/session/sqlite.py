@@ -6,15 +6,22 @@ import asyncio
 import json
 import sqlite3
 import hashlib
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
 from zhaoxi.core.conversation import Conversation
-from zhaoxi.core.message import Message, Role, strip_echoed_timeline_header
+from zhaoxi.core.message import (
+    Message,
+    Role,
+    assistant_persistence_violations,
+    strip_echoed_timeline_header,
+)
 from zhaoxi.session.base import Session, SessionStore
 
 
 SCHEMA_VERSION = 2
+logger = logging.getLogger("SESSION")
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS sessions (
@@ -64,6 +71,9 @@ class SQLiteSessionStore(SessionStore):
                 clean = strip_echoed_timeline_header(content)
                 if clean != content:
                     item["content"] = clean
+                    changed = True
+                if item.get("background"):
+                    item["background"] = ""
                     changed = True
         return json.dumps(messages, ensure_ascii=False, separators=(",", ":")), changed
 
@@ -137,14 +147,26 @@ class SQLiteSessionStore(SessionStore):
 
     def save_sync(self, session: Session) -> None:
         session.updated_at = datetime.now(UTC)
-        safe_messages = [
-            message.model_copy(update={
-                "content": strip_echoed_timeline_header(message.content or "")
-                if message.role == Role.ASSISTANT else message.content
-            }).model_dump(mode="json", exclude={"metadata", "tool_calls", "tool_call_id", "name"})
-            for message in session.conversation.recent(self.max_messages)
-            if message.role in {Role.USER, Role.ASSISTANT} and message.content is not None
-        ]
+        safe_messages = []
+        for message in session.conversation.recent(self.max_messages):
+            if message.role not in {Role.USER, Role.ASSISTANT} or message.content is None:
+                continue
+            content = message.content
+            if message.role == Role.ASSISTANT:
+                violations = assistant_persistence_violations(content)
+                if violations:
+                    logger.warning(
+                        "assistant persistence contamination preserved message_id=%s markers=%s",
+                        message.message_id,
+                        violations,
+                    )
+                content = strip_echoed_timeline_header(content)
+            safe_messages.append(
+                message.model_copy(update={"content": content, "background": ""}).model_dump(
+                    mode="json",
+                    exclude={"metadata", "tool_calls", "tool_call_id", "name", "background"},
+                )
+            )
         with self._connect() as connection:
             connection.execute(
                 """INSERT INTO sessions(session_id, created_at, updated_at, max_messages, messages_json)

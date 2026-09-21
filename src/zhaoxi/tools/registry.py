@@ -50,7 +50,10 @@ class ToolRegistry:
 
     def write_confirmation_required(self, name: str) -> bool:
         """Per-tool WRITE confirmation defaults to on."""
-        return self.control.overrides.get(name, {}).get("confirm_write", True)
+        tool = self.get(name)
+        return self.control.overrides.get(name, {}).get(
+            "confirm_write", getattr(tool, "default_confirm_write", True)
+        )
 
     @staticmethod
     def _validate(tool: Tool) -> None:

@@ -89,6 +89,10 @@ class DesktopHost:
             status_text=self._status_text,
         )
         self.hotkey = GlobalHotkey(settings.desktop_hotkey, self.window.toggle)
+        self.companion_hotkey = GlobalHotkey(
+            getattr(settings, "desktop_companion_hotkey", "ctrl+alt+numpad1"),
+            self.window.toggle_companion,
+        )
         self.notifier = NativeNotifier(self.window, self._open_delivery, system_mode=getattr(settings, "desktop_system_notifications", False))
         self._notification_modes = {}
         self.agent = agent
@@ -136,10 +140,11 @@ class DesktopHost:
             self._initialize_core()
             self._start_server()
             self.tray.start()
-            try:
-                self.hotkey.start()
-            except RuntimeError as exc:
-                logger.warning("hotkey unavailable: %s", exc)
+            for hotkey in (self.hotkey, self.companion_hotkey):
+                try:
+                    hotkey.start()
+                except RuntimeError as exc:
+                    logger.warning("hotkey unavailable: %s", exc)
             self.window.run(on_closed=self._on_window_closed, background=background)
             return True
         finally:
@@ -263,6 +268,7 @@ class DesktopHost:
             return
         self._stopping.set()
         self.hotkey.stop()
+        self.companion_hotkey.stop()
         self.tray.stop()
         if self._server is not None:
             self._server.should_exit = True

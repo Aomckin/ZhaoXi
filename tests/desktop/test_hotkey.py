@@ -31,6 +31,7 @@ def test_existing_keys_remain_supported(key, code):
 
 def test_default_hotkey():
     assert Settings.model_fields['desktop_hotkey'].default == 'ctrl+alt+numpad0'
+    assert Settings.model_fields['desktop_companion_hotkey'].default == 'ctrl+alt+numpad1'
 
 
 def test_registration_failure_names_configured_hotkey(monkeypatch):
@@ -50,7 +51,7 @@ def test_registration_failure_names_configured_hotkey(monkeypatch):
 def test_conflict_keeps_desktop_running(caplog):
     from zhaoxi.desktop.app import DesktopHost
     host = DesktopHost.__new__(DesktopHost)
-    for name in ('instance', 'window', 'tray', 'hotkey', '_initialize_core', '_start_server', 'stop'):
+    for name in ('instance', 'window', 'tray', 'hotkey', 'companion_hotkey', '_initialize_core', '_start_server', 'stop'):
         setattr(host, name, Mock())
     host.hotkey.start.side_effect = RuntimeError('全局快捷键 ctrl+alt+numpad0 注册失败，可能已被其他程序占用。')
     assert host.run(background=True)
@@ -59,18 +60,45 @@ def test_conflict_keeps_desktop_running(caplog):
     assert 'ctrl+alt+numpad0' in caplog.text
 
 
-def test_hotkey_toggle_hides_then_restores_window():
+def test_primary_hotkey_toggle_hides_then_restores_main_window():
     from zhaoxi.desktop.window import DesktopWindow
     window = DesktopWindow('http://localhost', width=1000, height=700)
     window._window = Mock()
     window._ready.set()
-    window.show_companion()
+    window.show_main()
     window.toggle()
     window._window.hide.assert_called_once()
     assert not window._visible
     window.toggle()
     assert window._visible
     assert window._window.restore.call_count == 0
+
+
+def test_companion_hotkey_toggle_hides_then_restores_companion_window():
+    from zhaoxi.desktop.window import DesktopWindow, WindowMode
+    window = DesktopWindow('http://localhost', width=1000, height=700)
+    window._window = Mock()
+    window._ready.set()
+    window.toggle_companion()
+    assert window.mode == WindowMode.COMPANION
+    assert window._visible
+    window.toggle_companion()
+    window._window.hide.assert_called_once()
+    assert not window._visible
+
+
+def test_hotkey_switches_visible_window_to_requested_mode():
+    from zhaoxi.desktop.window import DesktopWindow, WindowMode
+    window = DesktopWindow('http://localhost', width=1000, height=700)
+    window._window = Mock()
+    window._ready.set()
+    window.show_companion()
+    window.toggle()
+    assert window.mode == WindowMode.MAIN
+    assert window._visible
+    window.toggle_companion()
+    assert window.mode == WindowMode.COMPANION
+    assert window._visible
 
 
 def test_hotkey_restores_minimized_window_instead_of_hiding():

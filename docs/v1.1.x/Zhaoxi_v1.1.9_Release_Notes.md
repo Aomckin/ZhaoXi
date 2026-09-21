@@ -1,6 +1,6 @@
 # Zhaoxi v1.1.9 发布说明
 
-> 历史版本说明：本文记录 v1.1.9 当时行为。当前 v1.2.2 已将 `search_memories` 纳入 Memory Core，并将记忆新增与更新改为默认允许；现行行为见 [v1.2.2 开发报告](../Zhaoxi_v1.2.2_Release_Notes.md)。
+> 历史版本说明：本文记录 v1.1.9 当时行为。当前 v1.2.2 已将 `search_memories` 纳入 Memory Core，并将记忆新增与更新改为默认允许；现行行为见 [v1.2.2 开发报告](../v1.2.x/Zhaoxi_v1.2.2_Release_Notes.md)。
 
 ## Tool Context Router
 

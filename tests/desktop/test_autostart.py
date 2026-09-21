@@ -70,7 +70,7 @@ def test_window_initial_visibility_and_early_activation(monkeypatch, background)
 
 def host_stub():
     host = DesktopHost.__new__(DesktopHost)
-    for name in ('instance', 'window', 'tray', 'hotkey', '_initialize_core', '_start_server', 'stop'):
+    for name in ('instance', 'window', 'tray', 'hotkey', 'companion_hotkey', '_initialize_core', '_start_server', 'stop'):
         setattr(host, name, Mock())
     return host
 
@@ -92,6 +92,8 @@ def test_primary_starts_services_and_cleans_up(background):
     host._initialize_core.assert_called_once()
     host._start_server.assert_called_once()
     host.tray.start.assert_called_once()
+    host.hotkey.start.assert_called_once()
+    host.companion_hotkey.start.assert_called_once()
     assert host.window.run.call_args.kwargs['background'] is background
     host.stop.assert_called_once()
 

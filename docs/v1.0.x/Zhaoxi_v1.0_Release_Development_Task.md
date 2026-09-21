@@ -44,7 +44,7 @@ v1.0 不是继续横向堆叠大量功能，也不以“接完所有工具”为
 - Core 与 LifeHUD-Tool 包版本已统一为 `1.0.0`。
 - 2026-09-02 本机全量测试结果为 **240 passed**，Voice Night Mode 已改为可注入时钟，显式朗读与 Quiet/Night 语义已有确定性测试。
 - Life HUD 已解耦为独立 `tools/lifehud_tool` 包，Core Registry 只暴露一个 `lifehud` Tool。
-- `docs/CODEBASE_STATUS.md` 的 Planner/Permission、安装链路、测试数与 Git 基线旧事实已校正。
+- `docs/current/CODEBASE_STATUS.md` 的 Planner/Permission、安装链路、测试数与 Git 基线旧事实已校正。
 - README Roadmap 已切换到 v1.0，并加入无需启动 Agent 的 `python main.py --doctor` 首次启动诊断。
 
 ### 2.3 v1.0 前仍需验证的现实缺口
@@ -131,7 +131,7 @@ v1.0 不是继续横向堆叠大量功能，也不以“接完所有工具”为
 
 ### 6.1 基线与事实源治理
 
-- 将 `docs/CODEBASE_STATUS.md` 作为当前能力、限制、测试数和 Git 基线的首要交接入口。
+- 将 `docs/current/CODEBASE_STATUS.md` 作为当前能力、限制、测试数和 Git 基线的首要交接入口。
 - 删除或改写其中已过时的 v0.7/167 项/内存 Store 描述。
 - README 只保留用户需要的当前能力、安装、使用和安全边界；历史路线链接到版本任务书。
 - 版本号统一修改 `pyproject.toml`、`src/zhaoxi/__init__.py`、诊断输出、构建脚本和文档。

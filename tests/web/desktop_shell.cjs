@@ -54,7 +54,9 @@ const action='（尾巴轻轻摇了摇。）\n今天也辛苦啦。要在这里�
     window.originalRow = document.querySelector('#messages .row');
     document.querySelector('#input').value = '草稿不丢';
     for(let i=0;i<30;i++){addMessage('user','旧用户 '+i);addMessage('assistant','旧历史 '+i);}
-    addMessage('user','最近的问题'); addMessage('assistant','最新回复'.repeat(400));
+    addMessage('user','最近的问题');
+    addMessage('user','', '',['data:image/png;base64,AAAA']);
+    addMessage('assistant','最新回复'.repeat(400));
   });
   const sessionLoads = requests.filter(p=>p==='/api/session').length;
   for(let i=0;i<20;i++){
@@ -77,6 +79,7 @@ const action='（尾巴轻轻摇了摇。）\n今天也辛苦啦。要在这里�
     assert.equal(await page.locator('#attachImage').isVisible(),false);
     assert((await page.locator('#currentConversation p').first().boundingBox()).height >= 19);
     assert.equal(await page.locator('#currentConversation article').count(),2);
+    assert((await page.locator('#currentConversation').innerText()).includes('[图片]'));
     assert(!(await page.locator('#currentConversation').innerText()).includes('旧历史'));
     assert.equal(await page.locator('#currentConversation').evaluate(el=>getComputedStyle(el).overflowY),'hidden');
     await page.screenshot({path:path.join(output,`companion-${width}x${height}.png`)});

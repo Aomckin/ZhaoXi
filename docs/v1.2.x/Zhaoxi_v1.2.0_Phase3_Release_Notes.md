@@ -45,14 +45,14 @@
 
 | 场景 | 截图 |
 | --- | --- |
-| Before · Phase 2 / 1920×1080 | [Phase 2](screenshots/v1.2-phase2/scene-1920x1080.png) |
-| After · Phase 3 / 1920×1080 | [Phase 3](screenshots/v1.2-phase3/scene-1920x1080.png) |
-| 默认关闭 | [桌面](screenshots/v1.2-phase3/desktop.png) |
-| 公告栏展开 | [小桌边](screenshots/v1.2-phase3/deskboard-open.png) |
-| 维护区 | [展开 Debug](screenshots/v1.2-phase3/maintenance.png) |
-| 窄屏 | [390×844](screenshots/v1.2-phase3/scene-390x844.png) / [公告栏展开](screenshots/v1.2-phase3/mobile-board.png) |
-| 头像缺失 | [汐字回退](screenshots/v1.2-phase3/avatar-fallback.png) |
-| 4K | [3840×2160](screenshots/v1.2-phase3/scene-3840x2160.png) |
+| Before · Phase 2 / 1920×1080 | [Phase 2](../screenshots/v1.2-phase2/scene-1920x1080.png) |
+| After · Phase 3 / 1920×1080 | [Phase 3](../screenshots/v1.2-phase3/scene-1920x1080.png) |
+| 默认关闭 | [桌面](../screenshots/v1.2-phase3/desktop.png) |
+| 公告栏展开 | [小桌边](../screenshots/v1.2-phase3/deskboard-open.png) |
+| 维护区 | [展开 Debug](../screenshots/v1.2-phase3/maintenance.png) |
+| 窄屏 | [390×844](../screenshots/v1.2-phase3/scene-390x844.png) / [公告栏展开](../screenshots/v1.2-phase3/mobile-board.png) |
+| 头像缺失 | [汐字回退](../screenshots/v1.2-phase3/avatar-fallback.png) |
+| 4K | [3840×2160](../screenshots/v1.2-phase3/scene-3840x2160.png) |
 
 ## 修改文件与限制
 

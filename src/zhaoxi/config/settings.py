@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     tool_overrides_path: str = "data/debug/tool_overrides.json"
     filesystem_access_path: str = ".zhaoxi/filesystem-access.json"
     tool_router_mode: str = Field(default="dynamic", pattern="^(dynamic|all)$")
+    emoji_enabled: bool = True
+    emoji_registry_path: str = "data/emoji/emoji_registry.json"
+    emoji_recent_history_size: int = Field(default=5, ge=1, le=50)
+    emoji_candidate_limit: int = Field(default=5, ge=1, le=20)
+    emoji_min_match_score: float = Field(default=0.4, ge=0, le=1)
     request_timeout_seconds: float = Field(default=60, gt=0)
     retry_max_attempts: int = Field(default=3, ge=1, le=10)
     retry_base_delay_seconds: float = Field(default=0.5, ge=0, le=60)
@@ -165,6 +170,7 @@ class Settings(BaseSettings):
     desktop_instance_path: str = ".zhaoxi/desktop-instance.json"
     desktop_activation_port: int = Field(default=4914, ge=1, le=65535)
     desktop_hotkey: str = "ctrl+alt+numpad0"
+    desktop_companion_hotkey: str = "ctrl+alt+numpad1"
     desktop_window_width: int = Field(default=1080, ge=720, le=7680)
     desktop_window_height: int = Field(default=760, ge=520, le=4320)
     voice_enabled: bool = False
@@ -244,6 +250,7 @@ class Settings(BaseSettings):
         from zhaoxi.desktop.hotkey import parse_hotkey
 
         parse_hotkey(self.desktop_hotkey)
+        parse_hotkey(self.desktop_companion_hotkey)
         if self.stt_provider not in {"disabled", "openai-compatible"}:
             raise ValueError("stt provider 必须是 disabled 或 openai-compatible")
         if self.tts_provider not in {"disabled", "windows"}:

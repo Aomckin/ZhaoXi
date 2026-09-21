@@ -395,6 +395,8 @@ def test_web_shell_has_keyboard_and_live_status_accessibility_baseline():
     assert "aria-label','重新生成这条回复'" in page
     assert "async function addRetryableError(content)" in page
     assert 'id="regenerateDebugToggle" type="checkbox"' in page
+    assert 'id="longWaitToggle" type="checkbox"' in page
+    assert "long_wait_enabled:$('#longWaitToggle').checked" in page
     assert "normalRegenerationEnabled=false" in page
     assert "button.classList.add('normal-regenerate')" in page
     with TestClient(app) as client:
@@ -432,6 +434,7 @@ def test_interface_settings_persist_across_app_rebuilds(tmp_path):
         response = client.put("/api/settings/interface", json={
             "input_merge_seconds": 7,
             "reply_interval_seconds": 2,
+            "long_wait_enabled": True,
         })
         assert response.status_code == 200
 
@@ -439,7 +442,47 @@ def test_interface_settings_persist_across_app_rebuilds(tmp_path):
         assert client.get("/api/settings/interface").json() == {
             "input_merge_seconds": 7,
             "reply_interval_seconds": 2,
+            "long_wait_enabled": True,
         }
+
+
+def test_long_wait_setting_updates_agent_and_provider_timeouts(tmp_path):
+    path = tmp_path / "interface-settings.json"
+    settings = Settings(
+        _env_file=None, interface_settings_path=str(path), request_timeout_seconds=45
+    )
+    agent = FakeAgent()
+    agent.timeout_seconds = 45
+    model_provider = SimpleNamespace(timeout=45)
+    agent.provider = SimpleNamespace(providers=[model_provider])
+
+    with TestClient(create_app(agent=agent, settings=settings)) as client:
+        response = client.put("/api/settings/interface", json={
+            "input_merge_seconds": 15,
+            "reply_interval_seconds": 5,
+            "long_wait_enabled": True,
+        })
+        assert response.status_code == 200
+        assert agent.timeout_seconds == 120
+        assert model_provider.timeout == 120
+
+        response = client.put("/api/settings/interface", json={
+            "input_merge_seconds": 15,
+            "reply_interval_seconds": 5,
+            "long_wait_enabled": False,
+        })
+        assert response.status_code == 200
+        assert agent.timeout_seconds == 45
+        assert model_provider.timeout == 45
+
+    path.write_text('{"long_wait_enabled":true}', encoding="utf-8")
+    restored_agent = FakeAgent()
+    restored_agent.timeout_seconds = 45
+    restored_provider = SimpleNamespace(timeout=45)
+    restored_agent.provider = SimpleNamespace(providers=[restored_provider])
+    with TestClient(create_app(agent=restored_agent, settings=settings)):
+        assert restored_agent.timeout_seconds == 120
+        assert restored_provider.timeout == 120
 
 
 def test_interface_settings_reject_out_of_range_values(tmp_path):

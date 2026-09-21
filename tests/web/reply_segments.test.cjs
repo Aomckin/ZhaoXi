@@ -79,6 +79,20 @@ test('alternating action lines form segments without requiring blank lines',()=>
  assert.equal(context.isActionSegment('  (nods)  '),true);
  assert.deepEqual(split('```\n（代码内容）\n```'),['```\n（代码内容）\n```']);
 });
+test('tool-query notice reuses the stage-direction segment renderer',()=>{
+ const notice='（提醒：这次没有实际调用工具，回复未经工具核验。）';
+ assert.deepEqual(split(`正常回复。\n\n${notice}`),['正常回复。',notice]);
+ assert.equal(context.isActionSegment(notice),true);
+});
+test('degraded-response notices reuse the stage-direction segment renderer',()=>{
+ for(const notice of [
+  '（提醒：模型服务暂时不可用，这段回复可能不完整；已完成的工具操作已保留。）',
+  '（提醒：工具步骤已达到本轮上限，回复可能不完整；已完成的操作已保留。）',
+ ]){
+  assert.deepEqual(split(`已有结果。\n\n${notice}`),['已有结果。',notice]);
+  assert.equal(context.isActionSegment(notice),true);
+ }
+});
 test('one assistant turn shares a group, separate turns never share it',()=>{
  calls.length=0;context.addMessage('assistant','（点头。）\n你好');context.addMessage('assistant','下一轮');
  assert.equal(calls[0][5],calls[1][5]);assert.notEqual(calls[1][5],calls[2][5]);

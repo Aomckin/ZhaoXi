@@ -73,7 +73,7 @@ def tool_metadata(tool, source: str, override: dict, exposed: set[str]) -> dict:
         "registered": True, "enabled": enabled, "available": available,
         "persistent": getattr(tool, "persistent", tool.name in PERSISTENT_CORE),
         "force_expose": override.get("force_expose", False),
-        "confirm_write": override.get("confirm_write", True),
+        "confirm_write": override.get("confirm_write", getattr(tool, "default_confirm_write", True)),
         "write_capable": write_capable,
         "exposed": tool.name in exposed and enabled and available,
         "read_only": type(tool).permission_for is Tool.permission_for and tool.permission == PermissionLevel.READ and tool.side_effects == frozenset({SideEffect.NONE}),
@@ -116,6 +116,7 @@ def resolve_capability(need: str, manifest: list[dict]) -> dict:
         "web": ("网页", "网站", "网址", "链接", "http://", "https://"),
         "time": ("几点", "时间", "时区"), "calculator": ("计算", "算一下"),
         "lifehud": ("lifehud", "life hud", "铁幕"),
+        "expression": ("表情", "表情包", "emoji", "贴图"),
     }
     matched = []
     for tool in manifest:

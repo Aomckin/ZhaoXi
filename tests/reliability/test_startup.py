@@ -13,6 +13,8 @@ def test_startup_diagnostics_explains_missing_model_without_exposing_secrets(tmp
     assert result["status"] == "needs_configuration"
     assert result["checks"]["model"]["code"] == "model_config_missing"
     assert "ZHAOXI_MODEL_API_KEY" in result["checks"]["model"]["action"]
+    assert result["effective_settings"]["model_api_key"] == "<unset>"
+    assert result["effective_settings"]["memory_db_path"] == str(tmp_path / "data" / "memory.db")
 
 
 def test_startup_diagnostics_lists_lifehud_package_without_user_content(tmp_path, monkeypatch):
@@ -35,3 +37,4 @@ def test_startup_diagnostics_lists_lifehud_package_without_user_content(tmp_path
     assert isinstance(package["reachable"], bool)
     assert isinstance(package["healthy"], bool)
     assert "secret-canary" not in str(result)
+    assert result["effective_settings"]["model_api_key"] == "<configured>"

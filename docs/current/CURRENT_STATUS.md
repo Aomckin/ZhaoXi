@@ -1,6 +1,12 @@
-# v1.2.3 当前状态与使用说明
+# v1.2.4.2 当前状态与使用说明
 
-2026-09-14 v1.2.3：新增轻量 Semantic Capability Routing。自然语言中的饮食、睡眠、任务、FocusSession、生活状态、历史表达和本地复盘查找可在模型调用前预挂对应 Tool Group；普通生活陈述不触发查询。Diagnostics 新增 `semantic_route_matched`、`semantic_route_groups`、`semantic_route_reason`。未命中仍沿用 v1.2.2 Discovery。详见 [v1.2.3 报告](Zhaoxi_v1.2.3_Release_Notes.md)。
+2026-09-21 v1.2.4.2：完成表情发送全链路稳定性审计。CognitiveRouter 使用运行时 Tool Manifest 和 `requires_tool_call / required_tool` 契约；Agent 对明确副作用请求使用强制 Tool Choice；独立图片消息统一经过持久化、Gateway 消息模型与前端 `renderMessage()`。Debug 可区分 Core/前端版本并查看最近 Emoji Trace。详见 [v1.2.4.2 审计报告](../v1.2.x/Zhaoxi_v1.2.4.2_Emoji_Send_Stability_Audit_Report.md)。
+
+2026-09-17 v1.2.4.1：新增 EmojiManager 和 `save_emoji`，用户明确提出收藏时可把当前会话图片连同模型生成的表达语义入库；文件、去重、Registry 原子写入与 Reload 全部由 Manager 统一处理。小桌边新增表情柜，支持搜索、详情编辑、启停、删除、批量导入 Pending、视觉识别和逐张确认。详见 [v1.2.4.1 报告](../v1.2.x/Zhaoxi_v1.2.4.1_Release_Notes.md)。
+
+2026-09-17 v1.2.4：新增本地表情表达层。`data/emoji/emoji_registry.json` 维护语义注册表，`send_emoji` 只接收表达 intent，由 EmojiService 完成校验、检索、阈值拒绝和防连续重复；命中后作为独立 assistant image message 持久化。Web 已在组件层区分纯图片与气泡消息，纯图片/GIF/多图不再使用默认文字气泡，文字加图片保持原样。Debug 支持运行时启停、Reload Registry 和 intent 测试。详见 [v1.2.4 报告](../v1.2.x/Zhaoxi_v1.2.4_Release_Notes.md)。
+
+2026-09-14 v1.2.3：新增轻量 Semantic Capability Routing。自然语言中的饮食、睡眠、任务、FocusSession、生活状态、历史表达和本地复盘查找可在模型调用前预挂对应 Tool Group；普通生活陈述不触发查询。Diagnostics 新增 `semantic_route_matched`、`semantic_route_groups`、`semantic_route_reason`。未命中仍沿用 v1.2.2 Discovery。详见 [v1.2.3 报告](../v1.2.x/Zhaoxi_v1.2.3_Release_Notes.md)。
 
 同日时间语义修复：普通对话正文不再注入逐条 timestamp header；仅在明确需要时注入独立 Temporal Context，并把聊天时间限制为离散 observation。Memory 区分 event/recorded/known/source，禁止从导入时间推断事件或朝汐 presence；Session v2 会迁移并持续清理已泄漏的 assistant 内部时间头。
 
@@ -10,17 +16,17 @@
 
 维护抽屉已将“钥匙柜”和“Debug”拆开。钥匙名称与用途改为精简中文，内部 ID 仅作为辅助信息；可写钥匙可独立设置“写入前确认”，默认开启，关闭也不会越过全局拒绝或更高风险权限。Filesystem 的读取目录与修改目录分别配置，修改目录必须属于读取目录，写工具执行前还有 Core 侧路径校验。保存后重启 Core 生效。`job_application_tool` 已从当前工具包集合移除，独立的 ResumeBridge 与 form-pilot 保留。
 
-2026-09-13 v1.2.2：修复 v1.1.9 遗留的广记描述与动态能力发现问题。三把 Memory Core 与目录/发现两把钥匙默认常驻；统一 Manifest、能力解析及按轮加载，最多两次扩展；Debug 可实时启停、Force Expose 和恢复默认，override 持久化。记忆新增与更新默认允许，不再显示 WRITE 确认；明确禁止记忆时仍不写入。详见 [v1.2.2 报告](Zhaoxi_v1.2.2_Release_Notes.md)。
+2026-09-13 v1.2.2：修复 v1.1.9 遗留的广记描述与动态能力发现问题。三把 Memory Core 与目录/发现两把钥匙默认常驻；统一 Manifest、能力解析及按轮加载，最多两次扩展；Debug 可实时启停、Force Expose 和恢复默认，override 持久化。记忆新增与更新默认允许，不再显示 WRITE 确认；明确禁止记忆时仍不写入。详见 [v1.2.2 报告](../v1.2.x/Zhaoxi_v1.2.2_Release_Notes.md)。
 
-2026-09-13 v1.2.1：单窗口 MAIN / COMPANION、原生八向缩放、独立 geometry、一次性置顶与临时通知。陪伴模式按用户要求移除头像抬头，输入栏仅保留文字和发送。浏览器 UI 默认关闭，开发可设置 `ZHAOXI_DEV_BROWSER_UI=true`。完整实现与验收边界见 [v1.2.1 报告](Zhaoxi_v1.2.1_Release_Notes.md)。
+2026-09-13 v1.2.1：单窗口 MAIN / COMPANION、原生八向缩放、独立 geometry、一次性置顶与临时通知。陪伴模式按用户要求移除头像抬头，输入栏仅保留文字和发送。浏览器 UI 默认关闭，开发可设置 `ZHAOXI_DEV_BROWSER_UI=true`。完整实现与验收边界见 [v1.2.1 报告](../v1.2.x/Zhaoxi_v1.2.1_Release_Notes.md)。
 
 以下保留 v1.2.0 阶段记录。
 
-2026-09-12 Phase 3：已使用 `data/ACTIVE头像.png` 的专用头像；小桌边在所有窗口尺寸下默认收起，通过右侧把手打开。系统消息、设置、维护抽屉位于公告栏下方；新的主动留言点亮金点，不自动展开，可见后沿用现有 activate 接口确认已读。最新布局及验收见 [Phase 3 报告](Zhaoxi_v1.2.0_Phase3_Release_Notes.md)。
+2026-09-12 Phase 3：已使用 `data/ACTIVE头像.png` 的专用头像；小桌边在所有窗口尺寸下默认收起，通过右侧把手打开。系统消息、设置、维护抽屉位于公告栏下方；新的主动留言点亮金点，不自动展开，可见后沿用现有 activate 接口确认已读。最新布局及验收见 [Phase 3 报告](../v1.2.x/Zhaoxi_v1.2.0_Phase3_Release_Notes.md)。
 
 窗口、托盘、网页和快捷方式已统一为向日葵图标。运行中的图标需彻底退出托盘后重启加载；项目快捷方式由 `scripts/create_desktop_launcher.ps1` 生成，使用 `sunflower.ico`。
 
-阶段记录：[Phase 1](Zhaoxi_v1.2.0_Release_Notes.md) / [Phase 2](Zhaoxi_v1.2.0_Phase2_Release_Notes.md)。当前行为以 Phase 3 和本页为准。
+阶段记录：[Phase 1](../v1.2.x/Zhaoxi_v1.2.0_Release_Notes.md) / [Phase 2](../v1.2.x/Zhaoxi_v1.2.0_Phase2_Release_Notes.md)。当前行为以 Phase 3 和本页为准。
 
 ## v1.1.x 业务与设置基线
 
@@ -73,7 +79,7 @@ BEAT 日志含调度、Gate、输入证据、模型 action/confidence、失败�
 - 20:22:40、20:23:49 返回 finish_reason=length 且无可见正文；原 1200 生成限制已提高。
 - LifeHUD 取消超时绕过退避已修复；其 502 不等同于 Beat 未调度或模型选择沉默。
 
-详细历史证据见 [ACTIVE 排查记录](ACTIVE_Beat_Diagnostics_Fix.md)。隔离真实模型成功不替代全部 UI 长时场景验收。最新自动测试结果见此次开发回复；历史报告中的数量不代表当前测试总数。
+详细历史证据见 [ACTIVE 排查记录](../v1.1.x/ACTIVE_Beat_Diagnostics_Fix.md)。隔离真实模型成功不替代全部 UI 长时场景验收。最新自动测试结果见此次开发回复；历史报告中的数量不代表当前测试总数。
 
 ## 技术依据
 

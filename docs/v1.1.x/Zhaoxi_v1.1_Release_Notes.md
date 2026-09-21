@@ -29,7 +29,7 @@ node --test tests/web/*.test.cjs
 
 ## 使用与升级
 
-现有环境退出朝汐后双击启动入口，加载新代码。登录常驻安装、查询和移除见 [常驻说明](presence-autostart.md)。旧 Session 文本记录可继续读取，不要求删除用户数据。
+现有环境退出朝汐后双击启动入口，加载新代码。登录常驻安装、查询和移除见 [常驻说明](../guides/presence-autostart.md)。旧 Session 文本记录可继续读取，不要求删除用户数据。
 
 自启动任务和快捷方式使用本机路径；项目移动或 venv 重建后重新生成。`.env`、`.zhaoxi` 数据及本机快捷方式不进入 Git。
 

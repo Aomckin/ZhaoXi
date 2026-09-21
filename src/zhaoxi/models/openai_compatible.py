@@ -1,6 +1,7 @@
 """OpenAI-compatible chat-completions provider."""
 
 import json
+import logging
 from pathlib import Path
 from urllib.parse import urlparse
 from typing import Any, Sequence
@@ -13,6 +14,9 @@ from zhaoxi.models.base import ModelProvider
 from zhaoxi.models.text_tool_calls import normalize_text_tool_calls
 from zhaoxi.models.prompt_diagnostics import log_prompt_diagnostics, log_prompt_usage
 from zhaoxi.models.types import ModelResponse, ToolCall
+
+
+logger = logging.getLogger("MODEL")
 
 
 class OpenAICompatibleProvider(ModelProvider):
@@ -117,11 +121,24 @@ class OpenAICompatibleProvider(ModelProvider):
                 try:
                     arguments = json.loads(raw_arguments) if isinstance(raw_arguments, str) else raw_arguments
                 except json.JSONDecodeError as exc:
-                    raise ProviderError(f"模型返回了无效的工具参数 JSON：{exc}") from exc
+                    raise ProviderError(
+                        f"模型返回了无效的工具参数 JSON：{exc}",
+                        code="provider_tool_arguments_invalid",
+                        retryable=False,
+                    ) from exc
                 calls.append(ToolCall(id=call["id"], name=function["name"], arguments=arguments))
-            content, text_calls = normalize_text_tool_calls(
-                message.get("content"), id_prefix=f"text-{data.get('id') or 'response'}"
-            )
+            try:
+                content, text_calls = normalize_text_tool_calls(
+                    message.get("content"), id_prefix=f"text-{data.get('id') or 'response'}"
+                )
+            except ProviderError as exc:
+                if exc.code != "provider_error":
+                    raise
+                raise ProviderError(
+                    str(exc),
+                    code="provider_tool_arguments_invalid",
+                    retryable=False,
+                ) from exc
             if not calls:
                 calls = text_calls
             return ModelResponse(
@@ -137,10 +154,20 @@ class OpenAICompatibleProvider(ModelProvider):
         except httpx.HTTPStatusError as exc:
             detail = exc.response.text.strip().replace("\n", " ")[:500]
             status = exc.response.status_code
+            retryable = status in {408, 429} or status >= 500
+            request = getattr(exc, "request", None)
+            logger.warning(
+                "provider http error status=%d model=%s url=%s retryable=%s detail=%s",
+                status,
+                self.model,
+                request.url if request is not None else self.base_url,
+                retryable,
+                detail or exc.response.reason_phrase,
+            )
             raise ProviderError(
                 f"模型请求失败：HTTP {status} {detail or exc.response.reason_phrase}",
                 code=f"provider_http_{status}",
-                retryable=status in {408, 429, 502, 503, 504},
+                retryable=retryable,
             ) from exc
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
             retryable = isinstance(exc, httpx.HTTPError)

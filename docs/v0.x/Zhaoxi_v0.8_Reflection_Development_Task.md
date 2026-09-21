@@ -7,7 +7,7 @@
 > 上游基线：v0.7.1 Voice 工作区、v0.6 Proactive、v0.5.1 Life HUD、v0.3.2 Memory  
 > 核心目标：**让 Zhaoxi 不只记录事件，而开始理解一段生活。**
 
-本文是 v0.8 的范围、架构、开发顺序和验收依据。实现过程中若改变数据模型、边界或交付顺序，必须同步更新本文与 `docs/CODEBASE_STATUS.md`。
+本文是 v0.8 的范围、架构、开发顺序和验收依据。实现过程中若改变数据模型、边界或交付顺序，必须同步更新本文与 `docs/current/CODEBASE_STATUS.md`。
 
 ---
 

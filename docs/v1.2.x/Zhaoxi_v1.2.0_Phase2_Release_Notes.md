@@ -38,13 +38,13 @@
 
 | 对比 | 截图 |
 | --- | --- |
-| Before · Phase 1 | [桌面](screenshots/v1.2/desktop.png) |
-| After · Phase 2 同尺寸 | [桌面](screenshots/v1.2-phase2/desktop.png) |
-| 16:9 | [1920×1080](screenshots/v1.2-phase2/scene-1920x1080.png) |
-| 16:10 | [1600×1000](screenshots/v1.2-phase2/scene-1600x1000.png) |
-| 维护区 | [展开](screenshots/v1.2-phase2/maintenance.png) |
-| 窄窗口 | [390×844](screenshots/v1.2-phase2/mobile.png) / [桌边展开](screenshots/v1.2-phase2/mobile-desk.png) |
-| 低高度 | [720×520](screenshots/v1.2-phase2/scene-720x520.png) |
+| Before · Phase 1 | [桌面](../screenshots/v1.2/desktop.png) |
+| After · Phase 2 同尺寸 | [桌面](../screenshots/v1.2-phase2/desktop.png) |
+| 16:9 | [1920×1080](../screenshots/v1.2-phase2/scene-1920x1080.png) |
+| 16:10 | [1600×1000](../screenshots/v1.2-phase2/scene-1600x1000.png) |
+| 维护区 | [展开](../screenshots/v1.2-phase2/maintenance.png) |
+| 窄窗口 | [390×844](../screenshots/v1.2-phase2/mobile.png) / [桌边展开](../screenshots/v1.2-phase2/mobile-desk.png) |
+| 低高度 | [720×520](../screenshots/v1.2-phase2/scene-720x520.png) |
 
 ## 文件与验收边界
 

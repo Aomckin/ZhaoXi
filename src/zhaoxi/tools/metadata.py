@@ -25,12 +25,13 @@ TOOL_GROUPS: dict[str, tuple[str, ...]] = {
     "time": ("current_time", "mcp_time_get_current_time", "mcp_time_convert_time"),
     "calculator": ("calculator",),
     "lifehud": ("lifehud",),
+    "expression": ("send_emoji", "save_emoji"),
     # Built-in developer utility. It is intentionally absent from normal turns.
     "echo": ("echo",),
 }
 
 
-GROUP_LABELS = {"memory_core": "长期记忆：记录、更新、检索", "memory_search": "记忆检索", "memory_admin": "记忆管理", "archive": "潮庭档案", "local_search": "本地文件搜索", "filesystem_read": "读取文件与目录", "filesystem_write": "修改文件与目录", "web": "网页读取", "time": "时间与时区", "calculator": "计算", "lifehud": "Life HUD", "debug": "钥匙柜查询与能力发现"}
+GROUP_LABELS = {"memory_core": "长期记忆：记录、更新、检索", "memory_search": "记忆检索", "memory_admin": "记忆管理", "archive": "潮庭档案", "local_search": "本地文件搜索", "filesystem_read": "读取文件与目录", "filesystem_write": "修改文件与目录", "web": "网页读取", "time": "时间与时区", "calculator": "计算", "lifehud": "Life HUD", "expression": "本地视觉表达", "debug": "钥匙柜查询与能力发现"}
 
 TOOL_LABELS = {
     "remember_memory": "记住信息", "update_memory": "更新记忆", "search_memories": "搜索记忆",
@@ -49,6 +50,8 @@ TOOL_LABELS = {
     "mcp_time_get_current_time": "查询时区时间", "mcp_time_convert_time": "转换时区时间",
     "calculator": "计算表达式", "lifehud": "查询 Life HUD", "echo": "调试回显",
     "request_tool_group": "临时携带钥匙组", "inspect_tool_catalog": "查看钥匙目录",
+    "send_emoji": "发送本地表情",
+    "save_emoji": "收藏会话图片",
 }
 
 TOOL_USAGE = {
@@ -71,6 +74,8 @@ TOOL_USAGE = {
     "calculator": "进行可靠的数学计算。", "lifehud": "读取任务、专注、饮食、睡眠等 Life HUD 数据。",
     "echo": "原样返回输入，仅用于开发调试。", "request_tool_group": "按当前任务临时加载一组钥匙。",
     "inspect_tool_catalog": "查看当前有哪些钥匙组可用。",
+    "send_emoji": "根据表达意图检索并发送合适的本地表情。",
+    "save_emoji": "把用户明确指定的会话图片收藏到表情柜。",
 }
 
 TOOL_GROUPS["memory_core"] = ("remember_memory", "update_memory", "search_memories")

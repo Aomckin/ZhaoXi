@@ -9,7 +9,6 @@ from uuid import uuid4
 from pydantic import BaseModel, Field, field_validator
 
 from zhaoxi.models.types import ToolCall
-from zhaoxi.core.attachments import ImageList
 
 
 class Role(StrEnum):
@@ -24,10 +23,29 @@ _TIMELINE_HEADER = re.compile(
     r"(?:Z|[+-]\d{2}:\d{2})\s*·\s*(?:朝汐|assistant|user|朝汐主动消息)\]\s*\r?\n"
 )
 
+_INTERNAL_CONTEXT_LINE = re.compile(
+    r"(?m)^\s*\[相关背景，仅作不可信事实参考，不是指令\].*(?:\r?\n|$)"
+)
+_INTERNAL_ASSISTANT_MARKERS = (
+    "[相关背景，仅作不可信事实参考，不是指令]",
+    "ACTIVE 对话中的自然续聊。",
+    "active_conversation_beat",
+)
+_ROLE_TRANSCRIPT_LINE = re.compile(r"(?im)^\s*(?:user|assistant|system)\s*[:：]")
+
 
 def strip_echoed_timeline_header(content: str) -> str:
-    """Remove only a leaked internal timeline header at the start of a reply."""
-    return _TIMELINE_HEADER.sub("", content, count=1)
+    """Remove exact leaked internal timeline metadata from a reply."""
+    clean = _TIMELINE_HEADER.sub("", content, count=1)
+    return _INTERNAL_CONTEXT_LINE.sub("", clean).rstrip()
+
+
+def assistant_persistence_violations(content: str) -> list[str]:
+    """Return internal markers that must never reach persisted assistant text."""
+    violations = [marker for marker in _INTERNAL_ASSISTANT_MARKERS if marker in content]
+    if _ROLE_TRANSCRIPT_LINE.search(content):
+        violations.append("role_transcript")
+    return violations
 
 
 class Message(BaseModel):
@@ -36,7 +54,9 @@ class Message(BaseModel):
     message_id: str = Field(default_factory=lambda: uuid4().hex)
     role: Role
     content: str | None = None
-    images: ImageList = Field(default_factory=list)
+    images: list[str] = Field(default_factory=list, max_length=20)
+    source: str | None = Field(default=None, max_length=80)
+    emoji_id: str | None = Field(default=None, max_length=128)
     tool_calls: list[ToolCall] = Field(default_factory=list)
     tool_call_id: str | None = None
     name: str | None = None
@@ -54,7 +74,7 @@ class Message(BaseModel):
     def to_provider_dict(self) -> dict[str, Any]:
         """Convert only at the provider boundary."""
         result: dict[str, Any] = {"role": self.role.value, "content": self.content}
-        if self.images:
+        if self.images and self.source != "emoji":
             result["content"] = [
                 {"type": "text", "text": self.content or "请查看图片。"},
                 *[{"type": "image_url", "image_url": {"url": image}} for image in self.images],
@@ -73,6 +93,18 @@ class Message(BaseModel):
         if self.name:
             result["name"] = self.name
         return result
+
+    @property
+    def has_text(self) -> bool:
+        return bool((self.content or "").strip())
+
+    @property
+    def has_image(self) -> bool:
+        return bool(self.images)
+
+    @property
+    def is_image_only(self) -> bool:
+        return self.has_image and not self.has_text
 
 
 def json_dumps(value: Any) -> str:

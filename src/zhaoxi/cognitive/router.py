@@ -1,6 +1,7 @@
 """Lightweight model-assisted routing before normal conversation execution."""
 
 from enum import StrEnum
+import json
 import re
 from typing import Any
 
@@ -23,11 +24,20 @@ class RouteDecision(BaseModel):
     workflow_id: str | None = None
     workflow_inputs: dict[str, Any] = Field(default_factory=dict)
     requires_tool_call: bool = False
+    required_tool: str | None = None
 
 
 class RouteInput(BaseModel):
     route: CognitiveRoute
     reason: str = Field(min_length=1)
+    requires_tool_call: bool = Field(
+        default=False,
+        description="满足当前请求是否必须产生真实工具调用或外部可观察效果",
+    )
+    required_tool: str | None = Field(
+        default=None,
+        description="必须执行时，填写当前运行时目录中最适合完成该效果的确切工具名",
+    )
     workflow_id: str | None = None
     workflow_inputs: dict[str, Any] = Field(default_factory=dict)
 
@@ -62,11 +72,38 @@ class CognitiveRouter:
         provider: ModelProvider,
         *,
         routing_hints: list[dict[str, object]] | None = None,
+        tool_catalog: list[dict[str, object]] | None = None,
         archive_enabled: bool = False,
     ) -> None:
         self.provider = provider
         self.routing_hints = list(routing_hints or [])
+        self.tool_catalog = [
+            {
+                "name": item.get("name"),
+                "group": item.get("group"),
+                "summary": item.get("summary"),
+                "usage": item.get("usage"),
+            }
+            for item in (tool_catalog or [])
+            if item.get("enabled", True) and item.get("available", True)
+        ]
         self.archive_enabled = archive_enabled
+
+    @property
+    def available_tool_names(self) -> list[str]:
+        return [str(item["name"]) for item in self.tool_catalog if item.get("name")]
+
+    def _system_prompt(self) -> str:
+        if not self.tool_catalog:
+            return self.SYSTEM_PROMPT
+        catalog = json.dumps(self.tool_catalog, ensure_ascii=False, separators=(",", ":"))
+        return (
+            self.SYSTEM_PROMPT
+            + " 当前运行时可用工具目录如下；用户要求产生其中能力对应的真实效果时必须选择 TOOL，"
+              "并设置 requires_tool_call=true 和 required_tool=最适合的确切工具名。"
+              "DIRECT 只能用于无需执行工具即可诚实完成的回答："
+            + catalog
+        )
 
     async def route(self, user_message: str, *, recent_context: str = "") -> RouteDecision:
         routing_input = user_message
@@ -78,7 +115,7 @@ class CognitiveRouter:
         try:
             response = await self.provider.generate(
                 [
-                    Message(role=Role.SYSTEM, content=self.SYSTEM_PROMPT),
+                    Message(role=Role.SYSTEM, content=self._system_prompt()),
                     Message(role=Role.USER, content=routing_input),
                 ],
                 [ROUTE_SCHEMA],
@@ -90,8 +127,10 @@ class CognitiveRouter:
                 continue
             try:
                 value = RouteInput.model_validate(call.arguments)
+                required_tool = value.required_tool if value.required_tool in self.available_tool_names else None
                 return self._guard_simple_request(
                     user_message, RouteDecision(route=value.route, reason=value.reason,
+                        requires_tool_call=value.requires_tool_call, required_tool=required_tool,
                         workflow_id=value.workflow_id, workflow_inputs=value.workflow_inputs),
                     recent_context=recent_context,
                 )
@@ -152,6 +191,11 @@ class CognitiveRouter:
             return contextual_tool
         if decision.route == CognitiveRoute.WORKFLOW:
             return decision
+        if decision.requires_tool_call and decision.route is CognitiveRoute.DIRECT:
+            return decision.model_copy(update={
+                "route": CognitiveRoute.TOOL,
+                "reason": "observable tool effect required",
+            })
         if decision.route is CognitiveRoute.DIRECT:
             hinted = self._hint_decision(user_message)
             if hinted is not None:

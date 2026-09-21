@@ -54,6 +54,8 @@ from zhaoxi.proactive import (
 from zhaoxi.tools.builtin import create_builtin_tools
 from zhaoxi.tools.registry import ToolRegistry
 from zhaoxi.tools.filesystem_access import load_filesystem_access
+from zhaoxi.expression import EmojiManager, EmojiService
+from zhaoxi.tools.builtin.save_emoji import SaveEmojiTool
 from zhaoxi.tools.packages import (
     create_package_tool_providers,
     create_package_tools,
@@ -171,8 +173,16 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         min_edge_weight=settings.memory_graph_min_edge_weight,
     )
     archive_service = build_archive(settings)
+    emoji_service = EmojiService(
+        settings.emoji_registry_path,
+        enabled=settings.emoji_enabled,
+        recent_history_size=settings.emoji_recent_history_size,
+        candidate_limit=settings.emoji_candidate_limit,
+        min_match_score=settings.emoji_min_match_score,
+    )
+    emoji_manager = EmojiManager(emoji_service)
     registry = ToolRegistry(settings.tool_overrides_path)
-    for tool in create_builtin_tools(memory_service, archive_service):
+    for tool in create_builtin_tools(memory_service, archive_service, emoji_service):
         registry.register(tool)
     tool_package_errors: list[dict[str, str]] = []
     try:
@@ -316,6 +326,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         )
         session_store.save_sync(session_record)
     conversation = session_record.conversation
+    registry.register(SaveEmojiTool(emoji_manager, conversation))
     context_builder = ContextBuilder(
         PersonalityLoader.load_prompt(), memory_retriever=memory_retriever, timezone=settings.proactive_timezone,
         suggestions_refresh_minutes=settings.quick_suggestions_refresh_minutes,
@@ -417,6 +428,8 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     agent.reflection = reflection_service
     agent.reflection_periods = reflection_periods
     agent.archive = archive_service
+    agent.emoji_service = emoji_service
+    agent.emoji_manager = emoji_manager
     agent.capability_catalog = {
         "status": "ready",
         "tools": [
@@ -523,6 +536,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
             router=CognitiveRouter(
                 provider,
                 routing_hints=routing_hints,
+                tool_catalog=registry.manifest(),
                 archive_enabled=archive_service is not None,
             ),
             auto_memory=(AutoMemory(

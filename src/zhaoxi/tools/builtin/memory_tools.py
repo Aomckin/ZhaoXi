@@ -69,6 +69,7 @@ class RememberMemoryTool(Tool):
     input_model = RememberInput
     permission = PermissionLevel.WRITE
     side_effects = frozenset({SideEffect.LOCAL_STATE})
+    default_confirm_write = False
 
     def __init__(self, service: MemoryService) -> None:
         self.service = service
@@ -131,6 +132,7 @@ class UpdateMemoryTool(Tool):
     input_model = UpdateMemoryInput
     permission = PermissionLevel.WRITE
     side_effects = frozenset({SideEffect.LOCAL_STATE})
+    default_confirm_write = False
 
     def __init__(self, service: MemoryService) -> None:
         self.service = service

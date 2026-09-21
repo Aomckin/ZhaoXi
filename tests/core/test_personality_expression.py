@@ -67,15 +67,17 @@ def test_few_shot_stage_directions_are_low_frequency_and_agent_work_has_none():
     counts = [_stage_lines(item["assistant"]) for item in dialogues]
     assert sum(not lines for lines in counts) >= len(dialogues) // 2
     assert all(len(lines) <= 1 for lines in counts)
-    work = [item for item in dialogues if item["scene"] in {"技术错误诊断", "工具执行与任务确认"}]
-    assert len(work) == 2
+    work = [item for item in dialogues if item["scene"] == "用户让朝汐执行工具任务"]
+    assert len(work) == 1
     assert all(not _stage_lines(item["assistant"]) for item in work)
-    plain_character = next(item["assistant"] for item in dialogues if item["scene"] == "用户卖关子")
+    plain_character = next(
+        item["assistant"] for item in dialogues if item["scene"] == "用户轻松吐槽朝汐"
+    )
     assert "暗苟酱" in plain_character and not _stage_lines(plain_character)
 
 
 def test_expression_rules_keep_character_while_rejecting_fixed_action_rhythm():
     prompt = ExpressionLoader.load_prompt()
-    assert "舞台描写是情绪真正变化时的低频强调手段" in prompt
-    assert "技术解释、工具执行、错误诊断" in prompt
-    assert "减少动作不等于去角色化" in prompt
+    assert "只有明显情绪变化时最多 1 处" in prompt
+    assert "技术解释、工具执行、错误诊断和信息整理默认不使用舞台描写" in prompt
+    assert "减少卖萌，但保留朝汐自身口吻" in prompt

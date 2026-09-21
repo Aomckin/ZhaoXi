@@ -58,7 +58,7 @@ def test_core_runs_when_no_tool_package_is_installed(monkeypatch, tmp_path):
     assert "表达方式" in agent.context_builder.expression_prompt
     assert "犬娘行为与情绪" in agent.context_builder.expression_prompt
     assert "表达风格示例" in agent.context_builder.expression_prompt
-    assert "周六早上了呀" in agent.context_builder.character_prompt
+    assert "暗苟酱这个语气一出来" in agent.context_builder.character_prompt
     assert agent.context_builder.character_prompt.index("人格设定") < agent.context_builder.character_prompt.index("表达方式")
     assert agent.proactive_state is not None
     assert agent.context_builder.memory_retriever is not None

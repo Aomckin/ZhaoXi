@@ -11,7 +11,7 @@
 - `docs/Zhaoxi_v0.1-v1.0_Development_Plan.md` 中 v0.7 Presence 路线；
 - `docs/Zhaoxi_v0.6_Proactive_Agent_Development_Task.md` 的主动事件与投递边界；
 - `docs/Zhaoxi_v0.6.1_Local_Interaction_Shell_Task.md` 的本地 Web Chat、Permission Card、Activity 与 SSE 能力；
-- `docs/CODEBASE_STATUS.md` 中现有 Core、Planner、Workflow、Permission、Proactive 与测试基线。
+- `docs/current/CODEBASE_STATUS.md` 中现有 Core、Planner、Workflow、Permission、Proactive 与测试基线。
 
 核心原则：
 

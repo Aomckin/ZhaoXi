@@ -29,6 +29,7 @@ class Tool(ABC):
     group: str | None = None
     source: str = "builtin"
     default_enabled: bool = True
+    default_confirm_write: bool = True
     available: bool = True
     aliases: tuple[str, ...] = ()
     intents: tuple[str, ...] = ()

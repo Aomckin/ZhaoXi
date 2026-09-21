@@ -47,9 +47,9 @@
 - 安装包：`build/v1.2.1/zhaoxi-1.2.1-py3-none-any.whl`。
 - 新模块：`desktop/native.py`、`web/static/desktop.js`、`web/static/desktop.css`。
 - 配置见 `.env.example`：DEV browser、geometry 路径、系统通知开关。
-- [MAIN](screenshots/v1.2.1/main.png)
-- [Companion 390×480](screenshots/v1.2.1/companion-390x480.png)
-- [Companion 300×320](screenshots/v1.2.1/companion-300x320.png)
+- [MAIN](../screenshots/v1.2.1/main.png)
+- [Companion 390×480](../screenshots/v1.2.1/companion-390x480.png)
+- [Companion 300×320](../screenshots/v1.2.1/companion-300x320.png)
 
 运行中的正式实例没有被强行退出或重启，也没有进行真实模型发送、修改个人聊天、改写自启动注册或覆盖用户快捷方式。源代码使用者在托盘彻底退出朝汐再启动后加载新桌面壳。
 

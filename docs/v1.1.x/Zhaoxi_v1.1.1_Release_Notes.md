@@ -107,7 +107,7 @@ Toast 回调携带 Delivery ID，唤起窗口并走相同激活 API；页面尚�
 - `src/zhaoxi/desktop/app.py`、`window.py`、`notifications.py`。
 - `tools/lifehud_tool/package.py`。
 
-配置、版本与文档：`.env.example`、`pyproject.toml`、`src/zhaoxi/__init__.py`、`scripts/verify_release.py`、`README.md`、`docs/README.md`、`docs/CODEBASE_STATUS.md`、本报告。
+配置、版本与文档：`.env.example`、`pyproject.toml`、`src/zhaoxi/__init__.py`、`scripts/verify_release.py`、`README.md`、`docs/README.md`、`docs/current/CODEBASE_STATUS.md`、本报告。
 
 新增测试：`tests/proactive/test_tidal.py`、`tests/tools/test_lifehud_proactive.py`、`tests/web/proactive_inbox.test.cjs`。更新桌面通知测试、窗口测试的 loaded 事件替身，以及发布/备份测试的版本断言。
 

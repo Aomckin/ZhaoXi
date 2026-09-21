@@ -28,12 +28,14 @@ class FakeProvider(ModelProvider):
         self.responses = deque(responses)
         self.calls: list[list[Message]] = []
         self.tool_schemas: list[list[dict[str, Any]] | None] = []
+        self.options: list[dict[str, Any]] = []
 
     async def generate(
         self, messages: Sequence[Message], tools: list[dict[str, Any]] | None = None, **kwargs: Any
     ) -> ModelResponse:
         self.calls.append(list(messages))
         self.tool_schemas.append(tools)
+        self.options.append(dict(kwargs))
         if len(self.responses) == 1:
             return self.responses[0]
         return self.responses.popleft()

@@ -28,3 +28,16 @@ async def test_sqlite_session_delete_survives_restart(tmp_path):
     session = await store.create()
     assert await store.delete(session.id)
     assert await SQLiteSessionStore(path).get(session.id) is None
+
+
+@pytest.mark.asyncio
+async def test_sqlite_session_alarms_without_dropping_polluted_assistant_content(tmp_path, caplog):
+    store = SQLiteSessionStore(tmp_path / "session.db")
+    session = await store.create()
+    session.conversation.add(Message(role=Role.ASSISTANT, content="正常正文。\nuser: 内部转录"))
+
+    await store.save(session)
+
+    restored = await store.get(session.id)
+    assert restored.conversation.messages[-1].content == "正常正文。\nuser: 内部转录"
+    assert "assistant persistence contamination preserved" in caplog.text

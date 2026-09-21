@@ -76,8 +76,9 @@ async def test_discovery_continues_business_call_retains_schema_and_resets_next_
 async def test_discovery_alone_does_not_count_as_business_lookup():
     provider = FakeProvider([call("request_tool_group", group="archive"), ModelResponse(content="好了")])
     agent = ZhaoxiAgent(provider=provider, registry=make_registry(), context_builder=ContextBuilder("朝汐"))
-    with pytest.raises(AgentLoopError, match="没有实际完成"):
-        await agent.run("找那把钥匙", require_tool_call=True)
+    result = await agent.run("找那把钥匙", require_tool_call=True)
+    assert result.content == "好了\n\n（提醒：这次没有实际调用工具，回复未经工具核验。）"
+    assert result.used_tool_path is False
 
 
 def test_discovery_schema_is_small_and_excludes_all():

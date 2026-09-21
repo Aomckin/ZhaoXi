@@ -21,6 +21,7 @@ class WebResult:
     status: str = "completed"
     timestamp: datetime | None = None
     message_id: str | None = None
+    output_messages: list[dict[str, Any]] | None = None
 
 
 class WebInterfaceAdapter:
@@ -73,4 +74,5 @@ class WebInterfaceAdapter:
             status=response.status,
             timestamp=response.timestamp,
             message_id=response.message_id,
+            output_messages=response.output_messages,
         )

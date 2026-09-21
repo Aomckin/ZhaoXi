@@ -6,11 +6,13 @@ import asyncio
 import json
 import logging
 import mimetypes
+import re
 import secrets
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Literal
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -31,12 +33,15 @@ from zhaoxi.config.settings import Settings
 from zhaoxi.errors import ZhaoxiError
 from zhaoxi.interfaces.setup import StartupUnavailableAgent
 from zhaoxi.reflection.models import ReflectionKind, ReflectionRecord
-from zhaoxi.reliability import provider_budget_scope
-from zhaoxi.reliability.startup import startup_diagnostics
+from zhaoxi.reliability import CorrelationContext, correlation_scope, provider_budget_scope
+from zhaoxi.reliability.startup import effective_settings_snapshot, startup_diagnostics
 from zhaoxi.web.adapter import WebInterfaceAdapter, WebResult
 from zhaoxi.web.events import EventBroadcaster
 from zhaoxi.voice.policy import SpeechAction, SpeechContext, SpeechPolicy
 from zhaoxi.reliability import TaskSupervisor
+from zhaoxi.core.message import Message, Role
+from zhaoxi.expression import EmojiMetadata
+from zhaoxi.expression.emoji_manager import decode_image_data_url
 
 logger = logging.getLogger("WEB")
 
@@ -88,11 +93,51 @@ class ToolControlRequest(BaseModel):
 class InterfaceSettingsRequest(BaseModel):
     input_merge_seconds: int = Field(default=15, ge=0, le=30)
     reply_interval_seconds: int = Field(default=5, ge=0, le=15)
+    long_wait_enabled: StrictBool = False
 
 
 class FilesystemAccessRequest(BaseModel):
     read_directories: list[str] = Field(min_length=1, max_length=20)
     write_directories: list[str] = Field(min_length=1, max_length=20)
+
+
+class EmojiControlRequest(BaseModel):
+    enabled: StrictBool | None = None
+    reload: bool = False
+    intent: str | None = Field(default=None, max_length=500)
+    emotion: str | None = Field(default=None, max_length=80)
+    intensity: float | None = Field(default=None, ge=0, le=1)
+
+
+class EmojiTraceAckRequest(BaseModel):
+    trace_id: str = Field(min_length=1, max_length=128)
+    received: bool = True
+    rendered: bool = True
+
+
+class EmojiMetadataRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    description: str = Field(min_length=2, max_length=2000)
+    tags: list[str] = Field(min_length=1, max_length=50)
+    emotion: str | None = Field(default=None, max_length=80)
+    intensity: float | None = Field(default=None, ge=0, le=1)
+    enabled: bool = True
+
+    def metadata(self) -> EmojiMetadata:
+        return EmojiMetadata.model_validate(self.model_dump())
+
+
+class EmojiCreateRequest(EmojiMetadataRequest):
+    data_url: str = Field(min_length=32)
+
+
+class EmojiPendingRequest(BaseModel):
+    data_url: str = Field(min_length=32)
+
+
+class EmojiAnalyzeRequest(BaseModel):
+    data_url: str = Field(min_length=32)
+    hint: str = Field(default="", max_length=1000)
 
 
 def _load_interface_settings(path: Path) -> InterfaceSettingsRequest:
@@ -109,6 +154,17 @@ def _save_interface_settings(path: Path, value: InterfaceSettingsRequest) -> Non
     temporary.replace(path)
 
 
+def _apply_request_timeout(core, *, enabled: bool, default_seconds: float) -> None:
+    timeout = 120 if enabled else default_seconds
+    if hasattr(core, "timeout_seconds"):
+        core.timeout_seconds = timeout
+    provider = getattr(core, "provider", None)
+    providers = getattr(provider, "providers", [provider] if provider is not None else [])
+    for item in providers:
+        if hasattr(item, "timeout"):
+            item.timeout = timeout
+
+
 class ChatResponse(BaseModel):
     timestamp: datetime | None = None
     content: str
@@ -118,6 +174,7 @@ class ChatResponse(BaseModel):
     trace_id: str | None = None
     status: str = "completed"
     message_id: str | None = None
+    output_messages: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class VoiceConfirmRequest(BaseModel):
@@ -139,6 +196,7 @@ def _response(result: WebResult) -> ChatResponse:
         status=result.status,
         timestamp=result.timestamp,
         message_id=result.message_id,
+        output_messages=result.output_messages or [],
     )
 
 
@@ -177,6 +235,7 @@ def create_app(
         except ZhaoxiError as exc:
             core = StartupUnavailableAgent(startup_diagnostics(configured), str(exc))
     adapter = WebInterfaceAdapter(core)
+    core_started_at = datetime.now(UTC)
     suggestions = getattr(core, "quick_suggestions", None) or QuickSuggestions(configured.proactive_timezone, configured.quick_suggestions_refresh_minutes)
     events = EventBroadcaster()
     static_dir = Path(__file__).with_name("static")
@@ -185,6 +244,11 @@ def create_app(
     current_time = now_provider or (lambda: datetime.now().astimezone())
     interface_settings_path = Path(configured.interface_settings_path)
     filesystem_access_path = Path(configured.filesystem_access_path)
+    _apply_request_timeout(
+        core,
+        enabled=_load_interface_settings(interface_settings_path).long_wait_enabled,
+        default_seconds=configured.request_timeout_seconds,
+    )
 
     def voice_policy(*, text: str, explicit: bool, permission_pending: bool = False):
         now = current_time()
@@ -365,6 +429,11 @@ def create_app(
         except OSError as exc:
             logger.warning("interface settings persistence failed type=%s", type(exc).__name__)
             raise HTTPException(status_code=500, detail="界面设置保存失败。") from exc
+        _apply_request_timeout(
+            core,
+            enabled=request.long_wait_enabled,
+            default_seconds=configured.request_timeout_seconds,
+        )
         return request
 
     @app.post("/api/proactive/active/poke")
@@ -412,6 +481,8 @@ def create_app(
         return {
             "status": "ok",
             "version": __version__,
+            "core_started_at": core_started_at.isoformat(),
+            "effective_settings": effective_settings_snapshot(configured),
             "metrics": adapter.gateway.metrics.snapshot(),
             "presence": (core.proactive_state.interaction.diagnostics(datetime.now(UTC))
                          if getattr(core, "proactive_state", None) else None),
@@ -501,6 +572,197 @@ def create_app(
         except (ValueError, OSError) as exc:
             raise HTTPException(status_code=409, detail="Tool 设置保存失败，运行状态未修改。") from exc
         return tool_snapshot()
+
+    def emoji_service():
+        service = getattr(core, "emoji_service", None)
+        if service is None:
+            raise HTTPException(status_code=409, detail="Emoji Module 尚未就绪。")
+        return service
+
+    def emoji_manager():
+        manager = getattr(core, "emoji_manager", None)
+        if manager is None:
+            raise HTTPException(status_code=409, detail="表情柜尚未就绪。")
+        return manager
+
+    @app.get("/api/debug/emoji")
+    async def debug_emoji():
+        manager = getattr(core, "emoji_manager", None)
+        return {**emoji_service().diagnostics(), **(manager.diagnostics() if manager else {})}
+
+    @app.post("/api/debug/emoji")
+    async def control_emoji(body: EmojiControlRequest):
+        service = emoji_service()
+        if body.enabled is not None:
+            service.enabled = body.enabled
+        if body.reload:
+            service.reload()
+        if body.intent and body.intent.strip():
+            service.search(body.intent, body.emotion, body.intensity)
+        manager = getattr(core, "emoji_manager", None)
+        return {**service.diagnostics(), **(manager.diagnostics() if manager else {})}
+
+    @app.get("/api/debug/emoji/trace")
+    async def emoji_trace():
+        return getattr(core, "last_emoji_trace", {})
+
+    @app.post("/api/debug/emoji/trace/ack")
+    async def acknowledge_emoji_trace(body: EmojiTraceAckRequest):
+        trace = getattr(core, "last_emoji_trace", {})
+        if trace.get("trace_id") != body.trace_id:
+            raise HTTPException(status_code=409, detail="该表情 Trace 已不是最近一次请求。")
+        trace["frontend_received"] = body.received
+        trace["frontend_rendered"] = body.rendered
+        logger.info(
+            "emoji frontend_received=%s frontend_rendered=%s",
+            body.received,
+            body.rendered,
+        )
+        return trace
+
+    @app.post("/api/debug/emoji/direct")
+    async def debug_emoji_direct():
+        """Exercise Tool -> Message -> Store -> Gateway without model routing."""
+        trace_id = f"emoji_direct_{uuid4().hex}"
+        tool = core.registry.get("send_emoji")
+        core.last_emoji_trace = {
+            "trace_id": trace_id, "route": "debug_direct", "requires_tool_call": True,
+            "available_tools": ["send_emoji"], "tool_called": False, "tool_calls_count": 0,
+            "image_message_created": False, "persisted": False, "gateway_emitted": False,
+            "frontend_received": False, "frontend_rendered": False,
+        }
+        async with adapter.gateway._lock:
+            with correlation_scope(CorrelationContext(trace_id=trace_id, request_id=trace_id, session_id="local")):
+                service = emoji_service()
+                sample = service.entries[0]
+                result = await tool.run({
+                    "intent": sample.description,
+                    "emotion": sample.emotion,
+                    "intensity": sample.intensity,
+                })
+                core._capture_expression_result("send_emoji", result)
+                if not isinstance(result.data, dict) or result.data.get("status") != "sent":
+                    return {"trace": core.last_emoji_trace, "messages": []}
+                await adapter.gateway._persist_session()
+                message_id = core.last_emoji_trace["message_ids"][-1]
+                message = next(item for item in core.conversation.messages if item.message_id == message_id)
+                view = adapter.gateway._message_view(message)
+                core.last_emoji_trace["persisted"] = True
+                core.last_emoji_trace["gateway_emitted"] = True
+                return {"trace_id": trace_id, "trace": core.last_emoji_trace, "messages": [view]}
+
+    @app.post("/api/debug/emoji/model")
+    async def debug_emoji_model():
+        result = await adapter.chat(
+            "请实际使用当前可用的视觉表达能力发送一张适合此刻测试成功心情的表情。",
+            request_id=f"emoji_model_{uuid4().hex}",
+        )
+        return _response(result)
+
+    @app.get("/api/emoji")
+    async def list_emoji(q: str = "", enabled: bool | None = None):
+        values = emoji_manager().list_all(q, enabled)
+        return {"items": values, "count": len(values), **emoji_manager().diagnostics()}
+
+    @app.post("/api/emoji")
+    async def create_emoji(body: EmojiCreateRequest):
+        try:
+            return emoji_manager().add_data_url(body.data_url, body.metadata())
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/emoji/reload")
+    async def reload_emoji():
+        return {"status": "reloaded", "loaded_emojis": emoji_service().reload()}
+
+    @app.get("/api/emoji/pending")
+    async def list_pending_emoji():
+        values = emoji_manager().list_pending()
+        return {"items": values, "count": len(values)}
+
+    @app.post("/api/emoji/pending")
+    async def add_pending_emoji(body: EmojiPendingRequest):
+        try:
+            return emoji_manager().add_pending(body.data_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/emoji/pending/{pending_id}/image", include_in_schema=False)
+    async def pending_emoji_image(pending_id: str):
+        path = emoji_manager().pending_path(pending_id)
+        if path is None:
+            raise HTTPException(status_code=404, detail="待整理图片不存在。")
+        return FileResponse(path, headers={"Cache-Control": "no-store"})
+
+    @app.delete("/api/emoji/pending/{pending_id}")
+    async def delete_pending_emoji(pending_id: str):
+        result = emoji_manager().delete_pending(pending_id)
+        if result.status == "not_found":
+            raise HTTPException(status_code=404, detail="待整理图片不存在。")
+        return result
+
+    @app.post("/api/emoji/pending/{pending_id}/commit")
+    async def commit_pending_emoji(pending_id: str, body: EmojiMetadataRequest):
+        result = emoji_manager().commit_pending(pending_id, body.metadata())
+        if result.status == "not_found":
+            raise HTTPException(status_code=404, detail="待整理图片不存在。")
+        return result
+
+    @app.post("/api/emoji/analyze")
+    async def analyze_emoji(body: EmojiAnalyzeRequest):
+        try:
+            decode_image_data_url(body.data_url)
+            provider = getattr(core, "provider", None)
+            if provider is None:
+                raise ValueError("当前模型不可用")
+            prompt = (
+                "分析这张表情图片，并结合用户提示生成其表达含义和适用语境。只返回 JSON："
+                '{"description":"...","tags":["..."],"emotion":"...","intensity":0.5}。'
+                "description 不要只描述画面；tags 使用自然中文短词；不要过度脑补。\n用户提示："
+                + (body.hint or "无")
+            )
+            with provider_budget_scope(configured.request_max_model_calls, configured.request_max_total_tokens):
+                response = await provider.generate([
+                    Message(role=Role.SYSTEM, content="你负责为本地表情收藏生成简洁、可靠的语义元数据。"),
+                    Message(role=Role.USER, content=prompt, images=[body.data_url]),
+                ])
+            text = (response.content or "").strip()
+            if text.startswith("```"):
+                text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.IGNORECASE)
+            value = json.loads(text)
+            return EmojiMetadata.model_validate(value).model_dump(mode="json")
+        except Exception as exc:
+            logger.warning("emoji analysis failed type=%s", type(exc).__name__)
+            raise HTTPException(status_code=422, detail="表情识别失败，请手工填写或稍后重试。") from exc
+
+    @app.get("/api/emoji/{emoji_id}")
+    async def get_emoji(emoji_id: str):
+        item = emoji_manager().get(emoji_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="表情不存在。")
+        return {**item.model_dump(mode="json"), "url": f"/api/expression/emoji/{emoji_id}"}
+
+    @app.patch("/api/emoji/{emoji_id}")
+    async def update_emoji(emoji_id: str, body: EmojiMetadataRequest):
+        result = emoji_manager().update_metadata(emoji_id, body.metadata())
+        if result.status == "not_found":
+            raise HTTPException(status_code=404, detail="表情不存在。")
+        return result
+
+    @app.delete("/api/emoji/{emoji_id}")
+    async def delete_emoji(emoji_id: str):
+        result = emoji_manager().delete(emoji_id)
+        if result.status == "not_found":
+            raise HTTPException(status_code=404, detail="表情不存在。")
+        return result
+
+    @app.get("/api/expression/emoji/{emoji_id}", include_in_schema=False)
+    async def emoji_image(emoji_id: str):
+        manager = getattr(core, "emoji_manager", None)
+        path = manager.image_path(emoji_id) if manager is not None else emoji_service().image_path(emoji_id)
+        if path is None:
+            raise HTTPException(status_code=404, detail="表情不存在或已停用。")
+        return FileResponse(path, headers={"Cache-Control": "no-store"})
 
     @app.put("/api/tools/filesystem-access")
     async def change_filesystem_access(body: FilesystemAccessRequest):

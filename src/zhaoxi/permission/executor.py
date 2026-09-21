@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,20 @@ from zhaoxi.tools.metadata import TOOL_GROUPS
 from zhaoxi.tools.registry import ToolRegistry
 from pydantic import ValidationError
 from zhaoxi.reliability.security import UnsafeToolArgument, validate_tool_arguments
+
+
+logger = logging.getLogger("TOOL")
+
+
+def _validation_issues(exc: ValidationError) -> list[dict[str, str]]:
+    """Return schema diagnostics without logging argument values or user content."""
+    return [
+        {
+            "path": ".".join(str(part) for part in item.get("loc", ())) or "<root>",
+            "type": str(item.get("type", "validation_error")),
+        }
+        for item in exc.errors(include_url=False, include_context=False, include_input=False)
+    ]
 
 
 @dataclass(slots=True)
@@ -70,6 +85,12 @@ class ToolExecutor:
         try:
             normalized_arguments = tool.input_model.model_validate(arguments).model_dump(mode="json")
         except ValidationError as exc:
+            logger.warning(
+                "request=%s tool=%s validation_failed issues=%s",
+                request_id,
+                name,
+                json.dumps(_validation_issues(exc), ensure_ascii=False, separators=(",", ":")),
+            )
             return ToolExecution(
                 ToolResult(success=False, content="工具参数无效。", error=str(exc))
             )

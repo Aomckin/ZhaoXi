@@ -96,6 +96,8 @@ async def test_image_turn_keeps_cognitive_postprocessing_and_uses_vision_loop():
     memory = SimpleNamespace(process=AsyncMock(return_value=SimpleNamespace(action=MemoryAction.IGNORE)))
     coordinator = CognitiveCoordinator(agent=agent, router=router, auto_memory=memory)
     await coordinator.run('看图', images=[PNG])
-    agent.run.assert_awaited_once_with('看图', require_tool_call=False, images=[PNG])
+    agent.run.assert_awaited_once_with(
+        '看图', require_tool_call=False, required_tool=None, images=[PNG]
+    )
     router.route.assert_not_awaited()
     memory.process.assert_awaited_once_with('看图', '看到了')

@@ -93,12 +93,25 @@ class InterfaceGateway:
                         request_id=message.request_id,
                         session_id=message.session_id,
                         message_id=self._new_assistant_id(previous_messages),
+                        output_messages=self._new_output_messages(previous_messages),
                     )
                 beat = getattr(getattr(state, "interaction", None), "beat_loop", None)
                 if beat:
                     beat.note_assistant(datetime.now(UTC))
                 self._cache(result)
                 await self._persist_session()
+                trace = getattr(self.agent, "last_emoji_trace", None)
+                if trace and trace.get("trace_id") == message.request_id:
+                    trace["persisted"] = bool(trace.get("message_ids"))
+                    trace["gateway_emitted"] = any(
+                        item.get("source") == "emoji" for item in result.output_messages
+                    )
+                    logger.info(
+                        "emoji persisted=%s gateway_emitted=%s messages=%s",
+                        trace["persisted"],
+                        trace["gateway_emitted"],
+                        len(trace.get("message_ids", [])),
+                    )
                 self.metrics.increment("interface.chat.completed")
                 return result
             except Exception:
@@ -188,9 +201,22 @@ class InterfaceGateway:
                     request_id=request_id,
                     session_id="local",
                     message_id=self._new_assistant_id(previous_messages),
+                    output_messages=self._new_output_messages(previous_messages),
                 )
                 self._cache(result)
                 await self._persist_session()
+                trace = getattr(self.agent, "last_emoji_trace", None)
+                if trace and trace.get("trace_id") == request_id:
+                    trace["persisted"] = bool(trace.get("message_ids"))
+                    trace["gateway_emitted"] = any(
+                        item.get("source") == "emoji" for item in result.output_messages
+                    )
+                    logger.info(
+                        "emoji persisted=%s gateway_emitted=%s messages=%s",
+                        trace["persisted"],
+                        trace["gateway_emitted"],
+                        len(trace.get("message_ids", [])),
+                    )
                 self.metrics.increment("interface.regenerate.completed")
                 return result
             except Exception:
@@ -233,12 +259,10 @@ class InterfaceGateway:
                 item.delivery_id = delivery.delivery_id
                 item.metadata['kind'] = delivery.kind
                 return
-        summaries = delivery.relevant_payload.get("summaries", [delivery.relevant_payload.get("summary", "")])
         self.agent.conversation.add_delivery(Message(
             role=Role.ASSISTANT, content=delivery.content, delivery_id=delivery.delivery_id,
             timestamp=delivery.delivered_at or delivery.available_at,
             metadata={"kind": delivery.kind},
-            background="；".join(str(x)[:600] for x in summaries[:20] if x)[:2000],
         ))
 
     async def _sync_deliveries(self):
@@ -318,16 +342,10 @@ class InterfaceGateway:
             if item.role.value in {"user", "assistant"}
         ]
         latest = visible[-1] if visible else None
-        return [
-            {"message_id": item.message_id,
-             "role": item.role.value, "content": item.content or "", "timestamp": item.timestamp.isoformat(),
-             "delivery_id": item.delivery_id,
-             "kind": item.metadata.get("kind", ""),
-             "regeneratable": item is latest and item.role == Role.ASSISTANT and not item.delivery_id,
-             "display_parts": item.metadata.get("display_parts", []) if item.role == Role.USER else [],
-             **({"images": item.images} if item.images else {})}
-            for item in visible
-        ]
+        return [self._message_view(
+            item,
+            regeneratable=item is latest and item.role == Role.ASSISTANT and not item.delivery_id,
+        ) for item in visible]
 
     def clear(self) -> None:
         self.agent.conversation.clear()
@@ -381,6 +399,35 @@ class InterfaceGateway:
             None,
         )
 
+    def _new_output_messages(self, previous_messages: set[int]) -> list[dict[str, Any]]:
+        return [
+            self._message_view(item)
+            for item in self.agent.conversation.messages
+            if id(item) not in previous_messages
+            and item.role == Role.ASSISTANT
+            and (item.images or not item.tool_calls)
+        ]
+
+    @staticmethod
+    def _message_view(item: Message, *, regeneratable: bool = False) -> dict[str, Any]:
+        """One message contract shared by live output and history restoration."""
+        return {
+            "id": item.message_id,
+            "message_id": item.message_id,
+            "role": item.role.value,
+            "type": "image" if item.is_image_only else "text",
+            "text": item.content or "",
+            "content": item.content or "",
+            "images": list(item.images),
+            "source": item.source,
+            "emoji_id": item.emoji_id,
+            "timestamp": item.timestamp.isoformat(),
+            "delivery_id": item.delivery_id,
+            "kind": item.metadata.get("kind", ""),
+            "regeneratable": regeneratable,
+            "display_parts": item.metadata.get("display_parts", []) if item.role == Role.USER else [],
+        }
+
     def _cache(self, response: UnifiedResponse) -> None:
         self._responses[response.request_id] = response.model_copy(deep=True)
         self._responses.move_to_end(response.request_id)
@@ -394,6 +441,7 @@ class InterfaceGateway:
         request_id: str,
         session_id: str,
         message_id: str | None = None,
+        output_messages: list[dict[str, Any]] | None = None,
     ) -> UnifiedResponse:
         route = getattr(response, "route", None)
         permission = getattr(response, "permission_confirmation", None)
@@ -417,10 +465,11 @@ class InterfaceGateway:
         return UnifiedResponse(
             request_id=request_id,
             session_id=session_id,
-            trace_id=getattr(response, "request_id", None),
+            trace_id=request_id,
             status="waiting_for_permission" if permission_view else "completed",
             content=str(getattr(response, "content", "")),
             message_id=message_id,
             activity={key: value for key, value in activity.items() if value is not None},
             permission=permission_view,
+            output_messages=output_messages or [],
         )

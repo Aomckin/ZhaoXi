@@ -57,7 +57,9 @@
       article.dataset.role = role;
       name.textContent = role === 'user' ? '你' : '朝汐';
       text.textContent = selected.map(row => {
-        const copy = row.querySelector('.bubble').cloneNode(true);
+        const content = row.querySelector('.bubble,.image-only');
+        if (!content) return '';
+        const copy = content.cloneNode(true);
         copy.querySelectorAll('time,button').forEach(el => el.remove());
         copy.querySelectorAll('img').forEach(el => el.replaceWith(document.createTextNode('[图片]')));
         copy.querySelectorAll('br').forEach(el => el.replaceWith(document.createTextNode('\n')));

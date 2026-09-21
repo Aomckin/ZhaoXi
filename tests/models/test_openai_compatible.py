@@ -1,4 +1,5 @@
 import httpx
+import logging
 import pytest
 
 from zhaoxi.core.message import Message, Role
@@ -31,6 +32,27 @@ async def test_provider_normalizes_tool_calls():
         response = await provider.generate([Message(role=Role.USER, content="2+2")], [])
     assert response.tool_calls[0].arguments == {"expression": "2+2"}
     assert response.usage["total_tokens"] == 10
+
+
+@pytest.mark.asyncio
+async def test_provider_classifies_malformed_native_tool_arguments():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": None, "tool_calls": [{
+                "id": "bad-call",
+                "function": {"name": "add_job", "arguments": '{"company":'},
+            }]}}],
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = OpenAICompatibleProvider(
+            base_url="https://example.test/v1", api_key="secret", model="test-model", client=client
+        )
+        with pytest.raises(ProviderError) as caught:
+            await provider.generate([Message(role=Role.USER, content="记录岗位")], [])
+
+    assert caught.value.code == "provider_tool_arguments_invalid"
+    assert not caught.value.retryable
 
 
 @pytest.mark.asyncio
@@ -201,8 +223,9 @@ async def test_malformed_qwen_xml_is_rejected_instead_of_exposed():
         provider = OpenAICompatibleProvider(
             base_url="https://example.test/v1", api_key="secret", model="qwen3.8-flash", client=client
         )
-        with pytest.raises(ProviderError, match="文本工具调用协议"):
+        with pytest.raises(ProviderError, match="文本工具调用协议") as caught:
             await provider.generate([Message(role=Role.USER, content="run")])
+    assert caught.value.code == "provider_tool_arguments_invalid"
 
 
 @pytest.mark.asyncio
@@ -216,8 +239,9 @@ async def test_malformed_dsml_is_rejected_instead_of_exposed():
         provider = OpenAICompatibleProvider(
             base_url="https://example.test/v1", api_key="secret", model="test-model", client=client
         )
-        with pytest.raises(ProviderError, match="文本工具调用协议"):
+        with pytest.raises(ProviderError, match="文本工具调用协议") as caught:
             await provider.generate([Message(role=Role.USER, content="run")])
+    assert caught.value.code == "provider_tool_arguments_invalid"
 
 
 @pytest.mark.asyncio
@@ -231,3 +255,57 @@ async def test_provider_wraps_http_errors():
         )
         with pytest.raises(ProviderError, match="模型请求失败"):
             await provider.generate([Message(role=Role.USER, content="hello")])
+
+
+@pytest.mark.asyncio
+async def test_provider_logs_http_error_body_at_warning(caplog):
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={"error": {"message": "invalid image_url", "code": "bad_request"}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = OpenAICompatibleProvider(
+            base_url="https://example.test/v1", api_key="secret", model="test-model", client=client
+        )
+        with caplog.at_level(logging.WARNING, logger="MODEL"):
+            with pytest.raises(ProviderError) as caught:
+                await provider.generate([Message(role=Role.USER, content="看图")])
+
+    assert caught.value.code == "provider_http_400"
+    assert not caught.value.retryable
+    record = next(item for item in caplog.records if "provider http error" in item.message)
+    output = record.getMessage()
+    assert "status=400" in output
+    assert "model=test-model" in output
+    assert "retryable=False" in output
+    assert "invalid image_url" in output
+
+
+@pytest.mark.parametrize(
+    ("status", "retryable"),
+    [
+        (400, False),
+        (401, False),
+        (403, False),
+        (404, False),
+        (422, False),
+        (408, True),
+        (429, True),
+        (500, True),
+        (502, True),
+        (520, True),
+    ],
+)
+@pytest.mark.asyncio
+async def test_provider_classifies_http_status_retryability(status, retryable):
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, json={"error": {"message": "upstream unavailable"}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = OpenAICompatibleProvider(
+            base_url="https://example.test/v1", api_key="secret", model="test-model", client=client
+        )
+        with pytest.raises(ProviderError) as caught:
+            await provider.generate([Message(role=Role.USER, content="hello")])
+
+    assert caught.value.code == f"provider_http_{status}"
+    assert caught.value.retryable is retryable

@@ -5,7 +5,7 @@ import pytest
 
 from conftest import FakeProvider
 from zhaoxi.core.agent import ZhaoxiAgent
-from zhaoxi.errors import AgentLoopError
+from zhaoxi.errors import AgentLoopError, ProviderError
 from zhaoxi.models.openai_compatible import OpenAICompatibleProvider
 from zhaoxi.models.types import ModelResponse, ToolCall
 from zhaoxi.memory.service import MemoryService
@@ -179,5 +179,88 @@ async def test_invalid_arguments_become_observation(registry, context_builder, c
 async def test_loop_guard(registry, context_builder, conversation):
     repeating = ModelResponse(tool_calls=[ToolCall(id="again", name="echo", arguments={"message": "x"})])
     provider = FakeProvider([repeating])
-    with pytest.raises(AgentLoopError, match="最大执行步数"):
-        await make_agent(provider, registry, context_builder, conversation, max_steps=2).run("循环")
+    response = await make_agent(provider, registry, context_builder, conversation, max_steps=2).run("循环")
+    assert response.used_tool_path
+    assert response.content == (
+        "工具操作已经完成，但模型没能整理成自然语言回复。\n\n"
+        "（提醒：工具步骤已达到本轮上限，回复可能不完整；已完成的操作已保留。）"
+    )
+    assert "x" not in response.content
+
+
+@pytest.mark.asyncio
+async def test_retryable_provider_failure_after_tool_returns_partial_result(
+    registry, context_builder, conversation
+):
+    provider = FakeProvider([ModelResponse(tool_calls=[
+        ToolCall(id="calc", name="calculator", arguments={"expression": "12*17"})
+    ])])
+    original_generate = provider.generate
+    calls = 0
+
+    async def generate(messages, tools=None, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise ProviderError("temporary", retryable=True)
+        return await original_generate(messages, tools, **kwargs)
+
+    provider.generate = generate
+    response = await make_agent(provider, registry, context_builder, conversation).run("计算 12*17")
+    assert response.used_tool_path
+    assert response.content == (
+        "工具操作已经完成，但模型没能整理成自然语言回复。\n\n"
+        "（提醒：模型服务暂时不可用，这段回复可能不完整；已完成的工具操作已保留。）"
+    )
+
+
+@pytest.mark.asyncio
+async def test_nonretryable_provider_failure_after_tool_returns_tool_result(
+    registry, context_builder, conversation
+):
+    provider = FakeProvider([ModelResponse(tool_calls=[
+        ToolCall(id="calc", name="calculator", arguments={"expression": "12*17"})
+    ])])
+    original_generate = provider.generate
+    calls = 0
+
+    async def generate(messages, tools=None, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise ProviderError("bad auth", code="provider_http_401", retryable=False)
+        return await original_generate(messages, tools, **kwargs)
+
+    provider.generate = generate
+    response = await make_agent(provider, registry, context_builder, conversation).run("计算 12*17")
+    assert response.content == (
+        "工具操作已经完成，但模型没能整理成自然语言回复。\n\n"
+        "（提醒：模型服务暂时不可用，这段回复可能不完整；已完成的工具操作已保留。）"
+    )
+
+
+@pytest.mark.asyncio
+async def test_invalid_tool_json_after_failed_tool_returns_failure_summary(
+    registry, context_builder, conversation
+):
+    provider = FakeProvider([ModelResponse(tool_calls=[
+        ToolCall(id="bad", name="calculator", arguments={"expression": ""})
+    ])])
+    original_generate = provider.generate
+    calls = 0
+
+    async def generate(messages, tools=None, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise ProviderError(
+                "invalid tool JSON",
+                code="provider_tool_arguments_invalid",
+                retryable=False,
+            )
+        return await original_generate(messages, tools, **kwargs)
+
+    provider.generate = generate
+    response = await make_agent(provider, registry, context_builder, conversation).run("计算")
+    assert "工具操作未能完成" in response.content
+    assert "后续工具参数格式有误" in response.content
