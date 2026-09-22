@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -52,7 +53,10 @@ async def test_non_open_thread_beat_sends_without_world_event():
     assert len(result) == 1 and result[0].event_type == 'conversation.beat'
     assert len(provider.calls) == 1 and provider.tool_schemas == [None]
     assert loop.session.initiative_budget == 1
-    assert 'recent_conversation' in provider.calls[0][1].content
+    context = json.loads(provider.calls[0][1].content)
+    assert 'recent_conversation' in context
+    assert context['current_time'] == '2026-09-09T12:03:00+08:00'
+    assert context['timezone'] == 'Asia/Shanghai'
     assert loop.session.last_beat_result == 'COMMENT'
 
 

@@ -6,8 +6,7 @@ import pytest
 from zhaoxi.expression import EmojiService
 from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.core.conversation import Conversation
-from zhaoxi.tools.base import ToolResult
-from zhaoxi.tools.builtin.emoji import SendEmojiTool
+from zhaoxi.core.reply import commit_reply
 
 
 def make_registry(tmp_path, records):
@@ -68,27 +67,21 @@ def test_recent_history_avoids_immediate_repeat(tmp_path):
     assert first.emoji_id != second.emoji_id
 
 
-@pytest.mark.asyncio
-async def test_send_emoji_tool_returns_structured_match(tmp_path):
+def test_resolve_tags_returns_structured_match(tmp_path):
     path = make_registry(tmp_path, [entry("proud", "被夸奖后得意", ["得意"], "proud")])
-    result = await SendEmojiTool(EmojiService(path)).run({"intent": "被夸奖后得意", "emotion": "proud"})
-    assert result.success
-    assert result.data["status"] == "matched"
-    assert result.data["emoji_id"] == "proud"
+    result = EmojiService(path).resolve_tags(["得意"])
+    assert result.status == "matched"
+    assert result.emoji_id == "proud"
 
 
-def test_matched_tool_result_becomes_independent_image_message():
-    agent = object.__new__(ZhaoxiAgent)
-    agent.conversation = Conversation()
-    agent._capture_expression_result("send_emoji", ToolResult(
-        success=True,
-        content="selected",
-        data={"status": "matched", "emoji_id": "proud", "path": "ignored"},
-    ))
-    message = agent.conversation.messages[-1]
+def test_matched_reply_segment_becomes_independent_image_message(tmp_path):
+    path = make_registry(tmp_path, [entry("proud", "被夸奖后得意", ["得意"], "proud")])
+    conversation = Conversation()
+    sequence, _ = commit_reply(conversation, "[emoji:得意]", EmojiService(path))
+    message = conversation.messages[-1]
     assert message.is_image_only
     assert message.source == "emoji"
     assert message.emoji_id == "proud"
     assert message.images == ["/api/expression/emoji/proud"]
-    assert agent.last_emoji_trace["tool_status"] == "sent"
-    assert agent.last_emoji_trace["message_ids"] == [message.message_id]
+    assert message.requested_tags == ["得意"]
+    assert sequence.segments[0].emoji_id == "proud"

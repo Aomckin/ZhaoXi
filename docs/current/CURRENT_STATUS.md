@@ -1,4 +1,6 @@
-# v1.2.4.2 当前状态与使用说明
+# v1.2.5 当前状态与使用说明
+
+2026-09-22 v1.2.5：表情发送退出 Tool 系统，改为 Reply DSL。Replyer 使用 `[emoji:属性1,属性2]` 生成完整回复，Core 统一解析、按属性匹配本地资源，并将文本/表情段按原顺序持久化和输出；`save_emoji`、表情柜和旧 emoji 历史继续兼容。详见 [v1.2.5 发布说明](../v1.2.x/Zhaoxi_v1.2.5_Release_Notes.md)。
 
 2026-09-21 v1.2.4.2：完成表情发送全链路稳定性审计。CognitiveRouter 使用运行时 Tool Manifest 和 `requires_tool_call / required_tool` 契约；Agent 对明确副作用请求使用强制 Tool Choice；独立图片消息统一经过持久化、Gateway 消息模型与前端 `renderMessage()`。Debug 可区分 Core/前端版本并查看最近 Emoji Trace。详见 [v1.2.4.2 审计报告](../v1.2.x/Zhaoxi_v1.2.4.2_Emoji_Send_Stability_Audit_Report.md)。
 
@@ -53,8 +55,8 @@ Filesystem 默认仅开放朝汐启动工作目录；Memory 数据与 Playwright
 - 输入合并：0–30 秒，默认 15 秒，0 关闭。只合并模型请求，每次发送的气泡、时间和图片归属独立保存。旧记录缺少发送边界，无法可靠拆回。
 - 分段回复间隔：滑条 0–15 秒，实际间隔为该值到两倍该值；默认 5–10 秒，0 立即显示。
 - v1.1.9 起，两项时间设置同时持久化到 `.zhaoxi/interface-settings.json`，重启 Core 或浏览器存储丢失后仍可恢复；旧 `localStorage` 值保留为兼容回退。
-- 模型思考：当前支持官方 DeepSeek API。开启/关闭实际发送 thinking.type=enabled/disabled，主模型后续调用生效，已发出的请求不改变。普通聊天、Beat 和共享主模型的后台任务均使用该设置。备用模型保持自身默认行为。
-- 未设置思考开关时保留服务端默认，不强制更改。开关保存于 .zhaoxi/model-settings.json，重启保留；其他接口显示不支持。思考文本不显示在聊天界面；工具调用需要的 reasoning_content 随内部消息保存并回传。
+- 模型思考：三选一开关，控制请求体是否附带 `thinking` 字段。`不带 thinking` 完全不发该字段；`thinking.type=disabled` 与 `thinking.type=enabled` 按所选项发送。不再限定接口域名，任何 OpenAI 兼容接口都可选择，能否被接受交由用户自行判断；主模型后续调用生效，已发出的请求不改变。普通聊天、Beat 和共享主模型的后台任务均使用该设置。备用模型保持自身默认行为。
+- 选定具体模式时，工具调用所需的 reasoning_content 随内部消息保存并回传；`不带 thinking` 时不回传。选择保存于 .zhaoxi/model-settings.json（`thinking_enabled` 取 true / false / null），重启保留。思考文本不显示在聊天界面。
 - 主动回复进入普通聊天气泡，沿用分段速度；任务完成、到期提醒、模板 inbox 通报及 system.* 通知仅显示在右侧系统消息区；已有历史记录按事件来源重新分类，不凭正文关键词猜测。“可以这样找我”、系统消息、设置、Debug 均可折叠。
 - Debug 的“戳一戳”立即请求一次 Beat，可跳过静默、冷却、输入忙碌及夜间条件；模型仍可选择沉默。请求处理中、明确阻断和主动功能关闭仍生效。
 - Debug 的“重启 Core”已对 EventSource 长连接设置有界优雅关闭，不再因事件流持续连接而固定触发停止超时。

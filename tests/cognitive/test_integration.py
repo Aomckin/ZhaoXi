@@ -17,7 +17,6 @@ from zhaoxi.models.types import ModelResponse, ToolCall
 from zhaoxi.models.openai_compatible import OpenAICompatibleProvider
 from zhaoxi.planner.runtime import PlannerRuntime
 from zhaoxi.tools.builtin import create_builtin_tools
-from zhaoxi.tools.builtin.emoji import SendEmojiTool
 from zhaoxi.tools.registry import ToolRegistry
 
 
@@ -494,96 +493,12 @@ def test_non_commitments_do_not_trigger_lookup(text):
     assert not ZhaoxiAgent._promises_lookup(text)
 
 
-@pytest.mark.asyncio
-async def test_runtime_tool_catalog_and_effect_contract_force_tool_route():
-    provider = FakeProvider([
-        control('route_cognition', {
-            'route': 'direct',
-            'reason': '短承接语',
-            'requires_tool_call': True,
-        }),
-    ])
-    router = CognitiveRouter(provider, tool_catalog=[{
-        'name': 'send_emoji', 'group': 'expression',
-        'summary': '发送本地表情', 'usage': '产生一条真实图片消息',
-        'enabled': True, 'available': True,
+def test_emoji_send_is_direct_but_saving_remains_a_tool_request():
+    router = CognitiveRouter(FakeProvider([]), tool_catalog=[{
+        'name': 'save_emoji', 'group': 'expression', 'summary': '收藏会话图片',
+        'usage': '只在用户明确要求保存时使用', 'enabled': True, 'available': True,
     }])
-
-    decision = await router.route('再试一次', recent_context='assistant: 刚才尝试发送表情')
-
-    assert decision.route is CognitiveRoute.TOOL
-    assert decision.requires_tool_call is True
-    assert 'send_emoji' in provider.calls[0][0].content
-
-
-@pytest.mark.asyncio
-async def test_explicit_observable_effect_requires_tool_call():
-    provider = FakeProvider([control('route_cognition', {
-        'route': 'tool', 'reason': '需要产生真实图片消息', 'requires_tool_call': True,
-        'required_tool': 'send_emoji',
-    })])
-    decision = await CognitiveRouter(provider, tool_catalog=[{
-        'name': 'send_emoji', 'group': 'expression', 'summary': '发送本地表情',
-        'usage': '产生真实图片消息', 'enabled': True, 'available': True,
-    }]).route('请实际发送一个视觉表达')
-    assert decision.route is CognitiveRoute.TOOL
-    assert decision.requires_tool_call is True
-    assert decision.required_tool == 'send_emoji'
-
-
-@pytest.mark.asyncio
-async def test_tool_explanation_does_not_require_execution():
-    provider = FakeProvider([control('route_cognition', {
-        'route': 'direct', 'reason': '只询问能力说明', 'requires_tool_call': False,
-    })])
-    decision = await CognitiveRouter(provider, tool_catalog=[{
-        'name': 'send_emoji', 'group': 'expression', 'summary': '发送本地表情',
-        'usage': '产生真实图片消息', 'enabled': True, 'available': True,
-    }]).route('解释一下这个视觉表达工具的用途')
-    assert decision.route is CognitiveRoute.DIRECT
-    assert decision.requires_tool_call is False
-
-
-@pytest.mark.asyncio
-async def test_one_model_turn_can_emit_three_ordered_emoji_messages(tmp_path):
-    service = MemoryService(SQLiteMemoryRepository(tmp_path / 'memory.db'))
-    emoji_root = tmp_path / 'emoji'
-    (emoji_root / 'images').mkdir(parents=True)
-    records = []
-    for emoji_id, emotion in [('proud', 'proud'), ('cheer', 'happy'), ('laugh', 'joy')]:
-        (emoji_root / 'images' / f'{emoji_id}.png').write_bytes(b'image')
-        records.append({
-            'id': emoji_id, 'file': f'images/{emoji_id}.png',
-            'description': f'{emotion} visual expression', 'tags': [emotion],
-            'emotion': emotion, 'intensity': .7, 'enabled': True,
-        })
-    (emoji_root / 'emoji_registry.json').write_text(
-        __import__('json').dumps(records), encoding='utf-8'
-    )
-    provider = FakeProvider([
-        control('route_cognition', {
-            'route': 'tool', 'reason': 'must create visible image messages',
-            'requires_tool_call': True, 'required_tool': 'send_emoji',
-        }),
-        ModelResponse(tool_calls=[
-            ToolCall(id='emoji-1', name='send_emoji', arguments={'intent': 'proud', 'emotion': 'proud'}),
-            ToolCall(id='emoji-2', name='send_emoji', arguments={'intent': 'happy', 'emotion': 'happy'}),
-            ToolCall(id='emoji-3', name='send_emoji', arguments={'intent': 'joy', 'emotion': 'joy'}),
-        ]),
-        ModelResponse(content='Three visual messages were sent.'),
-        control('decide_memory', {'action': 'ignore', 'reason': 'transient test'}),
-    ])
-    agent = make_cognitive(provider, service)
-    agent.registry.register(SendEmojiTool(EmojiService(emoji_root / 'emoji_registry.json')))
-    agent.cognitive.router = CognitiveRouter(provider, tool_catalog=agent.registry.manifest())
-
-    await agent.run_natural('Send three different visual reactions now.')
-
-    images = [message for message in agent.conversation.messages if message.source == 'emoji']
-    assert [message.emoji_id for message in images] == ['proud', 'cheer', 'laugh']
-    assert all(message.is_image_only for message in images)
-    assert agent.last_emoji_trace['tool_calls_count'] == 3
-    assert agent.last_emoji_trace['message_ids'] == [message.message_id for message in images]
-    assert provider.options[1]['tool_choice'] == {
-        'type': 'function', 'function': {'name': 'send_emoji'},
-    }
+    assert router._fallback('给我发个表情').route is CognitiveRoute.DIRECT
+    saving = router._fallback('把这张图收藏成表情')
+    assert saving.route is CognitiveRoute.TOOL
+    assert saving.required_tool == 'save_emoji'

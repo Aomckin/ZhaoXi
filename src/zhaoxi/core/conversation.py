@@ -36,8 +36,13 @@ class Conversation:
     def add_assistant(self, content: str | None, **kwargs: object) -> Message:
         return self.add(Message(role=Role.ASSISTANT, content=content, **kwargs))
 
-    def add_assistant_image(self, image: str, *, source: str, emoji_id: str | None = None) -> Message:
-        return self.add(Message(role=Role.ASSISTANT, content="", images=[image], source=source, emoji_id=emoji_id))
+    def add_assistant_image(
+        self, image: str, *, source: str, emoji_id: str | None = None, **kwargs: object
+    ) -> Message:
+        return self.add(Message(
+            role=Role.ASSISTANT, content="", images=[image], source=source,
+            emoji_id=emoji_id, **kwargs,
+        ))
 
     def add_tool(self, content: str, *, tool_call_id: str, name: str) -> Message:
         return self.add(Message(role=Role.TOOL, content=content, tool_call_id=tool_call_id, name=name))

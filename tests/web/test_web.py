@@ -26,6 +26,7 @@ from zhaoxi.reflection.models import (
 from zhaoxi.web.app import create_app
 from zhaoxi.web.events import EventBroadcaster
 from zhaoxi.interfaces.models import UnifiedResponse
+from zhaoxi.models.openai_compatible import OpenAICompatibleProvider
 from zhaoxi.voice.models import Transcript, VoiceStatus
 from zhaoxi.config.settings import Settings
 
@@ -494,6 +495,36 @@ def test_interface_settings_reject_out_of_range_values(tmp_path):
             "input_merge_seconds": 31,
             "reply_interval_seconds": 5,
         }).status_code == 422
+
+
+def test_thinking_setting_round_trips_three_modes(tmp_path):
+    settings = Settings(
+        _env_file=None, interface_settings_path=str(tmp_path / "interface-settings.json")
+    )
+    model_settings = tmp_path / "model-settings.json"
+    agent = FakeAgent()
+    provider = OpenAICompatibleProvider(
+        base_url="https://example.test/v1",
+        api_key="test",
+        model="test-model",
+        thinking_settings_path=str(model_settings),
+    )
+    agent.provider = SimpleNamespace(providers=[provider])
+
+    with TestClient(create_app(agent=agent, settings=settings)) as client:
+        assert client.get("/api/settings/thinking").json() == {"mode": "off"}
+        assert client.put("/api/settings/thinking", json={"mode": "enabled"}).json() == {
+            "mode": "enabled"
+        }
+        assert provider.thinking_enabled is True
+        assert client.put("/api/settings/thinking", json={"mode": "disabled"}).json() == {
+            "mode": "disabled"
+        }
+        assert provider.thinking_enabled is False
+        assert client.put("/api/settings/thinking", json={"mode": "off"}).json() == {"mode": "off"}
+        assert provider.thinking_enabled is None
+        assert json.loads(model_settings.read_text(encoding="utf-8")) == {"thinking_enabled": None}
+        assert client.put("/api/settings/thinking", json={"mode": "unknown"}).status_code == 422
 
 
 def test_desktop_api_token_guards_local_core_routes():

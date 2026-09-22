@@ -51,10 +51,12 @@ class ContextBuilder:
         suggestions_refresh_minutes: int = 180,
         expression_prompt: str = "",
         character_components: list[tuple[str, str]] | None = None,
+        emoji_service=None,
     ) -> None:
         self.personality_prompt = personality_prompt
         self.expression_prompt = expression_prompt
         self.character_components = character_components
+        self.emoji_service = emoji_service
         self.runtime_rules = runtime_rules or self.RUNTIME_RULES
         self.memory_retriever = memory_retriever
         self.timezone = ZoneInfo(timezone)
@@ -90,6 +92,10 @@ class ContextBuilder:
             add(name, prompt.strip())
         add("system.runtime_rules", f"\n\n运行规则：\n{self.runtime_rules}")
         add("system.quick_suggestions", SUGGESTION_RULE)
+        if self.emoji_service is not None:
+            emoji_context = self.emoji_service.build_context()
+            if emoji_context:
+                add("runtime.emoji_context", emoji_context)
         if self.interaction is not None:
             add("runtime.presence", "\n当前互动状态（仅状态元数据，不代表能读取屏幕或输入内容）：" + json.dumps(
                 self.interaction.diagnostics(now), ensure_ascii=False, default=str))
@@ -127,6 +133,12 @@ class ContextBuilder:
         recent = conversation.recent()
         image_cutoff = max(0, len(recent) - self.RECENT_IMAGE_MESSAGE_WINDOW)
         for index, item in enumerate(recent):
+            if item.source == "emoji" and item.emoji_id:
+                label = ",".join(item.requested_tags)
+                item = item.model_copy(update={
+                    "content": f"[曾使用表情：{label}]" if label else "[曾使用表情]",
+                    "images": [],
+                })
             if item.role in {Role.USER, Role.ASSISTANT} and item.content:
                 text = (normalize_assistant_history(item.content)
                         if item.role == Role.ASSISTANT else item.content)

@@ -3,7 +3,6 @@
 import json
 import logging
 from pathlib import Path
-from urllib.parse import urlparse
 from typing import Any, Sequence
 
 import httpx
@@ -51,13 +50,7 @@ class OpenAICompatibleProvider(ModelProvider):
             except (OSError, ValueError):
                 pass
 
-    @property
-    def supports_thinking(self):
-        return urlparse(self.base_url).hostname == 'api.deepseek.com'
-
     def set_thinking(self, enabled):
-        if not self.supports_thinking:
-            raise ValueError('当前模型接口尚未支持思考开关')
         if self.thinking_settings_path:
             path = Path(self.thinking_settings_path)
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -78,9 +71,8 @@ class OpenAICompatibleProvider(ModelProvider):
             "messages": [message.to_provider_dict() for message in messages],
             "temperature": kwargs.get("temperature", self.temperature),
         }
-        if self.supports_thinking:
-            if self.thinking_enabled is not None:
-                payload['thinking'] = {'type': 'enabled' if self.thinking_enabled else 'disabled'}
+        if self.thinking_enabled is not None:
+            payload['thinking'] = {'type': 'enabled' if self.thinking_enabled else 'disabled'}
             for original, outgoing in zip(messages, payload['messages']):
                 if original.tool_calls and original.metadata.get('reasoning_content') is not None:
                     outgoing['reasoning_content'] = original.metadata['reasoning_content']
@@ -90,7 +82,12 @@ class OpenAICompatibleProvider(ModelProvider):
         if tools:
             payload["tools"] = tools
         tool_choice = kwargs.get("tool_choice")
-        if tool_choice is not None:
+        # DeepSeek thinking mode rejects tool_choice even though it still accepts
+        # tool schemas and can choose tools from prompt instructions.
+        thinking_rejects_tool_choice = (
+            self.thinking_enabled is True and "deepseek" in self.model.lower()
+        )
+        if tool_choice is not None and not thinking_rejects_tool_choice:
             payload["tool_choice"] = tool_choice
         response_format = kwargs.get("response_format")
         if response_format is not None:

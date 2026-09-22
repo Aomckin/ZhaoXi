@@ -28,7 +28,7 @@ const action='（尾巴轻轻摇了摇。）\n今天也辛苦啦。要在这里�
    }
    if(url.pathname==='/api/events')return route.fulfill({contentType:'text/event-stream',body:': fixture\n\n'});
    const fixture={
-    '/api/settings/interface':{input_merge_seconds:15,reply_interval_seconds:0},'/api/settings/thinking':{supported:false},'/api/voice/status':{enabled:false},
+    '/api/settings/interface':{input_merge_seconds:15,reply_interval_seconds:0},'/api/settings/thinking':{mode:'off'},'/api/voice/status':{enabled:false},
     '/api/suggestions':{suggestions:['和我聊聊今天吧','一起整理一下思绪','看看今天的安排'],timezone:'Asia/Shanghai'},
     '/api/session':{messages:[{role:'user',content:'今天终于忙完了，想过来坐一会儿。',timestamp:'2026-09-12T09:18:00Z'},{role:'assistant',content:action,timestamp:'2026-09-12T09:19:00Z'}]},
     '/api/proactive':{deliveries:notes},'/api/diagnostics':{presence:{interaction_state:'ACTIVE'},startup:{status:'ready'}},

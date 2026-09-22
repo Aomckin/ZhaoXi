@@ -10,7 +10,6 @@ from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.expression import EmojiManager, EmojiService
 from zhaoxi.session.base import Session
 from zhaoxi.session.sqlite import SQLiteSessionStore
-from zhaoxi.tools.builtin.emoji import SendEmojiTool
 from zhaoxi.tools.registry import ToolRegistry
 from zhaoxi.web.app import create_app
 
@@ -89,7 +88,6 @@ def test_debug_direct_send_is_stable_for_ten_runs_and_acknowledged(tmp_path):
     }]), encoding='utf-8')
     service = EmojiService(root / 'emoji_registry.json')
     registry = ToolRegistry()
-    registry.register(SendEmojiTool(service))
     store = SQLiteSessionStore(tmp_path / 'sessions.db')
     conversation = Conversation()
     agent = object.__new__(ZhaoxiAgent)
@@ -100,6 +98,7 @@ def test_debug_direct_send_is_stable_for_ten_runs_and_acknowledged(tmp_path):
     agent.session_store = store
     agent.session_record = Session(id='local', conversation=conversation)
     agent.last_emoji_trace = {}
+    agent.emoji_service = service
     agent.proactive = None
     agent.proactive_scheduler = None
     agent.proactive_state = None

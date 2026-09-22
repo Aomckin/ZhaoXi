@@ -2,7 +2,13 @@
 
 > 当前配置、界面行为与最新限制见 [当前状态](CURRENT_STATUS.md)。下文保留分阶段实现与验收记录；其中旧预算和测试数量不代表当前值。
 
-> **默认分支：`main`，运行时版本 `1.2.4.2`**。以下旧版本章节是历史切片，其“当前”指当时状态。
+> **默认分支：`main`，运行时版本 `1.2.5`**。以下旧版本章节是历史切片，其“当前”指当时状态。
+
+## v1.2.5 当前增量
+
+表情已改为 Core 级 Reply DSL：`[emoji:属性1,属性2]` 经统一 Parser 生成 `ReplySequence`，再由 `EmojiService.resolve_tags()` 本地解析为稳定 `emoji_id`。启用表情 tags 在每轮 Replyer 上下文中完整提供，但不暴露 ID 或路径。文本与表情段按原顺序作为结构化 assistant 消息持久化，历史恢复不重新解析；旧 emoji 图片消息继续兼容。
+
+`send_emoji` 已从公开 Tool 注册、Manifest、能力路由和 Tool 强制执行链路删除；`save_emoji`、表情柜、资源读取与管理 API 保留。Debug Emoji 现在围绕 Raw Reply、Parsed Segments、Requested Tags、Resolved IDs 和 recent history 展示。
 
 ## v1.2.4.2 当前增量
 
@@ -454,7 +460,7 @@ python main.py
 git diff --check
 ```
 
-当前自动化测试基线：**563 项 Python 通过、1 项跳过；32 项 Node 前端测试通过**。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
+当前自动化测试基线：**615 项 Python 通过、1 项跳过；35 项无需浏览器的 Node 前端测试通过**。3 项 Playwright 冒烟测试需先安装对应 Node 依赖。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
 
 ## 接手建议
 

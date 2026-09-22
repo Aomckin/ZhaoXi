@@ -7,7 +7,6 @@ from zhaoxi.cognitive.memory_decision import AutoMemory, MemoryAction
 from zhaoxi.cognitive.router import CognitiveRoute, CognitiveRouter, RouteDecision
 from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.permission.models import PendingConfirmation
-from zhaoxi.reliability import current_correlation
 from zhaoxi.workflow.runtime import WorkflowRuntimeError
 
 logger = logging.getLogger("COGNITIVE")
@@ -54,22 +53,6 @@ class CognitiveCoordinator:
             getattr(self.router, "available_tool_names", []),
             decision.reason[:160],
         )
-        correlation = current_correlation()
-        self.agent.last_emoji_trace = {
-            "trace_id": correlation.trace_id if correlation else None,
-            "route": decision.route.value,
-            "requires_tool_call": decision.requires_tool_call,
-            "required_tool": decision.required_tool,
-            "selected_workflow": decision.workflow_id,
-            "available_tools": getattr(self.router, "available_tool_names", []),
-            "tool_called": False,
-            "tool_calls_count": 0,
-            "image_message_created": False,
-            "persisted": False,
-            "gateway_emitted": False,
-            "frontend_received": False,
-            "frontend_rendered": False,
-        }
         workflow_run_id = None
         if decision.route == CognitiveRoute.WORKFLOW and self.agent.workflow is not None and decision.workflow_id:
             self.agent.conversation.add_user(user_message.strip())

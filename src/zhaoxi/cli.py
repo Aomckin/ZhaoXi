@@ -182,7 +182,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     )
     emoji_manager = EmojiManager(emoji_service)
     registry = ToolRegistry(settings.tool_overrides_path)
-    for tool in create_builtin_tools(memory_service, archive_service, emoji_service):
+    for tool in create_builtin_tools(memory_service, archive_service):
         registry.register(tool)
     tool_package_errors: list[dict[str, str]] = []
     try:
@@ -341,6 +341,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
             ("system.canine_expression", CanineExpressionLoader.load_prompt()),
             ("system.few_shot_dialogues", FewShotDialoguesLoader.load_prompt()),
         ],
+        emoji_service=emoji_service,
     )
     planner = None
     if settings.planner_enabled:

@@ -63,6 +63,7 @@ class CognitiveRouter:
         "WORKFLOW 仅用于已经注册并由运行时提供的已知流程；"
         "用户要求检查外部事实或明确使用工具时选择 TOOL；"
         "询问朝汐自身设定、用户长期资料或项目正式文档中的具体事实时选择 TOOL，以便查询潮庭书库；"
+        "请求朝汐发送或使用表情属于普通回复表达，选择 DIRECT；只有保存或收藏会话图片才使用 save_emoji Tool；"
         "不要选择 DIRECT 后声称稍后检查。"
         "简单请求禁止选择 PLAN。"
     )
@@ -186,6 +187,14 @@ class CognitiveRouter:
         archive = self._archive_decision(text)
         if archive is not None:
             return archive
+        if self._is_emoji_save_request(text):
+            return RouteDecision(
+                route=CognitiveRoute.TOOL, reason="save emoji side effect",
+                requires_tool_call=True,
+                required_tool="save_emoji" if "save_emoji" in self.available_tool_names else None,
+            )
+        if self._is_emoji_reply_request(text):
+            return RouteDecision(route=CognitiveRoute.DIRECT, reason="emoji is reply expression")
         contextual_tool = self._contextual_tool_followup(text, recent_context)
         if contextual_tool is not None:
             return contextual_tool
@@ -222,6 +231,20 @@ class CognitiveRouter:
     def _is_lookup_request(text: str) -> bool:
         return any(marker in text for marker in ("查", "看看", "读取", "核对", "检索", "调用"))
 
+    @staticmethod
+    def _is_emoji_reply_request(text: str) -> bool:
+        if any(marker in text for marker in ("保存", "收藏", "收进", "加入表情")):
+            return False
+        return any(marker in text for marker in ("表情", "表情包", "emoji", "贴图")) and any(
+            marker in text for marker in ("发", "来", "用", "给我", "看看", "展示")
+        )
+
+    @staticmethod
+    def _is_emoji_save_request(text: str) -> bool:
+        return any(marker in text for marker in ("表情", "表情包", "emoji", "贴图")) and any(
+            marker in text for marker in ("保存", "收藏", "收进", "加入")
+        )
+
     def _contextual_tool_followup(
         self, text: str, recent_context: str
     ) -> RouteDecision | None:
@@ -245,6 +268,14 @@ class CognitiveRouter:
         archive = self._archive_decision(text)
         if archive is not None:
             return archive
+        if self._is_emoji_save_request(text):
+            return RouteDecision(
+                route=CognitiveRoute.TOOL, reason="save emoji side effect",
+                requires_tool_call=True,
+                required_tool="save_emoji" if "save_emoji" in self.available_tool_names else None,
+            )
+        if self._is_emoji_reply_request(text):
+            return RouteDecision(route=CognitiveRoute.DIRECT, reason="emoji is reply expression")
         hinted = self._hint_decision(user_message)
         if hinted is not None:
             return hinted

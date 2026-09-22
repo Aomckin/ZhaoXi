@@ -210,7 +210,7 @@ class DecisionWorker:
         started = monotonic()
         h.metrics.increment('proactive.beat_decisions')
         self._trace_beat(beat, llm_called=True)
-        result = await beat.decide(self.decision, now, history)
+        result = await beat.decide(self.decision, local_now, history)
         self._trace_beat(beat, llm_action=None if beat.model_failure else result.action,
             llm_confidence=None if beat.model_failure else result.confidence, model_error=beat.model_failure,
             model_diagnostics=dict(beat.model_diagnostics))

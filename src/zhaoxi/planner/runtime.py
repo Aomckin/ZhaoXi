@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from zhaoxi.core.context import ContextBuilder
 from zhaoxi.core.conversation import Conversation
+from zhaoxi.core.reply import commit_reply
 from zhaoxi.errors import (
     PlanValidationError,
     PlannerLimitError,
@@ -289,12 +290,17 @@ class PlannerRuntime:
             response = await self.provider.generate(messages, schemas)
             self._check_cancelled(goal)
             if not response.tool_calls:
-                self.conversation.add_assistant(response.content)
                 if goal.current_plan and all(
                     step.status in {StepStatus.COMPLETED, StepStatus.SKIPPED}
                     for step in goal.current_plan.steps
                 ):
-                    return await self._finish(goal, response.content or "任务已完成。", action_index)
+                    sequence, _ = commit_reply(
+                        self.conversation,
+                        response.content or "任务已完成。",
+                        getattr(self.context_builder, "emoji_service", None),
+                    )
+                    return await self._finish(goal, sequence.visible_text, action_index)
+                self.conversation.add_assistant(response.content)
                 continue
 
             self.conversation.add_assistant(response.content, tool_calls=response.tool_calls)

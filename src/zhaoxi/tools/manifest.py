@@ -116,7 +116,7 @@ def resolve_capability(need: str, manifest: list[dict]) -> dict:
         "web": ("网页", "网站", "网址", "链接", "http://", "https://"),
         "time": ("几点", "时间", "时区"), "calculator": ("计算", "算一下"),
         "lifehud": ("lifehud", "life hud", "铁幕"),
-        "expression": ("表情", "表情包", "emoji", "贴图"),
+        "expression": ("保存表情", "收藏表情", "收进表情包"),
     }
     matched = []
     for tool in manifest:

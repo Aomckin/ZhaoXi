@@ -25,7 +25,7 @@ TOOL_GROUPS: dict[str, tuple[str, ...]] = {
     "time": ("current_time", "mcp_time_get_current_time", "mcp_time_convert_time"),
     "calculator": ("calculator",),
     "lifehud": ("lifehud",),
-    "expression": ("send_emoji", "save_emoji"),
+    "expression": ("save_emoji",),
     # Built-in developer utility. It is intentionally absent from normal turns.
     "echo": ("echo",),
 }
@@ -50,7 +50,6 @@ TOOL_LABELS = {
     "mcp_time_get_current_time": "查询时区时间", "mcp_time_convert_time": "转换时区时间",
     "calculator": "计算表达式", "lifehud": "查询 Life HUD", "echo": "调试回显",
     "request_tool_group": "临时携带钥匙组", "inspect_tool_catalog": "查看钥匙目录",
-    "send_emoji": "发送本地表情",
     "save_emoji": "收藏会话图片",
 }
 
@@ -74,7 +73,6 @@ TOOL_USAGE = {
     "calculator": "进行可靠的数学计算。", "lifehud": "读取任务、专注、饮食、睡眠等 Life HUD 数据。",
     "echo": "原样返回输入，仅用于开发调试。", "request_tool_group": "按当前任务临时加载一组钥匙。",
     "inspect_tool_catalog": "查看当前有哪些钥匙组可用。",
-    "send_emoji": "根据表达意图检索并发送合适的本地表情。",
     "save_emoji": "把用户明确指定的会话图片收藏到表情柜。",
 }
 

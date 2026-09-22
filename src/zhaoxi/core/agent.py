@@ -12,12 +12,14 @@ from uuid import uuid4
 from zhaoxi.core.context import ContextBuilder
 from zhaoxi.core.conversation import Conversation
 from zhaoxi.core.message import strip_echoed_timeline_header
+from zhaoxi.core.reply import commit_reply
 from zhaoxi.errors import AgentLoopError, ProviderError
 from zhaoxi.models.base import ModelProvider
 from zhaoxi.models.types import ToolCall
 from zhaoxi.memory.models import MemorySearchResult
 from zhaoxi.permission.executor import ToolExecutor
 from zhaoxi.permission.models import InvocationOrigin, PendingConfirmation
+from zhaoxi.reliability import current_correlation
 from zhaoxi.tools.base import ToolResult
 from zhaoxi.tools.registry import ToolRegistry
 from zhaoxi.tools.discovery import RequestToolGroupTool, InspectToolCatalogTool, ToolDiscoveryState
@@ -100,6 +102,7 @@ class ZhaoxiAgent:
             if not any(tool.name == control_tool.name for tool in registry.list()):
                 registry.register(control_tool)
         self.context_builder = context_builder
+        self.emoji_service = getattr(context_builder, "emoji_service", None)
         self.quick_suggestions = context_builder.quick_suggestions
         self.conversation = conversation or Conversation()
         self.max_steps = max_steps
@@ -114,6 +117,32 @@ class ZhaoxiAgent:
         self._pending_permissions: dict[str, PendingAgentInvocation] = {}
         self.cognitive: "CognitiveCoordinator | None" = None
         self.last_emoji_trace: dict[str, object] = {}
+
+    def _commit_model_reply(self, raw_reply: str) -> str:
+        """Parse, resolve and persist one final model reply exactly once."""
+        sequence, message_ids = commit_reply(
+            self.conversation, raw_reply, getattr(self, "emoji_service", None)
+        )
+        emoji_segments = [
+            item for item in sequence.segments if item.type == "emoji"
+        ]
+        correlation = current_correlation()
+        self.last_emoji_trace = {
+            "trace_id": correlation.trace_id if correlation else None,
+            "raw_reply": sequence.raw_reply,
+            "parsed_segments": [item.model_dump(mode="json") for item in sequence.segments],
+            "requested_tags": [item.requested_tags for item in emoji_segments],
+            "resolved_emoji_ids": [item.emoji_id for item in emoji_segments],
+            "recent_emoji_history": list(getattr(
+                getattr(self, "emoji_service", None), "recent_ids", []
+            )),
+            "message_ids": message_ids,
+            "persisted": False,
+            "gateway_emitted": False,
+            "frontend_received": False,
+            "frontend_rendered": False,
+        }
+        return sequence.visible_text
 
     async def run_planned(self, goal: str) -> "PlannerResponse":
         """Run an explicit multi-step task through the optional planner."""
@@ -239,7 +268,7 @@ class ZhaoxiAgent:
             logger.warning("workflow final response fallback run=%s error=%s", run.id, type(exc).__name__)
         if not content:
             content = self._workflow_fallback(run)
-        self.conversation.add_assistant(content)
+        content = self._commit_model_reply(content)
         return AgentResponse(content=content, request_id=run.id, steps=0)
 
     @staticmethod
@@ -517,6 +546,17 @@ class ZhaoxiAgent:
                         + "\n你上一尝试承诺执行真实工具动作，却没有调用工具；"
                         "现在必须调用一个最相关的可用工具，不得只描述将要查询、发送或展示。"
                     )
+                if require_tool_call and not tool_called:
+                    requirement = (
+                        f"必须调用 `{required_tool}`；若尚未携带，先加载其工具组，再在本轮调用它。"
+                        if required_tool else "必须调用一个与用户请求直接相关的业务工具。"
+                    )
+                    messages[0].content = (
+                        (messages[0].content or "")
+                        + "\n当前轮工具要求："
+                        + requirement
+                        + "request_tool_group、inspect_tool_catalog 等能力发现操作不算完成任务。"
+                    )
                 self.last_tool_diagnostics = discovery.diagnostics(self.registry)
                 forced_tool = required_tool if (
                     require_tool_call
@@ -588,7 +628,7 @@ class ZhaoxiAgent:
                         request_id,
                     )
                     content = f"{content.rstrip()}\n\n{TOOL_QUERY_NOT_COMPLETED_NOTICE}"
-                self.conversation.add_assistant(content)
+                content = self._commit_model_reply(content)
                 logger.info("request=%s final response step=%d", request_id, step)
                 return AgentResponse(
                     content=content, request_id=request_id, steps=step,
@@ -730,37 +770,6 @@ class ZhaoxiAgent:
             return continued
         return await self._run_loop(pending.request_id, user_intent=pending.user_intent, discovery=pending.discovery)
 
-    def _capture_expression_result(self, tool_name: str, result: ToolResult | None) -> None:
-        """Turn a matched expression result into a real transport-neutral image message."""
-        if tool_name != "send_emoji" or result is None or not result.success or not isinstance(result.data, dict):
-            return
-        trace = getattr(self, "last_emoji_trace", None)
-        if trace is None:
-            trace = self.last_emoji_trace = {}
-        trace["tool_called"] = True
-        trace["tool_calls_count"] = int(trace.get("tool_calls_count", 0)) + 1
-        trace["tool_status"] = result.data.get("status", "error")
-        if result.data.get("status") != "matched" or not result.data.get("emoji_id"):
-            return
-        emoji_id = str(result.data["emoji_id"])
-        message = self.conversation.add_assistant_image(
-            f"/api/expression/emoji/{emoji_id}", source="emoji", emoji_id=emoji_id
-        )
-        trace.setdefault("emoji_ids", []).append(emoji_id)
-        trace.setdefault("message_ids", []).append(message.message_id)
-        trace["image_message_created"] = True
-        result.data.update({
-            "status": "sent",
-            "message_id": message.message_id,
-            "image_url": message.images[0],
-        })
-        trace["tool_status"] = "sent"
-        logger.info(
-            "emoji status=sent emoji_id=%s message_id=%s",
-            emoji_id,
-            message.message_id,
-        )
-
     def _record_tool_result(self, call: ToolCall, result: ToolResult) -> None:
         provider_result = result
         if not result.success:
@@ -769,14 +778,11 @@ class ZhaoxiAgent:
                 "请根据这次失败结果向用户说明未完成及原因；"
                 "除非你已获得修正后的有效参数，否则不要重复调用同一工具。"
             )
-        tool_message = self.conversation.add_tool(
+        self.conversation.add_tool(
             json.dumps(provider_result.model_dump(mode="json"), ensure_ascii=False),
             tool_call_id=call.id,
             name=call.name,
         )
-        self._capture_expression_result(call.name, result)
-        if call.name == "send_emoji":
-            tool_message.content = json.dumps(result.model_dump(mode="json"), ensure_ascii=False)
 
     async def _execute_remaining_calls(
         self,

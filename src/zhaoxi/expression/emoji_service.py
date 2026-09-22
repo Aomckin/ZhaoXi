@@ -78,6 +78,7 @@ class EmojiService:
         self.entries: list[EmojiEntry] = []
         self.recent_ids: deque[str] = deque(maxlen=recent_history_size)
         self.last_intent = ""
+        self.last_requested_tags: list[str] = []
         self.last_candidates: list[EmojiCandidate] = []
         self.last_selected: str | None = None
         self.load_error: str | None = None
@@ -181,12 +182,71 @@ class EmojiService:
         self.last_selected = chosen.emoji_id
         return EmojiResult(status="matched", emoji_id=chosen.emoji_id, path=chosen.path, score=chosen.score)
 
+    def build_context(self) -> str:
+        """Expose enabled expression attributes without internal IDs or file paths."""
+        if not self.enabled or not self.entries:
+            return ""
+        catalog = "\n".join(f"- [{','.join(item.tags)}]" for item in self.entries)
+        return (
+            "\n\n当前可用表情：\n" + catalog + "\n\n"
+            "你可以在回复中使用当前提供的表情，格式为 [emoji:属性1,属性2]。\n"
+            "规则：只使用上面实际存在的属性；每次选择 1~3 个最贴切属性；"
+            "没有合适表情时不要输出 emoji DSL；表情可放在开头、中间或结尾，也可以不用；"
+            "严肃任务和长篇技术说明中少用；不要输出具体 emoji_id；不要解释 DSL。"
+        )
+
+    def resolve_tags(self, requested_tags: list[str]) -> EmojiResult:
+        """Resolve exact registry attributes with simple overlap and recency scoring."""
+        tags = list(dict.fromkeys(item.strip() for item in requested_tags if item.strip()))[:3]
+        self.last_requested_tags = tags
+        self.last_intent = ",".join(tags)
+        if not self.enabled or not self.entries or not tags:
+            self.last_candidates = []
+            self.last_selected = None
+            return EmojiResult(status="no_match")
+        requested = {item.casefold() for item in tags}
+        candidates: list[EmojiCandidate] = []
+        for entry in self.entries:
+            available = {item.casefold() for item in entry.tags}
+            hits = len(requested & available)
+            if not hits:
+                continue
+            coverage = hits / len(requested)
+            specificity = hits / max(1, len(available))
+            score = .55 * coverage + .35 * min(1.0, hits / 3) + .10 * specificity
+            if entry.id in self.recent_ids:
+                distance = list(reversed(self.recent_ids)).index(entry.id)
+                score -= .30 if distance == 0 else max(.08, .20 - distance * .04)
+            candidates.append(EmojiCandidate(
+                emoji_id=entry.id,
+                path=str((self.registry_path.parent / entry.file).resolve()),
+                description=entry.description,
+                emotion=entry.emotion,
+                intensity=entry.intensity,
+                score=round(min(1.0, max(0.0, score)), 4),
+            ))
+        candidates.sort(key=lambda item: (-item.score, item.emoji_id))
+        self.last_candidates = candidates[:self.candidate_limit]
+        if not candidates:
+            self.last_selected = None
+            return EmojiResult(status="no_match")
+        best = candidates[0].score
+        pool = [item for item in candidates if item.score >= best - .03]
+        chosen = self._random.choice(pool)
+        self.recent_ids.append(chosen.emoji_id)
+        self.last_selected = chosen.emoji_id
+        return EmojiResult(
+            status="matched", emoji_id=chosen.emoji_id, path=chosen.path, score=chosen.score
+        )
+
     def diagnostics(self) -> dict:
         return {
             "enabled": self.enabled,
             "loaded_emojis": len(self.entries),
             "load_error": self.load_error,
             "last_intent": self.last_intent,
+            "current_emoji_context": self.build_context(),
+            "requested_tags": self.last_requested_tags,
             "candidates": [{"emoji_id": item.emoji_id, "score": item.score} for item in self.last_candidates],
             "selected": self.last_selected,
             "recent": list(self.recent_ids),

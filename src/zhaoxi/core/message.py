@@ -57,6 +57,10 @@ class Message(BaseModel):
     images: list[str] = Field(default_factory=list, max_length=20)
     source: str | None = Field(default=None, max_length=80)
     emoji_id: str | None = Field(default=None, max_length=128)
+    requested_tags: list[str] = Field(default_factory=list, max_length=3)
+    segment_type: str | None = Field(default=None, pattern="^(text|emoji)$")
+    reply_group_id: str | None = Field(default=None, max_length=128)
+    raw_reply: str | None = Field(default=None, max_length=20_000)
     tool_calls: list[ToolCall] = Field(default_factory=list)
     tool_call_id: str | None = None
     name: str | None = None

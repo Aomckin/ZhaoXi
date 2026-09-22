@@ -60,7 +60,7 @@ class ChatRequest(BaseModel):
 
 
 class ThinkingRequest(BaseModel):
-    enabled: bool
+    mode: Literal["off", "disabled", "enabled"]
 
 
 class RegenerateRequest(BaseModel):
@@ -404,19 +404,24 @@ def create_app(
         provider = getattr(core, "provider", None)
         return provider.providers[0] if getattr(provider, "providers", None) else provider
 
+    def thinking_mode() -> str:
+        enabled = getattr(thinking_provider(), "thinking_enabled", None)
+        if enabled is None:
+            return "off"
+        return "enabled" if enabled else "disabled"
+
     @app.get("/api/settings/thinking")
     async def thinking_settings():
-        provider = thinking_provider()
-        return {"supported": bool(getattr(provider, "supports_thinking", False)),
-                "enabled": getattr(provider, "thinking_enabled", None)}
+        return {"mode": thinking_mode()}
 
     @app.put("/api/settings/thinking")
     async def change_thinking(request: ThinkingRequest):
         provider = thinking_provider()
-        if not getattr(provider, "supports_thinking", False):
-            raise HTTPException(status_code=422, detail="当前模型接口尚未支持思考开关")
-        provider.set_thinking(request.enabled)
-        return {"supported": True, "enabled": provider.thinking_enabled}
+        if not hasattr(provider, "set_thinking"):
+            raise HTTPException(status_code=409, detail="模型接口尚未就绪")
+        enabled = {"off": None, "disabled": False, "enabled": True}[request.mode]
+        provider.set_thinking(enabled)
+        return {"mode": thinking_mode()}
 
     @app.get("/api/settings/interface")
     async def interface_settings():
@@ -622,39 +627,28 @@ def create_app(
 
     @app.post("/api/debug/emoji/direct")
     async def debug_emoji_direct():
-        """Exercise Tool -> Message -> Store -> Gateway without model routing."""
+        """Exercise Reply DSL -> Resolver -> Message -> Store -> Gateway."""
         trace_id = f"emoji_direct_{uuid4().hex}"
-        tool = core.registry.get("send_emoji")
-        core.last_emoji_trace = {
-            "trace_id": trace_id, "route": "debug_direct", "requires_tool_call": True,
-            "available_tools": ["send_emoji"], "tool_called": False, "tool_calls_count": 0,
-            "image_message_created": False, "persisted": False, "gateway_emitted": False,
-            "frontend_received": False, "frontend_rendered": False,
-        }
         async with adapter.gateway._lock:
             with correlation_scope(CorrelationContext(trace_id=trace_id, request_id=trace_id, session_id="local")):
                 service = emoji_service()
                 sample = service.entries[0]
-                result = await tool.run({
-                    "intent": sample.description,
-                    "emotion": sample.emotion,
-                    "intensity": sample.intensity,
-                })
-                core._capture_expression_result("send_emoji", result)
-                if not isinstance(result.data, dict) or result.data.get("status") != "sent":
-                    return {"trace": core.last_emoji_trace, "messages": []}
+                previous = {id(item) for item in core.conversation.messages}
+                core._commit_model_reply(f"[emoji:{','.join(sample.tags[:3])}]")
                 await adapter.gateway._persist_session()
-                message_id = core.last_emoji_trace["message_ids"][-1]
-                message = next(item for item in core.conversation.messages if item.message_id == message_id)
-                view = adapter.gateway._message_view(message)
+                messages = [
+                    adapter.gateway._message_view(item)
+                    for item in core.conversation.messages
+                    if id(item) not in previous and item.role.value == "assistant"
+                ]
                 core.last_emoji_trace["persisted"] = True
-                core.last_emoji_trace["gateway_emitted"] = True
-                return {"trace_id": trace_id, "trace": core.last_emoji_trace, "messages": [view]}
+                core.last_emoji_trace["gateway_emitted"] = bool(messages)
+                return {"trace_id": trace_id, "trace": core.last_emoji_trace, "messages": messages}
 
     @app.post("/api/debug/emoji/model")
     async def debug_emoji_model():
         result = await adapter.chat(
-            "请实际使用当前可用的视觉表达能力发送一张适合此刻测试成功心情的表情。",
+            "请在完整回复中使用 Reply DSL 表达此刻测试成功的心情。",
             request_id=f"emoji_model_{uuid4().hex}",
         )
         return _response(result)
