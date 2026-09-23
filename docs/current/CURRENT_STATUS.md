@@ -1,4 +1,8 @@
-# v1.2.5 当前状态与使用说明
+# v1.2.6 当前状态与使用说明
+
+2026-09-22 v1.2.6：新增与长期 Memory 分离的 Agenda 与 Zhaoxi Working Notes。五类近期日程、基本生命周期、来源/可信度保护、SQLite 跨重启、压缩 Snapshot、每轮 Context 注入、独立启停、Debug 诊断与故障降级均已接入；不包含提醒、Decision System 或日历 UI。详见 [v1.2.6 发布说明](../v1.2.x/Zhaoxi_v1.2.6_Release_Notes.md)。
+
+同日 Tool Transcript 补丁：能力目录检查与钥匙组加载改走本轮内部 Context，不再伪装成正式业务 Tool 回执，避免文本工具协议在连续发现后触发 provider HTTP 400；Agenda 等实际业务工具的标准回执保持不变。
 
 2026-09-22 v1.2.5：表情发送退出 Tool 系统，改为 Reply DSL。Replyer 使用 `[emoji:属性1,属性2]` 生成完整回复，Core 统一解析、按属性匹配本地资源，并将文本/表情段按原顺序持久化和输出；`save_emoji`、表情柜和旧 emoji 历史继续兼容。详见 [v1.2.5 发布说明](../v1.2.x/Zhaoxi_v1.2.5_Release_Notes.md)。
 

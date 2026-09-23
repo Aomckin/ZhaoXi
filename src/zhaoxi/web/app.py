@@ -115,6 +115,11 @@ class EmojiTraceAckRequest(BaseModel):
     rendered: bool = True
 
 
+class RecentContextControlRequest(BaseModel):
+    agenda_enabled: StrictBool | None = None
+    working_notes_enabled: StrictBool | None = None
+
+
 class EmojiMetadataRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     description: str = Field(min_length=2, max_length=2000)
@@ -559,6 +564,35 @@ def create_app(
     @app.get("/api/debug/tools")
     async def debug_tools():
         return tool_snapshot()
+
+    def recent_context_snapshot():
+        builder = getattr(core, "context_builder", None)
+        if builder is None:
+            raise HTTPException(status_code=409, detail="Context Builder 尚未就绪。")
+        agenda = getattr(core, "agenda", None)
+        notes = getattr(core, "working_notes", None)
+        return {
+            "agenda_enabled": bool(getattr(builder, "agenda_context_enabled", False)),
+            "working_notes_enabled": bool(getattr(builder, "working_notes_context_enabled", False)),
+            "final_snapshots": getattr(builder, "last_recent_context", {}),
+            "agenda": agenda.diagnostics() if agenda is not None else None,
+            "working_notes": notes.diagnostics() if notes is not None else None,
+        }
+
+    @app.get("/api/debug/recent-context")
+    async def debug_recent_context():
+        return recent_context_snapshot()
+
+    @app.post("/api/debug/recent-context")
+    async def control_recent_context(body: RecentContextControlRequest):
+        builder = getattr(core, "context_builder", None)
+        if builder is None:
+            raise HTTPException(status_code=409, detail="Context Builder 尚未就绪。")
+        if body.agenda_enabled is not None:
+            builder.agenda_context_enabled = body.agenda_enabled
+        if body.working_notes_enabled is not None:
+            builder.working_notes_context_enabled = body.working_notes_enabled
+        return recent_context_snapshot()
 
     @app.post("/api/debug/tools/control")
     async def control_tools(body: ToolControlRequest):

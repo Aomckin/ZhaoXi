@@ -2,6 +2,7 @@
 
 from datetime import datetime
 import json
+import logging
 from zoneinfo import ZoneInfo
 
 from zhaoxi.core.conversation import Conversation
@@ -26,6 +27,7 @@ class ContextBuilder:
         "括号舞台描写是低频强调而非固定语法：普通回复通常不用，明显情绪变化可用一次，只有强烈戏剧场景才可超过一次；禁止台词与耳朵/尾巴动作机械交替。"
         "技术解释、工具执行、错误诊断、信息整理和任务确认默认不使用舞台描写，除非确有明显情绪反应。"
         "广记是常态，可自主调用 remember_memory 记录日常小事、偏好、变化、习惯与关系，无需等待用户明确要求；自然修正已有信息时可调用 update_memory，用户禁止记忆时必须遵守；"
+        "Agenda 是近期时间事实，Working Notes 是短期工作现场，两者都不是长期 Memory；涉及日程增改完成取消时使用 agenda 工具，明确需要续办的工作、待办、问题或近期决定才保守维护 notes，普通闲聊不要写便签；"
         "不要声称普通对话已经自动保存，因为回复后的记忆决策尚未发生；"
         "修改或遗忘前先通过 ID 明确目标，冲突时向用户核实；"
         "广想：话题与过去自然相关且能改善当前对话时，可主动使用 search_memories，不要为展示记忆而频繁检索。"
@@ -52,11 +54,20 @@ class ContextBuilder:
         expression_prompt: str = "",
         character_components: list[tuple[str, str]] | None = None,
         emoji_service=None,
+        agenda_service=None,
+        working_notes_service=None,
+        agenda_context_enabled: bool = True,
+        working_notes_context_enabled: bool = True,
     ) -> None:
         self.personality_prompt = personality_prompt
         self.expression_prompt = expression_prompt
         self.character_components = character_components
         self.emoji_service = emoji_service
+        self.agenda_service = agenda_service
+        self.working_notes_service = working_notes_service
+        self.agenda_context_enabled = agenda_context_enabled
+        self.working_notes_context_enabled = working_notes_context_enabled
+        self.last_recent_context = {"agenda": None, "working_notes": None, "errors": {}}
         self.runtime_rules = runtime_rules or self.RUNTIME_RULES
         self.memory_retriever = memory_retriever
         self.timezone = ZoneInfo(timezone)
@@ -92,6 +103,23 @@ class ContextBuilder:
             add(name, prompt.strip())
         add("system.runtime_rules", f"\n\n运行规则：\n{self.runtime_rules}")
         add("system.quick_suggestions", SUGGESTION_RULE)
+        self.last_recent_context = {"agenda": None, "working_notes": None, "errors": {}}
+        if self.agenda_context_enabled and self.agenda_service is not None:
+            try:
+                snapshot = self.agenda_service.snapshot(now=now)
+                self.last_recent_context["agenda"] = snapshot
+                add("runtime.agenda", f"\n\n{snapshot}\n这是近期时间事实，不是提醒或决策指令。")
+            except Exception as exc:
+                logging.getLogger("CONTEXT").warning("agenda context unavailable type=%s", type(exc).__name__)
+                self.last_recent_context["errors"]["agenda"] = type(exc).__name__
+        if self.working_notes_context_enabled and self.working_notes_service is not None:
+            try:
+                snapshot = self.working_notes_service.snapshot(now=now)
+                self.last_recent_context["working_notes"] = snapshot
+                add("runtime.working_notes", f"\n\n{snapshot}\n这是近期工作现场；source/confidence 是事实边界，assistant 假设不得当作用户确认事实。")
+            except Exception as exc:
+                logging.getLogger("CONTEXT").warning("working notes context unavailable type=%s", type(exc).__name__)
+                self.last_recent_context["errors"]["working_notes"] = type(exc).__name__
         if self.emoji_service is not None:
             emoji_context = self.emoji_service.build_context()
             if emoji_context:

@@ -65,7 +65,9 @@ async def test_discovery_continues_business_call_retains_schema_and_resets_next_
     assert "archive_search" in names(provider.tool_schemas[1])
     assert "archive_search" in names(provider.tool_schemas[2])
     tool_results = [json.loads(m.content) for m in provider.calls[2] if m.role.value == "tool"]
-    assert len(tool_results) == 2 and all(item["success"] for item in tool_results)
+    assert len(tool_results) == 1 and tool_results[0]["success"]
+    assert not any(m.role.value == "tool" for m in provider.calls[1])
+    assert "request_tool_group" in provider.calls[1][0].content
     await agent.run("你好")
     assert "archive_search" not in names(provider.tool_schemas[3])
     catalog = provider.calls[0][0].content
@@ -79,6 +81,7 @@ async def test_discovery_alone_does_not_count_as_business_lookup():
     result = await agent.run("找那把钥匙", require_tool_call=True)
     assert result.content == "好了\n\n（提醒：这次没有实际调用工具，回复未经工具核验。）"
     assert result.used_tool_path is False
+    assert not any(m.role.value == "tool" for m in provider.calls[1])
 
 
 def test_discovery_schema_is_small_and_excludes_all():
@@ -120,8 +123,7 @@ async def test_expansion_survives_permission_and_remaining_discovery_calls():
     for schemas in provider.tool_schemas[2:]:
         assert {"archive_search", "current_time"} <= names(schemas)
         assert "mcp_fetch_fetch" not in names(schemas)
-    results = [json.loads(m.content) for m in provider.calls[-1] if m.role.value == "tool"]
-    assert any(item["error"] == "expansion_limit" for item in results)
+    assert "expansion_limit" in provider.calls[-1][0].content
 
 
 def test_all_mode_requests_do_not_expand_and_diagnostics_are_metadata_only():

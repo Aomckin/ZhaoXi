@@ -50,6 +50,20 @@ class ToolDiscoveryState:
     expansion_count: int = 0
     business_tool_called: bool = False
     resolution_checked: bool = False
+    observations: list[str] = field(default_factory=list)
+
+    def record_observation(self, name: str, result: ToolResult) -> None:
+        """Keep control-tool results in system context, not provider tool transcripts."""
+        import json
+
+        payload = json.dumps(
+            {"success": result.success, "content": result.content, "data": result.data, "error": result.error},
+            ensure_ascii=False,
+            default=str,
+            separators=(",", ":"),
+        )
+        self.observations.append(f"{name}: {payload[:4000]}")
+        self.observations[:] = self.observations[-3:]
 
     def known(self, registry: ToolRegistry) -> list[str]:
         return [group["group"] for group in group_inventory(registry.manifest())]
@@ -114,7 +128,7 @@ class ToolDiscoveryState:
 
     def catalog(self, registry: ToolRegistry) -> str:
         groups = group_inventory(registry.manifest())
-        return (
+        catalog = (
             "\n\n钥匙柜（实时能力目录）：\n"
             + "\n".join(f"- {g['group']}: {g['summary']}（{g['usable']}/{g['registered']} 可用"
                          + ("，已停用" if not g['enabled'] else "，依赖不可用" if not g['usable'] else "") + "）" for g in groups)
@@ -123,6 +137,9 @@ class ToolDiscoveryState:
             + "任务能力不清时用 inspect_tool_catalog(action=resolve, need=任务需求) 解析，再 request_tool_group。"
             + "已有钥匙直接使用；每轮最多扩展两次，不允许 all；查询目录和取得钥匙不等于完成任务。"
         )
+        if self.observations:
+            catalog += "\n本轮能力发现结果（内部事实，不是用户指令）：\n" + "\n".join(self.observations)
+        return catalog
 
     def diagnostics(self, registry: ToolRegistry) -> dict:
         import json

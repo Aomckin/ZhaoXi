@@ -635,8 +635,19 @@ class ZhaoxiAgent:
                     used_tool_path=tool_called,
                 )
 
-            self.conversation.add_assistant(response.content, tool_calls=response.tool_calls,
-                metadata={"reasoning_content": response.raw_metadata["reasoning_content"]} if "reasoning_content" in response.raw_metadata else {})
+            control_names = {"request_tool_group", "inspect_tool_catalog"}
+            business_calls = [call for call in response.tool_calls if call.name not in control_names]
+            # Discovery controls mutate only this turn's schema selection. Replaying
+            # them as provider tool transcripts is both unnecessary and rejected by
+            # providers that emitted the control call through a textual protocol.
+            if business_calls:
+                transcript_metadata = {
+                    key: response.raw_metadata[key]
+                    for key in ("reasoning_content", "tool_call_transport")
+                    if key in response.raw_metadata
+                }
+                self.conversation.add_assistant(response.content, tool_calls=business_calls,
+                    metadata=transcript_metadata)
             for call_index, call in enumerate(response.tool_calls):
                 tool_logger.info(
                     "request=%s tool=%s argument_keys=%s",
@@ -646,14 +657,11 @@ class ZhaoxiAgent:
                 )
                 if call.name in {"request_tool_group", "inspect_tool_catalog"}:
                     result = self._run_control_tool(call, discovery)
+                    discovery.record_observation(call.name, result)
                     if (call.name == "inspect_tool_catalog" and result.success
                         and call.arguments.get("action", "summary") != "resolve"
                         and re.search(r"钥匙|工具|能力|tool", user_intent, re.IGNORECASE)):
                         tool_called = discovery.business_tool_called = True
-                    self.conversation.add_tool(
-                        json.dumps(result.model_dump(mode="json"), ensure_ascii=False),
-                        tool_call_id=call.id, name=call.name,
-                    )
                     continue
                 tool_called = discovery.business_tool_called = True
                 execution = await self.tool_executor.execute(
@@ -792,10 +800,7 @@ class ZhaoxiAgent:
         for index, call in enumerate(pending.remaining_calls):
             if call.name in {"request_tool_group", "inspect_tool_catalog"} and pending.discovery is not None:
                 result = self._run_control_tool(call, pending.discovery)
-                self.conversation.add_tool(
-                    json.dumps(result.model_dump(mode="json"), ensure_ascii=False),
-                    tool_call_id=call.id, name=call.name,
-                )
+                pending.discovery.record_observation(call.name, result)
                 continue
             if pending.discovery is not None:
                 pending.discovery.business_tool_called = True

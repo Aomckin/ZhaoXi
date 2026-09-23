@@ -97,6 +97,25 @@ class FakeAgent:
         return await self.run_natural("拒绝")
 
 
+def test_recent_context_debug_snapshot_and_independent_switches():
+    agent = FakeAgent()
+    agent.context_builder = SimpleNamespace(
+        agenda_context_enabled=True,
+        working_notes_context_enabled=True,
+        last_recent_context={"agenda": "[Agenda]", "working_notes": "[Zhaoxi Working Notes]", "errors": {}},
+    )
+    agent.agenda = SimpleNamespace(diagnostics=lambda: {"count": 1, "snapshot": "[Agenda]"})
+    agent.working_notes = SimpleNamespace(diagnostics=lambda: {"count": 1, "snapshot": "[Zhaoxi Working Notes]"})
+    with TestClient(create_app(agent=agent)) as client:
+        current = client.get("/api/debug/recent-context")
+        assert current.status_code == 200
+        assert current.json()["final_snapshots"]["agenda"] == "[Agenda]"
+        changed = client.post("/api/debug/recent-context", json={"agenda_enabled": False})
+        assert changed.status_code == 200
+        assert changed.json()["agenda_enabled"] is False
+        assert changed.json()["working_notes_enabled"] is True
+
+
 class FailingPersistedAgent(FakeAgent):
     def __init__(self) -> None:
         super().__init__()

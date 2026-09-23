@@ -74,6 +74,13 @@ class Settings(BaseSettings):
     memory_cluster_match_threshold: float = Field(default=0.38, ge=0, le=1)
     memory_cluster_merge_threshold: float = Field(default=0.84, ge=0, le=1)
     memory_edge_extraction_enabled: bool = True
+    agenda_context_enabled: bool = True
+    agenda_db_path: str = ".zhaoxi/agenda.db"
+    agenda_max_context_items: int = Field(default=8, ge=1, le=30)
+    working_notes_context_enabled: bool = True
+    working_notes_db_path: str = ".zhaoxi/working-notes.db"
+    working_notes_max_context_items: int = Field(default=10, ge=1, le=30)
+    working_notes_max_active_per_type: int = Field(default=10, ge=1, le=50)
     archive_enabled: bool = True
     archive_directory: str = "data/archive"
     archive_db_path: str = ".zhaoxi/archive.db"

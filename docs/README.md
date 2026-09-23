@@ -11,6 +11,8 @@
 
 ## v1.2.x
 
+- [v1.2.6 发布说明](v1.2.x/Zhaoxi_v1.2.6_Release_Notes.md)
+- [v1.2.6 Agenda + Working Notes 任务书](v1.2.x/Zhaoxi_v1.2.6_Agenda_Working_Notes.md)
 - [v1.2.5 表情回复 DSL 重构任务书](v1.2.x/Zhaoxi_v1.2.5_Emoji_Reply_DSL_Refactor_Task.md)
 - [v1.2.4.2 表情发送稳定性审计报告](v1.2.x/Zhaoxi_v1.2.4.2_Emoji_Send_Stability_Audit_Report.md)
 - [v1.2.4.2 表情发送稳定性审计任务书](v1.2.x/Zhaoxi_v1.2.4.2_Emoji_Send_Stability_Audit_Task.md)

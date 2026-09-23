@@ -132,10 +132,11 @@ async def test_qwen_text_call_uses_normal_tool_loop_with_native_schemas(
     assert response.content == "工具已正常执行。"
     assert requests[0]["tools"]
     assert [message["role"] for message in requests[1]["messages"][-3:]] == [
-        "user", "assistant", "tool",
+        "user", "assistant", "user",
     ]
-    assert requests[1]["messages"][-2]["tool_calls"][0]["function"]["name"] == "echo"
-    assert requests[1]["messages"][-1]["tool_call_id"].startswith("text-qwen-text-call-")
+    assert "tool_calls" not in requests[1]["messages"][-2]
+    assert "Internal tool calls requested: echo" in requests[1]["messages"][-2]["content"]
+    assert "Internal tool result for echo" in requests[1]["messages"][-1]["content"]
     assert "tool_call" not in response.content
 
 

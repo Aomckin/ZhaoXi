@@ -137,8 +137,10 @@ async def test_resolve_load_execute_when_router_misses(monkeypatch):
     agent = ZhaoxiAgent(provider=provider, registry=registry, context_builder=ContextBuilder("朝汐"))
     result = await agent.run("帮我找桌面上的面试复盘", require_tool_call=True)
     assert result.content == "找到了"
-    first_result = next(m for m in provider.calls[1] if m.role.value == "tool")
-    assert set(json.loads(first_result.content)["data"]["groups"]) == {"local_search", "filesystem_read"}
+    assert not any(m.role.value == "tool" for m in provider.calls[1])
+    assert not any(m.role.value == "tool" for m in provider.calls[2])
+    assert "inspect_tool_catalog:" in provider.calls[1][0].content
+    assert "request_tool_group" in provider.calls[2][0].content
     assert "mcp_everything-search_search" not in {s["function"]["name"] for s in provider.tool_schemas[0]}
     assert "mcp_everything-search_search" in {s["function"]["name"] for s in provider.tool_schemas[2]}
 

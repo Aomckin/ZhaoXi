@@ -54,7 +54,7 @@ async def test_thinking_mode_drives_payload_and_persists(tmp_path):
         await provider.generate([tool_message], tool_choice="required")
         assert payloads[-1]["thinking"] == {"type": "disabled"}
         assert payloads[-1]["messages"][0]["reasoning_content"] == "private reasoning"
-        assert payloads[-1]["tool_choice"] == "required"
+        assert "tool_choice" not in payloads[-1]
 
         provider.set_thinking(None)
         assert json.loads(path.read_text(encoding="utf-8")) == {"thinking_enabled": None}
@@ -75,3 +75,24 @@ def test_thinking_setting_is_not_limited_to_known_hosts(tmp_path):
     )
     provider.set_thinking(True)
     assert provider.thinking_enabled is True
+
+
+async def test_non_deepseek_provider_keeps_tool_choice():
+    payloads = []
+
+    async def handle(request):
+        payloads.append(json.loads(request.content))
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        provider = OpenAICompatibleProvider(
+            base_url="https://example.test/v1",
+            api_key="test",
+            model="generic-model",
+            client=client,
+        )
+        await provider.generate([Message(role=Role.USER, content="time")], tool_choice="required")
+
+    assert payloads[-1]["tool_choice"] == "required"

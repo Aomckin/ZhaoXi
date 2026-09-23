@@ -101,6 +101,10 @@ def _dynamic_groups(user_message: str, recent_context: Sequence[str] | str | Non
         add("lifehud", reason)
     if _matches(r"(?:回显|echo)", current):
         add("echo", "echo_request")
+    if _matches(r"(?:日程|安排|主线|截止|deadline|面试|宣讲|做完了|完成了|改到|不去了|取消|(?:今天|明天|后天|今晚|明早|周[一二三四五六日天]).{0,16}(?:有|前|做|弄|整理|完成))", current):
+        add("agenda", "agenda_request")
+    if _matches(r"(?:便签|工作现场|待办|之后再(?:修|做|弄)|下次继续|问题先记着|先记着|卡点|悬而未决)", current):
+        add("working_notes", "working_notes_request")
     return tuple(groups), tuple(reasons)
 
 
