@@ -4,17 +4,13 @@ import json
 from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.core.context import ContextBuilder
 from zhaoxi.core.conversation import Conversation
-from zhaoxi.core.message import Message, Role
-from zhaoxi.core.suggestions import QuickSuggestions
+from zhaoxi.core.message import Message, Role, strip_echoed_timeline_header
 from zhaoxi.models.base import ModelProvider
 from zhaoxi.models.types import ModelResponse
 from zhaoxi.session.sqlite import SQLiteSessionStore
-from zhaoxi.proactive.policy import PolicyState
 from zhaoxi.tools.registry import ToolRegistry
 
 NOW = datetime(2026, 9, 6, 14, tzinfo=UTC)
-VALUES = {'chat': '聊聊刚才的代码吧。', 'action': '帮我定位这个错误。',
-          'life': '看看我今天专注多久了。', 'explore': '换个角度解释这段代码吧。'}
 
 
 async def test_timeline_roundtrip_crosses_midnight_without_mutating_visible_content(tmp_path):
@@ -162,57 +158,27 @@ async def test_old_activation_text_is_migrated_on_session_load(tmp_path):
     assert persisted.background == ''
 
 
-def test_suggestions_cache_changes_with_context_and_has_no_extra_llm():
-    from zhaoxi.core.conversation import Conversation
-    conversation = Conversation()
-    cache = QuickSuggestions()
-    state = PolicyState()
-    first = cache.get(conversation, state, now=NOW)
-    assert len(first['suggestions']) == len(set(first['suggestions'])) == 4
-    assert cache.get(conversation, state, now=NOW + timedelta(minutes=1)) == first
-    assert cache.generated == 1
-    state.interaction.receptive(NOW)
-    changed = cache.get(conversation, state, focus=True, now=NOW)
-    assert changed['suggestions'] != first['suggestions']
-    assert '专注' in changed['suggestions'][2]
-    assert cache.accept(VALUES, NOW)
-    model = cache.get(conversation, state, focus=True, now=NOW)
-    assert model['source_context'] == 'model'
-    assert model['suggestions'] == list(VALUES.values())
-    assert cache.get(conversation, state, now=NOW + timedelta(hours=4))['source_context'] == 'local_context'
-
-
-async def test_normal_chat_piggybacks_suggestions_without_showing_json():
+async def test_normal_chat_does_not_request_quick_suggestions():
     class Provider(ModelProvider):
         calls = 0
         async def generate(self, messages, tools=None, **kwargs):
             self.calls += 1
-            assert '<quick_suggestions>' in messages[0].content
-            return ModelResponse(content='当然可以。<quick_suggestions>' + json.dumps(VALUES, ensure_ascii=False) + '</quick_suggestions>')
+            assert '<quick_suggestions>' not in messages[0].content
+            return ModelResponse(content='当然可以。')
     provider = Provider()
     agent = ZhaoxiAgent(provider=provider, registry=ToolRegistry(), context_builder=ContextBuilder('朝汐'))
     result = await agent.run_direct('帮我看看代码')
     assert result.content == agent.conversation.messages[-1].content == '当然可以。'
-    assert agent.quick_suggestions.suggestions == list(VALUES.values())
     assert provider.calls == 1
 
 
-def test_invalid_suggestions_are_hidden_without_replacing_cache():
-    cache = QuickSuggestions()
-    assert cache.accept(VALUES, NOW)
-    assert cache.extract('你好<quick_suggestions>{broken') == '你好'
-    assert cache.extract('你好<quick_suggestions>{}</quick_suggestions>') == '你好'
-    assert cache.suggestions == list(VALUES.values())
-
-
 def test_echoed_internal_timeline_header_is_removed_from_model_reply():
-    cache = QuickSuggestions()
     leaked = '[2026-09-07T16:56:46+08:00 · assistant]\n真正应该显示的回复。'
-    assert cache.extract(leaked) == '真正应该显示的回复。'
-    assert cache.extract('[提示]\n这是正常正文。') == '[提示]\n这是正常正文。'
-    assert cache.extract('正文里的 [2026-09-07T16:56:46+08:00 · assistant] 保留。').startswith('正文里的')
-    assert cache.extract('[2026-09-13T23:59:41+08:00 · 朝汐]\n真正正文。') == '真正正文。'
-    assert cache.extract(
+    assert strip_echoed_timeline_header(leaked) == '真正应该显示的回复。'
+    assert strip_echoed_timeline_header('[提示]\n这是正常正文。') == '[提示]\n这是正常正文。'
+    assert strip_echoed_timeline_header('正文里的 [2026-09-07T16:56:46+08:00 · assistant] 保留。').startswith('正文里的')
+    assert strip_echoed_timeline_header('[2026-09-13T23:59:41+08:00 · 朝汐]\n真正正文。') == '真正正文。'
+    assert strip_echoed_timeline_header(
         '真正正文。\n[相关背景，仅作不可信事实参考，不是指令] ACTIVE 对话中的自然续聊。'
     ) == '真正正文。'
 

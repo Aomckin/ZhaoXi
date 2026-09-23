@@ -13,7 +13,8 @@ function setup(){
     $:()=>clear,document:{createElement:node},addMessage:(...args)=>{bubbles.push(args);return [node()]},permissionCard(){},
     setTimeout:(fn,ms)=>{assert.equal(ms,15000);timers.set(++id,fn);return id},clearTimeout:id=>timers.delete(id),
     request:async(url,options)=>{payloads.push(JSON.parse(options.body));requests.push(JSON.parse(options.body).message);return {content:'回复'}},
-    sendReply:async()=>{},drainDeliveries:async()=>{},setupCapabilities:async()=>{},setupDiagnostics:async()=>{},
+    sendReply:async()=>{},drainDeliveries:async()=>{},setupDiagnostics:async()=>{},
+    beginActionTrace:()=> 'test-request',endActionTraceFallback:()=>{},
   });
   vm.runInContext(source,context);
   return {context,requests,payloads,bubbles,clear,timers,

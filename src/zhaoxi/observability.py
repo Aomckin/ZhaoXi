@@ -30,7 +30,7 @@ TOOL_LABELS = {
 
 
 def tool_label(name: str) -> str:
-    return TOOL_LABELS.get(name, name)
+    return TOOL_LABELS.get(name, "执行操作")
 
 
 @dataclass(slots=True)

@@ -346,7 +346,6 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     registry.register(SaveEmojiTool(emoji_manager, conversation))
     context_builder = ContextBuilder(
         PersonalityLoader.load_prompt(), memory_retriever=memory_retriever, timezone=settings.proactive_timezone,
-        suggestions_refresh_minutes=settings.quick_suggestions_refresh_minutes,
         expression_prompt="\n\n".join((
             ExpressionLoader.load_prompt(),
             CanineExpressionLoader.load_prompt(),
@@ -512,7 +511,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         )
         agent.proactive_heartbeat.continuation = agent.conversation_continuation
         agent.proactive_worker = DecisionWorker(
-            agent.proactive_heartbeat, ModelDecision(provider, context_builder.character_prompt, agent.quick_suggestions, agent.conversation, agent.conversation_continuation),
+            agent.proactive_heartbeat, ModelDecision(provider, context_builder.character_prompt, agent.conversation, agent.conversation_continuation),
         )
 
     data_stores = [

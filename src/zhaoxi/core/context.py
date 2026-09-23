@@ -9,7 +9,6 @@ from zhaoxi.core.conversation import Conversation
 from zhaoxi.core.message import Message, Role
 from zhaoxi.memory.retrieval import MemoryRetriever
 from zhaoxi.memory.models import MemorySearchResult
-from zhaoxi.core.suggestions import QuickSuggestions, SUGGESTION_RULE
 from zhaoxi.core.temporal import build_temporal_context
 from zhaoxi.core.stage_directions import normalize_assistant_history
 
@@ -50,7 +49,6 @@ class ContextBuilder:
         runtime_rules: str | None = None,
         memory_retriever: MemoryRetriever | None = None,
         timezone: str = "Asia/Shanghai",
-        suggestions_refresh_minutes: int = 180,
         expression_prompt: str = "",
         character_components: list[tuple[str, str]] | None = None,
         emoji_service=None,
@@ -71,7 +69,6 @@ class ContextBuilder:
         self.runtime_rules = runtime_rules or self.RUNTIME_RULES
         self.memory_retriever = memory_retriever
         self.timezone = ZoneInfo(timezone)
-        self.quick_suggestions = QuickSuggestions(timezone, suggestions_refresh_minutes)
         self.interaction = None
 
     @property
@@ -102,7 +99,6 @@ class ContextBuilder:
                 add("system.formatting", "\n\n")
             add(name, prompt.strip())
         add("system.runtime_rules", f"\n\n运行规则：\n{self.runtime_rules}")
-        add("system.quick_suggestions", SUGGESTION_RULE)
         self.last_recent_context = {"agenda": None, "working_notes": None, "errors": {}}
         if self.agenda_context_enabled and self.agenda_service is not None:
             try:

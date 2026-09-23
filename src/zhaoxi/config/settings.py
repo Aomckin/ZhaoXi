@@ -143,7 +143,6 @@ class Settings(BaseSettings):
     reflection_auto_monthly: bool = False
     reflection_notify: bool = False
     proactive_enabled: bool = True
-    quick_suggestions_refresh_minutes: int = Field(default=180, ge=1, le=1440)
     active_timeout_minutes: int = Field(default=20, ge=1, le=120)
     semi_active_timeout_minutes: int = Field(default=45, ge=1, le=240)
     away_idle_minutes: int = Field(default=30, ge=1, le=240)

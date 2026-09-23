@@ -29,7 +29,6 @@ const action='（尾巴轻轻摇了摇。）\n今天也辛苦啦。要在这里�
    if(url.pathname==='/api/events')return route.fulfill({contentType:'text/event-stream',body:': fixture\n\n'});
    const fixture={
     '/api/settings/interface':{input_merge_seconds:15,reply_interval_seconds:0},'/api/settings/thinking':{mode:'off'},'/api/voice/status':{enabled:false},
-    '/api/suggestions':{suggestions:['和我聊聊今天吧','一起整理一下思绪','看看今天的安排'],timezone:'Asia/Shanghai'},
     '/api/session':{messages:[{role:'user',content:'今天终于忙完了，想过来坐一会儿。',timestamp:'2026-09-12T09:18:00Z'},{role:'assistant',content:action,timestamp:'2026-09-12T09:19:00Z'}]},
     '/api/proactive':{deliveries:notes},'/api/diagnostics':{presence:{interaction_state:'ACTIVE'},startup:{status:'ready'}},
    };
@@ -54,8 +53,10 @@ const action='（尾巴轻轻摇了摇。）\n今天也辛苦啦。要在这里�
   assert.equal(await page.locator('.message-group').innerHTML(),group);
   assert.equal(await page.locator('.maintenance').getAttribute('open'),null);
   await page.screenshot({path:path.join(output,'deskboard-open.png')});
-  await page.locator('.prompt-card').first().click();
-  assert.equal(await page.locator('#input').inputValue(),'和我聊聊今天吧');
+  assert.equal(await page.locator('.prompt-card').count(),0);
+  await page.locator('#actionTrace > summary').click();
+  assert.equal(await page.locator('#actionTrace').evaluate(el=>el.open),true);
+  await page.locator('#actionTrace > summary').click();
   await page.locator('.maintenance > summary').click();await page.getByText('Debug',{exact:true}).click();
   await page.locator('#restartCore').scrollIntoViewIfNeeded();assert.equal(await page.locator('#restartCore').isVisible(),true);
   await page.screenshot({path:path.join(output,'maintenance.png')});
@@ -136,6 +137,6 @@ const action='（尾巴轻轻摇了摇。）\n今天也辛苦啦。要在这里�
   await highDpi.setContent('<img style="width:140px;height:140px" src="data:image/webp;base64,'+fs.readFileSync(path.join(assets,'avatar-default.webp')).toString('base64')+'">');
   await highDpi.waitForFunction(()=>document.querySelector('img').naturalWidth===512);
   assert.ok(await highDpi.locator('img').evaluate(el=>el.naturalWidth>=el.clientWidth*devicePixelRatio));await highDpi.close();
-  console.log('Phase 3 browser acceptance passed: 8 sizes, overlay, read persistence/failure/visibility, live delivery, avatar/fallback/DPR2, prompts, debug, long chat.');
+  console.log('Phase 3 browser acceptance passed: 8 sizes, overlay, read persistence/failure/visibility, live delivery, avatar/fallback/DPR2, action trace, debug, long chat.');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

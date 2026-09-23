@@ -105,7 +105,6 @@ class ZhaoxiAgent:
                 registry.register(control_tool)
         self.context_builder = context_builder
         self.emoji_service = getattr(context_builder, "emoji_service", None)
-        self.quick_suggestions = context_builder.quick_suggestions
         self.conversation = conversation or Conversation()
         self.max_steps = max_steps
         self.timeout_seconds = timeout_seconds
@@ -265,7 +264,7 @@ class ZhaoxiAgent:
             model_response = await asyncio.wait_for(
                 self.provider.generate(messages, None), timeout=self.timeout_seconds
             )
-            content = self.quick_suggestions.extract((model_response.content or "").strip())
+            content = strip_echoed_timeline_header((model_response.content or "").strip())
         except Exception as exc:
             logger.warning("workflow final response fallback run=%s error=%s", run.id, type(exc).__name__)
         if not content:
@@ -701,7 +700,7 @@ class ZhaoxiAgent:
                     corrective_retry = True
                     logger.warning("request=%s required tool call missing; retrying once", request_id)
                     continue
-                content = self.quick_suggestions.extract(response.content or "模型没有返回可显示的内容。")
+                content = strip_echoed_timeline_header(response.content or "模型没有返回可显示的内容。")
                 if require_tool_call and not tool_called:
                     logger.warning(
                         "request=%s required tool call missing after retry; returning response with notice",

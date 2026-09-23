@@ -28,7 +28,6 @@ from zhaoxi.tools.router import safe_resolve_tool_context
 
 from zhaoxi.cli import build_agent
 from zhaoxi import __version__
-from zhaoxi.core.suggestions import QuickSuggestions
 from zhaoxi.config.settings import Settings
 from zhaoxi.errors import ZhaoxiError
 from zhaoxi.interfaces.setup import StartupUnavailableAgent
@@ -241,7 +240,6 @@ def create_app(
             core = StartupUnavailableAgent(startup_diagnostics(configured), str(exc))
     adapter = WebInterfaceAdapter(core)
     core_started_at = datetime.now(UTC)
-    suggestions = getattr(core, "quick_suggestions", None) or QuickSuggestions(configured.proactive_timezone, configured.quick_suggestions_refresh_minutes)
     events = EventBroadcaster()
     adapter.gateway.event_sink = events.publish_nowait
     static_dir = Path(__file__).with_name("static")
@@ -397,15 +395,6 @@ def create_app(
     async def favicon():
         return FileResponse(static_dir / "zhaoxi.ico", media_type="image/x-icon")
 
-    @app.get("/api/suggestions")
-    async def quick_suggestions():
-        state = getattr(core, "proactive_state", None)
-        heartbeat = getattr(core, "proactive_heartbeat", None)
-        snapshot = suggestions.get(core.conversation, state,
-            focus=bool(heartbeat and heartbeat.focus_active),
-            recent_proactive=any(m.delivery_id for m in core.conversation.messages))
-        return {**snapshot, "timezone": configured.proactive_timezone}
-
     def thinking_provider():
         provider = getattr(core, "provider", None)
         return provider.providers[0] if getattr(provider, "providers", None) else provider
@@ -503,8 +492,6 @@ def create_app(
             "desktop_activity": (core.proactive_state.interaction.desktop_activity.diagnostics()
                 if getattr(core, "proactive_state", None) and core.proactive_state.interaction.desktop_activity
                 else {"enabled": False}),
-            "quick_suggestions_generated": suggestions.generated,
-            "quick_suggestions_llm_calls": 0,
             "components": {
                 "planner": getattr(core, "planner", None) is not None,
                 "workflow": getattr(core, "workflow", None) is not None,
@@ -919,7 +906,7 @@ def create_app(
 
     @app.get("/api/session")
     async def session():
-        return {"messages": await adapter.gateway.history()}
+        return {"messages": await adapter.gateway.history(), "timezone": configured.proactive_timezone}
 
     @app.post("/api/core/restart")
     async def restart_core():

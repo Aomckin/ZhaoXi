@@ -41,9 +41,10 @@ def test_timeline_inspector_suggestions_and_clear_persist(tmp_path):
                         content='休息一下吧。', relevant_payload={'summary': '仅供模型参考的背景'})
     asyncio.run(agent.proactive.sink.deliver(delivery, datetime.now(UTC)))
     with TestClient(create_app(agent=agent, settings=Settings(_env_file=None), api_token='test-token')) as client:
-        assert client.get('/api/suggestions').status_code == 401
         client.headers['X-Zhaoxi-Token'] = 'test-token'
-        first = client.get('/api/session').json()['messages']
+        session_payload = client.get('/api/session').json()
+        assert session_payload['timezone'] == 'Asia/Shanghai'
+        first = session_payload['messages']
         assert len(first) == 1 and first[0]['content'] == delivery.content
         assert first[0]['timestamp'] == delivery.delivered_at.isoformat()
         assert 'background' not in first[0]
@@ -51,9 +52,7 @@ def test_timeline_inspector_suggestions_and_clear_persist(tmp_path):
         assert client.get('/api/session').json()['messages'] == first
         assert client.get('/api/proactive/test/inspect').json()['relevant_payload']['summary'] == '仅供模型参考的背景'
         assert client.get('/api/proactive/missing/inspect').status_code == 404
-        suggestions = client.get('/api/suggestions').json()
-        assert len(suggestions['suggestions']) == 4
-        assert client.get('/api/suggestions').json() == suggestions
+        assert client.get('/api/suggestions').status_code == 404
         assert provider.calls == 0
         assert client.get('/api/diagnostics').json()['presence']['interaction_state'] == 'ACTIVE'
         assert client.get('/favicon.ico').content[:4] == b'\x00\x00\x01\x00'
