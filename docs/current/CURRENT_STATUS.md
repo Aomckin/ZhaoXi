@@ -2,6 +2,8 @@
 
 2026-09-23 v1.2.7：Chat、重新生成及权限续执行接入请求级 Agent Event，Web 复用现有 SSE 展示行动轨迹与安全 Debug 信息。Tool 调用通过 `tool_call_id` 和 `invocation_id` 对账；参数校验失败后的同名修复会将旧尝试标记为 superseded，成功写入各自保留独立记录。Recovery 读取最终动作状态，区分已完成、仍失败、结果未知；Token 预算耗尽和 Provider HTTP 错误各有明确错误码及文案。Life HUD Sensor 和 Heartbeat 的异常日志补齐阶段、用时及错误类型。详见 [v1.2.7 发布说明](../v1.2.x/Zhaoxi_v1.2.7_Release_Notes.md)。
 
+小桌边新增 Agenda 与 Working Notes 的只读纸条栏位，展示当前活动条目；打开侧边栏或完成回复后刷新。维护抽屉将表情包系统和 Agenda / Working Notes 的详细诊断分别放入两个 Debug 子目录，原有开关和测试入口保留。
+
 2026-09-22 v1.2.6：新增与长期 Memory 分离的 Agenda 与 Zhaoxi Working Notes。五类近期日程、基本生命周期、来源/可信度保护、SQLite 跨重启、压缩 Snapshot、每轮 Context 注入、独立启停、Debug 诊断与故障降级均已接入；不包含提醒、Decision System 或日历 UI。详见 [v1.2.6 发布说明](../v1.2.x/Zhaoxi_v1.2.6_Release_Notes.md)。
 
 同日 Tool Transcript 补丁：能力目录检查与钥匙组加载改走本轮内部 Context，不再伪装成正式业务 Tool 回执，避免文本工具协议在连续发现后触发 provider HTTP 400；Agenda 等实际业务工具的标准回执保持不变。

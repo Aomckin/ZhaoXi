@@ -20,6 +20,7 @@ function toggleDesk(open) {
   desk.classList.toggle('is-open', open);
   updateDeskUnread();
   if (open) {
+    if (typeof window.refreshDeskContext === 'function') void window.refreshDeskContext();
     document.querySelector('#deskClose').focus({preventScroll: true});
     // Do not acknowledge a note while the board is still sliding into view.
     deskReadTimer = setTimeout(() => { deskReady = true; void markVisibleNotesRead(); }, 300);

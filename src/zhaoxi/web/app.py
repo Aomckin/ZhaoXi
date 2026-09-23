@@ -571,6 +571,21 @@ def create_app(
     async def debug_recent_context():
         return recent_context_snapshot()
 
+    @app.get("/api/recent-context")
+    async def recent_context_board():
+        """Active Agenda and Working Notes for the desk, without debug metadata."""
+        result = {"agenda": [], "working_notes": [], "errors": {}}
+        for key, service in (("agenda", getattr(core, "agenda", None)),
+                             ("working_notes", getattr(core, "working_notes", None))):
+            if service is None:
+                continue
+            try:
+                result[key] = [item.model_dump(mode="json") for item in service.list("active")]
+            except Exception as exc:
+                logger.warning("recent context board read failed module=%s type=%s", key, type(exc).__name__)
+                result["errors"][key] = "暂时无法读取。"
+        return result
+
     @app.post("/api/debug/recent-context")
     async def control_recent_context(body: RecentContextControlRequest):
         builder = getattr(core, "context_builder", None)
