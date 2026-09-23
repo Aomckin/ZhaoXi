@@ -1,5 +1,6 @@
 import json
 import random
+from types import SimpleNamespace
 
 from conftest import FakeProvider
 from zhaoxi.core.agent import ZhaoxiAgent
@@ -7,6 +8,7 @@ from zhaoxi.core.context import ContextBuilder
 from zhaoxi.core.conversation import Conversation
 from zhaoxi.core.reply import EmojiSegment, TextSegment, commit_reply, parse_reply
 from zhaoxi.expression import EmojiService
+from zhaoxi.interfaces.gateway import InterfaceGateway
 from zhaoxi.session.base import Session
 from zhaoxi.session.sqlite import SQLiteSessionStore
 from zhaoxi.tools.builtin import create_builtin_tools
@@ -21,8 +23,9 @@ def make_service(tmp_path):
         {"id": "proud_a", "file": "images/a.png", "description": "得意邀功", "tags": ["得意", "邀功"], "emotion": "proud", "enabled": True},
         {"id": "proud_b", "file": "images/b.png", "description": "得意邀功", "tags": ["得意", "邀功"], "emotion": "proud", "enabled": True},
         {"id": "disabled", "file": "images/c.png", "description": "开心", "tags": ["开心"], "emotion": "happy", "enabled": False},
+        {"id": "dog", "file": "images/d.png", "description": "无语吐槽", "tags": ["朝汐", "无语", "斜眼", "吐槽"], "emotion": "speechless", "enabled": True},
     ]
-    for name in ("a.png", "b.png", "c.png"):
+    for name in ("a.png", "b.png", "c.png", "d.png"):
         (root / "images" / name).write_bytes(b"image")
     path = root / "emoji_registry.json"
     path.write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
@@ -60,9 +63,43 @@ def test_commit_reply_preserves_text_emoji_text_emoji_order(tmp_path):
     assert all("[emoji:" not in (item.content or "") for item in conversation.messages)
 
 
+def test_full_catalog_label_is_resolved_without_exposing_the_label(tmp_path):
+    conversation = Conversation()
+    raw = '[朝汐,无语,斜眼,吐槽] 好嘛。'
+    sequence, ids = commit_reply(conversation, raw, make_service(tmp_path))
+    assert sequence.raw_reply == raw
+    assert [item.segment_type for item in conversation.messages] == ['emoji', 'text']
+    assert conversation.messages[0].emoji_id == 'dog'
+    assert conversation.messages[0].images == ['/api/expression/emoji/dog']
+    assert conversation.messages[1].content == '好嘛。'
+    assert [item.message_id for item in conversation.messages] == ids
+
+
+def test_history_renders_a_legacy_catalog_label_without_rewriting_saved_text(tmp_path):
+    conversation = Conversation()
+    raw = '[朝汐,无语,斜眼,吐槽] 好嘛。'
+    original = conversation.add_assistant(raw)
+    gateway = InterfaceGateway(SimpleNamespace(conversation=conversation, emoji_service=make_service(tmp_path)))
+    views = gateway.session()
+    assert [view['type'] for view in views] == ['image', 'text']
+    assert views[0]['images'] == ['/api/expression/emoji/dog']
+    assert views[1]['text'] == '好嘛。'
+    assert views[1]['message_id'] == original.message_id
+    assert conversation.messages[0].content == raw
+
+
+def test_unlisted_or_disabled_brackets_remain_plain_text(tmp_path):
+    conversation = Conversation()
+    raw = '[开心] [朝汐,无语] 这是普通标注。'
+    sequence, _ = commit_reply(conversation, raw, make_service(tmp_path))
+    assert sequence.visible_text == raw
+    assert all(item.source != 'emoji' for item in conversation.messages)
+
+
 def test_context_has_enabled_tags_without_ids_or_paths(tmp_path):
     context = make_service(tmp_path).build_context()
-    assert "[得意,邀功]" in context
+    assert "属性：得意、邀功" in context
+    assert "[得意,邀功]" not in context
     assert "开心" not in context
     assert "proud_a" not in context
     assert "images/" not in context

@@ -11,6 +11,7 @@ from typing import Any
 
 from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.core.message import Message, Role
+from zhaoxi.core.reply.renderer import catalog_emoji_prefix
 from zhaoxi.observability import action_trace_scope, current_trace
 from zhaoxi.proactive.models import DeliveryStatus
 from zhaoxi.interfaces.models import (
@@ -115,7 +116,10 @@ class InterfaceGateway:
                 await self._persist_session()
                 emoji_trace = getattr(self.agent, "last_emoji_trace", None)
                 if emoji_trace and emoji_trace.get("trace_id") == message.request_id:
-                    emoji_trace["persisted"] = bool(emoji_trace.get("message_ids"))
+                    emoji_trace["persisted"] = any(
+                        item.source == "emoji" and item.message_id in emoji_trace.get("message_ids", [])
+                        for item in self.agent.conversation.messages
+                    )
                     emoji_trace["gateway_emitted"] = any(
                         item.get("source") == "emoji" for item in result.output_messages
                     )
@@ -239,7 +243,10 @@ class InterfaceGateway:
                 await self._persist_session()
                 emoji_trace = getattr(self.agent, "last_emoji_trace", None)
                 if emoji_trace and emoji_trace.get("trace_id") == request_id:
-                    emoji_trace["persisted"] = bool(emoji_trace.get("message_ids"))
+                    emoji_trace["persisted"] = any(
+                        item.source == "emoji" and item.message_id in emoji_trace.get("message_ids", [])
+                        for item in self.agent.conversation.messages
+                    )
                     emoji_trace["gateway_emitted"] = any(
                         item.get("source") == "emoji" for item in result.output_messages
                     )
@@ -401,10 +408,31 @@ class InterfaceGateway:
             if item.role.value in {"user", "assistant"}
         ]
         latest = visible[-1] if visible else None
-        return [self._message_view(
-            item,
-            regeneratable=item is latest and item.role == Role.ASSISTANT and not item.delivery_id,
-        ) for item in visible]
+        result = []
+        emoji_service = getattr(self.agent, "emoji_service", None)
+        for item in visible:
+            view = self._message_view(
+                item,
+                regeneratable=item is latest and item.role == Role.ASSISTANT and not item.delivery_id,
+            )
+            legacy = (catalog_emoji_prefix(item.content or "", emoji_service)
+                      if item.role == Role.ASSISTANT and not item.source and not item.images else None)
+            if legacy is not None:
+                emoji_id, text = legacy
+                image = {**view, "id": f"{item.message_id}-legacy-emoji",
+                         "message_id": f"{item.message_id}-legacy-emoji",
+                         "type": "image", "text": "", "content": "",
+                         "images": [f"/api/expression/emoji/{emoji_id}"],
+                         "source": "emoji", "emoji_id": emoji_id, "regeneratable": False}
+                if not text:
+                    image["id"] = image["message_id"] = item.message_id
+                    image["regeneratable"] = view["regeneratable"]
+                result.append(image)
+                if text:
+                    result.append({**view, "text": text, "content": text})
+            else:
+                result.append(view)
+        return result
 
     def clear(self) -> None:
         self.agent.conversation.clear()

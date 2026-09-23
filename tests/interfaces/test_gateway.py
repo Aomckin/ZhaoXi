@@ -137,7 +137,7 @@ async def test_regenerate_updates_matching_emoji_trace():
 
     await gateway.regenerate(original.message_id, request_id="retry")
 
-    assert agent.last_emoji_trace["persisted"] is True
+    assert agent.last_emoji_trace["persisted"] is False
     assert agent.last_emoji_trace["gateway_emitted"] is False
 
 

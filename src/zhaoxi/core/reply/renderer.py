@@ -1,6 +1,7 @@
 """Resolve a ReplySequence and commit it to the conversation in order."""
 
 import logging
+import re
 from uuid import uuid4
 
 from zhaoxi.core.conversation import Conversation
@@ -10,8 +11,44 @@ from zhaoxi.core.reply.segments import EmojiSegment, ReplySequence, TextSegment
 logger = logging.getLogger("REPLY")
 
 
+_CATALOG_LABEL = re.compile(r"\[([^\[\]\r\n:]{1,120})\]")
+
+
+def _normalize_catalog_labels(raw: str, emoji_service) -> str:
+    """Accept a copied full catalog label only when it names an enabled emoji."""
+    if emoji_service is None or not emoji_service.enabled:
+        return raw
+    labels = {
+        tuple(tag.strip().casefold() for tag in entry.tags)
+        for entry in emoji_service.entries if entry.enabled and len(entry.tags) >= 2
+    }
+
+    def replace(match: re.Match[str]) -> str:
+        tags = [tag.strip() for tag in re.split(r"[,，]", match.group(1))]
+        if tuple(tag.casefold() for tag in tags) not in labels:
+            return match.group(0)
+        return "[emoji:" + ",".join(tags[-3:]) + "]"
+
+    return _CATALOG_LABEL.sub(replace, raw)
+
+
+def catalog_emoji_prefix(raw: str, emoji_service) -> tuple[str, str] | None:
+    """Identify a legacy copied catalog label at the start of a saved reply."""
+    if emoji_service is None or not emoji_service.enabled:
+        return None
+    match = _CATALOG_LABEL.match(raw)
+    if match is None:
+        return None
+    tags = tuple(tag.strip().casefold() for tag in re.split(r"[,，]", match.group(1)))
+    entry = next((item for item in emoji_service.entries
+                  if item.enabled and len(item.tags) >= 2
+                  and tuple(tag.strip().casefold() for tag in item.tags) == tags), None)
+    return (entry.id, raw[match.end():].lstrip()) if entry is not None else None
+
+
 def commit_reply(conversation: Conversation, raw_reply: str | None, emoji_service=None) -> tuple[ReplySequence, list[str]]:
-    parsed = parse_reply(raw_reply)
+    parsed = parse_reply(_normalize_catalog_labels(raw_reply or "", emoji_service))
+    parsed.raw_reply = raw_reply or ""
     resolved: list[TextSegment | EmojiSegment] = []
     no_match: list[list[str]] = []
     for segment in parsed.segments:

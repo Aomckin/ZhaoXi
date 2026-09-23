@@ -66,47 +66,31 @@
 <script>
 const FRONTEND_BUILD_ID='v1.2.7-agent-observability-20260923',FRONTEND_LOADED_AT=new Date().toISOString();
 const $=s=>document.querySelector(s), messages=$('#messages'), input=$('#input'), send=$('#send'), mic=$('#mic'), activity=$('#activity'), debug=$('#debug'), voiceReview=$('#voiceReview'), voiceText=$('#voiceText');let busy=false,voiceEnabled=false,voiceRecording=false,speechActive=false,normalRegenerationEnabled=false;
-let activeTraceId=null,traceTerminated=false;const traceRows=new Map();
-function beginActionTrace(){activeTraceId=crypto.randomUUID();traceTerminated=false;traceRows.clear();$('#actionTrace').open=false;$('#actionTraceSummary').textContent='行动记录 · 进行中';$('#actionTraceEvents').replaceChildren();$('#actionTraceDebug').textContent='';activity.textContent='理解 · 正在理解请求…';return activeTraceId}
-function recordAction(key,stage,message,outcome){const list=$('#actionTraceEvents');let row=traceRows.get(key);if(!row){row=document.createElement('li');list.append(row);traceRows.set(key,row)}row.className=outcome||'info';row.textContent=`${stage} · ${message}`;return row}
-function finishRunningPhase(key,message){const row=traceRows.get(key);if(row&&row.className==='running'){row.className='success';row.textContent=message}}
-function endActionTraceFallback(message,failed=false){if(traceTerminated)return;finishRunningPhase('understand','理解 · 已理解请求');finishRunningPhase('search','检索 · 已完成检索');finishRunningPhase('organize','整理 · 已完成整理');recordAction('complete','完成',failed?'本次任务未完成':message,failed?'failed':'success');$('#actionTraceSummary').textContent=failed?'行动记录 · 未完成':'行动记录 · 已完成';traceTerminated=true}
+let activeTraceId=null,traceTerminated=false;
+function beginActionTrace(){activeTraceId=crypto.randomUUID();traceTerminated=false;$('#actionTrace').open=false;$('#actionTraceSummary').textContent='行动记录 · 进行中';$('#actionTraceEvents').replaceChildren();$('#actionTraceDebug').textContent='';activity.textContent='理解 · 耳朵竖起来了，先听清你的意思…';return activeTraceId}
+function appendTraceEvent(message,outcome){const row=document.createElement('li');row.className=outcome||'info';row.textContent=message;$('#actionTraceEvents').append(row)}
+function endActionTraceFallback(message,failed=false){if(traceTerminated)return;appendTraceEvent(message,failed?'failed':'success');$('#actionTraceSummary').textContent=failed?'行动记录 · 未完成':'行动记录 · 已完成';traceTerminated=true}
+function traceActivity(event){
+  const stage=event.stage||'',type=event.event_type||'',outcome=event.outcome||'';
+  if(stage==='memory_search')return outcome==='warning'?'检索 · 这条线索没翻到，继续找别的…':'检索 · 顺着线索嗅一嗅…';
+  if(stage==='tool_execution')return type==='tool_call_waiting_permission'?'行动 · 等你点头，我就接着动爪…':outcome==='failed'?'行动 · 这一步卡住了，我再想想…':outcome==='success'?'行动 · 这一爪办好啦，继续往下…':'行动 · 伸爪处理这件事…';
+  if(stage==='response_generation'||stage==='recovery')return outcome==='failed'?'整理 · 回复卡住了，我会跟你说清楚…':'整理 · 把结果叼回来理顺…';
+  if(stage==='model'&&outcome==='failed')return '整理 · 这回有点卡住了，我会说明白…';
+  return '理解 · 耳朵竖起来了，先听清你的意思…';
+}
 function renderAgentEvent(event){
   if(!event||event.request_id!==activeTraceId)return;
-  const type=event.event_type||'',stage=event.stage||'',outcome=event.outcome||'info';
+  const type=event.event_type||'',outcome=event.outcome||'info';
   $('#actionTraceDebug').textContent+=`${event.timestamp||''} ${type} ${JSON.stringify(event)}\n`;
-  if(stage==='task'||type.startsWith('task_')){
-    finishRunningPhase('understand','理解 · 已理解请求');finishRunningPhase('search','检索 · 已完成检索');finishRunningPhase('organize','整理 · 已完成整理');
+  const round=event.stage==='model'&&event.step_id!=null?`第${event.step_id}轮 · `:'';
+  appendTraceEvent(round+(event.display_message||type),outcome);
+  if(event.stage==='task'||type.startsWith('task_')){
     const responseFailed=event.metadata?.response_status==='failed';
-    const message=responseFailed&&outcome==='success'?'操作已保留，回复未完成':outcome==='success'?'本次任务已完成':outcome==='warning'?'部分操作已完成':type==='task_waiting_for_permission'?'等待确认后继续':'本次任务未完成';
-    recordAction('complete','完成',message,responseFailed&&outcome==='success'?'warning':outcome);
-    $('#actionTraceSummary').textContent=`行动记录 · ${responseFailed&&outcome==='success'?'回复未完成':outcome==='success'?'已完成':outcome==='warning'?'部分完成':type==='task_waiting_for_permission'?'等待确认':'未完成'}`;
-    activity.textContent=`完成 · ${message}`;traceTerminated=true;return;
-  }
-  if(stage==='model'){
-    if(type==='model_step_failed'){recordAction('organize','整理','回复生成遇到问题','failed');activity.textContent='整理 · 回复生成遇到问题'}
-    else if(!traceRows.has('understand')){recordAction('understand','理解','正在理解请求…','running');activity.textContent='理解 · 正在理解请求…'}
-    return;
-  }
-  if(stage==='request'||stage==='input'){
-    recordAction('understand','理解',stage==='input'?'已读取输入':'正在理解请求…',outcome);activity.textContent='理解 · 正在理解请求…';return;
-  }
-  if(stage==='memory_search'){
-    finishRunningPhase('understand','理解 · 已理解请求');
-    recordAction('search','检索',event.display_message,outcome);activity.textContent=`检索 · ${event.display_message}`;return;
-  }
-  if(stage==='tool_execution'){
-    finishRunningPhase('understand','理解 · 已理解请求');finishRunningPhase('search','检索 · 已完成检索');
-    const key='action:'+(event.invocation_id||event.tool_call_id||event.tool_name||'tool');
-    const superseded=event.metadata?.supersedes_invocation_id;
-    if(superseded){const old=traceRows.get('action:'+superseded);if(old){old.remove();traceRows.delete('action:'+superseded)}}
-    recordAction(key,'行动',event.display_message,outcome);activity.textContent=`行动 · ${event.display_message}`;return;
-  }
-  if(stage==='response_generation'||stage==='recovery'){
-    finishRunningPhase('understand','理解 · 已理解请求');finishRunningPhase('search','检索 · 已完成检索');
-    const message=outcome==='failed'?'回复整理遇到问题':stage==='recovery'?'正在整理已执行操作…':type.endsWith('_succeeded')?'回复已整理':'正在整理回复…';
-    recordAction('organize','整理',message,outcome);activity.textContent=`整理 · ${message}`;
-  }
+    const label=responseFailed&&outcome==='success'?'回复未完成':outcome==='success'?'已完成':outcome==='warning'?'部分完成':type==='task_waiting_for_permission'?'等待确认':'未完成';
+    $('#actionTraceSummary').textContent=`行动记录 · ${label}`;
+    activity.textContent=responseFailed&&outcome==='success'?'完成 · 操作护住啦，回复还没理出来…':outcome==='success'?'完成 · 好啦，事情办妥了汪。':outcome==='warning'?'完成 · 有些办好了，剩下的再一起看…':type==='task_waiting_for_permission'?'行动 · 等你点头，我就接着动爪…':'完成 · 这回没办成，我会如实告诉你…';
+    traceTerminated=true;
+  }else activity.textContent=traceActivity(event);
 }
 let activityHintTimer=null;
 function showActivityHint(text){
@@ -156,7 +140,7 @@ async function sendReply(content,timestamp=null,messageId=null,regeneratable=tru
   if(regeneratable&&messageId)document.querySelectorAll('.regenerate').forEach(item=>item.remove());
   for(let i=0;i<parts.length;i++){
     if(i>0){
-      activity.textContent='整理 · 正在继续回复…';
+      activity.textContent='整理 · 我慢慢把话说完呀…';
       await new Promise(resolve=>setTimeout(resolve,(typeof replyIntervalMs==='undefined'?5000:replyIntervalMs)+Math.floor(Math.random()*((typeof replyIntervalMs==='undefined'?5000:replyIntervalMs)+1))));
     }
     addMessageBubble('assistant',parts[i],'',[],timestamp,group);

@@ -184,14 +184,14 @@ class EmojiService:
 
     def build_context(self) -> str:
         """Expose enabled expression attributes without internal IDs or file paths."""
-        if not self.enabled or not self.entries:
+        if not self.enabled or not any(item.enabled for item in self.entries):
             return ""
-        catalog = "\n".join(f"- [{','.join(item.tags)}]" for item in self.entries)
+        catalog = "\n".join(f"- 属性：{'、'.join(item.tags)}" for item in self.entries if item.enabled)
         return (
             "\n\n当前可用表情：\n" + catalog + "\n\n"
             "你可以在回复中使用当前提供的表情，格式为 [emoji:属性1,属性2]。\n"
             "规则：只使用上面实际存在的属性；每次选择 1~3 个最贴切属性；"
-            "没有合适表情时不要输出 emoji DSL；表情可放在开头、中间或结尾，也可以不用；"
+            "只有 [emoji:...] 才会发送图片，不要直接照抄属性列表；没有合适表情时不要输出 emoji DSL；表情可放在开头、中间或结尾，也可以不用；"
             "严肃任务和长篇技术说明中少用；不要输出具体 emoji_id；不要解释 DSL。"
         )
 
