@@ -19,9 +19,10 @@ def _json_chars(value: Any) -> int:
 def collect_prompt_diagnostics(
     messages: Sequence[Message], tools: list[dict[str, Any]] | None, *, model: str,
     tool_router: dict[str, Any] | None = None,
+    payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return length-only accounting for the exact messages/tools input."""
-    provider_messages = [message.to_provider_dict() for message in messages]
+    provider_messages = payload["messages"] if payload is not None else [message.to_provider_dict() for message in messages]
     components: list[tuple[str, int]] = []
     for index, message in enumerate(messages):
         if message.role == Role.SYSTEM:
@@ -40,8 +41,8 @@ def collect_prompt_diagnostics(
         name = function.get("name") if isinstance(function, dict) else None
         components.append((f"tool_schema.{name or index}", _json_chars(schema)))
 
-    input_payload = {"messages": provider_messages}
-    if tools:
+    input_payload = payload if payload is not None else {"messages": provider_messages}
+    if payload is None and tools:
         input_payload["tools"] = tools
     total_chars = _json_chars(input_payload)
     measured_chars = sum(size for _, size in components)
@@ -62,11 +63,12 @@ def collect_prompt_diagnostics(
 def log_prompt_diagnostics(
     messages: Sequence[Message], tools: list[dict[str, Any]] | None, *, model: str,
     tool_router: dict[str, Any] | None = None,
+    payload: dict[str, Any] | None = None,
 ) -> None:
     """Log component sizes only when DEBUG logging is enabled."""
     if not logger.isEnabledFor(logging.DEBUG):
         return
-    report = collect_prompt_diagnostics(messages, tools, model=model, tool_router=tool_router)
+    report = collect_prompt_diagnostics(messages, tools, model=model, tool_router=tool_router, payload=payload)
     logger.debug(
         "model=%s input_chars=%d messages_chars=%d tools_chars=%d tool_router=%s components=%s",
         model,

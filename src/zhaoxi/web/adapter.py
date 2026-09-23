@@ -41,11 +41,11 @@ class WebInterfaceAdapter:
         ))
         return self._result(response)
 
-    async def resolve_permission(self, confirmation_id: str, *, approve: bool) -> WebResult:
+    async def resolve_permission(self, confirmation_id: str, *, approve: bool, request_id: str | None = None) -> WebResult:
         response = await self.gateway.resolve_permission(
             confirmation_id,
             approve=approve,
-            request_id=str(uuid4()),
+            request_id=request_id or str(uuid4()),
         )
         return self._result(response)
 

@@ -43,6 +43,8 @@ class ToolExecution:
     result: ToolResult | None
     request: PermissionRequest | None = None
     confirmation: PendingConfirmation | None = None
+    failure_kind: str | None = None
+    safe_metadata: dict[str, object] | None = None
 
     @property
     def waiting_for_permission(self) -> bool:
@@ -85,14 +87,38 @@ class ToolExecutor:
         try:
             normalized_arguments = tool.input_model.model_validate(arguments).model_dump(mode="json")
         except ValidationError as exc:
+            schema = tool.input_model.model_json_schema()
+            properties = schema.get("properties", {})
+            issues = _validation_issues(exc)
+            for issue in issues:
+                raw_path = issue["path"]
+                if raw_path not in properties and raw_path != "<root>":
+                    issue["path"] = "<unknown>"
+                field = properties.get(raw_path, {})
+                if "$ref" in field:
+                    field = schema.get("$defs", {}).get(field["$ref"].rsplit("/", 1)[-1], field)
+                issue["expected_type"] = str(field.get("type") or field.get("$ref") or "unknown")
+                if "enum" in field:
+                    issue["allowed_enum"] = field["enum"]
+            safe_metadata = {
+                "issues": issues,
+                "supplied_keys": sorted(
+                    str(key) if key in properties or key in {"kind", "notes", "time"}
+                    else "unknown:" + hashlib.sha256(str(key).encode()).hexdigest()[:8]
+                    for key in arguments
+                ),
+                "schema_hash": hashlib.sha256(json.dumps(schema, sort_keys=True).encode()).hexdigest()[:16],
+            }
             logger.warning(
-                "request=%s tool=%s validation_failed issues=%s",
+                "request=%s step=%s tool=%s validation_failed metadata=%s",
                 request_id,
+                step_id,
                 name,
-                json.dumps(_validation_issues(exc), ensure_ascii=False, separators=(",", ":")),
+                json.dumps(safe_metadata, ensure_ascii=False, separators=(",", ":")),
             )
             return ToolExecution(
-                ToolResult(success=False, content="工具参数无效。", error=str(exc))
+                ToolResult(success=False, content="工具参数无效。", error="tool_validation_error"),
+                failure_kind="validation", safe_metadata=safe_metadata,
             )
         arguments = normalized_arguments
         permission = tool.permission_for(arguments)

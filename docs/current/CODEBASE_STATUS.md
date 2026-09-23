@@ -2,7 +2,11 @@
 
 > 当前配置、界面行为与最新限制见 [当前状态](CURRENT_STATUS.md)。下文保留分阶段实现与验收记录；其中旧预算和测试数量不代表当前值。
 
-> **默认分支：`main`，运行时版本 `1.2.6`**。以下旧版本章节是历史切片，其“当前”指当时状态。
+> **默认分支：`main`，运行时版本 `1.2.7`**。以下旧版本章节是历史切片，其“当前”指当时状态。
+
+## v1.2.7 当前增量
+
+`observability.py` 维护单请求 AgentEvent 与 ActionTrace；Gateway 在 Chat、重新生成、权限续执行期间维持关联上下文，并向 Web SSE 推送安全事件。Agent、Tool Executor、Token Budget、Provider、Cognitive Router 和 Recovery 接入结构化阶段及错误码。UI 展示当前进展、历史步骤和安全 Debug 详情。Heartbeat 与 Life HUD Sensor 的静默失败已有日志。范围与验证见 [v1.2.7 发布说明](../v1.2.x/Zhaoxi_v1.2.7_Release_Notes.md)。
 
 ## v1.2.6 当前增量
 

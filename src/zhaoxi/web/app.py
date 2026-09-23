@@ -243,6 +243,7 @@ def create_app(
     core_started_at = datetime.now(UTC)
     suggestions = getattr(core, "quick_suggestions", None) or QuickSuggestions(configured.proactive_timezone, configured.quick_suggestions_refresh_minutes)
     events = EventBroadcaster()
+    adapter.gateway.event_sink = events.publish_nowait
     static_dir = Path(__file__).with_name("static")
     speech_policy = SpeechPolicy()
     supervisor = TaskSupervisor()
@@ -848,6 +849,7 @@ def create_app(
 
     @app.post("/api/chat", response_model=ChatResponse)
     async def chat(request: ChatRequest):
+        request_id = request.request_id or uuid4().hex
         await events.publish({"type": "activity", "label": "正在思考…"})
         try:
             if not request.message.strip() and not request.images:
@@ -859,50 +861,59 @@ def create_app(
                 raise HTTPException(status_code=422, detail="消息显示分段与内容不匹配")
             result = await adapter.chat(
                 request.message.strip() or "请查看这些图片。",
-                request_id=request.request_id, images=request.images, display_parts=request.display_parts,
+                request_id=request_id, images=request.images, display_parts=request.display_parts,
             )
         except HTTPException:
             raise
         except ZhaoxiError as exc:
-            logger.warning("web chat core error type=%s", type(exc).__name__)
-            raise HTTPException(status_code=422, detail=f"这次操作没成功：{exc}") from exc
+            code = getattr(exc, "code", "agent_loop_error")
+            logger.warning("trace=%s request=%s stage=web event=chat_failed outcome=failed error_code=%s type=%s",
+                           request_id, request_id, code, type(exc).__name__)
+            raise HTTPException(status_code=422, detail=f"这次操作没成功：{exc}",
+                                headers={"X-Zhaoxi-Trace-Id": request_id, "X-Zhaoxi-Error-Code": code}) from exc
         except Exception as exc:
-            logger.exception("unexpected web chat failure")
+            logger.exception("trace=%s request=%s stage=web event=chat_failed outcome=failed error_code=web_error",
+                             request_id, request_id)
             raise HTTPException(status_code=500, detail="这次操作遇到了内部错误，请稍后重试。") from exc
         await events.publish({"type": "activity", "label": "完成", "detail": result.activity})
         return _response(result)
 
     @app.post("/api/chat/regenerate", response_model=ChatResponse)
     async def regenerate(request: RegenerateRequest):
+        request_id = request.request_id or uuid4().hex
         await events.publish({"type": "activity", "label": "正在重新生成…"})
         try:
             result = await adapter.regenerate(
-                request.message_id, request_id=request.request_id
+                request.message_id, request_id=request_id
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ZhaoxiError as exc:
-            logger.warning("web regenerate core error type=%s", type(exc).__name__)
-            raise HTTPException(status_code=422, detail=f"重新生成失败：{exc}") from exc
+            code = getattr(exc, "code", "agent_loop_error")
+            logger.warning("trace=%s request=%s stage=web event=regenerate_failed outcome=failed error_code=%s type=%s",
+                           request_id, request_id, code, type(exc).__name__)
+            raise HTTPException(status_code=422, detail=f"重新生成失败：{exc}",
+                                headers={"X-Zhaoxi-Trace-Id": request_id, "X-Zhaoxi-Error-Code": code}) from exc
         except Exception as exc:
-            logger.exception("unexpected web regenerate failure")
+            logger.exception("trace=%s request=%s stage=web event=regenerate_failed outcome=failed error_code=web_error",
+                             request_id, request_id)
             raise HTTPException(status_code=500, detail="重新生成遇到了内部错误，请稍后重试。") from exc
         await events.publish({"type": "activity", "label": "完成", "detail": result.activity})
         return _response(result)
 
     @app.post("/api/permission/{confirmation_id}/approve", response_model=ChatResponse)
-    async def approve(confirmation_id: str):
+    async def approve(confirmation_id: str, request_id: str | None = None):
         try:
-            return _response(await adapter.resolve_permission(confirmation_id, approve=True))
+            return _response(await adapter.resolve_permission(confirmation_id, approve=True, request_id=request_id))
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.post("/api/permission/{confirmation_id}/deny", response_model=ChatResponse)
-    async def deny(confirmation_id: str):
+    async def deny(confirmation_id: str, request_id: str | None = None):
         try:
-            return _response(await adapter.resolve_permission(confirmation_id, approve=False))
+            return _response(await adapter.resolve_permission(confirmation_id, approve=False, request_id=request_id))
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 

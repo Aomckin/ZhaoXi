@@ -39,6 +39,10 @@ class ToolValidationError(ToolError):
 class AgentLoopError(ZhaoxiError):
     """The agent loop could not produce a final response."""
 
+    def __init__(self, message: str, *, code: str = "agent_loop_error") -> None:
+        super().__init__(message)
+        self.code = code
+
 
 class SessionError(ZhaoxiError):
     """A session operation failed."""

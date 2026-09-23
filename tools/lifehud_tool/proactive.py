@@ -1,6 +1,8 @@
 """Optional LifeHUD providers with shared sampling and unreachable backoff."""
 import asyncio
+import logging
 from datetime import timedelta
+from time import monotonic
 
 from zhaoxi.sdk import ProactiveEvent, Priority, StateSignal
 
@@ -18,6 +20,7 @@ class LifeHudSensor:
         self.healthy = False
         self.reachable = None
         self.failures = 0
+        self.last_elapsed_ms = None
         self.context = ''
         self.tasks = None
         self.day = None
@@ -30,18 +33,29 @@ class LifeHudSensor:
         if self.next_poll and now < self.next_poll:
             return
         self.healthy = False
+        started = monotonic()
+        stage = "focus"
         try:
             focus = (await self.client.focus()).focus
+            stage = "tasks"
             tasks_response = await self.client.tasks()
-        except (Exception, asyncio.CancelledError):
+        except (Exception, asyncio.CancelledError) as exc:
+            self.last_elapsed_ms = round((monotonic() - started) * 1000)
             self.reachable = False
             self.failures += 1
             delay = self.BACKOFF_MINUTES[min(self.failures - 1, len(self.BACKOFF_MINUTES) - 1)]
             self.next_poll = now + timedelta(minutes=delay)
+            logging.getLogger("SENSOR").warning(
+                "stage=%s elapsed_ms=%d timeout_ms=%s error_type=%s failure_count=%d next_poll_at=%s",
+                stage, self.last_elapsed_ms,
+                round(float(getattr(self.client, "timeout", 8)) * 1000),
+                type(exc).__name__, self.failures, self.next_poll.isoformat(),
+            )
             self._events = []
             self._signals = []
             raise
         self.next_poll = now + timedelta(minutes=2)
+        self.last_elapsed_ms = round((monotonic() - started) * 1000)
         self.failures = 0
         self.reachable = True
         self.healthy = True

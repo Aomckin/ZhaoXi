@@ -97,6 +97,20 @@ class FakeAgent:
         return await self.run_natural("拒绝")
 
 
+def test_web_preserves_budget_error_code_and_trace_id():
+    class BudgetAgent(FakeAgent):
+        async def run_natural(self, message: str):
+            raise AgentLoopError("本次任务累计 Token 已达到预算上限。", code="token_budget_exhausted")
+
+    with TestClient(create_app(agent=BudgetAgent())) as client:
+        response = client.post("/api/chat", json={"message": "继续", "request_id": "web-budget"})
+    assert response.status_code == 422
+    assert response.headers["x-zhaoxi-error-code"] == "token_budget_exhausted"
+    assert response.headers["x-zhaoxi-trace-id"] == "web-budget"
+    assert "Token" in response.json()["detail"]
+    assert "模型服务暂时不可用" not in response.json()["detail"]
+
+
 def test_recent_context_debug_snapshot_and_independent_switches():
     agent = FakeAgent()
     agent.context_builder = SimpleNamespace(

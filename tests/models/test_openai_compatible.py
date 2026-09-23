@@ -258,7 +258,7 @@ async def test_provider_wraps_http_errors():
 
 
 @pytest.mark.asyncio
-async def test_provider_logs_http_error_body_at_warning(caplog):
+async def test_provider_logs_safe_http_diagnostics_at_warning(caplog):
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(400, json={"error": {"message": "invalid image_url", "code": "bad_request"}})
 
@@ -272,12 +272,14 @@ async def test_provider_logs_http_error_body_at_warning(caplog):
 
     assert caught.value.code == "provider_http_400"
     assert not caught.value.retryable
-    record = next(item for item in caplog.records if "provider http error" in item.message)
+    record = next(item for item in caplog.records if "event=http_failed" in item.message)
     output = record.getMessage()
     assert "status=400" in output
     assert "model=test-model" in output
     assert "retryable=False" in output
-    assert "invalid image_url" in output
+    assert "provider_error_code=bad_request" in output
+    assert "roles=['user']" in output
+    assert "invalid image_url" not in output
 
 
 @pytest.mark.parametrize(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import random
 from collections.abc import Awaitable, Callable
 from contextlib import contextmanager
@@ -13,6 +14,8 @@ from time import monotonic
 from typing import TypeVar
 
 from zhaoxi.errors import ProviderError
+
+budget_logger = logging.getLogger("TOKEN_BUDGET")
 
 T = TypeVar("T")
 
@@ -71,8 +74,31 @@ class CallBudget:
             )
         self.calls += 1
 
-    def record_tokens(self, tokens: int) -> None:
+    def record_tokens(self, tokens: int, *, input_tokens: int | None = None,
+                      output_tokens: int | None = None, provider: str | None = None,
+                      model: str | None = None) -> None:
+        used_before = self.total_tokens
         self.total_tokens += max(0, tokens)
+        from zhaoxi.observability import current_trace
+        trace = current_trace()
+        fields = {
+            "used_before": used_before, "call_input_tokens": input_tokens,
+            "call_output_tokens": output_tokens, "call_total": tokens,
+            "used_after": self.total_tokens, "limit": self.max_total_tokens,
+            "step": trace.current_step if trace else None,
+            "provider": provider, "model": model,
+        }
+        if self.total_tokens >= self.max_total_tokens * 0.9:
+            event_type = "token_budget_exhausted" if self.total_tokens > self.max_total_tokens else "token_budget_warning"
+            budget_logger.warning("stage=token_budget event=%s %s", event_type,
+                                  " ".join(f"{key}={value}" for key, value in fields.items()))
+            if trace:
+                trace.emit(event_type, "token_budget",
+                           "failed" if event_type == "token_budget_exhausted" else "warning",
+                           "本次请求 Token 预算已耗尽" if event_type == "token_budget_exhausted" else "本次请求接近 Token 预算上限",
+                           step_id=trace.current_step,
+                           error_code="token_budget_exhausted" if event_type == "token_budget_exhausted" else None,
+                           metadata=fields)
         if self.total_tokens > self.max_total_tokens:
             raise ProviderError(
                 "本次任务的 Token 预算已用完。",
@@ -99,10 +125,13 @@ def consume_provider_budget() -> None:
         budget.consume()
 
 
-def record_provider_tokens(tokens: int) -> None:
+def record_provider_tokens(tokens: int, *, input_tokens: int | None = None,
+                           output_tokens: int | None = None, provider: str | None = None,
+                           model: str | None = None) -> None:
     budget = _budget.get()
     if budget is not None:
-        budget.record_tokens(tokens)
+        budget.record_tokens(tokens, input_tokens=input_tokens, output_tokens=output_tokens,
+                             provider=provider, model=model)
 
 
 class CircuitState(StrEnum):

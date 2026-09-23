@@ -82,7 +82,8 @@ class Tool(ABC):
         try:
             return await self.execute(validated)
         except Exception as exc:  # tool boundary must protect the agent loop
-            return ToolResult(success=False, content="工具执行失败。", error=str(exc))
+            return ToolResult(success=False, content="工具执行失败。", error=type(exc).__name__,
+                              metadata={"unknown_outcome": self.mutates_state})
 
     @abstractmethod
     async def execute(self, arguments: BaseModel) -> ToolResult:

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from zhaoxi.core.message import Message, Role
 from zhaoxi.models.base import ModelProvider
+from zhaoxi.observability import current_trace
 
 
 class CognitiveRoute(StrEnum):
@@ -107,6 +108,7 @@ class CognitiveRouter:
         )
 
     async def route(self, user_message: str, *, recent_context: str = "") -> RouteDecision:
+        self.last_provider_failed = False
         routing_input = user_message
         if recent_context.strip():
             routing_input = (
@@ -121,7 +123,13 @@ class CognitiveRouter:
                 ],
                 [ROUTE_SCHEMA],
             )
-        except Exception:
+        except Exception as exc:
+            self.last_provider_failed = True
+            trace = current_trace()
+            if trace:
+                trace.emit("model_step_failed", "routing", "warning", "处理方式识别失败，已使用本地规则",
+                           step_id=0, error_code="provider_error" if hasattr(exc, "code") else "agent_loop_error",
+                           metadata={"error_type": type(exc).__name__})
             return self._fallback(user_message)
         for call in response.tool_calls:
             if call.name != "route_cognition":

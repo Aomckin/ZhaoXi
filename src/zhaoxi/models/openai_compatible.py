@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -118,7 +119,7 @@ class OpenAICompatibleProvider(ModelProvider):
             payload["response_format"] = response_format
 
         log_prompt_diagnostics(
-            messages, tools, model=self.model, tool_router=kwargs.get("tool_router")
+            messages, tools, model=self.model, tool_router=kwargs.get("tool_router"), payload=payload
         )
 
         owns_client = self._client is None
@@ -176,20 +177,26 @@ class OpenAICompatibleProvider(ModelProvider):
         except ProviderError:
             raise
         except httpx.HTTPStatusError as exc:
-            detail = exc.response.text.strip().replace("\n", " ")[:500]
             status = exc.response.status_code
             retryable = status in {408, 429} or status >= 500
-            request = getattr(exc, "request", None)
+            try:
+                provider_error = exc.response.json().get("error", {})
+            except (ValueError, AttributeError):
+                provider_error = {}
+            if not isinstance(provider_error, dict):
+                provider_error = {}
+            safe_code = lambda value: re.sub(r"[^A-Za-z0-9_.-]", "", str(value or ""))[:80] or None
+            roles = [str(item.get("role", "unknown")) for item in payload["messages"]]
+            announced = {call.get("id") for item in payload["messages"] for call in (item.get("tool_calls") or [])}
+            results = [item.get("tool_call_id") for item in payload["messages"] if item.get("role") == "tool"]
             logger.warning(
-                "provider http error status=%d model=%s url=%s retryable=%s detail=%s",
-                status,
-                self.model,
-                request.url if request is not None else self.base_url,
-                retryable,
-                detail or exc.response.reason_phrase,
+                "stage=provider event=http_failed outcome=failed error_code=provider_http_error status=%d model=%s retryable=%s provider_error_type=%s provider_error_code=%s roles=%s tool_calls=%d tool_results=%d unmatched_tool_results=%d",
+                status, self.model, retryable,
+                safe_code(provider_error.get("type")), safe_code(provider_error.get("code")),
+                roles, len(announced), len(results), sum(item not in announced for item in results),
             )
             raise ProviderError(
-                f"模型请求失败：HTTP {status} {detail or exc.response.reason_phrase}",
+                f"模型请求失败：HTTP {status}",
                 code=f"provider_http_{status}",
                 retryable=retryable,
             ) from exc
@@ -197,7 +204,7 @@ class OpenAICompatibleProvider(ModelProvider):
             retryable = isinstance(exc, httpx.HTTPError)
             raise ProviderError(
                 f"模型请求失败：{exc}",
-                code="provider_transport_error" if retryable else "provider_response_invalid",
+                code="provider_timeout" if isinstance(exc, httpx.TimeoutException) else "provider_transport_error" if retryable else "provider_response_invalid",
                 retryable=retryable,
             ) from exc
         finally:

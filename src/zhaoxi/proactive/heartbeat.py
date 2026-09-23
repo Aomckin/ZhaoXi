@@ -8,6 +8,7 @@ from zhaoxi.proactive.models import ProactiveEvent, Priority, EventStatus
 from zhaoxi.proactive.sensors import computer_active
 from zhaoxi.proactive.interaction import InteractionState, PresenceSnapshot
 from zhaoxi.sdk import StateSignal
+from zhaoxi.reliability import current_correlation
 
 
 
@@ -134,10 +135,15 @@ class TidalHeartbeat:
                 self.metrics.increment('proactive.sensor_events')
 
     def _sensor_failure(self, role, provider, exc, now):
+        correlation = current_correlation()
         key = role + ':' + type(provider).__name__
-        detail = {'role': role, 'provider': type(provider).__name__, 'error_type': type(exc).__name__,
-                  'observed_at': now.isoformat(), 'next_poll': str(getattr(provider, 'next_poll', None)),
-                  'failures': getattr(provider, 'failures', None)}
+        detail = {'stage': role, 'provider': type(provider).__name__, 'error_type': type(exc).__name__,
+                  'observed_at': now.isoformat(), 'next_poll_at': str(getattr(provider, 'next_poll', None)),
+                  'failure_count': getattr(provider, 'failures', None),
+                  'elapsed_ms': getattr(provider, 'last_elapsed_ms', None),
+                  'timeout_ms': 8000,
+                  'trace_id': correlation.trace_id if correlation else None,
+                  'request_id': correlation.request_id if correlation else None}
         self.sensor_health[key] = detail
         logging.getLogger('SENSOR').warning('provider_failure %s', detail)
 
@@ -145,7 +151,13 @@ class TidalHeartbeat:
         while True:
             try:
                 await self.tick()
-            except Exception:
+            except Exception as exc:
                 self.metrics.increment('proactive.heartbeat_errors')
+                correlation = current_correlation()
+                logging.getLogger('HEARTBEAT').error(
+                    'trace=%s request=%s stage=heartbeat event=run_failed outcome=failed error_code=heartbeat_error error_type=%s',
+                    correlation.trace_id if correlation else '-',
+                    correlation.request_id if correlation else '-', type(exc).__name__,
+                )
             self.updated.set()
             await asyncio.sleep(self.settings.proactive_heartbeat_seconds)

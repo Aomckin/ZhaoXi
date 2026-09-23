@@ -11,6 +11,7 @@ from typing import Any
 
 from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.core.message import Message, Role
+from zhaoxi.observability import action_trace_scope, current_trace
 from zhaoxi.proactive.models import DeliveryStatus
 from zhaoxi.interfaces.models import (
     MessageOrigin,
@@ -48,6 +49,7 @@ class InterfaceGateway:
             worker.delivery_lock = self._lock
         self._responses: OrderedDict[str, UnifiedResponse] = OrderedDict()
         self._response_cache_size = response_cache_size
+        self.event_sink = None
 
     async def chat(self, message: UnifiedMessage) -> UnifiedResponse:
         if message.origin is not MessageOrigin.USER:
@@ -78,15 +80,22 @@ class InterfaceGateway:
                 request_id=message.request_id,
                 session_id=message.session_id,
             )
+            trace = None
             try:
                 await self._sync_deliveries()
                 provider = getattr(self.agent, "provider", None)
                 max_calls = getattr(provider, "max_calls", 12)
                 max_total_tokens = getattr(provider, "max_total_tokens", 100_000)
-                with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens):
+                with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens), action_trace_scope(self.event_sink) as trace:
+                    trace.emit("request_started", "request", "running", "正在处理请求…")
                     response = await self.agent.run_natural(
                         message.content, **({"images": message.images} if message.images else {})
                     )
+                    if getattr(response, "permission_confirmation", None) is not None:
+                        trace.terminal_status = "waiting_for_permission"
+                        trace.response_status = "waiting_for_permission"
+                    else:
+                        trace.response_status = "succeeded" if trace.response_status == "pending" else trace.response_status
                     self._attach_display_parts(message, previous_messages)
                     result = self._result(
                         response,
@@ -95,26 +104,37 @@ class InterfaceGateway:
                         message_id=self._new_assistant_id(previous_messages),
                         output_messages=self._new_output_messages(previous_messages),
                     )
+                    trace.emit("task_" + trace.task_status, "task", trace.task_outcome,
+                               "等待操作确认" if trace.task_status == "waiting_for_permission" else
+                               "已完成的操作均已保留" if trace.response_status == "failed" and trace.task_status == "completed" else
+                               "本次操作已完成" if trace.task_status == "completed" else "本次操作部分完成")
                 beat = getattr(getattr(state, "interaction", None), "beat_loop", None)
                 if beat:
                     beat.note_assistant(datetime.now(UTC))
                 self._cache(result)
                 await self._persist_session()
-                trace = getattr(self.agent, "last_emoji_trace", None)
-                if trace and trace.get("trace_id") == message.request_id:
-                    trace["persisted"] = bool(trace.get("message_ids"))
-                    trace["gateway_emitted"] = any(
+                emoji_trace = getattr(self.agent, "last_emoji_trace", None)
+                if emoji_trace and emoji_trace.get("trace_id") == message.request_id:
+                    emoji_trace["persisted"] = bool(emoji_trace.get("message_ids"))
+                    emoji_trace["gateway_emitted"] = any(
                         item.get("source") == "emoji" for item in result.output_messages
                     )
                     logger.info(
                         "emoji persisted=%s gateway_emitted=%s messages=%s",
-                        trace["persisted"],
-                        trace["gateway_emitted"],
-                        len(trace.get("message_ids", [])),
+                        emoji_trace["persisted"],
+                        emoji_trace["gateway_emitted"],
+                        len(emoji_trace.get("message_ids", [])),
                     )
                 self.metrics.increment("interface.chat.completed")
+                self.agent.last_action_trace = trace.summary()
                 return result
             except Exception:
+                if trace is not None:
+                    trace.response_status = "failed"
+                    trace.terminal_status = trace.task_status if trace.actions else "failed"
+                    trace.emit("task_" + trace.task_status, "task", trace.task_outcome,
+                               "已完成的操作均已保留" if trace.task_status == "completed" else "本次任务未完成")
+                    self.agent.last_action_trace = trace.summary()
                 self.metrics.increment("interface.chat.failed")
                 # The model/tool path may fail after accepting the user turn.
                 # Preserve that turn so a session refresh cannot make it disappear.
@@ -180,11 +200,13 @@ class InterfaceGateway:
             context = CorrelationContext(
                 trace_id=request_id, request_id=request_id, session_id="local"
             )
+            trace = None
             try:
                 provider = getattr(self.agent, "provider", None)
                 max_calls = getattr(provider, "max_calls", 12)
                 max_total_tokens = getattr(provider, "max_total_tokens", 100_000)
-                with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens):
+                with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens), action_trace_scope(self.event_sink) as trace:
+                    trace.emit("request_started", "request", "running", "正在重新生成…")
                     if resume_in_place:
                         response = await self.agent.resume_current_turn(
                             source_user.content or "请查看这些图片。"
@@ -194,32 +216,49 @@ class InterfaceGateway:
                             source_user.content or "请查看这些图片。",
                             **({"images": source_user.images} if source_user.images else {}),
                         )
+                    if getattr(response, "permission_confirmation", None) is not None:
+                        trace.terminal_status = "waiting_for_permission"
+                        trace.response_status = "waiting_for_permission"
+                    else:
+                        trace.response_status = "succeeded" if trace.response_status == "pending" else trace.response_status
+                    trace.emit("task_" + trace.task_status, "task", trace.task_outcome,
+                               "等待操作确认" if trace.task_status == "waiting_for_permission" else
+                               "已完成的操作均已保留" if trace.response_status == "failed" and trace.task_status == "completed" else
+                               "本次操作已完成" if trace.task_status == "completed" else "本次操作部分完成")
                 if not resume_in_place:
                     self._restore_user_metadata(source_user, previous_messages)
                 result = self._result(
                     response,
                     request_id=request_id,
                     session_id="local",
+                    action_trace=trace,
                     message_id=self._new_assistant_id(previous_messages),
                     output_messages=self._new_output_messages(previous_messages),
                 )
                 self._cache(result)
                 await self._persist_session()
-                trace = getattr(self.agent, "last_emoji_trace", None)
-                if trace and trace.get("trace_id") == request_id:
-                    trace["persisted"] = bool(trace.get("message_ids"))
-                    trace["gateway_emitted"] = any(
+                emoji_trace = getattr(self.agent, "last_emoji_trace", None)
+                if emoji_trace and emoji_trace.get("trace_id") == request_id:
+                    emoji_trace["persisted"] = bool(emoji_trace.get("message_ids"))
+                    emoji_trace["gateway_emitted"] = any(
                         item.get("source") == "emoji" for item in result.output_messages
                     )
                     logger.info(
                         "emoji persisted=%s gateway_emitted=%s messages=%s",
-                        trace["persisted"],
-                        trace["gateway_emitted"],
-                        len(trace.get("message_ids", [])),
+                        emoji_trace["persisted"],
+                        emoji_trace["gateway_emitted"],
+                        len(emoji_trace.get("message_ids", [])),
                     )
                 self.metrics.increment("interface.regenerate.completed")
+                self.agent.last_action_trace = trace.summary()
                 return result
             except Exception:
+                if trace is not None:
+                    trace.response_status = "failed"
+                    trace.terminal_status = trace.task_status if trace.actions else "failed"
+                    trace.emit("task_" + trace.task_status, "task", trace.task_outcome,
+                               "已完成的操作均已保留" if trace.task_status == "completed" else "本次任务未完成")
+                    self.agent.last_action_trace = trace.summary()
                 self.agent.conversation.replace(original)
                 await self._persist_session()
                 self.metrics.increment("interface.regenerate.failed")
@@ -302,17 +341,36 @@ class InterfaceGateway:
                 beat = getattr(state.interaction, "beat_loop", None)
                 if beat:
                     beat.note_user_message("确认" if approve else "拒绝", state.last_interaction_at)
+            context = CorrelationContext(trace_id=pending.request.request_id,
+                                         request_id=request_id, session_id=session_id)
+            provider = getattr(self.agent, "provider", None)
+            max_calls = getattr(provider, "max_calls", 12)
+            max_total_tokens = getattr(provider, "max_total_tokens", 100_000)
+            trace = None
             try:
-                if confirmation_id in self.agent._pending_permissions:
-                    method = self.agent.approve_permission if approve else self.agent.deny_permission
-                    response = await method(confirmation_id)
-                elif self.agent.planner and confirmation_id in self.agent.planner._pending_permissions:
-                    method = self.agent.planner.approve_permission if approve else self.agent.planner.deny_permission
-                    response = await method(confirmation_id)
-                elif self.agent.workflow:
-                    response = await self._resolve_workflow(confirmation_id, approve)
-                else:
-                    raise KeyError("找不到待确认操作的原始任务。")
+                with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens), action_trace_scope(self.event_sink) as trace:
+                    trace.emit("request_started", "request", "running", "正在处理操作确认…",
+                               metadata={"parent_request_id": pending.request.request_id})
+                    if confirmation_id in self.agent._pending_permissions:
+                        method = self.agent.approve_permission if approve else self.agent.deny_permission
+                        response = await method(confirmation_id)
+                    elif self.agent.planner and confirmation_id in self.agent.planner._pending_permissions:
+                        method = self.agent.planner.approve_permission if approve else self.agent.planner.deny_permission
+                        response = await method(confirmation_id)
+                    elif self.agent.workflow:
+                        response = await self._resolve_workflow(confirmation_id, approve)
+                    else:
+                        raise KeyError("找不到待确认操作的原始任务。")
+                    trace.response_status = "succeeded" if trace.response_status == "pending" else trace.response_status
+                    trace.emit("task_" + trace.task_status, "task", trace.task_outcome,
+                               "本次操作已完成" if trace.task_status == "completed" else "本次操作未完成")
+            except Exception:
+                if trace is not None:
+                    trace.response_status = "failed"
+                    trace.terminal_status = trace.task_status if trace.actions else "failed"
+                    trace.emit("task_" + trace.task_status, "task", trace.task_outcome, "本次操作未完成")
+                    self.agent.last_action_trace = trace.summary()
+                raise
             finally:
                 if state is not None:
                     state.interacting = False
@@ -320,7 +378,8 @@ class InterfaceGateway:
         beat = getattr(getattr(state, "interaction", None), "beat_loop", None)
         if beat:
             beat.note_assistant(datetime.now(UTC))
-        result = self._result(response, request_id=request_id, session_id=session_id)
+        result = self._result(response, request_id=request_id, session_id=session_id, action_trace=trace)
+        self.agent.last_action_trace = trace.summary()
         self._cache(result)
         return result
 
@@ -445,6 +504,7 @@ class InterfaceGateway:
         session_id: str,
         message_id: str | None = None,
         output_messages: list[dict[str, Any]] | None = None,
+        action_trace=None,
     ) -> UnifiedResponse:
         route = getattr(response, "route", None)
         permission = getattr(response, "permission_confirmation", None)
@@ -455,6 +515,10 @@ class InterfaceGateway:
             "core_request_id": getattr(response, "request_id", None),
             "steps": getattr(response, "steps", None),
         }
+        trace = action_trace or current_trace()
+        if trace is not None:
+            activity["task_status"] = trace.task_status
+            activity["response_status"] = trace.response_status
         permission_view = None
         if permission is not None:
             permission_request = permission.request
@@ -469,7 +533,7 @@ class InterfaceGateway:
             request_id=request_id,
             session_id=session_id,
             trace_id=request_id,
-            status="waiting_for_permission" if permission_view else "completed",
+            status="waiting_for_permission" if permission_view else trace.task_status if trace else "completed",
             content=str(getattr(response, "content", "")),
             message_id=message_id,
             activity={key: value for key, value in activity.items() if value is not None},

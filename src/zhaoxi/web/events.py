@@ -9,6 +9,9 @@ class EventBroadcaster:
         self._subscribers: set[asyncio.Queue[dict]] = set()
 
     async def publish(self, event: dict) -> None:
+        self.publish_nowait(event)
+
+    def publish_nowait(self, event: dict) -> None:
         for queue in tuple(self._subscribers):
             if queue.full():
                 try:

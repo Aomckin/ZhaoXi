@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from zhaoxi.cognitive.memory_decision import AutoMemory, MemoryAction
 from zhaoxi.cognitive.router import CognitiveRoute, CognitiveRouter, RouteDecision
 from zhaoxi.core.agent import ZhaoxiAgent
+from zhaoxi.observability import current_trace
 from zhaoxi.permission.models import PendingConfirmation
 from zhaoxi.workflow.runtime import WorkflowRuntimeError
 
@@ -39,11 +40,17 @@ class CognitiveCoordinator:
     async def run(self, user_message: str, *, images: list[str] | None = None) -> CognitiveResponse:
         # The text-only router cannot interpret attachments. Use the existing
         # tool-capable loop so the main model sees the image and retains tools.
-        decision = (RouteDecision(route=CognitiveRoute.TOOL, reason="image input")
-                    if images else await self.router.route(
-                        user_message,
-                        recent_context=self._recent_routing_context(),
-                    ))
+        trace = current_trace()
+        if images:
+            decision = RouteDecision(route=CognitiveRoute.TOOL, reason="image input")
+            if trace:
+                trace.emit("input_images_received", "input", "success", "已读取图片", metadata={"image_count": len(images)})
+        else:
+            if trace:
+                trace.emit("model_step_started", "routing", "running", "正在理解请求…", step_id=0)
+            decision = await self.router.route(user_message, recent_context=self._recent_routing_context())
+            if trace and not getattr(self.router, "last_provider_failed", False):
+                trace.emit("model_step_finished", "routing", "success", "已确定处理方式", step_id=0)
         logger.info(
             "route=%s requires_tool_call=%s required_tool=%s workflow_selected=%s available_tools=%s reason=%s",
             decision.route.value,
@@ -92,11 +99,18 @@ class CognitiveCoordinator:
             goal_id = None
         memory_action = MemoryAction.IGNORE
         if self.auto_memory is not None:
+            if trace:
+                trace.emit("memory_maintenance_started", "memory", "running", "正在整理相关记忆…")
             try:
                 memory_decision = await self.auto_memory.process(user_message, content)
                 memory_action = memory_decision.action
                 logger.info("auto_memory action=%s", memory_action.value)
+                if trace:
+                    trace.emit("memory_maintenance_finished", "memory", "success", "记忆整理已完成")
             except Exception as exc:
+                if trace:
+                    trace.emit("memory_maintenance_failed", "memory", "warning", "记忆整理未完成",
+                               error_code="memory_maintenance_error", metadata={"error_type": type(exc).__name__})
                 logger.warning("auto memory failed; preserving response: %s", exc)
         return CognitiveResponse(
             content=content,
