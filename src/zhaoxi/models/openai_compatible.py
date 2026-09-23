@@ -12,7 +12,8 @@ from zhaoxi.core.message import Message
 from zhaoxi.errors import ProviderError
 from zhaoxi.models.base import ModelProvider
 from zhaoxi.models.text_tool_calls import normalize_text_tool_calls
-from zhaoxi.models.prompt_diagnostics import log_prompt_diagnostics, log_prompt_usage
+from zhaoxi.models.prompt_diagnostics import collect_prompt_diagnostics, log_prompt_diagnostics, log_prompt_usage
+from zhaoxi.reliability.retry import record_context_diagnostics
 from zhaoxi.models.types import ModelResponse, ToolCall
 
 
@@ -118,6 +119,9 @@ class OpenAICompatibleProvider(ModelProvider):
         if response_format is not None:
             payload["response_format"] = response_format
 
+        record_context_diagnostics(collect_prompt_diagnostics(
+            messages, tools, model=self.model, tool_router=kwargs.get("tool_router"), payload=payload
+        ))
         log_prompt_diagnostics(
             messages, tools, model=self.model, tool_router=kwargs.get("tool_router"), payload=payload
         )

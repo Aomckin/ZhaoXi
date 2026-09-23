@@ -8,6 +8,7 @@ from zhaoxi.cognitive.router import CognitiveRoute, CognitiveRouter, RouteDecisi
 from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.observability import current_trace
 from zhaoxi.permission.models import PendingConfirmation
+from zhaoxi.reliability.retry import budget_stage_scope
 from zhaoxi.workflow.runtime import WorkflowRuntimeError
 
 logger = logging.getLogger("COGNITIVE")
@@ -48,7 +49,8 @@ class CognitiveCoordinator:
         else:
             if trace:
                 trace.emit("model_step_started", "routing", "running", "正在理解请求…", step_id=0)
-            decision = await self.router.route(user_message, recent_context=self._recent_routing_context())
+            with budget_stage_scope("understanding"):
+                decision = await self.router.route(user_message, recent_context=self._recent_routing_context())
             if trace and not getattr(self.router, "last_provider_failed", False):
                 trace.emit("model_step_finished", "routing", "success", "已确定处理方式", step_id=0)
         logger.info(
@@ -102,7 +104,8 @@ class CognitiveCoordinator:
             if trace:
                 trace.emit("memory_maintenance_started", "memory", "running", "正在整理相关记忆…")
             try:
-                memory_decision = await self.auto_memory.process(user_message, content)
+                with budget_stage_scope("finalization"):
+                    memory_decision = await self.auto_memory.process(user_message, content)
                 memory_action = memory_decision.action
                 logger.info("auto_memory action=%s", memory_action.value)
                 if trace:

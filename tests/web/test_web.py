@@ -130,6 +130,17 @@ def test_recent_context_debug_snapshot_and_independent_switches():
         assert "working_notes_enabled" not in changed.json()
 
 
+def test_budget_debug_exposes_effective_policy_and_last_request():
+    agent = FakeAgent()
+    agent.last_budget_snapshot = {"used": 900, "extension_count": 1}
+    settings = Settings(_env_file=None, request_max_total_tokens=4000)
+    with TestClient(create_app(agent=agent, settings=settings)) as client:
+        response = client.get("/api/debug/budget-context")
+    assert response.status_code == 200
+    assert response.json()["configuration"]["finalization_reserve"] == 800
+    assert response.json()["last_request"] == {"used": 900, "extension_count": 1}
+
+
 def test_recent_context_board_lists_agenda_and_public_stm_without_debug_fields():
     agent = FakeAgent()
     agenda_item = SimpleNamespace(model_dump=lambda **_: {"title": "下午开会", "status": "planned"})

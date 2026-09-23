@@ -22,6 +22,7 @@ from zhaoxi.memory.models import MemorySearchResult
 from zhaoxi.permission.executor import ToolExecutor
 from zhaoxi.permission.models import InvocationOrigin, PendingConfirmation
 from zhaoxi.reliability import current_correlation
+from zhaoxi.reliability.retry import BudgetExtensionRequest, budget_stage_scope, current_budget
 from zhaoxi.tools.base import ToolResult
 from zhaoxi.tools.registry import ToolRegistry
 from zhaoxi.tools.discovery import RequestToolGroupTool, InspectToolCatalogTool, ToolDiscoveryState
@@ -261,9 +262,10 @@ class ZhaoxiAgent:
         )
         content = ""
         try:
-            model_response = await asyncio.wait_for(
-                self.provider.generate(messages, None), timeout=self.timeout_seconds
-            )
+            with budget_stage_scope("finalization"):
+                model_response = await asyncio.wait_for(
+                    self.provider.generate(messages, None), timeout=self.timeout_seconds
+                )
             content = strip_echoed_timeline_header((model_response.content or "").strip())
         except Exception as exc:
             logger.warning("workflow final response fallback run=%s error=%s", run.id, type(exc).__name__)
@@ -553,6 +555,48 @@ class ZhaoxiAgent:
     def _observable_tool_name(self, name: str) -> str:
         return name if any(tool.name == name for tool in self.registry.list()) else "unknown_tool"
 
+    @staticmethod
+    def _budget_mode(tool_called: bool, trace, step: int) -> tuple[str, bool]:
+        """Spend normal budget on actions; switch to a tool-free closing call when needed."""
+        budget = current_budget()
+        stage = "tool_execution" if tool_called else "planning"
+        if budget is None or budget.policy is None:
+            return stage, False
+        threshold = (budget.max_total_tokens - budget.finalization_reserve) * budget.policy.warning_ratio
+        if budget.total_tokens < threshold:
+            return stage, False
+        actions = [item for item in (trace.actions if trace else []) if item.status != "superseded"]
+        completed = [item for item in actions if item.status == "completed"]
+        failures = [item for item in actions if item.status == "failed"]
+        last = actions[-1] if actions else None
+        repeated = (sum(item.tool_name == last.tool_name and item.failure_kind == last.failure_kind
+                        for item in failures[-3:]) if last and last.status == "failed" else 0)
+        evidence = {"completed_actions": len(completed),
+                    "last_success_step": completed[-1].step_id if completed else None,
+                    "new_result": bool(last and last.failure_kind == "validation" and repeated < 2),
+                    "repeated_error_count": repeated,
+                    "stalled_rounds": step - (completed[-1].step_id or step) if completed else 0}
+        if completed and budget.extension_count == 0 and budget.total_tokens >= budget.max_total_tokens and budget.policy.extension_1_limit > 0:
+            budget.request_extension(BudgetExtensionRequest(
+                reason="已完成业务操作，需为最终回复补足预算", remaining_actions=0,
+                estimated_extra_tokens=budget.policy.extension_1_limit,
+                stage="finalization", progress_evidence=evidence))
+            return "finalization", True
+        if budget.extension_count == 0 and budget.policy.extension_1_limit > 0 and (len(completed) >= 2 or evidence["new_result"]):
+            budget.request_extension(BudgetExtensionRequest(
+                reason="仍有明确操作或一次可修正的工具调用", remaining_actions=1,
+                estimated_extra_tokens=budget.policy.extension_1_limit,
+                stage="tool_execution", progress_evidence=evidence))
+        elif budget.extension_count == 1 and completed and budget.policy.extension_2_limit > 0:
+            budget.request_extension(BudgetExtensionRequest(
+                reason="已完成业务操作，需要整理最终状态", remaining_actions=0,
+                estimated_extra_tokens=budget.policy.extension_2_limit,
+                stage="finalization", progress_evidence=evidence))
+            return "finalization", True
+        if completed and budget.total_tokens >= budget.max_total_tokens - budget.finalization_reserve:
+            return "finalization", True
+        return stage, False
+
     async def _run_loop(
         self,
         request_id: str,
@@ -582,10 +626,38 @@ class ZhaoxiAgent:
                     response_started = True
                 trace.emit("model_step_started", "model", "running", "正在思考下一步…", step_id=step)
             try:
-                schemas = discovery.schemas(self.registry)
+                budget_stage, final_only = self._budget_mode(tool_called, trace, step)
+                schemas = [] if final_only else discovery.schemas(self.registry)
                 self.registry.exposed_names = {item["function"]["name"] for item in schemas}
-                messages = self.context_builder.build(self.conversation, memories)
-                catalog = discovery.catalog(self.registry) + resolution_message
+                absorbed = set()
+                if trace and trace.actions:
+                    for action in trace.actions[:-1]:
+                        if action.status != "completed":
+                            continue
+                        try:
+                            tool = self.registry.get(action.tool_name)
+                        except KeyError:
+                            continue
+                        if tool.mutates_state:
+                            absorbed.add(action.tool_call_id)
+                context_options = {}
+                if absorbed:
+                    context_options["absorbed_tool_call_ids"] = absorbed
+                if final_only:
+                    context_options["release_images"] = True
+                messages = self.context_builder.build(self.conversation, memories, **context_options)
+                compaction = getattr(self.context_builder, "last_compaction", {})
+                if trace and compaction.get("tool_results"):
+                    trace.emit("tool_result_compacted", "context", "success", "已压缩旧工具结果",
+                               step_id=step, metadata={"count": compaction["tool_results"],
+                                                       "chars_saved": compaction["tool_chars_saved"]})
+                if trace and compaction.get("images_released"):
+                    trace.emit("image_context_released", "context", "success", "收尾阶段已释放原图",
+                               step_id=step, metadata={"image_count": compaction["images_released"]})
+                if trace and (compaction.get("tool_results") or compaction.get("images_released")):
+                    trace.emit("context_compacted", "context", "success", "已整理本轮上下文",
+                               step_id=step, metadata=compaction)
+                catalog = "" if final_only else discovery.catalog(self.registry) + resolution_message
                 messages[0].content = (messages[0].content or "") + catalog
                 messages[0].metadata.setdefault("prompt_components", []).append(
                     {"name": "runtime.capability_catalog", "chars": len(catalog)}
@@ -602,7 +674,7 @@ class ZhaoxiAgent:
                         + "\n你上一尝试承诺执行真实工具动作，却没有调用工具；"
                         "现在必须调用一个最相关的可用工具，不得只描述将要查询、发送或展示。"
                     )
-                if require_tool_call and not tool_called:
+                if require_tool_call and not tool_called and not final_only:
                     requirement = (
                         f"必须调用 `{required_tool}`；若尚未携带，先加载其工具组，再在本轮调用它。"
                         if required_tool else "必须调用一个与用户请求直接相关的业务工具。"
@@ -614,27 +686,33 @@ class ZhaoxiAgent:
                         + "request_tool_group、inspect_tool_catalog 等能力发现操作不算完成任务。"
                     )
                 self.last_tool_diagnostics = discovery.diagnostics(self.registry)
+                if final_only:
+                    messages[0].content = (messages[0].content or "") + (
+                        "\n本轮只整理已经完成、失败或未知的操作并给出自然语言回复；"
+                        "不再探索新工具，不得把尚未完成的动作说成完成。"
+                    )
                 forced_tool = required_tool if (
                     require_tool_call
                     and not tool_called
                     and required_tool
                     and any(item["function"]["name"] == required_tool for item in schemas)
                 ) else None
-                response = await self.provider.generate(
-                    messages,
-                    schemas or None,
-                    tool_router=self.last_tool_diagnostics,
-                    **({"tool_choice": {"type": "function", "function": {"name": forced_tool}}}
-                       if forced_tool else {"tool_choice": "required"}
-                       if require_tool_call and corrective_retry and not tool_called and schemas else {}),
-                )
+                with budget_stage_scope(budget_stage):
+                    response = await self.provider.generate(
+                        messages,
+                        schemas or None,
+                        tool_router=self.last_tool_diagnostics,
+                        **({"tool_choice": {"type": "function", "function": {"name": forced_tool}}}
+                           if forced_tool else {"tool_choice": "required"}
+                           if require_tool_call and corrective_retry and not tool_called and schemas else {}),
+                    )
                 self.last_tool_diagnostics["prompt_tokens"] = response.usage.get("prompt_tokens", response.usage.get("input_tokens"))
                 if trace:
                     trace.emit("model_step_finished", "model", "success", "已确定下一步", step_id=step,
                                metadata={"tool_call_count": len(response.tool_calls)})
             except ProviderError as exc:
                 error_code = (
-                    "token_budget_exhausted" if exc.code == "provider_token_budget_exhausted" else
+                    "token_budget_exhausted" if exc.code in {"provider_token_budget_exhausted", "provider_soft_budget_exhausted"} else
                     "provider_http_error" if exc.code.startswith("provider_http_") else
                     "provider_timeout" if exc.code == "provider_timeout" else
                     "provider_transport_error" if exc.code == "provider_transport_error" else

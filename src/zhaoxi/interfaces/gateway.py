@@ -82,13 +82,14 @@ class InterfaceGateway:
                 session_id=message.session_id,
             )
             trace = None
+            budget = None
             try:
                 await self._sync_deliveries()
                 provider = getattr(self.agent, "provider", None)
                 max_calls = getattr(provider, "max_calls", 12)
                 max_total_tokens = getattr(provider, "max_total_tokens", 100_000)
                 await self._maintain_short_term_memory(bootstrap=True)
-                with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens), action_trace_scope(self.event_sink) as trace:
+                with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens, policy=getattr(provider, "budget_policy", None)) as budget, action_trace_scope(self.event_sink) as trace:
                     trace.emit("request_started", "request", "running", "正在处理请求…")
                     response = await self.agent.run_natural(
                         message.content, **({"images": message.images} if message.images else {})
@@ -156,6 +157,8 @@ class InterfaceGateway:
                         )
                 raise
             finally:
+                if budget is not None:
+                    self.agent.last_budget_snapshot = budget.snapshot()
                 if state is not None:
                     state.interacting = False
                     state.last_interaction_at = datetime.now(UTC)
@@ -208,11 +211,12 @@ class InterfaceGateway:
                 trace_id=request_id, request_id=request_id, session_id="local"
             )
             trace = None
+            budget = None
             try:
                 provider = getattr(self.agent, "provider", None)
                 max_calls = getattr(provider, "max_calls", 12)
                 max_total_tokens = getattr(provider, "max_total_tokens", 100_000)
-                with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens), action_trace_scope(self.event_sink) as trace:
+                with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens, policy=getattr(provider, "budget_policy", None)) as budget, action_trace_scope(self.event_sink) as trace:
                     trace.emit("request_started", "request", "running", "正在重新生成…")
                     if resume_in_place:
                         response = await self.agent.resume_current_turn(
@@ -279,6 +283,8 @@ class InterfaceGateway:
                 self.metrics.increment("interface.regenerate.failed")
                 raise
             finally:
+                if budget is not None:
+                    self.agent.last_budget_snapshot = budget.snapshot()
                 self.metrics.observe_duration("interface.regenerate", monotonic() - started)
 
     async def activate_delivery(self, delivery_id: str):
@@ -362,8 +368,9 @@ class InterfaceGateway:
             max_calls = getattr(provider, "max_calls", 12)
             max_total_tokens = getattr(provider, "max_total_tokens", 100_000)
             trace = None
+            budget = None
             try:
-                with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens), action_trace_scope(self.event_sink) as trace:
+                with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens, policy=getattr(provider, "budget_policy", None)) as budget, action_trace_scope(self.event_sink) as trace:
                     trace.emit("request_started", "request", "running", "正在处理操作确认…",
                                metadata={"parent_request_id": pending.request.request_id})
                     if confirmation_id in self.agent._pending_permissions:
@@ -390,6 +397,8 @@ class InterfaceGateway:
                     self.agent.last_action_trace = trace.summary()
                 raise
             finally:
+                if budget is not None:
+                    self.agent.last_budget_snapshot = budget.snapshot()
                 if state is not None:
                     state.interacting = False
                     state.last_interaction_at = datetime.now(UTC)

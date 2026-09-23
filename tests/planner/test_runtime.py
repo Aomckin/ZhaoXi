@@ -5,8 +5,10 @@ from conftest import FakeProvider
 from zhaoxi.core.context import ContextBuilder
 from zhaoxi.core.conversation import Conversation
 from zhaoxi.models.types import ModelResponse, ToolCall
-from zhaoxi.planner.models import GoalStatus
+from zhaoxi.planner.models import Goal, GoalStatus, Plan, PlanStep, StepStatus
 from zhaoxi.planner.runtime import PlannerRuntime
+from zhaoxi.models.resilient import ResilientProvider
+from zhaoxi.reliability.retry import BudgetPolicy, provider_budget_scope, record_provider_tokens
 from zhaoxi.tools.base import Tool, ToolResult
 from zhaoxi.tools.builtin import create_builtin_tools
 from zhaoxi.tools.registry import ToolRegistry
@@ -30,6 +32,73 @@ def make_planner(responses, registry=None, **kwargs):
         conversation=Conversation(),
         **kwargs,
     )
+
+
+@pytest.mark.asyncio
+async def test_complex_plan_requests_one_extension_and_final_reply_omits_tool_schemas():
+    policy = BudgetPolicy(1000, 400, 200, 1600, 200)
+    responses = [
+        call("create_plan", {"steps": ["计算", "复述"]}),
+        call("calculator", {"expression": "17*23"}),
+        call("echo", {"message": "完成"}),
+        ModelResponse(content="结果是 391，且已完成复述。"),
+    ]
+    for response, amount in zip(responses, (450, 400, 500, 100)):
+        response.usage = {"prompt_tokens": amount - 10, "completion_tokens": 10,
+                          "total_tokens": amount}
+    fake = FakeProvider(responses)
+    planner = make_planner([], max_steps=6)
+    planner.provider = ResilientProvider([fake], max_total_tokens=1000, budget_policy=policy)
+    with provider_budget_scope(8, policy=policy) as budget:
+        result = await planner.run("计算后复述")
+    assert result.status == GoalStatus.COMPLETED
+    assert budget.extension_count == 1
+    assert fake.tool_schemas[-1] is None
+
+
+@pytest.mark.asyncio
+async def test_completed_single_tool_uses_reserve_without_extension():
+    policy = BudgetPolicy(1000, 400, 200, 1600, 200)
+    responses = [call("create_plan", {"steps": ["计算"]}),
+                 call("calculator", {"expression": "2+3"}),
+                 ModelResponse(content="结果是 5。")]
+    for response, amount in zip(responses, (450, 400, 120)):
+        response.usage = {"prompt_tokens": amount - 10, "completion_tokens": 10,
+                          "total_tokens": amount}
+    fake = FakeProvider(responses)
+    planner = make_planner([], max_steps=5)
+    planner.provider = ResilientProvider([fake], max_total_tokens=1000, budget_policy=policy)
+    with provider_budget_scope(8, policy=policy) as budget:
+        result = await planner.run("计算 2+3")
+    assert result.status == GoalStatus.COMPLETED
+    assert budget.extension_count == 0
+    assert budget.reserve_entered is True
+    assert fake.tool_schemas[-1] is None
+
+
+@pytest.mark.asyncio
+async def test_planner_structured_budget_request_is_checked_against_real_plan_state():
+    planner = make_planner([])
+    goal = Goal(description="完成两步", status=GoalStatus.RUNNING)
+    goal.plans.append(Plan(goal_id=goal.id, revision=1, steps=[
+        PlanStep(description="第一步", status=StepStatus.COMPLETED),
+        PlanStep(description="第二步"),
+    ]))
+    with provider_budget_scope(8, policy=BudgetPolicy(1000, 400, 200, 1600, 200)) as budget:
+        record_provider_tokens(780)
+        rejected = await planner._handle_control(goal, ToolCall(
+            id="budget-bad", name="request_budget_extension",
+            arguments={"reason": "还要继续", "remaining_actions": 0,
+                       "estimated_extra_tokens": 300, "stage": "tool_execution"},
+        ))
+        assert rejected.error == "no_remaining_action" or rejected.error == "remaining_actions_mismatch"
+        approved = await planner._handle_control(goal, ToolCall(
+            id="budget-good", name="request_budget_extension",
+            arguments={"reason": "第二步还未完成", "remaining_actions": 1,
+                       "estimated_extra_tokens": 300, "stage": "tool_execution"},
+        ))
+    assert approved.success is True
+    assert budget.extension_count == 1
 
 
 @pytest.mark.asyncio

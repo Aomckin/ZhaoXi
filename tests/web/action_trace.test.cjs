@@ -74,3 +74,15 @@ test('token details remain in the sidebar and never appear above the input',()=>
   assert.match(s.activity.textContent,/^完成 · /);
   assert.equal(s.nodes['#actionTraceSummary'].textContent,'行动记录 · 回复未完成');
 });
+
+test('budget requests appear in the sidebar while context estimates stay in Debug',()=>{
+  const s=setup();s.context.beginActionTrace();
+  const before=s.activity.textContent;
+  s.emit('budget_extension_requested','token_budget','info','已申请额外预算',{metadata:{requested_extra:3000}});
+  assert.equal(s.list.children.at(-1).textContent,'已申请额外预算');
+  assert.equal(s.activity.textContent,before);
+  s.emit('context_measured','context','info','已测量本轮上下文',{metadata:{estimated:{tool_schema:120}}});
+  assert.equal(s.list.children.length,1);
+  assert.match(s.nodes['#actionTraceDebug'].textContent,/tool_schema/);
+  assert.doesNotMatch(s.activity.textContent,/3000|120/);
+});

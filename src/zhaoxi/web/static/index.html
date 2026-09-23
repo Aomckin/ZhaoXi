@@ -65,6 +65,7 @@
         <details id="emojiCabinetPanel"><summary>表情柜 <span id="emojiCount" class="emoji-count"></span></summary><section aria-label="朝汐的表情收藏柜"><div class="emoji-toolbar"><input id="emojiSearch" type="search" placeholder="搜索描述、标签、情绪……"><button id="emojiAdd" type="button">+ 添加表情</button><button id="emojiRefresh" type="button">刷新</button></div><input id="emojiFiles" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden><p id="emojiCabinetStatus" class="sub">展开后读取表情柜。</p><h2>最近加入</h2><div id="emojiGrid" class="emoji-grid"></div><button id="emojiViewAll" type="button" class="ghost">查看全部</button><h2>待整理 <span id="emojiPendingCount" class="emoji-count"></span></h2><button id="emojiOrganizeAll" type="button" class="ghost">让朝汐整理全部</button><div id="emojiPendingGrid" class="emoji-grid"></div></section></details>
         <details id="emojiDebugPanel"><summary>表情包系统 Debug</summary><section aria-label="表情包系统调试"><p><label><input id="emojiToggle" type="checkbox"> Emoji Module</label> <button id="emojiReload" type="button">Reload Registry</button></p><p><input id="emojiIntent" maxlength="500" placeholder="测试表情 intent"><button id="emojiTest" type="button">测试检索</button></p><p><button id="emojiDirectTest" type="button">直发测试表情</button> <button id="emojiModelTest" type="button">让模型发送测试表情</button></p><div id="emojiDebug" class="debug">展开后读取表情模块…</div></section></details>
         <details id="recentContextDebugPanel"><summary>Agenda / Short-Term Memory Debug</summary><section aria-label="近期 Context 调试"><p><label><input id="agendaContextToggle" type="checkbox"> Agenda Context</label> <button id="recentContextRefresh" type="button">刷新快照</button></p><div id="recentContextDebug" class="debug">展开后读取近期 Context…</div></section></details>
+        <details id="budgetDebugPanel"><summary>Budget / Context Debug</summary><button id="budgetDebugRefresh" type="button">刷新预算诊断</button><pre id="budgetDebug" class="debug">展开后读取预算与 Context 诊断…</pre></details>
         <details id="debugPanel"><summary>Debug</summary><p><label><input id="regenerateDebugToggle" type="checkbox"> 显示普通回复的重新生成按钮</label></p><p><label><input id="longWaitToggle" type="checkbox"> 长时等待（请求上限 2 分钟）</label></p><button id="poke" type="button">戳一戳</button> <button id="restartCore" type="button">重启 Core</button><span id="pokeStatus" role="status"></span><div id="debug" class="debug">等待首次请求…</div></details>
       </details></div>
   </div>
@@ -91,6 +92,7 @@ function renderAgentEvent(event){
   if(!event||event.request_id!==activeTraceId)return;
   const type=event.event_type||'',outcome=event.outcome||'info';
   $('#actionTraceDebug').textContent+=`${event.timestamp||''} ${type} ${JSON.stringify(event)}\n`;
+  if(event.stage==='context')return;
   const round=event.stage==='model'&&event.step_id!=null?`第${event.step_id}轮 · `:'';
   appendTraceEvent(round+(event.display_message||type),outcome);
   if(event.stage==='task'||type.startsWith('task_')){
@@ -99,7 +101,7 @@ function renderAgentEvent(event){
     $('#actionTraceSummary').textContent=`行动记录 · ${label}`;
     activity.textContent=responseFailed&&outcome==='success'?'完成 · 操作护住啦，回复还没理出来…':outcome==='success'?'完成 · 好啦，事情办妥了汪。':outcome==='warning'?'完成 · 有些办好了，剩下的再一起看…':type==='task_waiting_for_permission'?'行动 · 等你点头，我就接着动爪…':'完成 · 这回没办成，我会如实告诉你…';
     traceTerminated=true;
-  }else activity.textContent=traceActivity(event);
+  }else if(event.stage!=='token_budget'&&event.stage!=='context')activity.textContent=traceActivity(event);
 }
 let activityHintTimer=null;
 function showActivityHint(text){
@@ -361,6 +363,9 @@ function renderRecentContext(data){$('#agendaContextToggle').checked=!!data.agen
 async function updateRecentContext(body){try{renderRecentContext(await request('/api/debug/recent-context',{method:'POST',body:JSON.stringify(body)}))}catch(e){$('#recentContextDebug').textContent=e.message;await setupRecentContextDebug()}}
 $('#agendaContextToggle').onchange=e=>updateRecentContext({agenda_enabled:e.target.checked});$('#recentContextRefresh').onclick=setupRecentContextDebug;
 $('#recentContextDebugPanel').addEventListener('toggle',event=>{if(event.target.open)void setupRecentContextDebug()});
+async function setupBudgetDebug(){try{$('#budgetDebug').textContent=JSON.stringify(await request('/api/debug/budget-context'),null,2)}catch(e){$('#budgetDebug').textContent=e.message}}
+$('#budgetDebugRefresh').onclick=setupBudgetDebug;
+$('#budgetDebugPanel').addEventListener('toggle',event=>{if(event.target.open)void setupBudgetDebug()});
 let pendingDeliveryTimer=null;
 async function openDelivery(id){clearTimeout(pendingDeliveryTimer);if(busy||pendingInput.length){activity.textContent='当前回复结束后打开系统消息…';pendingDeliveryTimer=setTimeout(()=>openDelivery(id),500);return}try{await request('/api/proactive/'+encodeURIComponent(id)+'/activate',{method:'POST'});const data=await request('/api/session');displayTimezone=data.timezone||displayTimezone;messages.replaceChildren();data.messages.forEach(m=>{if(m.delivery_id)seenDeliveries.add(m.delivery_id);if(m.kind==='system')return;if(m.role==='user'&&m.display_parts?.length){let offset=0;for(const p of m.display_parts){addMessage('user',p.text,'',(m.images||[]).slice(offset,offset+p.image_count),p.timestamp);offset+=p.image_count}}else addMessage(m.role,m.content,m.kind==='system'?'system':'',m.images||[],m.timestamp,m.message_id,m.regeneratable)});debug.textContent=JSON.stringify(await request('/api/proactive/'+encodeURIComponent(id)+'/inspect'),null,2);const n=document.getElementById('notice-'+id);if(n)n.querySelector('.badge').textContent='已读';input.focus()}catch(e){showActivityHint('暂时无法打开系统消息，请稍后重试')}}
 function showNotice(d){showProactiveNote(d);if(d.kind!=='system'&&!String(d.event_type||'').startsWith('system.'))return;if(!['delivered','acknowledged'].includes(d.status)||document.getElementById('notice-'+d.delivery_id))return;const n=document.createElement('button');n.id='notice-'+d.delivery_id;n.className='notice';n.style.cssText='display:block;width:100%;text-align:left';n.innerHTML=`<div class="badge">${d.status==='acknowledged'?'已读':'未读'}</div><div>${markdown(d.content)}</div><small>${escapeHtml(formatTime(d.delivered_at||d.available_at))}</small>`;n.onclick=()=>openDelivery(d.delivery_id);$('#notices').querySelector('.sub')?.remove();$('#notices').prepend(n);while($('#notices').children.length>100)$('#notices').lastElementChild.remove()}

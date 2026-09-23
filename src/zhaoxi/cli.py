@@ -149,6 +149,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         cooldown_seconds=settings.provider_cooldown_seconds,
         max_calls=settings.request_max_model_calls,
         max_total_tokens=settings.request_max_total_tokens,
+        budget_policy=settings.request_budget_policy,
     )
     memory_service = MemoryService(
         SQLiteMemoryRepository(settings.memory_db_path),

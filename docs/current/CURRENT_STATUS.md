@@ -1,5 +1,7 @@
 # v1.2.7 当前状态与使用说明
 
+2026-09-24 v1.2.7.1：请求预算增加受控的两次 Planner 扩容、Hard Limit 与收尾保留额度；逐轮记录实际 Provider payload 的 Context 构成估算，并在维护抽屉新增 Budget / Context Debug。旧成功 Tool Result 仅在模型上下文副本中压缩，最终回复不再携带 Tool Schema；真实模型的补丁后对比仍待授权实机验证。详见 [v1.2.7.1 交付记录](../v1.2.x/Zhaoxi_v1.2.7.1_Budget_Context_Tuning_Report.md)。
+
 2026-09-24 v1.2.6 完成后端与前端调整：Working Notes 便签领域模型和 `notes_*` 工具已退出运行时，改为结构化、跨重启的滚动 Short-Term Memory；后台 Maintainer 在主回复后按需提交 Patch，STM 每轮常驻 Context。旧 `working-notes.db` 只作历史备份。小桌边现在用日期时间线展示 Agenda、用单张纸页展示 STM；桌面入口避开窗口栏。Debug 可查看 STM 状态、Snapshot、最后处理消息和最近 Patch。详见 [v1.2.6 交付与验收](../v1.2.x/Zhaoxi_v1.2.6_Release_Notes.md)。
 
 2026-09-23 v1.2.7：Chat、重新生成及权限续执行接入请求级 Agent Event，Web 复用现有 SSE 展示行动轨迹与安全 Debug 信息。Tool 调用通过 `tool_call_id` 和 `invocation_id` 对账；参数校验失败后的同名修复会将旧尝试标记为 superseded，成功写入各自保留独立记录。Recovery 读取最终动作状态，区分已完成、仍失败、结果未知；Token 预算耗尽和 Provider HTTP 错误各有明确错误码及文案。Life HUD Sensor 和 Heartbeat 的异常日志补齐阶段、用时及错误类型。详见 [v1.2.7 发布说明](../v1.2.x/Zhaoxi_v1.2.7_Release_Notes.md)。

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from math import ceil
 from typing import Any, Sequence
 
 from zhaoxi.core.message import Message, Role
@@ -47,12 +48,38 @@ def collect_prompt_diagnostics(
     total_chars = _json_chars(input_payload)
     measured_chars = sum(size for _, size in components)
     components.append(("request.json_envelope", max(0, total_chars - measured_chars)))
+    categories = {name: 0 for name in (
+        "system_prompt", "recent_messages", "memory_snapshot", "retrieved_memory",
+        "tool_schema", "tool_result", "planner_state", "other",
+    )}
+    for name, chars in components:
+        category = (
+            "memory_snapshot" if name in {"runtime.agenda", "runtime.short_term_memory"} else
+            "retrieved_memory" if name == "memory.recall" else
+            "planner_state" if name == "extra.planner_context" else
+            "tool_schema" if name.startswith("tool_schema.") else
+            "tool_result" if name.startswith("conversation_history.") and name.endswith(".tool") else
+            "recent_messages" if name.startswith("conversation_history.") else
+            "other" if name == "request.json_envelope" else "system_prompt"
+        )
+        categories[category] += chars
+    image_urls = [part.get("image_url", {}).get("url", "")
+                  for message in provider_messages if isinstance(message, dict)
+                  for part in (message.get("content") if isinstance(message.get("content"), list) else [])
+                  if isinstance(part, dict) and part.get("type") == "image_url"]
+    image_payload_chars = sum(len(url) for url in image_urls if isinstance(url, str))
+    categories["recent_messages"] = max(0, categories["recent_messages"] - image_payload_chars)
+    estimated = {name: ceil(chars / 4) for name, chars in categories.items()}
     return {
         "model": model,
         "input_chars": total_chars,
         "messages_chars": _json_chars(provider_messages),
         "tools_chars": _json_chars(tools or []),
         "tool_router": tool_router,
+        "context_tokens_estimate": {**estimated, "image_tokens": None,
+                                    "image_count": len(image_urls),
+                                    "image_payload_chars": image_payload_chars,
+                                    "total_text_tokens": sum(estimated.values())},
         "components": [
             {"name": name, "chars": size, "percent": round(size * 100 / total_chars, 2) if total_chars else 0}
             for name, size in components

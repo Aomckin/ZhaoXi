@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     provider_cooldown_seconds: float = Field(default=60, ge=0, le=3600)
     request_max_model_calls: int = Field(default=12, ge=1, le=100)
     request_max_total_tokens: int = Field(default=100_000, ge=1_000, le=10_000_000)
+    request_extension_1_limit_tokens: int = Field(default=25_000, ge=0, le=10_000_000)
+    request_extension_2_limit_tokens: int = Field(default=15_000, ge=0, le=10_000_000)
+    request_hard_limit_tokens: int | None = Field(default=None, ge=1_000, le=10_000_000)
+    request_finalization_reserve_tokens: int = Field(default=8_000, ge=0, le=1_000_000)
+    request_budget_warning_ratio: float = Field(default=0.85, gt=0, lt=1)
     max_context_messages: int = Field(default=40, ge=1)
     temperature: float = Field(default=0.7, ge=0, le=2)
     max_tokens: int | None = Field(default=None, ge=1)
@@ -210,6 +215,11 @@ class Settings(BaseSettings):
             if legacy in self.model_fields_set and current not in self.model_fields_set:
                 setattr(self, current, getattr(self, legacy))
         ZoneInfo(self.proactive_timezone)
+        if ("request_finalization_reserve_tokens" in self.model_fields_set
+                and self.request_finalization_reserve_tokens >= self.request_max_total_tokens):
+            raise ValueError("收尾预算必须小于请求 Base Budget")
+        if self.request_hard_limit_tokens is not None and self.request_hard_limit_tokens < self.request_max_total_tokens:
+            raise ValueError("请求 Hard Limit 不能小于 Base Budget")
         if not self.proactive_threshold_active <= self.proactive_threshold_semi_active <= self.proactive_threshold_idle:
             raise ValueError("主动阈值必须满足 ACTIVE <= SEMI_ACTIVE <= IDLE")
         valid_permission_policies = {"allow", "confirm", "deny"}
@@ -260,6 +270,24 @@ class Settings(BaseSettings):
         if self.tts_provider not in {"disabled", "windows"}:
             raise ValueError("tts provider 必须是 disabled 或 windows")
         return self
+
+    @property
+    def request_budget_policy(self):
+        from zhaoxi.reliability.retry import BudgetPolicy
+        return BudgetPolicy(
+            base_budget=self.request_max_total_tokens,
+            extension_1_limit=self.request_extension_1_limit_tokens,
+            extension_2_limit=self.request_extension_2_limit_tokens,
+            hard_limit=self.request_hard_limit_tokens or min(
+                10_000_000,
+                self.request_max_total_tokens + self.request_extension_1_limit_tokens
+                + self.request_extension_2_limit_tokens,
+            ),
+            finalization_reserve=(self.request_finalization_reserve_tokens
+                                  if self.request_finalization_reserve_tokens < self.request_max_total_tokens
+                                  else max(0, self.request_max_total_tokens // 5)),
+            warning_ratio=self.request_budget_warning_ratio,
+        )
 
     def validate_model_config(self) -> None:
         """Raise a readable error when required live-model settings are absent."""

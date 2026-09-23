@@ -33,6 +33,7 @@ from zhaoxi.planner.store import InMemoryPlanStore, PlanStore
 from zhaoxi.planner.trace import TraceRecorder
 from zhaoxi.permission.executor import ToolExecutor
 from zhaoxi.permission.models import InvocationOrigin, PendingConfirmation
+from zhaoxi.reliability.retry import BudgetExtensionRequest, budget_stage_scope, current_budget
 from zhaoxi.tools.base import ToolResult
 from zhaoxi.tools.registry import ToolRegistry
 
@@ -56,11 +57,20 @@ class FinishTaskInput(BaseModel):
     summary: str = Field(min_length=1)
 
 
+class BudgetExtensionInput(BaseModel):
+    reason: str = Field(min_length=1, max_length=240)
+    remaining_actions: int = Field(ge=0)
+    estimated_extra_tokens: int = Field(gt=0)
+    stage: str = Field(pattern="^(planning|tool_execution|recovery|finalization)$")
+    progress_evidence: dict[str, object] = Field(default_factory=dict)
+
+
 CONTROL_MODELS = {
     "create_plan": CreatePlanInput,
     "replan": ReplanInput,
     "request_user_input": RequestInputInput,
     "finish_task": FinishTaskInput,
+    "request_budget_extension": BudgetExtensionInput,
 }
 
 CONTROL_DESCRIPTIONS = {
@@ -68,6 +78,7 @@ CONTROL_DESCRIPTIONS = {
     "replan": "观察结果使当前计划不再适用时，创建完整的新修订计划。",
     "request_user_input": "缺少继续执行所必需的信息时暂停任务并询问用户。",
     "finish_task": "所有必要步骤完成后，提交最终结果并结束任务。",
+    "request_budget_extension": "预算接近上限且已有实际进展时，结构化申请额外 Token；Runtime 独立审批，最多两次。",
 }
 
 
@@ -276,18 +287,40 @@ class PlannerRuntime:
                 memories = await self.context_builder.memory_retriever.retrieve(goal.description)
             except Exception:
                 memories = []
-        schemas = [
-            *control_schemas(),
-            *(tool.schema() for tool in self.registry.list()),
-        ]
+        schemas = [*control_schemas(), *(tool.schema() for tool in self.registry.list())]
         for action_index in range(1, self.max_steps + 1):
             self._check_cancelled(goal)
+            plan = goal.current_plan
+            remaining = [step for step in plan.steps if step.status not in {StepStatus.COMPLETED, StepStatus.SKIPPED}] if plan else []
+            completed = [step for step in plan.steps if step.status is StepStatus.COMPLETED] if plan else []
+            finalizing = bool(plan and not remaining)
+            stage = "finalization" if finalizing else "tool_execution" if plan else "planning"
+            budget = current_budget()
+            if budget and budget.policy and budget.extension_count < 2 and completed:
+                threshold = (budget.max_total_tokens - budget.finalization_reserve) * budget.policy.warning_ratio
+                if budget.total_tokens >= threshold and (not finalizing or budget.total_tokens >= budget.max_total_tokens):
+                    limit = budget.policy.extension_1_limit if budget.extension_count == 0 else budget.policy.extension_2_limit
+                    if limit > 0 and (budget.extension_count == 0 or finalizing or len(remaining) <= 1):
+                        budget.request_extension(BudgetExtensionRequest(
+                            reason="计划仍有明确步骤或需要收尾", remaining_actions=len(remaining),
+                            estimated_extra_tokens=limit, stage=stage,
+                            progress_evidence={"completed_actions": len(completed),
+                                               "last_success_step": action_index - 1,
+                                               "corrective_retry": bool(goal.observations and not goal.observations[-1].success
+                                                                        and goal.observations[-1].retryable),
+                                               "stalled_rounds": max(0, action_index - len(goal.observations) - 1),
+                                               "remaining_actions_verified": True},
+                        ))
             messages = self.context_builder.build(
                 self.conversation,
                 memories,
                 planner_context=self._format_state(goal),
+                **({"release_images": True} if finalizing else {}),
             )
-            response = await self.provider.generate(messages, schemas)
+            if finalizing:
+                messages[0].content = (messages[0].content or "") + "\n计划步骤已完成，只生成最终自然语言回复，不再调用工具。"
+            with budget_stage_scope(stage):
+                response = await self.provider.generate(messages, None if finalizing else schemas)
             self._check_cancelled(goal)
             if not response.tool_calls:
                 if goal.current_plan and all(
@@ -463,6 +496,30 @@ class PlannerRuntime:
             arguments = CONTROL_MODELS[call.name].model_validate(call.arguments)
         except ValidationError as exc:
             return ToolResult(success=False, content="规划控制参数无效。", error=str(exc))
+        if call.name == "request_budget_extension":
+            budget = current_budget()
+            if budget is None:
+                return ToolResult(success=False, content="当前没有可扩容的请求预算。", error="budget_scope_unavailable")
+            plan = goal.current_plan
+            remaining = [step for step in plan.steps if step.status not in {StepStatus.COMPLETED, StepStatus.SKIPPED}] if plan else []
+            completed = [step for step in plan.steps if step.status is StepStatus.COMPLETED] if plan else []
+            recent_errors = [observation.error for observation in goal.observations[-3:] if not observation.success]
+            request = BudgetExtensionRequest(
+                reason=arguments.reason, remaining_actions=arguments.remaining_actions,
+                estimated_extra_tokens=arguments.estimated_extra_tokens, stage=arguments.stage,
+                progress_evidence={"completed_actions": len(completed),
+                                   "last_success_step": len(completed) or None,
+                                   "new_result": bool(goal.observations and goal.observations[-1].success),
+                                   "corrective_retry": bool(goal.observations and not goal.observations[-1].success
+                                                            and goal.observations[-1].retryable),
+                                   "repeated_error_count": len(recent_errors) if len(set(recent_errors)) == 1 else 0,
+                                   "remaining_actions_verified": arguments.remaining_actions == len(remaining)},
+            )
+            decision = budget.request_extension(request)
+            return ToolResult(success=bool(decision["approved_extra"]),
+                              content="额外预算已批准。" if decision["approved_extra"] else "额外预算申请未通过。",
+                              data=decision,
+                              error=None if decision["approved_extra"] else str(decision["reason_code"]))
         if call.name == "create_plan":
             if goal.plans:
                 return ToolResult(success=False, content="初始计划已存在，请使用 replan。", error="plan_exists")

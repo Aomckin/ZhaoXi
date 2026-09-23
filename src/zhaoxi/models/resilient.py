@@ -10,6 +10,7 @@ from zhaoxi.models.base import ModelProvider
 from zhaoxi.models.types import ModelResponse
 from zhaoxi.reliability.metrics import MetricRegistry
 from zhaoxi.reliability.retry import (
+    BudgetPolicy,
     CircuitBreaker,
     RetryPolicy,
     consume_provider_budget,
@@ -28,6 +29,7 @@ class ResilientProvider(ModelProvider):
         cooldown_seconds: float = 60,
         max_calls: int = 12,
         max_total_tokens: int = 100_000,
+        budget_policy: BudgetPolicy | None = None,
         metrics: MetricRegistry | None = None,
         sleeper=None,
     ) -> None:
@@ -38,6 +40,7 @@ class ResilientProvider(ModelProvider):
         self.breakers = [CircuitBreaker(failure_threshold, cooldown_seconds) for _ in providers]
         self.max_calls = max_calls
         self.max_total_tokens = max_total_tokens
+        self.budget_policy = budget_policy
         self.metrics = metrics or MetricRegistry()
         self.sleeper = sleeper
 

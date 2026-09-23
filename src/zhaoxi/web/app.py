@@ -569,6 +569,21 @@ def create_app(
     async def debug_recent_context():
         return recent_context_snapshot()
 
+    @app.get("/api/debug/budget-context")
+    async def debug_budget_context():
+        policy = configured.request_budget_policy
+        return {
+            "configuration": {
+                "base_budget": policy.base_budget,
+                "extension_1_limit": policy.extension_1_limit,
+                "extension_2_limit": policy.extension_2_limit,
+                "hard_limit": policy.hard_limit,
+                "finalization_reserve": policy.finalization_reserve,
+                "warning_ratio": policy.warning_ratio,
+            },
+            "last_request": getattr(core, "last_budget_snapshot", None),
+        }
+
     @app.get("/api/recent-context")
     async def recent_context_board():
         """Public desk view; each context source can fail independently."""
