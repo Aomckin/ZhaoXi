@@ -4,6 +4,7 @@ html[data-desktop] #windowChrome{position:fixed;inset:0 0 auto;height:36px;z-ind
 #windowTitle{flex:1;padding:0 8px;touch-action:none;font-size:12px}#windowChrome button{height:28px;min-width:32px;background:transparent;color:inherit;border-radius:6px}#windowChrome button:hover{background:#dccca2}#windowChrome .close:hover{background:#cf5b4e;color:white}
 html[data-desktop][data-window-mode=main] .shell{margin-top:calc(var(--scene-inset) + 36px);height:calc(100dvh - var(--scene-inset)*2 - 36px)}
 html[data-desktop] #desk{top:44px;height:calc(100dvh - 60px)}
+html[data-desktop] .desk-handle{top:44px}
 html[data-desktop] .resize-zone{display:block;position:fixed;z-index:100;touch-action:none}
 .resize-zone[data-edge=left]{left:0;top:8px;bottom:8px;width:5px;cursor:ew-resize}.resize-zone[data-edge=right]{right:0;top:8px;bottom:8px;width:5px;cursor:ew-resize}
 .resize-zone[data-edge=top]{top:0;left:8px;right:8px;height:5px;cursor:ns-resize}.resize-zone[data-edge=bottom]{bottom:0;left:8px;right:8px;height:5px;cursor:ns-resize}

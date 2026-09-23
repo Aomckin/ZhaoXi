@@ -27,13 +27,12 @@ TOOL_GROUPS: dict[str, tuple[str, ...]] = {
     "lifehud": ("lifehud",),
     "expression": ("save_emoji",),
     "agenda": ("agenda_add", "agenda_update", "agenda_complete", "agenda_cancel", "agenda_list", "agenda_snapshot"),
-    "working_notes": ("notes_add", "notes_update", "notes_resolve", "notes_delete", "notes_list", "notes_snapshot"),
     # Built-in developer utility. It is intentionally absent from normal turns.
     "echo": ("echo",),
 }
 
 
-GROUP_LABELS = {"memory_core": "长期记忆：记录、更新、检索", "memory_search": "记忆检索", "memory_admin": "记忆管理", "archive": "潮庭档案", "local_search": "本地文件搜索", "filesystem_read": "读取文件与目录", "filesystem_write": "修改文件与目录", "web": "网页读取", "time": "时间与时区", "calculator": "计算", "lifehud": "Life HUD", "expression": "本地视觉表达", "agenda": "近期日程", "working_notes": "朝汐便签", "debug": "钥匙柜查询与能力发现"}
+GROUP_LABELS = {"memory_core": "长期记忆：记录、更新、检索", "memory_search": "记忆检索", "memory_admin": "记忆管理", "archive": "潮庭档案", "local_search": "本地文件搜索", "filesystem_read": "读取文件与目录", "filesystem_write": "修改文件与目录", "web": "网页读取", "time": "时间与时区", "calculator": "计算", "lifehud": "Life HUD", "expression": "本地视觉表达", "agenda": "近期日程", "debug": "钥匙柜查询与能力发现"}
 
 TOOL_LABELS = {
     "remember_memory": "记住信息", "update_memory": "更新记忆", "search_memories": "搜索记忆",
@@ -55,8 +54,6 @@ TOOL_LABELS = {
     "save_emoji": "收藏会话图片",
     "agenda_add": "添加日程", "agenda_update": "修改日程", "agenda_complete": "完成日程",
     "agenda_cancel": "取消日程", "agenda_list": "查询日程", "agenda_snapshot": "查看日程快照",
-    "notes_add": "添加便签", "notes_update": "更新便签", "notes_resolve": "解决便签",
-    "notes_delete": "删除便签", "notes_list": "查询便签", "notes_snapshot": "查看便签快照",
 }
 
 TOOL_USAGE = {
@@ -83,9 +80,6 @@ TOOL_USAGE = {
     "agenda_add": "记录事件、时间窗口、截止、主线或期待。", "agenda_update": "调整已有近期日程。",
     "agenda_complete": "将近期事项标记完成。", "agenda_cancel": "取消近期事项。",
     "agenda_list": "查询近期日程及 ID。", "agenda_snapshot": "读取压缩日程上下文。",
-    "notes_add": "保守记录持续工作的近期现场。", "notes_update": "更新已有工作便签。",
-    "notes_resolve": "让已解决便签退出常驻上下文。", "notes_delete": "永久删除短期便签。",
-    "notes_list": "查询工作便签及 ID。", "notes_snapshot": "读取压缩工作便签上下文。",
 }
 
 TOOL_GROUPS["memory_core"] = ("remember_memory", "update_memory", "search_memories")

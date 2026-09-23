@@ -56,15 +56,15 @@
   <header class="desk-heading"><button id="deskClose" type="button" class="ghost" aria-label="收起小桌边">‹</button><div><h2 id="deskTitle">朝汐的小桌边</h2><p class="desk-caption">风经过麦田，我在你身边。</p></div></header>
   <div class="desk-content">
     <section aria-labelledby="notesTitle"><h3 id="notesTitle">朝汐留下的话</h3><div id="proactiveNotes" aria-live="polite"><div class="desk-note"><p>想说的话，慢慢说就好。</p><small>她留下的小纸条，就收在这里。</small></div></div><p id="noteReadStatus" role="status" class="sub"></p></section>
-    <section class="recent-board" aria-labelledby="agendaTitle"><h3 id="agendaTitle">日程表 · Agenda</h3><div id="agendaCards" aria-live="polite"><div class="desk-note"><p>正在翻看日程…</p></div></div></section>
-    <section class="recent-board" aria-labelledby="workingNotesTitle"><h3 id="workingNotesTitle">工作便签 · Working Notes</h3><div id="workingNoteCards" aria-live="polite"><div class="desk-note"><p>正在翻看便签…</p></div></div></section>
+    <section class="recent-board agenda-board" aria-labelledby="agendaTitle"><h3 id="agendaTitle">日程表 · Agenda</h3><div id="agendaTimeline" aria-live="polite"><p class="desk-empty">正在翻看日程…</p></div></section>
+    <section class="recent-board memory-board" aria-labelledby="shortTermMemoryTitle"><h3 id="shortTermMemoryTitle">近期状态 · Short-Term Memory</h3><div id="shortTermMemory" aria-live="polite"><div class="memory-paper"><p>正在整理近期状态…</p></div></div></section>
     <details id="actionTrace" class="action-trace"><summary id="actionTraceSummary">行动记录</summary><ol id="actionTraceEvents" aria-live="polite"></ol><details class="trace-debug"><summary>Debug 执行详情</summary><pre id="actionTraceDebug"></pre></details></details>
     <div class="desk-tools"><details><summary>系统消息</summary><div id="notices" aria-live="polite"><div class="sub">暂无新的系统消息。</div></div></details><details><summary>设置</summary><p><label>模型思考 <select id="thinkingMode" disabled><option value="off">不带 thinking</option><option value="disabled">thinking.type=disabled</option><option value="enabled">thinking.type=enabled</option></select></label> <small id="thinkingStatus">正在读取…</small></p><p><label>输入合并 <output id="mergeValue">15 秒</output><input id="mergeRange" type="range" min="0" max="30" step="1" value="15" style="width:100%"></label></p><p><label>分段回复间隔 <output id="replyValue">5–10 秒</output><input id="replyRange" type="range" min="0" max="15" step="1" value="5" style="width:100%"></label></p></details>
       <details class="maintenance"><summary>维护抽屉</summary><button id="clear" class="ghost">清空会话</button><p class="sub" id="endpoint"></p><h2>连接状态</h2><div class="status"><span class="dot" aria-hidden="true"></span><span id="connection" role="status" aria-live="polite">本地 Core 已连接</span></div>
         <details id="toolCabinetPanel"><summary>钥匙柜</summary><section id="toolControls" aria-label="钥匙柜控制"><p id="toolControlStatus" role="status">打开后读取实时钥匙清单。</p><button id="refreshTools" type="button">刷新钥匙柜</button> <button id="resetTools" type="button">全部恢复默认</button><div id="toolInventory"></div></section></details>
         <details id="emojiCabinetPanel"><summary>表情柜 <span id="emojiCount" class="emoji-count"></span></summary><section aria-label="朝汐的表情收藏柜"><div class="emoji-toolbar"><input id="emojiSearch" type="search" placeholder="搜索描述、标签、情绪……"><button id="emojiAdd" type="button">+ 添加表情</button><button id="emojiRefresh" type="button">刷新</button></div><input id="emojiFiles" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden><p id="emojiCabinetStatus" class="sub">展开后读取表情柜。</p><h2>最近加入</h2><div id="emojiGrid" class="emoji-grid"></div><button id="emojiViewAll" type="button" class="ghost">查看全部</button><h2>待整理 <span id="emojiPendingCount" class="emoji-count"></span></h2><button id="emojiOrganizeAll" type="button" class="ghost">让朝汐整理全部</button><div id="emojiPendingGrid" class="emoji-grid"></div></section></details>
         <details id="emojiDebugPanel"><summary>表情包系统 Debug</summary><section aria-label="表情包系统调试"><p><label><input id="emojiToggle" type="checkbox"> Emoji Module</label> <button id="emojiReload" type="button">Reload Registry</button></p><p><input id="emojiIntent" maxlength="500" placeholder="测试表情 intent"><button id="emojiTest" type="button">测试检索</button></p><p><button id="emojiDirectTest" type="button">直发测试表情</button> <button id="emojiModelTest" type="button">让模型发送测试表情</button></p><div id="emojiDebug" class="debug">展开后读取表情模块…</div></section></details>
-        <details id="recentContextDebugPanel"><summary>Agenda / Working Notes Debug</summary><section aria-label="近期 Context 调试"><p><label><input id="agendaContextToggle" type="checkbox"> Agenda Context</label> <label><input id="workingNotesContextToggle" type="checkbox"> Working Notes Context</label> <button id="recentContextRefresh" type="button">刷新快照</button></p><div id="recentContextDebug" class="debug">展开后读取近期 Context…</div></section></details>
+        <details id="recentContextDebugPanel"><summary>Agenda / Short-Term Memory Debug</summary><section aria-label="近期 Context 调试"><p><label><input id="agendaContextToggle" type="checkbox"> Agenda Context</label> <button id="recentContextRefresh" type="button">刷新快照</button></p><div id="recentContextDebug" class="debug">展开后读取近期 Context…</div></section></details>
         <details id="debugPanel"><summary>Debug</summary><p><label><input id="regenerateDebugToggle" type="checkbox"> 显示普通回复的重新生成按钮</label></p><p><label><input id="longWaitToggle" type="checkbox"> 长时等待（请求上限 2 分钟）</label></p><button id="poke" type="button">戳一戳</button> <button id="restartCore" type="button">重启 Core</button><span id="pokeStatus" role="status"></span><div id="debug" class="debug">等待首次请求…</div></details>
       </details></div>
   </div>
@@ -304,25 +304,47 @@ function renderInteractionBadge(presence){
 }
 let setupNoticeShown=false;
 async function setupDiagnostics(){try{const data=await request('/api/diagnostics');debug.textContent=JSON.stringify(data,null,2);renderInteractionBadge(data.presence);if(data.startup&&data.startup.status!=='ready'){const model=data.startup.checks?.model||{};$('#connection').textContent='需要完成首次配置';input.placeholder='完成配置后即可和朝汐对话';if(!setupNoticeShown){addMessage('assistant',`朝汐尚未完成启动配置。${model.action||'请运行 python main.py --doctor 查看具体问题。'}`);setupNoticeShown=true}}}catch(e){renderInteractionBadge(null);$('#connection').textContent='启动诊断不可用'}}
-const agendaTypeNames={event:'约定',window:'时间窗口',deadline:'截止',focus:'眼下重点',expectation:'期待'};
-const noteTypeNames={working:'正在想',todo:'待办',question:'待确认',decision:'已决定',hypothesis:'猜想',temp:'临时'};
-function renderDeskCards(target,items,kind,error){
-  const box=$(target);box.replaceChildren();
-  if(error||!Array.isArray(items)||!items.length){const card=document.createElement('div');card.className='desk-note';const p=document.createElement('p');p.textContent=error?'暂时没翻到，稍后再看看。':kind==='agenda'?'眼下没有待办日程。':'眼下没有正在整理的便签。';card.append(p);box.append(card);return}
-  for(const item of items){
-    const card=document.createElement('article'),eyebrow=document.createElement('span'),p=document.createElement('p'),small=document.createElement('small');
-    card.className='desk-note';eyebrow.className='eyebrow';
-    if(kind==='agenda'){
-      eyebrow.textContent=agendaTypeNames[item.type]||'日程';p.textContent=item.title||'';
-      const when=item.due_at||item.start_at;small.textContent=[when?formatTime(when):'',item.status==='active'?'进行中':'',item.note||''].filter(Boolean).join(' · ');
-    }else{
-      eyebrow.textContent=noteTypeNames[item.type]||'便签';p.textContent=item.content||'';
-      small.textContent=[item.topic&&item.topic!==item.content?item.topic:'',item.confidence==='tentative'?'暂定':item.confidence==='confirmed'?'已确认':'整理中'].filter(Boolean).join(' · ');
-    }
-    card.append(eyebrow,p);if(small.textContent)card.append(small);box.append(card);
+const agendaTypeNames={event:'约定',window:'时间窗口',deadline:'截止',focus:'主线',expectation:'期待'};
+const memorySectionNames={active_context:'当前持续',active_thread:'正在推进',recent_topic:'最近常聊',recent_change:'最近变化',unresolved:'还挂着'};
+function deskText(tag,value,className=''){const node=document.createElement(tag);node.textContent=value;if(className)node.className=className;return node}
+function deskDateParts(value){const parts=new Intl.DateTimeFormat('en-GB',{timeZone:displayTimezone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(value));return Object.fromEntries(parts.map(part=>[part.type,part.value]))}
+function deskDateKey(value){const part=deskDateParts(value);return `${part.year}-${part.month}-${part.day}`}
+function deskDayTitle(key,today){const day=new Date(`${key}T12:00:00Z`),tomorrow=new Date(`${today}T12:00:00Z`);tomorrow.setUTCDate(tomorrow.getUTCDate()+1);const prefix=key===today?'今天 · ':key===tomorrow.toISOString().slice(0,10)?'明天 · ':'';return `${prefix}${Number(key.slice(5,7))}/${key.slice(8)} 周${'日一二三四五六'[day.getUTCDay()]}`}
+function agendaWhen(item){return item.due_at||item.start_at||null}
+function agendaDateKey(item,today){if(item.type==='focus'&&!agendaWhen(item))return item.scope==='today'?(item.created_at?deskDateKey(item.created_at):today):'undated';const when=agendaWhen(item);return when?deskDateKey(when):null}
+function agendaMarker(){return deskText('div','现在','agenda-now')}
+function agendaTitleKey(title){return String(title||'').replace(/[（(][^）)]{1,16}[）)]/g,'').replace(/^作为[^\s]{1,8}参加\s*/,'').replace(/^参加\s*/,'').replace(/[\s，,。.!！?？]/g,'').toLowerCase()}
+function linkedAgendaWindow(event,windowItem){return event.type==='event'&&windowItem.type==='window'&&!!event.start_at&&!!windowItem.start_at&&new Date(event.start_at).getTime()===new Date(windowItem.start_at).getTime()&&agendaTitleKey(event.title).length>=5&&agendaTitleKey(event.title)===agendaTitleKey(windowItem.title)}
+function renderAgendaTimeline(items,error,now=new Date()){
+  const box=$('#agendaTimeline');box.replaceChildren();
+  if(error||!Array.isArray(items)){box.append(deskText('p','日程暂时无法读取，请稍后再试。','desk-empty'));return}
+  const today=deskDateKey(now),cutoff=new Date(now.getTime()-2*86400000);
+  const visible=items.filter(item=>!['cancelled','rescheduled'].includes(item.status)&&(!['done','missed'].includes(item.status)||new Date(item.end_at||agendaWhen(item)||item.updated_at||item.created_at||0)>=cutoff));
+  if(!visible.length){box.append(deskText('p','眼下没有日程。','desk-empty'));return}
+  const groups=new Map();for(const item of visible){const key=agendaDateKey(item,today)||'undated';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(item)}
+  for(const key of [...groups.keys()].sort()){
+    const group=document.createElement('section');group.className='agenda-day';group.append(deskText('h4',key==='undated'?'近期':deskDayTitle(key,today),'agenda-date'));
+    const dayItems=groups.get(key),focus=dayItems.filter(item=>item.type==='focus'),timed=dayItems.filter(item=>item.type!=='focus').sort((a,b)=>new Date(agendaWhen(a)||0)-new Date(agendaWhen(b)||0)||(a.type===b.type?0:a.type==='event'?-1:b.type==='event'?1:0));
+    for(const item of focus){const row=document.createElement('article');row.className='agenda-focus';row.append(deskText('span','■ '+(item.scope==='today'?'今日主线':'近期主线'),'agenda-kind'),deskText('p',item.title));if(item.note){const detail=document.createElement('details');detail.append(deskText('summary','详情'),deskText('p',item.note));row.append(detail)}group.append(row)}
+    const list=document.createElement('div');list.className='agenda-line';let marked=false;const grouped=new Set();
+    for(const item of timed){if(grouped.has(item))continue;const linked=item.type==='event'?timed.find(other=>!grouped.has(other)&&linkedAgendaWindow(item,other)):null;if(linked)grouped.add(linked);
+      const when=agendaWhen(item),past=when&&new Date(linked?.end_at||item.end_at||when)<now;if(key===today&&!marked&&(!when||new Date(when)>=now)){list.append(agendaMarker());marked=true}
+      const row=document.createElement('article');row.className=`agenda-entry agenda-${item.type}${past||['done','missed'].includes(item.status)?' is-past':''}`;
+      const time=when?deskDateParts(when):null;row.append(deskText('span',time?`${time.hour}:${time.minute}`:item.condition||'有余力时','agenda-time'),deskText('span',item.status==='done'?'✓':({event:'●',window:'◆',deadline:'▲',expectation:'○'}[item.type]||'●'),'agenda-node'));
+      const body=document.createElement('div');body.className='agenda-entry-body';const until=item.type==='window'&&item.end_at?deskDateParts(item.end_at):null;body.append(deskText('p',item.title,'agenda-title'),deskText('span',`${agendaTypeNames[item.type]||'日程'}${until?` · 至 ${until.hour}:${until.minute}`:''}${item.status==='missed'?' · 已错过':item.status==='active'?' · 进行中':''}`,'agenda-kind'));
+      if(linked){const detail=document.createElement('details'),until=linked.end_at?deskDateParts(linked.end_at):null;detail.append(deskText('summary',`另有时间窗口${until?` · 至 ${until.hour}:${until.minute}`:''}`),deskText('p',linked.title));if(linked.note)detail.append(deskText('p',linked.note));body.append(detail)}
+      if(item.note){const detail=document.createElement('details');detail.append(deskText('summary','详情'),deskText('p',item.note));body.append(detail)}row.append(body);list.append(row)}
+    if(key===today&&!marked)list.append(agendaMarker());group.append(list);box.append(group)
   }
 }
-async function setupRecentContextBoard(){try{const data=await request('/api/recent-context');renderDeskCards('#agendaCards',data.agenda,'agenda',data.errors?.agenda);renderDeskCards('#workingNoteCards',data.working_notes,'notes',data.errors?.working_notes)}catch{renderDeskCards('#agendaCards',[],'agenda',true);renderDeskCards('#workingNoteCards',[],'notes',true)}}
+function renderShortTermMemory(memory,error){const box=$('#shortTermMemory');box.replaceChildren();const paper=document.createElement('article');paper.className='memory-paper';box.append(paper);
+  if(error){paper.append(deskText('p','近期状态暂时无法读取，请稍后再试。'));return}
+  const sections=memory?.sections||{},overview=String(memory?.overview||'').trim(),hasSections=Object.values(sections).some(values=>Array.isArray(values)&&values.length);
+  paper.append(deskText('p',overview||(!hasSections?'近期状态正在形成中。':''),'memory-overview'));
+  for(const [key,label] of Object.entries(memorySectionNames)){const values=sections[key];if(!Array.isArray(values)||!values.length)continue;const section=document.createElement('section'),list=document.createElement('ul');section.className='memory-section';section.append(deskText('h4',label));for(const value of values)list.append(deskText('li',value));section.append(list);paper.append(section)}
+  if(memory?.updated_at)paper.append(deskText('small',`更新于 ${formatTime(memory.updated_at)}`,'memory-updated'))
+}
+async function setupRecentContextBoard(){try{const data=await request('/api/recent-context');renderAgendaTimeline(data.agenda,data.errors?.agenda);renderShortTermMemory(data.short_term_memory,data.errors?.short_term_memory)}catch{renderAgendaTimeline([],true);renderShortTermMemory(null,true)}}
 window.refreshDeskContext=setupRecentContextBoard;
 async function setupEmojiDebug(){try{
   const [data,trace,diagnostics]=await Promise.all([request('/api/debug/emoji'),request('/api/debug/emoji/trace'),request('/api/diagnostics')]);
@@ -335,9 +357,9 @@ async function runEmojiHealth(path){const data=await request(path,{method:'POST'
 $('#emojiDirectTest').onclick=()=>runEmojiHealth('/api/debug/emoji/direct');$('#emojiModelTest').onclick=()=>runEmojiHealth('/api/debug/emoji/model');
 $('#emojiDebugPanel').addEventListener('toggle',event=>{if(event.target.open)void setupEmojiDebug()});
 async function setupRecentContextDebug(){try{renderRecentContext(await request('/api/debug/recent-context'))}catch(e){$('#recentContextDebug').textContent=e.message}}
-function renderRecentContext(data){$('#agendaContextToggle').checked=!!data.agenda_enabled;$('#workingNotesContextToggle').checked=!!data.working_notes_enabled;$('#recentContextDebug').textContent=JSON.stringify(data,null,2)}
+function renderRecentContext(data){$('#agendaContextToggle').checked=!!data.agenda_enabled;$('#recentContextDebug').textContent=JSON.stringify(data,null,2)}
 async function updateRecentContext(body){try{renderRecentContext(await request('/api/debug/recent-context',{method:'POST',body:JSON.stringify(body)}))}catch(e){$('#recentContextDebug').textContent=e.message;await setupRecentContextDebug()}}
-$('#agendaContextToggle').onchange=e=>updateRecentContext({agenda_enabled:e.target.checked});$('#workingNotesContextToggle').onchange=e=>updateRecentContext({working_notes_enabled:e.target.checked});$('#recentContextRefresh').onclick=setupRecentContextDebug;
+$('#agendaContextToggle').onchange=e=>updateRecentContext({agenda_enabled:e.target.checked});$('#recentContextRefresh').onclick=setupRecentContextDebug;
 $('#recentContextDebugPanel').addEventListener('toggle',event=>{if(event.target.open)void setupRecentContextDebug()});
 let pendingDeliveryTimer=null;
 async function openDelivery(id){clearTimeout(pendingDeliveryTimer);if(busy||pendingInput.length){activity.textContent='当前回复结束后打开系统消息…';pendingDeliveryTimer=setTimeout(()=>openDelivery(id),500);return}try{await request('/api/proactive/'+encodeURIComponent(id)+'/activate',{method:'POST'});const data=await request('/api/session');displayTimezone=data.timezone||displayTimezone;messages.replaceChildren();data.messages.forEach(m=>{if(m.delivery_id)seenDeliveries.add(m.delivery_id);if(m.kind==='system')return;if(m.role==='user'&&m.display_parts?.length){let offset=0;for(const p of m.display_parts){addMessage('user',p.text,'',(m.images||[]).slice(offset,offset+p.image_count),p.timestamp);offset+=p.image_count}}else addMessage(m.role,m.content,m.kind==='system'?'system':'',m.images||[],m.timestamp,m.message_id,m.regeneratable)});debug.textContent=JSON.stringify(await request('/api/proactive/'+encodeURIComponent(id)+'/inspect'),null,2);const n=document.getElementById('notice-'+id);if(n)n.querySelector('.badge').textContent='已读';input.focus()}catch(e){showActivityHint('暂时无法打开系统消息，请稍后重试')}}

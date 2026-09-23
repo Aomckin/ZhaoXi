@@ -87,6 +87,7 @@ class InterfaceGateway:
                 provider = getattr(self.agent, "provider", None)
                 max_calls = getattr(provider, "max_calls", 12)
                 max_total_tokens = getattr(provider, "max_total_tokens", 100_000)
+                await self._maintain_short_term_memory(bootstrap=True)
                 with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens), action_trace_scope(self.event_sink) as trace:
                     trace.emit("request_started", "request", "running", "正在处理请求…")
                     response = await self.agent.run_natural(
@@ -114,6 +115,8 @@ class InterfaceGateway:
                     beat.note_assistant(datetime.now(UTC))
                 self._cache(result)
                 await self._persist_session()
+                if getattr(response, "permission_confirmation", None) is None:
+                    await self._maintain_short_term_memory()
                 emoji_trace = getattr(self.agent, "last_emoji_trace", None)
                 if emoji_trace and emoji_trace.get("trace_id") == message.request_id:
                     emoji_trace["persisted"] = any(
@@ -241,6 +244,11 @@ class InterfaceGateway:
                 )
                 self._cache(result)
                 await self._persist_session()
+                if getattr(response, "permission_confirmation", None) is None:
+                    await self._maintain_short_term_memory(
+                        pending_messages=[item for item in self.agent.conversation.messages
+                                          if id(item) not in previous_messages
+                                          and item.message_id != source_user.message_id])
                 emoji_trace = getattr(self.agent, "last_emoji_trace", None)
                 if emoji_trace and emoji_trace.get("trace_id") == request_id:
                     emoji_trace["persisted"] = any(
@@ -371,6 +379,9 @@ class InterfaceGateway:
                     trace.response_status = "succeeded" if trace.response_status == "pending" else trace.response_status
                     trace.emit("task_" + trace.task_status, "task", trace.task_outcome,
                                "本次操作已完成" if trace.task_status == "completed" else "本次操作未完成")
+                await self._persist_session()
+                if getattr(response, "permission_confirmation", None) is None:
+                    await self._maintain_short_term_memory()
             except Exception:
                 if trace is not None:
                     trace.response_status = "failed"
@@ -452,6 +463,22 @@ class InterfaceGateway:
             session.created_at = datetime.now(UTC)
             session.conversation = self.agent.conversation
             store.save_sync(session)
+
+    async def _maintain_short_term_memory(self, *, bootstrap: bool = False,
+                                          pending_messages: list[Message] | None = None) -> None:
+        maintainer = getattr(self.agent, "short_term_memory_maintainer", None)
+        if maintainer is None:
+            return
+        try:
+            messages = self.agent.conversation.messages
+            if bootstrap and (not messages or maintainer.service.state().last_processed_message_id is not None):
+                return
+            provider = getattr(self.agent, "provider", None)
+            with provider_budget_scope(getattr(provider, "max_calls", 12),
+                                       getattr(provider, "max_total_tokens", 100_000)):
+                await maintainer.maintain(messages, pending_override=pending_messages)
+        except Exception as exc:
+            logger.warning("STM_MAINTAIN_FAILED type=%s", type(exc).__name__)
 
     async def _persist_session(self) -> None:
         session = getattr(self.agent, "session_record", None)

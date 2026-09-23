@@ -12,8 +12,6 @@ from zhaoxi.core.context import ContextBuilder
 from zhaoxi.models.openai_compatible import OpenAICompatibleProvider
 from zhaoxi.tools.registry import ToolRegistry
 from zhaoxi.tools.router import resolve_tool_context
-from zhaoxi.working_notes import SQLiteWorkingNotesStore, WorkingNotesService
-from zhaoxi.working_notes.tools import create_working_notes_tools
 
 
 ZONE = ZoneInfo("Asia/Shanghai")
@@ -65,13 +63,11 @@ def test_invalid_type_time_contract(tmp_path):
 @pytest.mark.parametrize("message, expected", [
     ("明天下午三点有个面试。", "agenda"),
     ("今天主线就先把朝汐 1.2.6 做了。", "agenda"),
-    ("这个问题先记着，之后再修。", "working_notes"),
 ])
 def test_natural_language_routes_relevant_tool_group(tmp_path, message, expected):
     agenda = service(tmp_path, datetime(2026, 9, 22, tzinfo=ZONE))
-    notes = WorkingNotesService(SQLiteWorkingNotesStore(tmp_path / "notes.db"))
     registry = ToolRegistry()
-    for tool in (*create_agenda_tools(agenda), *create_working_notes_tools(notes)):
+    for tool in create_agenda_tools(agenda):
         registry.register(tool)
     context = resolve_tool_context(message, [], registry)
     assert expected in context.dynamic_groups

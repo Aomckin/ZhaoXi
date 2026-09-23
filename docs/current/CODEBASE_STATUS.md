@@ -10,7 +10,7 @@
 
 ## v1.2.6 当前增量
 
-Agenda 与 Working Notes 作为独立于长期 Memory 的近期状态层接入。两个模块分别使用 SQLite 结构化存储，通过 12 个 Tool 提供增改、状态变化、查询和 Snapshot；ContextBuilder 每轮常驻注入有界快照，支持独立关闭和读取失败降级。Working Notes 在模型与格式化边界保留来源/可信度，assistant 假设不能成为 confirmed 用户事实。`/api/debug/recent-context` 暴露当前数据、最终 Snapshot 与运行时开关；两个数据库已纳入备份健康检查。完整范围与人工验收边界见 [v1.2.6 报告](../v1.2.x/Zhaoxi_v1.2.6_Release_Notes.md)。
+Agenda 与 Short-Term Memory 是独立于长期 Memory 的近期 Context。Agenda 保留五类日程和生命周期、SQLite 存储及增改查询 Tool；STM 改为独立滚动状态，由后台 Maintainer 在主回复后按需合并、强化和衰减。两者每轮直接注入有界 Snapshot，最近约 40 条原始消息保持不变。旧 Working Notes 的领域模型、Tool 与 Context 路径已撤出；旧数据库只保留历史备份。小桌边现在展示 Agenda 日期时间线与单张 STM 状态纸页，桌面入口避开窗口栏。Debug 可查看最终 Snapshot 和 STM 维护结果。详见 [v1.2.6 交付与验收](../v1.2.x/Zhaoxi_v1.2.6_Release_Notes.md)。
 
 ## v1.2.5 当前增量
 

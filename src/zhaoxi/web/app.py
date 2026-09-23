@@ -116,7 +116,6 @@ class EmojiTraceAckRequest(BaseModel):
 
 class RecentContextControlRequest(BaseModel):
     agenda_enabled: StrictBool | None = None
-    working_notes_enabled: StrictBool | None = None
 
 
 class EmojiMetadataRequest(BaseModel):
@@ -558,13 +557,12 @@ def create_app(
         if builder is None:
             raise HTTPException(status_code=409, detail="Context Builder 尚未就绪。")
         agenda = getattr(core, "agenda", None)
-        notes = getattr(core, "working_notes", None)
+        stm = getattr(core, "short_term_memory", None)
         return {
             "agenda_enabled": bool(getattr(builder, "agenda_context_enabled", False)),
-            "working_notes_enabled": bool(getattr(builder, "working_notes_context_enabled", False)),
             "final_snapshots": getattr(builder, "last_recent_context", {}),
             "agenda": agenda.diagnostics() if agenda is not None else None,
-            "working_notes": notes.diagnostics() if notes is not None else None,
+            "short_term_memory": stm.diagnostics() if stm is not None else None,
         }
 
     @app.get("/api/debug/recent-context")
@@ -573,17 +571,36 @@ def create_app(
 
     @app.get("/api/recent-context")
     async def recent_context_board():
-        """Active Agenda and Working Notes for the desk, without debug metadata."""
-        result = {"agenda": [], "working_notes": [], "errors": {}}
-        for key, service in (("agenda", getattr(core, "agenda", None)),
-                             ("working_notes", getattr(core, "working_notes", None))):
-            if service is None:
-                continue
+        """Public desk view; each context source can fail independently."""
+        result = {"agenda": [], "short_term_memory": None, "errors": {}}
+        agenda = getattr(core, "agenda", None)
+        if agenda is not None:
             try:
-                result[key] = [item.model_dump(mode="json") for item in service.list("active")]
+                items = [item.model_dump(mode="json") for item in agenda.list("active") + agenda.list("all_recent")]
+                result["agenda"] = list({item.get("id", index): item for index, item in enumerate(items)}.values())
             except Exception as exc:
-                logger.warning("recent context board read failed module=%s type=%s", key, type(exc).__name__)
-                result["errors"][key] = "暂时无法读取。"
+                logger.warning("recent context board read failed module=agenda type=%s", type(exc).__name__)
+                result["errors"]["agenda"] = "暂时无法读取。"
+        stm = getattr(core, "short_term_memory", None)
+        if stm is not None:
+            try:
+                state = stm.state()
+                sections = {category: [] for category in ("active_context", "active_thread", "recent_topic", "recent_change", "unresolved")}
+                for item in state.items:
+                    category = item.category.value
+                    if item.status.value != "active" or item.confidence < 0.7 or category not in sections:
+                        continue
+                    if category == "recent_topic" and len(set(item.source_message_ids)) < 2:
+                        continue
+                    sections[category].append(item.content)
+                result["short_term_memory"] = {
+                    "overview": state.overview,
+                    "sections": sections,
+                    "updated_at": state.updated_at.isoformat() if state.updated_at else None,
+                }
+            except Exception as exc:
+                logger.warning("recent context board read failed module=short_term_memory type=%s", type(exc).__name__)
+                result["errors"]["short_term_memory"] = "暂时无法读取。"
         return result
 
     @app.post("/api/debug/recent-context")
@@ -593,8 +610,6 @@ def create_app(
             raise HTTPException(status_code=409, detail="Context Builder 尚未就绪。")
         if body.agenda_enabled is not None:
             builder.agenda_context_enabled = body.agenda_enabled
-        if body.working_notes_enabled is not None:
-            builder.working_notes_context_enabled = body.working_notes_enabled
         return recent_context_snapshot()
 
     @app.post("/api/debug/tools/control")

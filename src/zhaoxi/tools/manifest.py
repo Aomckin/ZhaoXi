@@ -118,7 +118,6 @@ def resolve_capability(need: str, manifest: list[dict]) -> dict:
         "lifehud": ("lifehud", "life hud", "铁幕"),
         "expression": ("保存表情", "收藏表情", "收进表情包"),
         "agenda": ("日程", "安排", "主线", "截止", "deadline", "面试", "宣讲", "做完了", "不去了"),
-        "working_notes": ("便签", "工作现场", "待办", "之后再", "下次继续", "问题先记着", "卡点"),
     }
     matched = []
     for tool in manifest:

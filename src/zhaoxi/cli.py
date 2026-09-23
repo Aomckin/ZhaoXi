@@ -75,8 +75,7 @@ from zhaoxi.workflow.loader import WorkflowLoader
 from zhaoxi.workflow.registry import WorkflowRegistry
 from zhaoxi.workflow.runtime import WorkflowRuntime
 from zhaoxi.workflow.sqlite import SQLiteWorkflowStore
-from zhaoxi.working_notes import WorkingNotesService, SQLiteWorkingNotesStore
-from zhaoxi.working_notes.tools import create_working_notes_tools
+from zhaoxi.short_term_memory import ShortTermMemoryStore, ShortTermMemoryService, ShortTermMemoryMaintainer
 from zhaoxi.session.base import Session
 from zhaoxi.session.sqlite import SQLiteSessionStore
 from zhaoxi.reliability import (
@@ -181,11 +180,8 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         timezone=settings.proactive_timezone,
         max_context_items=settings.agenda_max_context_items,
     )
-    working_notes_service = WorkingNotesService(
-        SQLiteWorkingNotesStore(settings.working_notes_db_path),
-        timezone=settings.proactive_timezone,
-        max_context_items=settings.working_notes_max_context_items,
-        max_active_per_type=settings.working_notes_max_active_per_type,
+    short_term_memory_service = ShortTermMemoryService(
+        ShortTermMemoryStore(settings.short_term_memory_db_path), timezone=settings.proactive_timezone,
     )
     archive_service = build_archive(settings)
     emoji_service = EmojiService(
@@ -199,7 +195,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     registry = ToolRegistry(settings.tool_overrides_path)
     for tool in create_builtin_tools(memory_service, archive_service):
         registry.register(tool)
-    for tool in (*create_agenda_tools(agenda_service), *create_working_notes_tools(working_notes_service)):
+    for tool in create_agenda_tools(agenda_service):
         registry.register(tool)
     tool_package_errors: list[dict[str, str]] = []
     try:
@@ -359,9 +355,8 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         ],
         emoji_service=emoji_service,
         agenda_service=agenda_service,
-        working_notes_service=working_notes_service,
+        short_term_memory_service=short_term_memory_service,
         agenda_context_enabled=settings.agenda_context_enabled,
-        working_notes_context_enabled=settings.working_notes_context_enabled,
     )
     planner = None
     if settings.planner_enabled:
@@ -450,7 +445,10 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     agent.reflection_periods = reflection_periods
     agent.archive = archive_service
     agent.agenda = agenda_service
-    agent.working_notes = working_notes_service
+    agent.short_term_memory = short_term_memory_service
+    agent.short_term_memory_maintainer = ShortTermMemoryMaintainer(
+        short_term_memory_service, provider, timezone=settings.proactive_timezone,
+    )
     agent.emoji_service = emoji_service
     agent.emoji_manager = emoji_manager
     agent.capability_catalog = {
@@ -523,7 +521,8 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         DataStoreSpec("proactive", Path(settings.proactive_db_path)),
         DataStoreSpec("reflection", Path(settings.reflection_db_path)),
         DataStoreSpec("agenda", Path(settings.agenda_db_path)),
-        DataStoreSpec("working_notes", Path(settings.working_notes_db_path)),
+        DataStoreSpec("short_term_memory", Path(settings.short_term_memory_db_path)),
+        DataStoreSpec("working_notes", Path(settings.working_notes_db_path)),  # Historical backups remain restorable.
         DataStoreSpec("permission_audit", Path(settings.permission_audit_path), kind="file"),
     ]
     if archive_service is not None:

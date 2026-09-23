@@ -34,6 +34,45 @@ class FakeAgent:
         return AgentResponse(content=f"回复：{content}", request_id=f"core-{self.calls}", steps=1)
 
 
+async def test_short_term_maintenance_runs_after_reply_and_is_nonfatal():
+    agent = FakeAgent()
+    seen = []
+
+    class Maintainer:
+        async def maintain(self, messages, **_kwargs):
+            seen.append([(item.role.value, item.content) for item in messages])
+            raise RuntimeError("maintenance unavailable")
+
+    agent.short_term_memory_maintainer = Maintainer()
+    gateway = InterfaceGateway(agent)
+    response = await gateway.chat(UnifiedMessage(
+        request_id="stm-post-turn", channel=InterfaceChannel.WEB, content="你好"))
+    assert response.content == "回复：你好"
+    assert seen == [[("user", "你好"), ("assistant", "回复：你好")]]
+
+
+async def test_short_term_bootstrap_uses_existing_history_once():
+    agent = FakeAgent()
+    agent.conversation.add_user("旧会话里的秋招讨论")
+    agent.conversation.add_assistant("先继续准备")
+    seen = []
+
+    class State:
+        last_processed_message_id = None
+
+    class Maintainer:
+        service = SimpleNamespace(state=lambda: State())
+
+        async def maintain(self, messages, **_kwargs):
+            seen.append([item.content for item in messages])
+
+    agent.short_term_memory_maintainer = Maintainer()
+    gateway = InterfaceGateway(agent)
+    await gateway.chat(UnifiedMessage(request_id="bootstrap", channel=InterfaceChannel.WEB, content="新消息"))
+    assert seen[0] == ["旧会话里的秋招讨论", "先继续准备"]
+    assert seen[1][-2:] == ["新消息", "回复：新消息"]
+
+
 class CorrelationAgent(FakeAgent):
     async def run_natural(self, content: str):
         context = current_correlation()

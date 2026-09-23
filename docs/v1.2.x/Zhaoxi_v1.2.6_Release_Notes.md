@@ -1,42 +1,26 @@
-# Zhaoxi v1.2.6 开发与验收报告
+# Zhaoxi v1.2.6 交付与验收
 
-## 交付结果
+> 2026-09-24 更新。初版 [Agenda + Working Notes 任务书](Zhaoxi_v1.2.6_Agenda_Working_Notes.md) 保留为历史需求；实际运行时的近期状态层已从逐条便签改为滚动 Short-Term Memory。后端过程见 [STM 重构说明](Zhaoxi_v1.2.6_Short_Term_Memory_Backend.md)，前端依据 [调整任务书](Zhaoxi_v1.2.6_前端调整任务书.md) 完成。
 
-v1.2.6 增加两层独立、持久化的近期 Context：
+## 当前交付
 
-- Agenda 支持 Event、Window、Deadline、Focus/Mainline、Expectation，提供 planned/active/done/missed/cancelled/rescheduled 生命周期。
-- Zhaoxi Working Notes 支持 Working、TODO、Question、Decision、Hypothesis、Temp，并保留 user/assistant/system/tool 来源及 confirmed/working/tentative 可信度。
-- 两个模块使用独立 SQLite 数据库，跨程序重启与会话继续存在，不写入或自动晋升长期 Memory。
-- ContextBuilder 每轮直接注入短 Snapshot；模块关闭或读取失败时，普通对话继续运行。
-- 新增 12 个 Tool，覆盖任务书要求的新增、修改、完成/解决、取消/删除、查询和 Snapshot。
-- `/api/debug/recent-context` 可查看结构化数据、最终 Snapshot，并可在运行时独立启停两个 Context 模块。
-- Agenda 与 Working Notes 数据已纳入现有备份和健康检查。
+- Agenda 独立持久化，支持 Event、Window、Deadline、Focus、Expectation 及计划、进行中、完成、错过等状态；Agenda Tool 仍负责日程增改和查询。它表达未来时间事实，不充当提醒或自动计划系统。
+- Short-Term Memory 使用独立 SQLite 滚动状态。主回复完成并保存会话后，Maintainer 检查新消息，返回 `NO_CHANGE` 或结构化 Patch；支持更新、强化、衰减和删除。维护失败不阻断主回复。旧 Working Notes 数据不自动迁移，也不再注入 Context；`notes_*` Tool 已撤出运行时。
+- ContextBuilder 每轮直接注入 Agenda 与 STM Snapshot，最近约 40 条原始消息仍保留，长期 Memory 仍按需检索。`/api/debug/recent-context` 可查看 STM 结构化状态、Snapshot、最后处理消息与最近维护结果；只有 Agenda 保留手动 Context 开关。
+- 小桌边以日期分组时间线展示 Agenda：五类节点、今日主线、当前时间位置、过去事项弱化，备注默认折叠。STM 是单张近期状态纸页，只展示 Overview 和非空分区。两块读取相互独立，首次空状态与读取失败分别提示；整个桌边统一滚动。
+- 桌边入口位于右上方；桌面模式下避开 36px 自绘窗口栏。相同开始时间且标题规范化后完全相同的 Event 与 Window 共用一个视觉节点，关联记录仍可展开查看；不删除数据库记录，也不合并匹配不确定的事项。
 
-## 安全与边界
+## 边界与兼容
 
-- assistant 写入的 confirmed 会被降为 working；assistant hypothesis 强制为 tentative，避免模型推测自我强化成用户事实。
-- 过期 Event/Window/Deadline 会转为 missed，不再出现在 Upcoming。
-- 相同标题的活动 Agenda、同 Topic 或高度相似的活动 Note 优先更新；Working Notes 按类型执行容量淘汰。
-- 本版本没有加入日历 UI、提醒、主动通知、复杂自然时间解析、Decision System、重复日程或 Notes → Memory 自动晋升。
+旧 `.zhaoxi/working-notes.db` 可保留为历史备份，不作为新 STM 的来源；新状态默认在 `.zhaoxi/short-term-memory.db`。没有长期记忆自动晋升、向量检索、主动提醒、复杂日历 UI 或自动计划生成。旧任务书和旧验收数字是历史切片，不代表当前行为。
 
-## 配置与调试
+同版本 Tool Transcript 稳定性补丁：能力目录检查和钥匙组加载的文本协议控制调用不再伪造成正式 `assistant.tool_calls → tool` 回执；业务 Tool 的标准回执保持不变。此前该错误曾让 Provider 以 HTTP 400 拒绝后续请求，实际 `agenda_add` 尚未执行。回归测试覆盖连续能力发现后调用 Agenda 的路径。
 
-`.env.example` 新增 Agenda/Working Notes 的数据库路径、Context 开关和条目上限。运行时调试接口的开关只影响 Context 注入，不删除数据。
+## 验证
 
-## 验收
+- Python 全量测试：654 项收集，653 通过、1 跳过。
+- Node 前端单元测试：41 项通过。
+- 隔离 Edge 布局检查：桌面与窄屏下确认桌边入口避开窗口栏、时间线和 STM 渲染、折叠详情样式及侧边栏边界。
+- `git diff --check` 与 Python `compileall` 在提交前复核。
 
-新增自动化覆盖五类 Agenda 持久化、状态变化、过期排除、Snapshot；Working Notes CRUD、过期、容量、防重与来源可信度；Context 常驻注入、独立关闭和故障降级。
-
-- Python：631 passed、1 skipped。
-- Node 单元测试：35 passed。
-- Desktop Shell：20 次模式往返及四档尺寸验收通过。
-- Phase 3 浏览器验收：8 档尺寸、通知/可见性、头像与 Debug 等场景通过。
-- Core 1.2.6 与 LifeHUD Tool 1.1.1 wheel 构建、版本/内容/哈希校验通过。
-
-真实模型对自然语言时间的参数转换、桌面 UI 长时体验与跨自然日人工场景仍需实机验收；自动化测试不替代这些体验验证。
-
-## 2026-09-22 Tool Transcript 稳定性补丁
-
-日志审计确认，能力发现连续调用 `inspect_tool_catalog`、`request_tool_group` 后，文本协议生成的控制调用曾被错误重放成正式 `assistant.tool_calls → tool` transcript。CommandCode/DeepSeek 在下一请求以 HTTP 400 拒绝该消息序列，导致真正的 `agenda_add` 尚未执行就中断。
-
-控制工具现在只把有界结果写入本轮内部 system context，不再进入 provider 工具回执。原生业务工具继续使用标准 tool transcript；由 DSML/Qwen 等文本协议归一化出的业务调用，则以明确标注的内部调用/结果消息安全回放，不再伪造原生 `tool_calls`。新增端到端测试覆盖“检查目录 → 加载 Agenda → 执行 agenda_add → 最终回复”，并验证控制阶段和文本业务调用都不会产生孤立的 tool 消息。
+真实模型的自然语言时间解析、跨自然日状态变化和长期桌面使用体验仍需实机观察；自动化检查不等同于这些人工验收。

@@ -115,45 +115,61 @@ def test_recent_context_debug_snapshot_and_independent_switches():
     agent = FakeAgent()
     agent.context_builder = SimpleNamespace(
         agenda_context_enabled=True,
-        working_notes_context_enabled=True,
-        last_recent_context={"agenda": "[Agenda]", "working_notes": "[Zhaoxi Working Notes]", "errors": {}},
+        last_recent_context={"agenda": "[Agenda]", "short_term_memory": "[Short-Term Memory]", "errors": {}},
     )
     agent.agenda = SimpleNamespace(diagnostics=lambda: {"count": 1, "snapshot": "[Agenda]"})
-    agent.working_notes = SimpleNamespace(diagnostics=lambda: {"count": 1, "snapshot": "[Zhaoxi Working Notes]"})
+    agent.short_term_memory = SimpleNamespace(diagnostics=lambda: {"state": {}, "snapshot": "[Short-Term Memory]"})
     with TestClient(create_app(agent=agent)) as client:
         current = client.get("/api/debug/recent-context")
         assert current.status_code == 200
         assert current.json()["final_snapshots"]["agenda"] == "[Agenda]"
+        assert current.json()["short_term_memory"]["snapshot"] == "[Short-Term Memory]"
         changed = client.post("/api/debug/recent-context", json={"agenda_enabled": False})
         assert changed.status_code == 200
         assert changed.json()["agenda_enabled"] is False
-        assert changed.json()["working_notes_enabled"] is True
+        assert "working_notes_enabled" not in changed.json()
 
 
-def test_recent_context_board_lists_active_items_without_debug_fields():
+def test_recent_context_board_lists_agenda_and_public_stm_without_debug_fields():
     agent = FakeAgent()
     agenda_item = SimpleNamespace(model_dump=lambda **_: {"title": "下午开会", "status": "planned"})
-    note_item = SimpleNamespace(model_dump=lambda **_: {"content": "准备提纲", "status": "active"})
-    agent.agenda = SimpleNamespace(list=lambda filter: [agenda_item] if filter == "active" else [])
-    agent.working_notes = SimpleNamespace(list=lambda filter: [note_item] if filter == "active" else [])
+    agent.agenda = SimpleNamespace(list=lambda filter: [agenda_item] if filter == "all_recent" else [])
+    memory_item = SimpleNamespace(category=SimpleNamespace(value="active_context"), status=SimpleNamespace(value="active"),
+                                  confidence=1.0, source_message_ids=["m1"], content="仍在参与秋招")
+    agent.short_term_memory = SimpleNamespace(state=lambda: SimpleNamespace(overview="近期忙于秋招", items=[memory_item], updated_at=None))
     with TestClient(create_app(agent=agent)) as client:
         response = client.get("/api/recent-context")
     assert response.status_code == 200
     assert response.json() == {
         "agenda": [{"title": "下午开会", "status": "planned"}],
-        "working_notes": [{"content": "准备提纲", "status": "active"}],
+        "short_term_memory": {"overview": "近期忙于秋招", "sections": {"active_context": ["仍在参与秋招"], "active_thread": [],
+                                "recent_topic": [], "recent_change": [], "unresolved": []}, "updated_at": None},
         "errors": {},
     }
 
 
-def test_recent_context_board_keeps_notes_available_if_agenda_fails():
+def test_recent_context_board_keeps_stm_available_if_agenda_fails():
     agent = FakeAgent()
     agent.agenda = SimpleNamespace(list=lambda _: (_ for _ in ()).throw(OSError("database offline")))
-    agent.working_notes = SimpleNamespace(list=lambda _: [])
+    agent.short_term_memory = SimpleNamespace(state=lambda: SimpleNamespace(overview="近期忙于秋招", items=[], updated_at=None))
     with TestClient(create_app(agent=agent)) as client:
         response = client.get("/api/recent-context")
     assert response.status_code == 200
-    assert response.json() == {"agenda": [], "working_notes": [], "errors": {"agenda": "暂时无法读取。"}}
+    assert response.json()["agenda"] == []
+    assert response.json()["short_term_memory"]["overview"] == "近期忙于秋招"
+    assert response.json()["errors"] == {"agenda": "暂时无法读取。"}
+
+
+def test_recent_context_board_keeps_agenda_available_if_stm_fails():
+    agent = FakeAgent()
+    agenda_item = SimpleNamespace(model_dump=lambda **_: {"id": "meeting", "title": "下午开会", "status": "planned"})
+    agent.agenda = SimpleNamespace(list=lambda _: [agenda_item])
+    agent.short_term_memory = SimpleNamespace(state=lambda: (_ for _ in ()).throw(OSError("database offline")))
+    with TestClient(create_app(agent=agent)) as client:
+        response = client.get("/api/recent-context")
+    assert response.json()["agenda"] == [{"id": "meeting", "title": "下午开会", "status": "planned"}]
+    assert response.json()["short_term_memory"] is None
+    assert response.json()["errors"] == {"short_term_memory": "暂时无法读取。"}
 
 
 class FailingPersistedAgent(FakeAgent):
