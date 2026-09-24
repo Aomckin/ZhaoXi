@@ -1,6 +1,6 @@
 # v1.2.7 当前状态与使用说明
 
-2026-09-24 v1.2.7.1：请求预算增加受控的两次 Planner 扩容、Hard Limit 与收尾保留额度；逐轮记录实际 Provider payload 的 Context 构成估算，并在维护抽屉新增 Budget / Context Debug。旧成功 Tool Result 仅在模型上下文副本中压缩，最终回复不再携带 Tool Schema；真实模型的补丁后对比仍待授权实机验证。详见 [v1.2.7.1 交付记录](../v1.2.x/Zhaoxi_v1.2.7.1_Budget_Context_Tuning_Report.md)。
+2026-09-24 v1.2.7.1：请求预算增加受控的两次 Planner 扩容、Hard Limit 与收尾保留额度；逐轮记录实际 Provider payload 的 Context 构成估算，并在维护抽屉新增 Budget / Context Debug。旧成功 Tool Result 仅在模型上下文副本中压缩，最终回复不再携带 Tool Schema。合成数据实机验收已验证一次扩容、多 Tool 收尾及 STM/Agenda/长期 Memory 连续性；中文 Planner 测试仍出现重复工具调用和过短回复。详见 [v1.2.7.1 交付记录](../v1.2.x/Zhaoxi_v1.2.7.1_Budget_Context_Tuning_Report.md)。
 
 2026-09-24 v1.2.6 完成后端与前端调整：Working Notes 便签领域模型和 `notes_*` 工具已退出运行时，改为结构化、跨重启的滚动 Short-Term Memory；后台 Maintainer 在主回复后按需提交 Patch，STM 每轮常驻 Context。旧 `working-notes.db` 只作历史备份。小桌边现在用日期时间线展示 Agenda、用单张纸页展示 STM；桌面入口避开窗口栏。Debug 可查看 STM 状态、Snapshot、最后处理消息和最近 Patch。详见 [v1.2.6 交付与验收](../v1.2.x/Zhaoxi_v1.2.6_Release_Notes.md)。
 

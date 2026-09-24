@@ -74,7 +74,7 @@ CONTROL_MODELS = {
 }
 
 CONTROL_DESCRIPTIONS = {
-    "create_plan": "为当前目标创建初始的有序多步计划；开始执行前必须调用一次。",
+    "create_plan": "为当前目标创建初始的有序业务步骤计划；开始执行前必须调用一次。最终自然语言回复不属于计划步骤，由 Runtime 在业务步骤完成后单独生成。",
     "replan": "观察结果使当前计划不再适用时，创建完整的新修订计划。",
     "request_user_input": "缺少继续执行所必需的信息时暂停任务并询问用户。",
     "finish_task": "所有必要步骤完成后，提交最终结果并结束任务。",
@@ -634,7 +634,8 @@ class PlannerRuntime:
         ]
         state["rules"] = (
             "先 create_plan；每个业务工具调用对应当前步骤；失败后可换用已注册工具或 replan；"
-            "信息不足用 request_user_input；所有步骤完成后用 finish_task。"
+            "信息不足用 request_user_input；不要把最终自然语言回复列为计划步骤；"
+            "所有业务步骤完成后由 Runtime 生成最终回复。"
         )
         return json.dumps(state, ensure_ascii=False)
 
