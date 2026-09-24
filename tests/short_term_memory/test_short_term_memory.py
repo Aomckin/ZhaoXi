@@ -7,6 +7,7 @@ import pytest
 from zhaoxi.core.context import ContextBuilder
 from zhaoxi.core.conversation import Conversation
 from zhaoxi.core.message import Message, Role
+from zhaoxi.errors import ProviderError
 from zhaoxi.models.types import ModelResponse
 from zhaoxi.short_term_memory import ShortTermMemoryMaintainer, ShortTermMemoryService, ShortTermMemoryStore
 from zhaoxi.short_term_memory.models import Category, Source, Status
@@ -116,12 +117,18 @@ class FakeProvider:
     def __init__(self, outputs):
         self.outputs = iter(outputs)
         self.calls = 0
+        self.requests = []
 
-    async def generate(self, messages, tools=None, **_kwargs):
+    async def generate(self, messages, tools=None, **kwargs):
         self.calls += 1
+        self.requests.append((messages, kwargs))
         value = next(self.outputs)
         if isinstance(value, Exception):
             raise value
+        if isinstance(value, ModelResponse):
+            return value
+        if isinstance(value, str):
+            return ModelResponse(content=value)
         return ModelResponse(content=json.dumps(value, ensure_ascii=False))
 
 
@@ -146,6 +153,65 @@ async def test_maintainer_no_change_then_merge_then_failure_keeps_state(tmp_path
     assert "秋招" in make_service(tmp_path).snapshot()
     assert service.diagnostics()["last_maintenance"]["result"] == "FAILED"
     assert make_service(tmp_path).diagnostics()["last_maintenance"]["result"] == "FAILED"
+
+
+@pytest.mark.asyncio
+async def test_maintainer_recovers_from_invalid_json_with_smaller_batch(tmp_path):
+    service = make_service(tmp_path)
+    provider = FakeProvider([
+        ModelResponse(content="", finish_reason="length"),
+        {"action": "UPDATE", "add": [{"category": "active_context", "content": "近期持续参与秋招",
+                                       "source": "user", "source_message_id": "u19"}]},
+    ])
+    messages = [Message(message_id=f"u{i}", role=Role.USER, content="最近仍在忙秋招") for i in range(20)]
+    maintainer = ShortTermMemoryMaintainer(service, provider)
+    assert await maintainer.maintain(messages) == "UPDATE"
+    assert "秋招" in service.snapshot()
+    assert provider.calls == 2
+    assert len(json.loads(provider.requests[0][0][1].content)["new_messages"]) == 20
+    retry_ids = [entry["id"] for entry in json.loads(provider.requests[1][0][1].content)["new_messages"]]
+    assert len(retry_ids) == 16
+    assert retry_ids[0] == "u0" and retry_ids[-1] == "u19"
+    assert provider.requests[0][1]["response_format"] == {"type": "json_object"}
+    assert provider.requests[1][1]["max_tokens"] > provider.requests[0][1]["max_tokens"]
+
+
+@pytest.mark.asyncio
+async def test_maintainer_accepts_wrapped_json_without_retry(tmp_path):
+    service = make_service(tmp_path)
+    provider = FakeProvider(['```json\n{"action":"NO_CHANGE"}\n```'])
+    maintainer = ShortTermMemoryMaintainer(service, provider)
+    assert await maintainer.maintain([Message(message_id="u1", role=Role.USER, content="哈哈")]) == "NO_CHANGE"
+    assert provider.calls == 1
+    assert service.state().last_processed_message_id == "u1"
+
+
+@pytest.mark.asyncio
+async def test_maintainer_falls_back_when_provider_rejects_json_mode(tmp_path):
+    service = make_service(tmp_path)
+    provider = FakeProvider([ProviderError("HTTP 400", code="provider_http_400"),
+                             {"action": "NO_CHANGE"}])
+    maintainer = ShortTermMemoryMaintainer(service, provider)
+    assert await maintainer.maintain([Message(message_id="u1", role=Role.USER, content="哈哈")]) == "NO_CHANGE"
+    assert provider.calls == 2
+    assert provider.requests[0][1]["response_format"] == {"type": "json_object"}
+    assert "response_format" not in provider.requests[1][1]
+
+
+@pytest.mark.asyncio
+async def test_maintainer_persists_safe_diagnostics_after_two_invalid_responses(tmp_path, caplog):
+    service = make_service(tmp_path)
+    provider = FakeProvider([ModelResponse(content="私人对话原文", finish_reason="length"),
+                             ModelResponse(content='{"action":', finish_reason="length")])
+    maintainer = ShortTermMemoryMaintainer(service, provider)
+    assert await maintainer.maintain([Message(message_id="u1", role=Role.USER, content="私人对话原文")]) == "FAILED"
+    result = make_service(tmp_path).diagnostics()["last_maintenance"]
+    assert result["attempt"] == 2
+    assert result["finish_reason"] == "length"
+    assert result["response_chars"] == len('{"action":')
+    assert result["error_position"] == len('{"action":')
+    assert result["last_processed_message_id"] is None
+    assert "私人对话原文" not in caplog.text
 
 
 def test_capacity_is_bounded_without_filling_unused_categories(tmp_path):

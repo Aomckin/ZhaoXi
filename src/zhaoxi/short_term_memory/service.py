@@ -169,9 +169,10 @@ class ShortTermMemoryService:
         logger.info("STM_PATCH_APPLIED count=%d version=%d", len(bounded), state.version) if changed else logger.info("STM_NO_CHANGE")
         return state
 
-    def record_failure(self, exc: Exception) -> None:
+    def record_failure(self, exc: Exception, *, details: dict | None = None) -> None:
         state = self.state()
         self.last_maintenance = {"result": "FAILED", "error_type": type(exc).__name__,
-                                 "last_processed_message_id": state.last_processed_message_id}
+                                 "last_processed_message_id": state.last_processed_message_id,
+                                 **(details or {})}
         state.last_maintenance = self.last_maintenance
         self.store.save(state)
