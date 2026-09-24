@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from zhaoxi.core.context import ContextBuilder
 from zhaoxi.core.conversation import Conversation
-from zhaoxi.core.message import strip_echoed_timeline_header
+from zhaoxi.core.message import Role, strip_echoed_timeline_header
 from zhaoxi.core.reply import commit_reply
 from zhaoxi.errors import AgentLoopError, ProviderError
 from zhaoxi.models.base import ModelProvider
@@ -77,6 +77,7 @@ class PendingAgentInvocation:
     remaining_calls: list[ToolCall]
     batch_call_count: int = 1
     discovery: ToolDiscoveryState | None = None
+    images: tuple[str, ...] = ()
 
 
 class ZhaoxiAgent:
@@ -393,6 +394,7 @@ class ZhaoxiAgent:
                     clean_message,
                     require_tool_call=require_tool_call,
                     required_tool=required_tool,
+                    turn_images=tuple(images or ()),
                 ),
                 timeout=self.timeout_seconds,
             )
@@ -464,6 +466,8 @@ class ZhaoxiAgent:
                     memories,
                     user_message,
                     discovery=getattr(self, "_tool_discovery_state", None),
+                    turn_images=next((tuple(item.images) for item in reversed(self.conversation.messages)
+                                      if item.role is Role.USER), ()),
                 ),
                 timeout=self.timeout_seconds,
             )
@@ -606,6 +610,7 @@ class ZhaoxiAgent:
         required_tool: str | None = None,
         lookup_commitment: str = "",
         discovery: ToolDiscoveryState | None = None,
+        turn_images: tuple[str, ...] = (),
     ) -> AgentResponse:
         if discovery is None:
             routing_intent = f"{user_intent}\n{lookup_commitment}" if lookup_commitment else user_intent
@@ -846,6 +851,7 @@ class ZhaoxiAgent:
                     user_intent=user_intent,
                     invocation_id=invocation_id,
                     step_id=str(step),
+                    image_attachments=turn_images if call.name == "lifehud" else None,
                 )
                 if execution.waiting_for_permission:
                     if trace:
@@ -869,6 +875,7 @@ class ZhaoxiAgent:
                         remaining_calls=remaining_calls,
                         batch_call_count=batch_call_count,
                         discovery=discovery,
+                        images=turn_images,
                     )
                     return AgentResponse(
                         content=confirmation.question,
@@ -938,6 +945,7 @@ class ZhaoxiAgent:
                     approved_batch_confirmation_id=(
                         confirmation_id if position > 1 else None
                     ),
+                    image_attachments=pending.images if call.name == "lifehud" else None,
                 )
                 if execution.result is None:
                     raise AgentLoopError("授权未能匹配批量工具调用。")
@@ -967,11 +975,13 @@ class ZhaoxiAgent:
             ),
             batch_call_count=1,
             discovery=pending.discovery,
+            images=pending.images,
         )
         continued = await self._execute_remaining_calls(tail_pending)
         if continued is not None:
             return continued
-        return await self._run_loop(pending.request_id, user_intent=pending.user_intent, discovery=pending.discovery)
+        return await self._run_loop(pending.request_id, user_intent=pending.user_intent,
+                                    discovery=pending.discovery, turn_images=pending.images)
 
     def _record_tool_result(self, call: ToolCall, result: ToolResult) -> None:
         provider_result = result
@@ -1029,6 +1039,7 @@ class ZhaoxiAgent:
                 origin=InvocationOrigin.AGENT,
                 user_intent=pending.user_intent,
                 invocation_id=invocation_id,
+                image_attachments=pending.images if call.name == "lifehud" else None,
             )
             if execution.waiting_for_permission:
                 if trace:
@@ -1052,6 +1063,7 @@ class ZhaoxiAgent:
                     remaining_calls=remaining_calls,
                     batch_call_count=batch_call_count,
                     discovery=pending.discovery,
+                    images=pending.images,
                 )
                 return AgentResponse(
                     content=confirmation.question,

@@ -18,6 +18,7 @@ from zhaoxi.permission.models import (
     SideEffect,
 )
 from zhaoxi.tools.base import ToolResult
+from zhaoxi.tools.execution_context import current_image_attachments
 from zhaoxi.tools.metadata import TOOL_GROUPS
 from zhaoxi.tools.registry import ToolRegistry
 from pydantic import ValidationError
@@ -77,6 +78,7 @@ class ToolExecutor:
         goal_id: str | None = None,
         step_id: str | None = None,
         approved_batch_confirmation_id: str | None = None,
+        image_attachments: list[str] | tuple[str, ...] | None = None,
     ) -> ToolExecution:
         try:
             tool = self.registry.get(name)
@@ -184,7 +186,11 @@ class ToolExecutor:
                 request=request,
             )
         self.gateway.record_execution(request, "tool_execution_started", "started")
-        result = await tool.run(arguments)
+        attachment_token = current_image_attachments.set(tuple(image_attachments or ()))
+        try:
+            result = await tool.run(arguments)
+        finally:
+            current_image_attachments.reset(attachment_token)
         if (
             permission is not PermissionLevel.READ
             and result.metadata.get("retryable")
