@@ -4,6 +4,8 @@
   if (!panel) return;
   const root = document.getElementById('toolInventory');
   const status = document.getElementById('toolControlStatus');
+  const capabilityLabels = {context: '上下文读取', write: '事实写入', image: '图片上传',
+    focus: '专注', media: '媒体', dream: '梦想', ritual: '仪式'};
   let updating = false;
   const element = (tag, text) => {
     const node = document.createElement(tag);
@@ -106,6 +108,16 @@
           label.append(input, document.createTextNode('写入前确认 '));
           row.append(label);
         }
+        for (const [capability, active] of Object.entries(tool.capabilities || {})) {
+          const label = element('label');
+          const input = element('input');
+          input.type = 'checkbox';
+          input.checked = active;
+          input.setAttribute('aria-label', `${tool.display_name || tool.name} ${capabilityLabels[capability] || capability} 能力`);
+          input.onchange = () => changeCapability(tool.name, capability, input.checked);
+          label.append(input, document.createTextNode(`${capabilityLabels[capability] || capability} `));
+          row.append(label);
+        }
         row.append(button('恢复默认', () => change({scope: 'tool', target: tool.name, reset: true})));
         section.append(row);
       }
@@ -126,6 +138,24 @@
       .forEach(node => { node.disabled = true; });
     try {
       render(await request('/api/debug/tools/control', {method: 'POST', body: JSON.stringify(body)}));
+    } catch (error) {
+      try { render(await request('/api/debug/tools')); } catch {}
+      status.textContent = `修改失败：${error.message}`;
+    } finally {
+      updating = false;
+      panel.querySelectorAll('#toolControls button, #toolControls input, #toolControls textarea')
+        .forEach(node => { node.disabled = false; });
+    }
+  }
+  async function changeCapability(tool, capability, enabled) {
+    if (updating) return;
+    updating = true;
+    panel.querySelectorAll('#toolControls button, #toolControls input, #toolControls textarea')
+      .forEach(node => { node.disabled = true; });
+    try {
+      render(await request('/api/debug/tools/capability', {
+        method: 'POST', body: JSON.stringify({tool, capability, enabled}),
+      }));
     } catch (error) {
       try { render(await request('/api/debug/tools')); } catch {}
       status.textContent = `修改失败：${error.message}`;

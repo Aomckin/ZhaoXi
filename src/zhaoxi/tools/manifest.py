@@ -16,11 +16,16 @@ class ToolControl:
     def __init__(self, path: str | Path | None = None):
         self.path = Path(path) if path else None
         self.lock = RLock()
-        self.overrides: dict[str, dict[str, bool]] = {}
+        self.overrides: dict[str, dict] = {}
         if self.path and self.path.exists():
             value = json.loads(self.path.read_text(encoding="utf-8"))
             if not isinstance(value, dict) or any(
-                not isinstance(v, dict) or any(k not in {"enabled", "force_expose", "confirm_write"} or type(b) is not bool for k, b in v.items())
+                not isinstance(v, dict) or any(
+                    (not isinstance(b, dict) or any(not isinstance(n, str) or type(flag) is not bool for n, flag in b.items()))
+                    if k == "capabilities" else
+                    (k not in {"enabled", "force_expose", "confirm_write"} or type(b) is not bool)
+                    for k, b in v.items()
+                )
                 for v in value.values()
             ):
                 raise ValueError("无效的 Tool Override 配置")
@@ -39,6 +44,21 @@ class ToolControl:
                             if type(setting) is not bool:
                                 raise ValueError("Tool 开关必须为布尔值")
                             value[key] = setting
+            if self.path:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                temporary = self.path.with_suffix(".tmp")
+                temporary.write_text(json.dumps(updated, ensure_ascii=False, indent=2), encoding="utf-8")
+                temporary.replace(self.path)
+            self.overrides = updated
+
+    def update_capability(self, name: str, capability: str, enabled: bool) -> None:
+        if type(enabled) is not bool:
+            raise ValueError("Tool 能力组开关必须为布尔值")
+        with self.lock:
+            updated = {key: {**value, **({"capabilities": dict(value["capabilities"])}
+                                      if "capabilities" in value else {})}
+                       for key, value in self.overrides.items()}
+            updated.setdefault(name, {}).setdefault("capabilities", {})[capability] = enabled
             if self.path:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 temporary = self.path.with_suffix(".tmp")
@@ -65,6 +85,7 @@ def tool_metadata(tool, source: str, override: dict, exposed: set[str]) -> dict:
         or type(tool).permission_for is not Tool.permission_for
     )
     raw_summary = getattr(tool, "summary", tool.description.split("。", 1)[0])
+    capability_reader = getattr(tool, "capability_flags", None)
     return {
         "name": tool.name, "group": group, "source": source,
         "display_name": TOOL_LABELS.get(tool.name, tool.name),
@@ -75,6 +96,7 @@ def tool_metadata(tool, source: str, override: dict, exposed: set[str]) -> dict:
         "force_expose": override.get("force_expose", False),
         "confirm_write": override.get("confirm_write", getattr(tool, "default_confirm_write", True)),
         "write_capable": write_capable,
+        "capabilities": capability_reader() if callable(capability_reader) else {},
         "exposed": tool.name in exposed and enabled and available,
         "read_only": type(tool).permission_for is Tool.permission_for and tool.permission == PermissionLevel.READ and tool.side_effects == frozenset({SideEffect.NONE}),
         "destructive": tool.permission in {PermissionLevel.DELETE, PermissionLevel.DANGEROUS} or SideEffect.DATA_DELETION in tool.side_effects,

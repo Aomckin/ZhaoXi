@@ -47,6 +47,21 @@ class ToolRegistry:
             confirm_write=confirm_write,
             reset=reset,
         )
+        if reset:
+            for item_name in names:
+                tool = self._tools.get(item_name)
+                resetter = getattr(tool, "reset_capabilities", None)
+                if callable(resetter):
+                    resetter()
+
+    def update_capability(self, name: str, capability: str, enabled: bool) -> None:
+        tool = self.get(name)
+        reader = getattr(tool, "capability_flags", None)
+        setter = getattr(tool, "set_capability", None)
+        if not callable(reader) or not callable(setter) or capability not in reader():
+            raise ValueError("Tool 能力组不存在")
+        self.control.update_capability(name, capability, enabled)
+        setter(capability, enabled)
 
     def write_confirmation_required(self, name: str) -> bool:
         """Per-tool WRITE confirmation defaults to on."""
@@ -70,6 +85,11 @@ class ToolRegistry:
         if tool.name in self._tools:
             raise ToolValidationError(f"工具已注册：{tool.name}")
         self._validate(tool)
+        setter = getattr(tool, "set_capability", None)
+        if callable(setter):
+            for capability, enabled in self.control.overrides.get(tool.name, {}).get("capabilities", {}).items():
+                if capability in tool.capability_flags():
+                    setter(capability, enabled)
         self._tools[tool.name] = tool
         return tool
 

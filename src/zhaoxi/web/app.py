@@ -89,6 +89,13 @@ class ToolControlRequest(BaseModel):
         return self
 
 
+class ToolCapabilityRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tool: str = Field(min_length=1)
+    capability: str = Field(min_length=1)
+    enabled: StrictBool
+
+
 class InterfaceSettingsRequest(BaseModel):
     input_merge_seconds: int = Field(default=15, ge=0, le=30)
     reply_interval_seconds: int = Field(default=5, ge=0, le=15)
@@ -642,6 +649,17 @@ def create_app(
         except ZhaoxiError as exc:
             raise HTTPException(status_code=404, detail="钥匙或分组不存在。") from exc
         except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=409, detail="Tool 设置保存失败，运行状态未修改。") from exc
+        return tool_snapshot()
+
+    @app.post("/api/debug/tools/capability")
+    async def control_tool_capability(body: ToolCapabilityRequest):
+        tool_snapshot()
+        try:
+            core.registry.update_capability(body.tool, body.capability, body.enabled)
+        except (ZhaoxiError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail="Tool 能力组不存在。") from exc
+        except OSError as exc:
             raise HTTPException(status_code=409, detail="Tool 设置保存失败，运行状态未修改。") from exc
         return tool_snapshot()
 
