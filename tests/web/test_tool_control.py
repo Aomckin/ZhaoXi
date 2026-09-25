@@ -11,6 +11,7 @@ from zhaoxi.tools.registry import ToolRegistry
 from zhaoxi.tools.base import Tool, ToolResult
 from zhaoxi.permission.models import PermissionLevel, SideEffect
 from zhaoxi.web.app import create_app
+from tools.lifehud_tool import LifeHudClient, LifeHudTool
 
 
 class WriteInput(BaseModel):
@@ -33,6 +34,7 @@ def build(tmp_path):
     for tool in create_builtin_tools():
         registry.register(tool)
     registry.register(WriteFixtureTool())
+    registry.register(LifeHudTool(LifeHudClient("http://lifehud.test")))
     agent = ZhaoxiAgent(provider=FakeProvider([ModelResponse(content="你好")]), registry=registry, context_builder=ContextBuilder("朝汐"))
     app = create_app(
         agent=agent,
@@ -79,6 +81,34 @@ def test_controls_reject_unknown_targets_and_invalid_mutations(tmp_path):
     for body in ({"scope": "tool", "enabled": False}, {"scope": "all"}, {"scope": "all", "enabled": "false"}, {"scope": "all", "confirm_write": "false"}, {"scope": "all", "reset": True, "enabled": True}):
         assert client.post("/api/debug/tools/control", json=body).status_code == 422
     assert registry.control.overrides == {}
+
+
+def test_lifehud_capability_switches_apply_live_and_persist(tmp_path):
+    registry, client = build(tmp_path)
+    assert client.post("/api/debug/tools/capability", json={
+        "tool": "lifehud", "capability": "image", "enabled": False,
+    }).status_code == 401
+    client.headers["X-Zhaoxi-Token"] = "test-token"
+    response = client.post("/api/debug/tools/capability", json={
+        "tool": "lifehud", "capability": "image", "enabled": False,
+    })
+    assert response.status_code == 200
+    lifehud = next(tool for tool in response.json()["tools"] if tool["name"] == "lifehud")
+    assert lifehud["capabilities"]["image"] is False
+    assert registry.get("lifehud").capability_flags()["image"] is False
+    restarted, _ = build(tmp_path)
+    assert restarted.get("lifehud").capability_flags()["image"] is False
+    for body in ({"tool": "lifehud", "capability": "missing", "enabled": True},
+                 {"tool": "calculator", "capability": "image", "enabled": True}):
+        assert client.post("/api/debug/tools/capability", json=body).status_code == 404
+    assert client.post("/api/debug/tools/capability", json={
+        "tool": "lifehud", "capability": "image", "enabled": "false",
+    }).status_code == 422
+    reset = client.post("/api/debug/tools/control", json={
+        "scope": "tool", "target": "lifehud", "reset": True,
+    })
+    assert reset.status_code == 200
+    assert registry.get("lifehud").capability_flags()["image"] is True
 
 
 def test_filesystem_access_paths_are_validated_and_persisted(tmp_path):

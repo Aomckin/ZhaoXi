@@ -61,6 +61,8 @@ def test_dynamic_domains_are_selected_by_action_intent():
         ("帮我读一下今天 Life HUD 的数据", {"lifehud"}),
         ("计算 17*23", {"calculator"}),
         ("你觉得我今天一天吃得如何？", {"lifehud"}),
+        ("帮我记下刚喝的咖啡", {"lifehud"}),
+        ("请记录今晚看的番剧", {"lifehud"}),
         ("帮我找一下昨天那个面试复盘", {"local_search", "filesystem_read"}),
         ("之前我怎么说暑假结束来着？", {"memory_search"}),
     ]

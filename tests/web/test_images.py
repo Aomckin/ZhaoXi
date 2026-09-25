@@ -16,6 +16,10 @@ from zhaoxi.models.openai_compatible import OpenAICompatibleProvider
 from zhaoxi.session.base import Session
 from zhaoxi.session.sqlite import SQLiteSessionStore
 from zhaoxi.web.app import ChatRequest, create_app
+from zhaoxi.models.types import ModelResponse, ToolCall
+from zhaoxi.tools.registry import ToolRegistry
+from tools.lifehud_tool import LifeHudClient, LifeHudTool
+from conftest import FakeProvider
 
 PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9S8AAAAASUVORK5CYII='
 
@@ -101,3 +105,56 @@ async def test_image_turn_keeps_cognitive_postprocessing_and_uses_vision_loop():
     )
     router.route.assert_not_awaited()
     memory.process.assert_awaited_once_with('看图', '看到了')
+
+
+async def test_current_message_image_reaches_lifehud_without_entering_tool_arguments():
+    paths = []
+    def handler(request):
+        paths.append(request.url.path)
+        if request.url.path == '/api/images':
+            assert request.method == 'POST' and PNG.split(',', 1)[1].encode() not in request.content
+            assert b'filename="attachment.png"' in request.content
+            return httpx.Response(200, json={'path': '/uploads/hash.png'})
+        if request.method == 'POST':
+            assert json.loads(request.content)['images'] == ['/uploads/hash.png']
+            return httpx.Response(201, json={'id': 'meal-1'})
+        return httpx.Response(200, json={'id': 'meal-1', 'images': ['/uploads/hash.png']})
+    client = LifeHudClient('http://lifehud.test', transport=httpx.MockTransport(handler), retry_backoff_seconds=0)
+    tool = LifeHudTool(client)
+    tool.default_confirm_write = False
+    registry = ToolRegistry()
+    registry.register(tool)
+    call = ToolCall(id='call-1', name='lifehud', arguments={'operation': 'record', 'arguments': {
+        'action': 'create', 'type': 'meal', 'description': '晚餐', 'images': ['<current-message-image>'],
+    }})
+    provider = FakeProvider([ModelResponse(tool_calls=[call]), ModelResponse(content='已经记下晚餐。')])
+    agent = ZhaoxiAgent(provider=provider, registry=registry, context_builder=ContextBuilder('朝汐'), tool_router_mode='all')
+    result = await agent.run('把这张晚餐照片记进 LifeHUD', images=[PNG])
+    assert '已经记下' in result.content
+    assert paths == ['/api/images', '/api/life/meals', '/api/life/meals/meal-1']
+    assert call.arguments['arguments']['images'] == ['<current-message-image>']
+    assert agent.conversation.messages[-2].role == Role.TOOL
+
+
+async def test_lifehud_image_survives_write_confirmation():
+    paths = []
+    def handler(request):
+        paths.append(request.url.path)
+        if request.url.path == '/api/images':
+            return httpx.Response(200, json={'path': '/uploads/hash.png'})
+        if request.method == 'POST':
+            return httpx.Response(201, json={'id': 'meal-1'})
+        return httpx.Response(200, json={'id': 'meal-1', 'images': ['/uploads/hash.png']})
+    registry = ToolRegistry()
+    registry.register(LifeHudTool(LifeHudClient('http://lifehud.test', transport=httpx.MockTransport(handler))))
+    call = ToolCall(id='call-1', name='lifehud', arguments={'operation': 'record', 'arguments': {
+        'type': 'meal', 'images': ['<current-message-image>'],
+    }})
+    agent = ZhaoxiAgent(provider=FakeProvider([ModelResponse(tool_calls=[call]), ModelResponse(content='完成')]),
+                        registry=registry, context_builder=ContextBuilder('朝汐'), tool_router_mode='all')
+    waiting = await agent.run('把照片记到 LifeHUD', images=[PNG])
+    assert waiting.permission_confirmation is not None and paths == []
+    assert PNG not in str(waiting.permission_confirmation.request.arguments)
+    result = await agent.approve_permission(waiting.permission_confirmation.confirmation_id)
+    assert result.content == '完成'
+    assert paths == ['/api/images', '/api/life/meals', '/api/life/meals/meal-1']

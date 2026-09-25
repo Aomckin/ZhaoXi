@@ -1,11 +1,13 @@
-"""Unified HTTP boundary for Life HUD Agent Context and Focus writes."""
+"""Unified HTTP boundary for Life HUD public business APIs."""
 
-from typing import Any, TypeVar
+from pathlib import Path
+from typing import Any, Callable, TypeVar
 
 import httpx
 from pydantic import ValidationError
 
 from tools.lifehud_tool.errors import LifeHudError, UnsupportedSchemaVersion
+from tools.lifehud_tool.autostart import LifeHudAutoStarter, connection_unavailable, local_lifehud_url
 from tools.lifehud_tool.models import (
     AgentEnvelope,
     DreamsContext,
@@ -38,6 +40,11 @@ class LifeHudClient:
         display_timezone: str = "Asia/Shanghai",
         retry_backoff_seconds: float = 0.1,
         transport: httpx.AsyncBaseTransport | None = None,
+        autostart: bool = False,
+        project_dir: str | Path | None = None,
+        startup_timeout_seconds: float = 8,
+        startup_poll_seconds: float = 0.4,
+        autostart_launcher: Callable[[], object] | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.context_path = "/" + context_path.strip("/")
@@ -47,14 +54,26 @@ class LifeHudClient:
         self.retry_backoff_seconds = max(0, retry_backoff_seconds)
         self.transport = transport
         self.time_display = LifeHudTimeDisplay(display_timezone)
+        self.autostarter = (
+            LifeHudAutoStarter(
+                base_url=self.base_url, context_path=self.context_path,
+                schema_version=self.schema_version,
+                project_dir=project_dir or Path(__file__).resolve().parents[3] / "Life HUD",
+                timeout_seconds=startup_timeout_seconds,
+                poll_interval_seconds=startup_poll_seconds,
+                transport=transport, launcher=autostart_launcher,
+            ) if autostart and local_lifehud_url(self.base_url) else None
+        )
 
     @property
     def display_timezone(self) -> str:
         return self.time_display.timezone_name
 
-    def dump_for_display(self, value: AgentEnvelope | FocusSession) -> dict[str, Any]:
+    def dump_for_display(self, value: AgentEnvelope | FocusSession | Any) -> Any:
         """Convert instants only in the outbound tool payload; source models stay UTC."""
-        return self.time_display.dump(value)
+        if isinstance(value, (AgentEnvelope, FocusSession)):
+            return self.time_display.dump(value)
+        return self.time_display._convert(value)
 
     async def today(self) -> TodayContext:
         return await self._context("/today", TodayContext)
@@ -117,6 +136,30 @@ class LifeHudClient:
         )
         return self._session(response)
 
+    async def request_json(self, method: str, path: str, *, body: dict[str, Any] | None = None,
+                           params: dict[str, Any] | None = None) -> Any:
+        """Business writes are sent once; only GET uses the existing retry policy."""
+        response = await self._request(method, path, retry_read=method == "GET",
+                                       **({"json": body} if body is not None else {}),
+                                       **({"params": params} if params else {}))
+        if response.status_code == 204 or not response.content:
+            return None
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise LifeHudError("Life HUD 返回了无效 JSON。", code="invalid_lifehud_response") from exc
+
+    async def upload_image(self, content: bytes, filename: str, mime: str) -> str:
+        response = await self._request("POST", "/api/images", retry_read=False,
+                                       files={"file": (filename, content, mime)})
+        try:
+            path = response.json()["path"]
+        except (ValueError, KeyError, TypeError) as exc:
+            raise LifeHudError("Life HUD 图片上传响应无效。", code="invalid_lifehud_response") from exc
+        if not isinstance(path, str) or not path.startswith("/uploads/"):
+            raise LifeHudError("Life HUD 图片路径无效。", code="invalid_lifehud_response")
+        return path
+
     async def _context(
         self,
         path: str,
@@ -146,21 +189,36 @@ class LifeHudClient:
     async def _request(
         self, method: str, path: str, *, retry_read: bool, **kwargs: Any
     ) -> httpx.Response:
+        if self.autostarter is not None:
+            await self.autostarter.ensure_ready()
         retries = self.max_retries if retry_read and method == "GET" else 0
+        async def send() -> httpx.Response:
+            async with httpx.AsyncClient(
+                base_url=self.base_url,
+                timeout=self.timeout,
+                transport=self.transport,
+                trust_env=not local_lifehud_url(self.base_url),
+            ) as client:
+                return await client.request(method, path, **kwargs)
+
         async def operation() -> httpx.Response:
             try:
-                async with httpx.AsyncClient(
-                    base_url=self.base_url,
-                    timeout=self.timeout,
-                    transport=self.transport,
-                ) as client:
-                    response = await client.request(method, path, **kwargs)
+                response = await send()
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
-                raise LifeHudError(
-                    "Life HUD 当前不可访问。",
-                    code="lifehud_unavailable",
-                    retryable=retry_read,
-                ) from exc
+                if self.autostarter is not None and connection_unavailable(exc):
+                    self.autostarter.mark_unready()
+                    await self.autostarter.ensure_ready()
+                    try:
+                        response = await send()  # Refused TCP connect could not have committed a write.
+                    except (httpx.TimeoutException, httpx.NetworkError) as retry_exc:
+                        raise LifeHudError("Life HUD 启动后原请求仍无法连接。",
+                                           code="lifehud_unavailable", retryable=retry_read) from retry_exc
+                else:
+                    raise LifeHudError(
+                        "Life HUD 当前不可访问。",
+                        code="lifehud_unavailable",
+                        retryable=retry_read,
+                    ) from exc
             return self._validate_status(response, retry_read=retry_read)
 
         return await retry_async(
@@ -187,6 +245,8 @@ class LifeHudClient:
             raise LifeHudError("Life HUD 当前状态与该操作冲突。", code="lifehud_conflict")
         if response.status_code == 404:
             raise LifeHudError("Life HUD 中没有找到目标资源。", code="lifehud_not_found")
+        if response.status_code == 413:
+            raise LifeHudError("图片超过 Life HUD 的 64 MB 上限。", code="image_too_large")
         if response.status_code >= 500:
             raise LifeHudError(
                 "Life HUD 暂时不可用。",

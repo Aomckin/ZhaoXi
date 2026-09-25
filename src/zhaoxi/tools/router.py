@@ -92,10 +92,10 @@ def _dynamic_groups(user_message: str, recent_context: Sequence[str] | str | Non
         add("calculator", "calculation_request")
     lifehud_named = _matches(r"(?:life\s*hud|铁幕)", current)
     life_domain = _matches(
-        r"(?:吃(?:了|得|过|的)?什么|吃得|饮食|睡眠|睡得|做过什么|任务.{0,6}(?:完成|进度|情况)|focus\s*session|能量|经验|生活状态)",
+        r"(?:吃(?:了|得|过|的)?什么|吃得|饮食|睡眠|睡得|运动|骑行|喝水|饮水|咖啡|户外|日记|番剧|动漫|游戏|仪式|梦想|做过什么|任务.{0,6}(?:完成|进度|情况)|focus\s*session|能量|经验|生活状态)",
         current,
     )
-    life_query = _matches(r"(?:帮我|请|看看|查看|读取|查询|查一下|记录|数据|状态|评价|评估|怎么样|如何|多少|完成情况|做过什么)", current)
+    life_query = _matches(r"(?:帮我|请|看看|查看|读取|查询|查一下|记录|记下|记一下|保存|存一下|数据|状态|评价|评估|怎么样|如何|多少|完成情况|做过什么)", current)
     if life_query and (lifehud_named or life_domain):
         reason = "daily_diet_query" if _matches(r"(?:吃|饮食)", current) else "lifehud_natural_language_query"
         add("lifehud", reason)
