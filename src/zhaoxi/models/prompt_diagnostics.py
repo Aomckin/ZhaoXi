@@ -54,7 +54,7 @@ def collect_prompt_diagnostics(
     )}
     for name, chars in components:
         category = (
-            "memory_snapshot" if name in {"runtime.agenda", "runtime.short_term_memory"} else
+            "memory_snapshot" if name in {"runtime.agenda", "runtime.current_cognition"} else
             "retrieved_memory" if name == "memory.recall" else
             "planner_state" if name == "extra.planner_context" else
             "tool_schema" if name.startswith("tool_schema.") else

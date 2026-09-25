@@ -83,6 +83,7 @@ class Settings(BaseSettings):
     agenda_db_path: str = ".zhaoxi/agenda.db"
     agenda_max_context_items: int = Field(default=8, ge=1, le=30)
     short_term_memory_db_path: str = ".zhaoxi/short-term-memory.db"
+    current_cognition_db_path: str = ".zhaoxi/current-cognition.db"
     working_notes_db_path: str = ".zhaoxi/working-notes.db"  # Legacy backup only; never read as context.
     archive_enabled: bool = True
     archive_directory: str = "data/archive"

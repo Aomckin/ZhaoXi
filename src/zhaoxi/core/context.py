@@ -25,8 +25,8 @@ class ContextBuilder:
         "朝汐始终是有鲜明人格、关系连续性与情绪的角色；角色感主要通过措辞、态度、判断、调侃和主动性表达。"
         "括号舞台描写是低频强调而非固定语法：普通回复通常不用，明显情绪变化可用一次，只有强烈戏剧场景才可超过一次；禁止台词与耳朵/尾巴动作机械交替。"
         "技术解释、工具执行、错误诊断、信息整理和任务确认默认不使用舞台描写，除非确有明显情绪反应。"
-        "广记是常态，可自主调用 remember_memory 记录日常小事、偏好、变化、习惯与关系，无需等待用户明确要求；自然修正已有信息时可调用 update_memory，用户禁止记忆时必须遵守；"
-        "Agenda 是未来时间事实；Short-Term Memory 是系统在回复结束后自动维护的近期状态概要，每轮常驻上下文，不需要调用便签工具；长期 Memory 仍按需检索。涉及日程增改完成取消时使用 agenda 工具；"
+        "广记只适用于长期 Memory：可自主调用 remember_memory 记录日常小事、偏好、变化、习惯与关系，无需等待用户明确要求；自然修正已有信息时可调用 update_memory，用户禁止记忆时必须遵守；"
+        "Agenda 是未来时间事实；Current Cognition 是系统在回复结束后自动维护的近期整体认识，每轮常驻上下文，不是事实数据库或便签；长期 Memory 仍按需检索。涉及日程增改完成取消时使用 agenda 工具；"
         "不要声称普通对话已经自动保存，因为回复后的记忆决策尚未发生；"
         "修改或遗忘前先通过 ID 明确目标，冲突时向用户核实；"
         "广想：话题与过去自然相关且能改善当前对话时，可主动使用 search_memories，不要为展示记忆而频繁检索。"
@@ -53,7 +53,7 @@ class ContextBuilder:
         character_components: list[tuple[str, str]] | None = None,
         emoji_service=None,
         agenda_service=None,
-        short_term_memory_service=None,
+        current_cognition_service=None,
         agenda_context_enabled: bool = True,
     ) -> None:
         self.personality_prompt = personality_prompt
@@ -61,9 +61,9 @@ class ContextBuilder:
         self.character_components = character_components
         self.emoji_service = emoji_service
         self.agenda_service = agenda_service
-        self.short_term_memory_service = short_term_memory_service
+        self.current_cognition_service = current_cognition_service
         self.agenda_context_enabled = agenda_context_enabled
-        self.last_recent_context = {"agenda": None, "short_term_memory": None, "errors": {}}
+        self.last_recent_context = {"agenda": None, "current_cognition": None, "errors": {}}
         self.runtime_rules = runtime_rules or self.RUNTIME_RULES
         self.memory_retriever = memory_retriever
         self.timezone = ZoneInfo(timezone)
@@ -101,7 +101,7 @@ class ContextBuilder:
                 add("system.formatting", "\n\n")
             add(name, prompt.strip())
         add("system.runtime_rules", f"\n\n运行规则：\n{self.runtime_rules}")
-        self.last_recent_context = {"agenda": None, "short_term_memory": None, "errors": {}}
+        self.last_recent_context = {"agenda": None, "current_cognition": None, "errors": {}}
         if self.agenda_context_enabled and self.agenda_service is not None:
             try:
                 snapshot = self.agenda_service.snapshot(now=now)
@@ -110,14 +110,14 @@ class ContextBuilder:
             except Exception as exc:
                 logging.getLogger("CONTEXT").warning("agenda context unavailable type=%s", type(exc).__name__)
                 self.last_recent_context["errors"]["agenda"] = type(exc).__name__
-        if self.short_term_memory_service is not None:
+        if self.current_cognition_service is not None:
             try:
-                snapshot = self.short_term_memory_service.snapshot()
-                self.last_recent_context["short_term_memory"] = snapshot
-                add("runtime.short_term_memory", f"\n\n{snapshot}\n这是近期状态概要；若与当前用户明确纠正冲突，以当前用户为准。")
+                snapshot = self.current_cognition_service.snapshot()
+                self.last_recent_context["current_cognition"] = snapshot
+                add("runtime.current_cognition", f"\n\n{snapshot}\n这是近期整体认识；若与当前用户明确纠正冲突，以当前用户为准。")
             except Exception as exc:
-                logging.getLogger("CONTEXT").warning("short-term memory context unavailable type=%s", type(exc).__name__)
-                self.last_recent_context["errors"]["short_term_memory"] = type(exc).__name__
+                logging.getLogger("CONTEXT").warning("current cognition context unavailable type=%s", type(exc).__name__)
+                self.last_recent_context["errors"]["current_cognition"] = type(exc).__name__
         if self.emoji_service is not None:
             emoji_context = self.emoji_service.build_context()
             if emoji_context:

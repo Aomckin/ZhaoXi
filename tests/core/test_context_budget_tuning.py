@@ -38,7 +38,7 @@ def test_visual_input_is_released_only_for_explicit_finalization_copy():
 def test_context_report_has_categories_and_separates_unknown_image_cost():
     messages = [Message(role=Role.SYSTEM, content="人格", metadata={"prompt_components": [
         {"name": "system.persona", "chars": 2},
-        {"name": "runtime.short_term_memory", "chars": 8},
+        {"name": "runtime.current_cognition", "chars": 8},
         {"name": "memory.recall", "chars": 6},
     ]}), Message(role=Role.USER, content="看图", images=["data:image/png;base64,AAAA"])]
     report = collect_prompt_diagnostics(messages, [], model="m")

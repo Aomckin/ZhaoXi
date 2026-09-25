@@ -1,4 +1,4 @@
-"""Inspect each completed turn and apply only evidence-bound changes."""
+"""Inspect each finished turn without delaying or changing the main reply."""
 
 from __future__ import annotations
 
@@ -14,13 +14,12 @@ from zhaoxi.errors import ProviderError
 from zhaoxi.models.base import ModelProvider
 
 from .prompts import MAINTAINER_PROMPT
-from .service import ShortTermMemoryPatch, ShortTermMemoryService
+from .service import CurrentCognitionPatch, CurrentCognitionService
 
-logger = logging.getLogger("STM")
+logger = logging.getLogger("CURRENT_COGNITION")
 
 
-def _parse_patch(raw: str) -> ShortTermMemoryPatch:
-    """Accept a JSON object with harmless surrounding text, but never guess missing fields."""
+def _parse_patch(raw: str) -> CurrentCognitionPatch:
     content = raw.strip()
     if content.startswith("```"):
         content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
@@ -28,14 +27,11 @@ def _parse_patch(raw: str) -> ShortTermMemoryPatch:
     if start < 0:
         raise ValueError("maintainer response has no JSON object")
     value, _ = json.JSONDecoder().raw_decode(content[start:])
-    patch = ShortTermMemoryPatch.model_validate(value)
-    if patch.action == "NO_CHANGE" and any((patch.add, patch.update, patch.reinforce, patch.fade, patch.remove)):
-        raise ValueError("NO_CHANGE cannot contain edits")
-    return patch
+    return CurrentCognitionPatch.model_validate(value)
 
 
-class ShortTermMemoryMaintainer:
-    def __init__(self, service: ShortTermMemoryService, provider: ModelProvider,
+class CurrentCognitionMaintainer:
+    def __init__(self, service: CurrentCognitionService, provider: ModelProvider,
                  *, timezone: str = "Asia/Shanghai") -> None:
         self.service = service
         self.provider = provider
@@ -43,7 +39,7 @@ class ShortTermMemoryMaintainer:
 
     async def maintain(self, messages: list[Message], *, pending_override: list[Message] | None = None) -> str:
         state = self.service.state()
-        if not messages:
+        if not messages and not pending_override:
             return "NO_CHANGE"
         ids = [message.message_id for message in messages]
         if pending_override is not None:
@@ -56,33 +52,24 @@ class ShortTermMemoryMaintainer:
             return "NO_CHANGE"
         last_id = pending[-1].message_id
         evidence = []
-        source_by_id = {}
-        evidence_by_id = {}
+        source_by_id: dict[str, str] = {}
+        evidence_by_id: dict[str, str] = {}
         for message in pending:
-            if message.role not in {Role.USER, Role.TOOL, Role.ASSISTANT} or not message.content:
+            if message.role not in {Role.USER, Role.ASSISTANT} or not message.content:
                 continue
             source_by_id[message.message_id] = message.role.value
-            text = message.content[:1200]
-            if message.role == Role.TOOL:
-                # Tool payload is evidence only when it reports a successful result.
-                try:
-                    result = json.loads(message.content)
-                except ValueError:
-                    continue
-                if not isinstance(result, dict) or result.get("success") is not True:
-                    continue
-                text = json.dumps({"success": True, "tool": message.name,
-                                   "summary": str(result.get("content", ""))[:500]}, ensure_ascii=False)
-            evidence.append({"id": message.message_id, "source": message.role.value, "text": text})
-            evidence_by_id[message.message_id] = text
-        if not evidence:
-            self.service.apply(ShortTermMemoryPatch(action="NO_CHANGE"), source_by_id=source_by_id,
+            content = message.content[:1200 if message.role == Role.USER else 350]
+            evidence_by_id[message.message_id] = content
+            evidence.append({"id": message.message_id, "source": message.role.value, "text": content})
+        if not any(item["source"] == "user" for item in evidence):
+            self.service.apply(CurrentCognitionPatch(decision="NO_CHANGE"), source_by_id=source_by_id,
                                last_message_id=last_id)
             return "NO_CHANGE"
-        logger.info("STM_MAINTAIN_START messages=%d version=%d", len(evidence), state.version)
+        logger.info("COGNITION_MAINTAIN_START messages=%d version=%d", len(evidence), state.version)
         payload = {"current_state": state.model_dump(mode="json"), "new_messages": evidence,
                    "now": datetime.now(self.timezone).isoformat()}
-        # A retry must stay small without forgetting the beginning of the recent window.
+        if not state.narrative and state.last_processed_message_id is None:
+            payload["legacy_reference_untrusted"] = self.service.store.legacy_reference()
         fallback = (evidence if len(evidence) <= 16 else
                     [evidence[index * (len(evidence) - 1) // 15] for index in range(16)])
         diagnostic: dict = {}
@@ -102,7 +89,6 @@ class ShortTermMemoryMaintainer:
                     if attempt == 1 and exc.code == "provider_http_400" and json_mode:
                         json_mode = False
                         diagnostic = {"attempt": attempt, "provider_error_code": exc.code}
-                        logger.warning("STM_JSON_MODE_REJECTED attempt=%d code=%s", attempt, exc.code)
                         continue
                     raise
                 raw = response.content or ""
@@ -112,21 +98,18 @@ class ShortTermMemoryMaintainer:
                     patch = _parse_patch(raw)
                     break
                 except (json.JSONDecodeError, ValidationError, ValueError) as exc:
-                    if isinstance(exc, json.JSONDecodeError):
-                        diagnostic["error_position"] = exc.pos
-                    logger.warning("STM_INVALID_RESPONSE attempt=%d chars=%d finish_reason=%s error_type=%s",
-                                   attempt, len(raw), response.finish_reason, type(exc).__name__)
+                    logger.warning("COGNITION_INVALID_RESPONSE attempt=%d chars=%d type=%s",
+                                   attempt, len(raw), type(exc).__name__)
                     if attempt == 2:
                         raise
             self.service.apply(patch, source_by_id=source_by_id,
                                evidence_by_id=evidence_by_id, last_message_id=last_id)
-            return self.service.last_maintenance["result"]
+            return self.service.last_maintenance["decision"]
         except Exception as exc:
-            logger.warning("STM_MAINTAIN_FAILED type=%s attempt=%s chars=%s finish_reason=%s",
-                           type(exc).__name__, diagnostic.get("attempt"),
-                           diagnostic.get("response_chars"), diagnostic.get("finish_reason"))
+            logger.warning("COGNITION_MAINTAIN_FAILED type=%s attempt=%s", type(exc).__name__,
+                           diagnostic.get("attempt"))
             try:
                 self.service.record_failure(exc, details=diagnostic)
             except Exception as store_exc:
-                logger.warning("STM_DIAGNOSTIC_SAVE_FAILED type=%s", type(store_exc).__name__)
+                logger.warning("COGNITION_DIAGNOSTIC_SAVE_FAILED type=%s", type(store_exc).__name__)
             return "FAILED"

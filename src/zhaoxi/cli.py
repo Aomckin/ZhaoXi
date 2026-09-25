@@ -75,7 +75,7 @@ from zhaoxi.workflow.loader import WorkflowLoader
 from zhaoxi.workflow.registry import WorkflowRegistry
 from zhaoxi.workflow.runtime import WorkflowRuntime
 from zhaoxi.workflow.sqlite import SQLiteWorkflowStore
-from zhaoxi.short_term_memory import ShortTermMemoryStore, ShortTermMemoryService, ShortTermMemoryMaintainer
+from zhaoxi.current_cognition import CurrentCognitionStore, CurrentCognitionService, CurrentCognitionMaintainer
 from zhaoxi.session.base import Session
 from zhaoxi.session.sqlite import SQLiteSessionStore
 from zhaoxi.reliability import (
@@ -181,8 +181,10 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         timezone=settings.proactive_timezone,
         max_context_items=settings.agenda_max_context_items,
     )
-    short_term_memory_service = ShortTermMemoryService(
-        ShortTermMemoryStore(settings.short_term_memory_db_path), timezone=settings.proactive_timezone,
+    current_cognition_service = CurrentCognitionService(
+        CurrentCognitionStore(settings.current_cognition_db_path,
+                              legacy_stm_path=settings.short_term_memory_db_path),
+        timezone=settings.proactive_timezone,
     )
     archive_service = build_archive(settings)
     emoji_service = EmojiService(
@@ -356,7 +358,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         ],
         emoji_service=emoji_service,
         agenda_service=agenda_service,
-        short_term_memory_service=short_term_memory_service,
+        current_cognition_service=current_cognition_service,
         agenda_context_enabled=settings.agenda_context_enabled,
     )
     planner = None
@@ -446,9 +448,9 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     agent.reflection_periods = reflection_periods
     agent.archive = archive_service
     agent.agenda = agenda_service
-    agent.short_term_memory = short_term_memory_service
-    agent.short_term_memory_maintainer = ShortTermMemoryMaintainer(
-        short_term_memory_service, provider, timezone=settings.proactive_timezone,
+    agent.current_cognition = current_cognition_service
+    agent.current_cognition_maintainer = CurrentCognitionMaintainer(
+        current_cognition_service, provider, timezone=settings.proactive_timezone,
     )
     agent.emoji_service = emoji_service
     agent.emoji_manager = emoji_manager
@@ -522,7 +524,8 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         DataStoreSpec("proactive", Path(settings.proactive_db_path)),
         DataStoreSpec("reflection", Path(settings.reflection_db_path)),
         DataStoreSpec("agenda", Path(settings.agenda_db_path)),
-        DataStoreSpec("short_term_memory", Path(settings.short_term_memory_db_path)),
+        DataStoreSpec("current_cognition", Path(settings.current_cognition_db_path)),
+        DataStoreSpec("short_term_memory", Path(settings.short_term_memory_db_path)),  # Legacy backup only.
         DataStoreSpec("working_notes", Path(settings.working_notes_db_path)),  # Historical backups remain restorable.
         DataStoreSpec("permission_audit", Path(settings.permission_audit_path), kind="file"),
     ]

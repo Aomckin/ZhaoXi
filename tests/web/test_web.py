@@ -115,15 +115,15 @@ def test_recent_context_debug_snapshot_and_independent_switches():
     agent = FakeAgent()
     agent.context_builder = SimpleNamespace(
         agenda_context_enabled=True,
-        last_recent_context={"agenda": "[Agenda]", "short_term_memory": "[Short-Term Memory]", "errors": {}},
+        last_recent_context={"agenda": "[Agenda]", "current_cognition": "[Current Cognition]", "errors": {}},
     )
     agent.agenda = SimpleNamespace(diagnostics=lambda: {"count": 1, "snapshot": "[Agenda]"})
-    agent.short_term_memory = SimpleNamespace(diagnostics=lambda: {"state": {}, "snapshot": "[Short-Term Memory]"})
+    agent.current_cognition = SimpleNamespace(diagnostics=lambda: {"state": {}, "snapshot": "[Current Cognition]"})
     with TestClient(create_app(agent=agent)) as client:
         current = client.get("/api/debug/recent-context")
         assert current.status_code == 200
         assert current.json()["final_snapshots"]["agenda"] == "[Agenda]"
-        assert current.json()["short_term_memory"]["snapshot"] == "[Short-Term Memory]"
+        assert current.json()["current_cognition"]["snapshot"] == "[Current Cognition]"
         changed = client.post("/api/debug/recent-context", json={"agenda_enabled": False})
         assert changed.status_code == 200
         assert changed.json()["agenda_enabled"] is False
@@ -145,15 +145,13 @@ def test_recent_context_board_lists_agenda_and_public_stm_without_debug_fields()
     agent = FakeAgent()
     agenda_item = SimpleNamespace(model_dump=lambda **_: {"title": "下午开会", "status": "planned"})
     agent.agenda = SimpleNamespace(list=lambda filter: [agenda_item] if filter == "all_recent" else [])
-    memory_item = SimpleNamespace(category=SimpleNamespace(value="active_context"), status=SimpleNamespace(value="active"),
-                                  confidence=1.0, source_message_ids=["m1"], content="仍在参与秋招")
-    agent.short_term_memory = SimpleNamespace(state=lambda: SimpleNamespace(overview="近期忙于秋招", items=[memory_item], updated_at=None))
+    agent.current_cognition = SimpleNamespace(state=lambda: SimpleNamespace(narrative="近期忙于秋招", ongoing_threads=["仍在参与秋招"], attention=[], updated_at=None))
     with TestClient(create_app(agent=agent)) as client:
         response = client.get("/api/recent-context")
     assert response.status_code == 200
     assert response.json() == {
         "agenda": [{"title": "下午开会", "status": "planned"}],
-        "short_term_memory": {"overview": "近期忙于秋招", "sections": {"active_context": ["仍在参与秋招"], "active_thread": [],
+        "short_term_memory": {"overview": "近期忙于秋招", "sections": {"active_context": [], "active_thread": ["仍在参与秋招"],
                                 "recent_topic": [], "recent_change": [], "unresolved": []}, "updated_at": None},
         "errors": {},
     }
@@ -162,7 +160,7 @@ def test_recent_context_board_lists_agenda_and_public_stm_without_debug_fields()
 def test_recent_context_board_keeps_stm_available_if_agenda_fails():
     agent = FakeAgent()
     agent.agenda = SimpleNamespace(list=lambda _: (_ for _ in ()).throw(OSError("database offline")))
-    agent.short_term_memory = SimpleNamespace(state=lambda: SimpleNamespace(overview="近期忙于秋招", items=[], updated_at=None))
+    agent.current_cognition = SimpleNamespace(state=lambda: SimpleNamespace(narrative="近期忙于秋招", ongoing_threads=[], attention=[], updated_at=None))
     with TestClient(create_app(agent=agent)) as client:
         response = client.get("/api/recent-context")
     assert response.status_code == 200
@@ -175,7 +173,7 @@ def test_recent_context_board_keeps_agenda_available_if_stm_fails():
     agent = FakeAgent()
     agenda_item = SimpleNamespace(model_dump=lambda **_: {"id": "meeting", "title": "下午开会", "status": "planned"})
     agent.agenda = SimpleNamespace(list=lambda _: [agenda_item])
-    agent.short_term_memory = SimpleNamespace(state=lambda: (_ for _ in ()).throw(OSError("database offline")))
+    agent.current_cognition = SimpleNamespace(state=lambda: (_ for _ in ()).throw(OSError("database offline")))
     with TestClient(create_app(agent=agent)) as client:
         response = client.get("/api/recent-context")
     assert response.json()["agenda"] == [{"id": "meeting", "title": "下午开会", "status": "planned"}]

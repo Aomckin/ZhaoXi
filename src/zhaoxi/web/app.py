@@ -564,12 +564,12 @@ def create_app(
         if builder is None:
             raise HTTPException(status_code=409, detail="Context Builder 尚未就绪。")
         agenda = getattr(core, "agenda", None)
-        stm = getattr(core, "short_term_memory", None)
+        stm = getattr(core, "current_cognition", None)
         return {
             "agenda_enabled": bool(getattr(builder, "agenda_context_enabled", False)),
             "final_snapshots": getattr(builder, "last_recent_context", {}),
             "agenda": agenda.diagnostics() if agenda is not None else None,
-            "short_term_memory": stm.diagnostics() if stm is not None else None,
+            "current_cognition": stm.diagnostics() if stm is not None else None,
         }
 
     @app.get("/api/debug/recent-context")
@@ -603,20 +603,15 @@ def create_app(
             except Exception as exc:
                 logger.warning("recent context board read failed module=agenda type=%s", type(exc).__name__)
                 result["errors"]["agenda"] = "暂时无法读取。"
-        stm = getattr(core, "short_term_memory", None)
+        stm = getattr(core, "current_cognition", None)
         if stm is not None:
             try:
                 state = stm.state()
                 sections = {category: [] for category in ("active_context", "active_thread", "recent_topic", "recent_change", "unresolved")}
-                for item in state.items:
-                    category = item.category.value
-                    if item.status.value != "active" or item.confidence < 0.7 or category not in sections:
-                        continue
-                    if category == "recent_topic" and len(set(item.source_message_ids)) < 2:
-                        continue
-                    sections[category].append(item.content)
+                sections["active_thread"] = state.ongoing_threads
+                sections["unresolved"] = state.attention
                 result["short_term_memory"] = {
-                    "overview": state.overview,
+                    "overview": state.narrative,
                     "sections": sections,
                     "updated_at": state.updated_at.isoformat() if state.updated_at else None,
                 }
