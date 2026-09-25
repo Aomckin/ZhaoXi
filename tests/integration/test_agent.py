@@ -62,6 +62,23 @@ async def test_tool_call_result_is_returned_to_model(registry, context_builder, 
 
 
 @pytest.mark.asyncio
+async def test_required_tool_is_exposed_for_short_follow_up(registry, context_builder, conversation):
+    provider = FakeProvider([
+        ModelResponse(tool_calls=[ToolCall(id="c1", name="calculator", arguments={"expression": "2+2"})]),
+        ModelResponse(content="结果是 4。"),
+    ])
+    agent = make_agent(provider, registry, context_builder, conversation)
+
+    response = await agent.run("重算一下吧", require_tool_call=True, required_tool="calculator")
+
+    assert response.steps == 2
+    assert "calculator" in {item["function"]["name"] for item in provider.tool_schemas[0]}
+    assert provider.options[0]["tool_choice"] == {
+        "type": "function", "function": {"name": "calculator"}
+    }
+
+
+@pytest.mark.asyncio
 async def test_dsml_tool_call_enters_the_same_agent_runtime(
     registry, context_builder, conversation
 ):

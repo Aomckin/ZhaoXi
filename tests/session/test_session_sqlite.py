@@ -16,9 +16,10 @@ async def test_sqlite_session_persists_only_bounded_user_visible_text(tmp_path):
 
     restored = await SQLiteSessionStore(path, max_messages=2).get(session.id)
     assert [(item.role.value, item.content) for item in restored.conversation.messages] == [
+        ("user", "one"),
         ("assistant", "two")
     ]
-    assert restored.conversation.messages[0].metadata == {}
+    assert restored.conversation.messages[1].metadata == {}
 
 
 @pytest.mark.asyncio

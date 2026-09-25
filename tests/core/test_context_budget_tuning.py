@@ -4,6 +4,7 @@ from zhaoxi.core.context import ContextBuilder
 from zhaoxi.core.conversation import Conversation
 from zhaoxi.models.prompt_diagnostics import collect_prompt_diagnostics
 from zhaoxi.core.message import Message, Role
+from zhaoxi.models.types import ToolCall
 
 
 def test_absorbed_write_result_keeps_key_id_and_does_not_rewrite_history():
@@ -11,15 +12,16 @@ def test_absorbed_write_result_keeps_key_id_and_does_not_rewrite_history():
     original = {"success": True, "content": "创建成功" + "详细结果" * 400,
                 "data": {"item": {"id": "agenda-42", "title": "明天开会", "status": "planned"},
                          "internal_payload": "大段返回" * 500}}
+    conversation.add_assistant(None, tool_calls=[ToolCall(id="call-1", name="agenda_add", arguments={})])
     tool = conversation.add_tool(json.dumps(original, ensure_ascii=False),
                                  tool_call_id="call-1", name="agenda_add")
     builder = ContextBuilder("人格")
     messages = builder.build(conversation, absorbed_tool_call_ids={"call-1"})
-    compacted = json.loads(messages[1].content)
+    compacted = json.loads(messages[2].content)
     assert compacted["data"]["item"]["id"] == "agenda-42"
     assert compacted["compacted"] is True
-    assert "internal_payload" not in messages[1].content
-    assert conversation.messages[0].content == tool.content
+    assert "internal_payload" not in messages[2].content
+    assert conversation.messages[1].content == tool.content
     assert builder.last_compaction["tool_chars_saved"] > 1000
 
 

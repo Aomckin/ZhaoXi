@@ -615,6 +615,12 @@ class ZhaoxiAgent:
         if discovery is None:
             routing_intent = f"{user_intent}\n{lookup_commitment}" if lookup_commitment else user_intent
             discovery = ToolDiscoveryState(self._tool_context(routing_intent))
+        # The cognitive router can resolve a short follow-up from prior context even
+        # when the schema router cannot infer the tool from this turn's few words.
+        if required_tool and self.registry.usable(required_tool):
+            exposed = {item["function"]["name"] for item in discovery.schemas(self.registry)}
+            if required_tool not in exposed:
+                discovery.expanded.append(required_tool)
         self._tool_discovery_state = discovery
         capability_retry = False
         resolution_message = ""

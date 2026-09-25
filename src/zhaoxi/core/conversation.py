@@ -9,6 +9,7 @@ class Conversation:
     def __init__(self, messages: list[Message] | None = None, max_messages: int = 40) -> None:
         self._messages = list(messages or [])
         self.max_messages = max_messages
+        self._trim()
 
     @property
     def messages(self) -> list[Message]:
@@ -49,7 +50,7 @@ class Conversation:
 
     def recent(self, limit: int | None = None) -> list[Message]:
         size = limit or self.max_messages
-        return self.messages[-size:]
+        return self._without_orphan_tool_results(self._messages[-size:])
 
     def clear(self) -> None:
         self._messages.clear()
@@ -63,4 +64,11 @@ class Conversation:
         overflow = len(self._messages) - self.max_messages
         if overflow > 0:
             del self._messages[:overflow]
+        self._messages[:] = self._without_orphan_tool_results(self._messages)
+
+    @staticmethod
+    def _without_orphan_tool_results(messages: list[Message]) -> list[Message]:
+        call_ids = {call.id for message in messages for call in message.tool_calls}
+        return [message for message in messages
+                if message.role != Role.TOOL or message.tool_call_id in call_ids]
 
