@@ -1,0 +1,13 @@
+{
+  "id": "reversible_low_cost",
+  "domain": "general",
+  "tags": ["可逆", "低成本", "试试"],
+  "keywords": ["可逆", "试试", "低成本"],
+  "trigger": "两个低成本可逆选项差异不明显，继续分析成本已超过试错成本",
+  "default": "先选更省资源的方案并观察反馈",
+  "level_hint": "L1",
+  "reasons": ["低成本可逆事项优先行动获取反馈"],
+  "exceptions": ["存在未确认的高影响副作用"],
+  "auto_execute": false,
+  "source": {"document": "决策协议", "version": "1.0", "section": "3.1-3.3"}
+}

@@ -153,6 +153,58 @@ class ZhaoxiAgent:
             raise AgentLoopError("Planner 未启用。")
         return await self.planner.run(goal)
 
+    async def run_decision_reply(self, user_message: str, decision, *, mode: str = "normal") -> AgentResponse:
+        """Let the main Persona choose expression, while Core fixes the decision itself."""
+        from zhaoxi.core.decision_reply import compose_decision_reply
+
+        correlation = current_correlation()
+        request_id = correlation.request_id if correlation and correlation.request_id else uuid4().hex
+        self.conversation.add_user(user_message.strip())
+        contract = {
+            "level": decision.level.value, "verdict": decision.verdict,
+            "reasons": decision.reasons[:2], "exception": decision.exception,
+            "core_question": decision.core_question, "conflicts": decision.conflicts[:1],
+            "missing_information": decision.missing_information[:3], "mode": mode,
+        }
+        expression = await self._choose_decision_expression(contract)
+        content = compose_decision_reply(decision, expression, mode=mode)
+        self.conversation.add_assistant(content)
+        return AgentResponse(content=content, request_id=request_id, steps=1)
+
+    async def run_decision_override_reply(self, user_message: str) -> AgentResponse:
+        """Acknowledge a human override through the same Persona expression path."""
+        from zhaoxi.core.decision_reply import compose_override_reply
+
+        correlation = current_correlation()
+        request_id = correlation.request_id if correlation and correlation.request_id else uuid4().hex
+        self.conversation.add_user(user_message.strip())
+        expression = await self._choose_decision_expression({
+            "override": "用户已覆盖先前建议。必须接受，不得继续争论或引用旧规则。"
+        })
+        content = compose_override_reply(expression)
+        self.conversation.add_assistant(content)
+        return AgentResponse(content=content, request_id=request_id, steps=1)
+
+    async def _choose_decision_expression(self, contract: dict):
+        from zhaoxi.core.decision_reply import EXPRESSION_SCHEMA, DecisionExpression
+
+        messages = self.context_builder.build(self.conversation)
+        messages[0].content = (messages[0].content or "") + (
+            "\n\n[当前决策状态：运行时已确定，不能更改]\n"
+            + json.dumps(contract, ensure_ascii=False)
+            + "\n你是朝汐的主回复链。根据前面的人格设定选择表达语气和已确认的理由序号；"
+              "只调用 select_decision_expression。不能重新判断、改写 verdict、增加选项、推翻用户覆盖或给 L2 下结论。"
+              "最终文字由运行时用已确定的内容组成。[/当前决策状态]"
+        )
+        try:
+            response = await asyncio.wait_for(self.provider.generate(messages, [EXPRESSION_SCHEMA]),
+                                              timeout=getattr(self, "timeout_seconds", 60))
+            call = next(call for call in response.tool_calls if call.name == "select_decision_expression")
+            return DecisionExpression.model_validate(call.arguments)
+        except Exception as exc:
+            logger.warning("decision persona expression failed type=%s", type(exc).__name__)
+            return DecisionExpression()
+
     async def run_natural(self, user_message: str, *, images: list[str] | None = None) -> "CognitiveResponse | AgentResponse":
         """Use cognitive integration when configured, otherwise preserve v0.3 behavior."""
         pending_response = await self._handle_pending_permission_input(user_message)

@@ -12,6 +12,9 @@ build/
 *.egg-info/
 .zhaoxi/
 data/*
+!data/decisions/
+data/decisions/*
+!data/decisions/rules/
 !data/emoji/
 data/emoji/images/*
 !data/emoji/images/.gitkeep

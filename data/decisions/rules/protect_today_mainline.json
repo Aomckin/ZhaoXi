@@ -1,0 +1,13 @@
+{
+  "id": "protect_today_mainline",
+  "domain": "schedule",
+  "tags": ["主线", "活动", "临时事项"],
+  "keywords": ["主线", "活动", "宣讲", "会议"],
+  "trigger": "普通临时事项试图占用今日主线时间，尚无高价值且有时效性的理由",
+  "default": "保留今日主线",
+  "level_hint": "L1",
+  "reasons": ["普通临时事项默认不抢占当天最重要的时间"],
+  "exceptions": ["高价值且有时效性的机会", "原主线暂时无法继续", "重要紧急事件"],
+  "auto_execute": false,
+  "source": {"document": "决策协议", "version": "1.0", "section": "4"}
+}

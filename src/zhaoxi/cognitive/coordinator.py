@@ -42,6 +42,11 @@ class CognitiveCoordinator:
         # The text-only router cannot interpret attachments. Use the existing
         # tool-capable loop so the main model sees the image and retains tools.
         trace = current_trace()
+        decision_service = getattr(self.agent, "decision_service", None)
+        if decision_service is not None and not images and decision_service.is_override(user_message):
+            decision_service.accept_override(user_message)
+            reply = await self.agent.run_decision_override_reply(user_message)
+            return CognitiveResponse(content=reply.content, route=CognitiveRoute.DIRECT)
         if images:
             decision = RouteDecision(route=CognitiveRoute.TOOL, reason="image input")
             if trace:
@@ -62,6 +67,17 @@ class CognitiveCoordinator:
             getattr(self.router, "available_tool_names", []),
             decision.reason[:160],
         )
+        if decision_service is not None and not images:
+            planner_requested = (decision.route == CognitiveRoute.PLAN and
+                                 any(marker in user_message for marker in ("还是", "或者", "选", "方向")))
+            result = await decision_service.evaluate(user_message, planner_requested=planner_requested)
+            if result is not None:
+                reply = await self.agent.run_decision_reply(
+                    user_message, result,
+                    mode=decision_service.last_context.decision_mode if decision_service.last_context else "normal",
+                )
+                content = reply.content
+                return CognitiveResponse(content=content, route=CognitiveRoute.DIRECT)
         workflow_run_id = None
         if decision.route == CognitiveRoute.WORKFLOW and self.agent.workflow is not None and decision.workflow_id:
             self.agent.conversation.add_user(user_message.strip())

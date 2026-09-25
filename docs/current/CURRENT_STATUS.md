@@ -1,6 +1,8 @@
 # 当前状态与使用说明
 
-2026-09-25：代码已接入 v1.2.8 Internal Activity。后台按候选信号、间隔、优先级与每轮预算调度 Current Cognition 整理、长期 Memory 维护、Agenda 时间状态维护和主动检查；状态与最近结果写入 `.zhaoxi/internal-activity.db`，维护抽屉可查看和手动触发。小桌边将近期状态标为「Current Cognition」，自动刷新；头像按活跃、半活跃、闲置/离开状态切换。Debug 可临时强制活跃、半活跃或离开，再次点击恢复自动判断。运行时包版本仍为 `1.2.7`，v1.2.9 Decision Layer 尚未实施。验证及剩余人工验收见 [v1.2.8 交付记录](../v1.2.x/Zhaoxi_v1.2.8_Internal_Activity_交付记录.md)。
+2026-09-26：代码已接入 v1.2.9 Decision Layer 开发增量。明确决策问题按需检索少量规则、日程、今日主线和近期状态，输出经 Guard 校验的 L0/L1/L2 结构化结果；L0/L1 verdict 必须给出方向，朝汐主回复链只选择语气及已确认理由，不能改写方向。决策日志、人工覆盖和 Debug 重算已接入；首批规则未授权自动工具执行。运行时包版本仍为 `1.2.7`，本增量尚未正式发布。范围和限制见 [v1.2.9 开发记录](../v1.2.x/Zhaoxi_v1.2.9_Decision_Layer_交付记录.md)。
+
+2026-09-25：代码已接入 v1.2.8 Internal Activity。后台按候选信号、间隔、优先级与每轮预算调度 Current Cognition 整理、长期 Memory 维护、Agenda 时间状态维护和主动检查；状态与最近结果写入 `.zhaoxi/internal-activity.db`，维护抽屉可查看和手动触发。小桌边将近期状态标为「Current Cognition」，自动刷新；头像按活跃、半活跃、闲置/离开状态切换。Debug 可临时强制活跃、半活跃或离开，再次点击恢复自动判断。验证及剩余人工验收见 [v1.2.8 交付记录](../v1.2.x/Zhaoxi_v1.2.8_Internal_Activity_交付记录.md)。
 
 以下是按时间保留的历史状态；涉及 STM 的描述仅对应当时版本。
 

@@ -11,7 +11,8 @@
 
 ## v1.2.x
 
-- [v1.2.9 Decision Layer 任务书（未实施）](<v1.2.x/Zhaoxi_v1.2.9_Decision Layer_Task.md>)
+- [v1.2.9 Decision Layer 开发记录](v1.2.x/Zhaoxi_v1.2.9_Decision_Layer_交付记录.md)
+- [v1.2.9 Decision Layer 任务书](<v1.2.x/Zhaoxi_v1.2.9_Decision Layer_Task.md>)
 - [v1.2.8 Internal Activity 交付记录](v1.2.x/Zhaoxi_v1.2.8_Internal_Activity_交付记录.md)
 - [v1.2.8 Internal Activity 开发任务书](v1.2.x/Zhaoxi_v1.2.8_Internal_Activity_开发任务书.md)
 - [v1.2.6 Current Cognition 实现记录](v1.2.x/Zhaoxi_v1.2.6_Current_Cognition_实现记录.md)

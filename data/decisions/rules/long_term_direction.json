@@ -1,0 +1,13 @@
+{
+  "id": "long_term_direction",
+  "domain": "job_search",
+  "tags": ["offer", "职业", "长期"],
+  "keywords": ["offer", "长期", "周末", "职业路线"],
+  "trigger": "正式 Offer、职业方向或长期资源承诺",
+  "default": "由用户判断核心价值冲突",
+  "level_hint": "L2",
+  "reasons": ["影响周期长且撤销成本高"],
+  "exceptions": [],
+  "auto_execute": false,
+  "source": {"document": "先声", "version": "0.1", "section": "1-2"}
+}

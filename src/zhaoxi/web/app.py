@@ -130,6 +130,11 @@ class InternalActivityDebugRequest(BaseModel):
                       "agenda_maintenance", "proactive_check"] = "tick"
 
 
+class DecisionDebugRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=1000)
+    forced_level: Literal["L0", "L1", "L2"] | None = None
+
+
 class PresenceDebugRequest(BaseModel):
     state: Literal["ACTIVE", "SEMI_ACTIVE", "AWAY"] | None = Field(...)
 
@@ -595,6 +600,30 @@ def create_app(
     @app.get("/api/debug/recent-context")
     async def debug_recent_context():
         return recent_context_snapshot()
+
+    @app.get("/api/debug/decision")
+    async def debug_decision():
+        service = getattr(core, "decision_service", None)
+        if service is None:
+            raise HTTPException(status_code=409, detail="Decision Layer 尚未就绪。")
+        return service.diagnostics()
+
+    @app.post("/api/debug/decision")
+    async def debug_evaluate_decision(body: DecisionDebugRequest):
+        service = getattr(core, "decision_service", None)
+        if service is None:
+            raise HTTPException(status_code=409, detail="Decision Layer 尚未就绪。")
+        from zhaoxi.decision import DecisionService
+        from zhaoxi.decision.models import DecisionLevel
+        probe = DecisionService(service.provider, rule_directory=service.rules.directory,
+            data_directory=service.recorder.directory, agenda=service.agenda,
+            current_cognition=service.current_cognition, memory_retriever=service.memory_retriever,
+            tool_catalog=service.tool_catalog, timezone=str(service.timezone))
+        result = await probe.evaluate(body.message, planner_requested=True,
+            forced_level=DecisionLevel(body.forced_level) if body.forced_level else None,
+            record=False)
+        return {"result": result.model_dump(mode="json") if result else None,
+                "context": probe.last_context.model_dump(mode="json") if probe.last_context else None}
 
     @app.get("/api/debug/internal-activity")
     async def debug_internal_activity():

@@ -450,6 +450,17 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     agent.archive = archive_service
     agent.agenda = agenda_service
     agent.current_cognition = current_cognition_service
+    from zhaoxi.decision import DecisionService
+    agent.decision_service = DecisionService(
+        provider,
+        rule_directory=Path(__file__).resolve().parents[2] / "data" / "decisions" / "rules",
+        data_directory=Path(".zhaoxi") / "decisions",
+        agenda=agenda_service,
+        current_cognition=current_cognition_service,
+        memory_retriever=context_builder.memory_retriever,
+        tool_catalog=registry.manifest(),
+        timezone=settings.proactive_timezone,
+    )
     agent.current_cognition_maintainer = CurrentCognitionMaintainer(
         current_cognition_service, provider, timezone=settings.proactive_timezone,
     )
@@ -526,6 +537,9 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         DataStoreSpec("reflection", Path(settings.reflection_db_path)),
         DataStoreSpec("agenda", Path(settings.agenda_db_path)),
         DataStoreSpec("current_cognition", Path(settings.current_cognition_db_path)),
+        DataStoreSpec("decision_log", Path(".zhaoxi/decisions/decision_log.jsonl"), kind="file"),
+        DataStoreSpec("decision_overrides", Path(".zhaoxi/decisions/override_log.jsonl"), kind="file"),
+        DataStoreSpec("decision_rule_candidates", Path(".zhaoxi/decisions/rule_candidates.jsonl"), kind="file"),
         DataStoreSpec("internal_activity", Path(settings.internal_activity_db_path)),
         DataStoreSpec("short_term_memory", Path(settings.short_term_memory_db_path)),  # Legacy backup only.
         DataStoreSpec("working_notes", Path(settings.working_notes_db_path)),  # Historical backups remain restorable.

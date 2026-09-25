@@ -86,6 +86,7 @@ def tool_metadata(tool, source: str, override: dict, exposed: set[str]) -> dict:
     )
     raw_summary = getattr(tool, "summary", tool.description.split("。", 1)[0])
     capability_reader = getattr(tool, "capability_flags", None)
+    safe_read = type(tool).permission_for is Tool.permission_for and tool.permission == PermissionLevel.READ and tool.side_effects == frozenset({SideEffect.NONE})
     return {
         "name": tool.name, "group": group, "source": source,
         "display_name": TOOL_LABELS.get(tool.name, tool.name),
@@ -98,7 +99,11 @@ def tool_metadata(tool, source: str, override: dict, exposed: set[str]) -> dict:
         "write_capable": write_capable,
         "capabilities": capability_reader() if callable(capability_reader) else {},
         "exposed": tool.name in exposed and enabled and available,
-        "read_only": type(tool).permission_for is Tool.permission_for and tool.permission == PermissionLevel.READ and tool.side_effects == frozenset({SideEffect.NONE}),
+        "read_only": safe_read,
+        "risk_level": "low" if safe_read else "high",
+        "reversible": safe_read,
+        "auto_execute": safe_read,
+        "requires_confirmation": not safe_read,
         "destructive": tool.permission in {PermissionLevel.DELETE, PermissionLevel.DANGEROUS} or SideEffect.DATA_DELETION in tool.side_effects,
         "aliases": list(getattr(tool, "aliases", ())), "intents": list(getattr(tool, "intents", ())),
     }

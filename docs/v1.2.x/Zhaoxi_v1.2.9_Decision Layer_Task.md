@@ -118,7 +118,6 @@ core/
    ├─ decision_classifier.py
    ├─ decision_policy.py
    ├─ decision_guard.py
-   ├─ decision_renderer.py
    ├─ decision_recorder.py
    └─ models.py
 ```
@@ -920,16 +919,17 @@ Debug 页面可以提示：
 
 ---
 
-# 19. Decision Renderer
+# 19. 主回复链表达（2026-09-25 修订）
 
 决策逻辑与人格表达必须分离。
 
 ```text
 Decision Layer
-→ 产生结构化结果
+→ 只产生结构化 DecisionResult（L0/L1 含明确方向性 verdict）
 
-DecisionRenderer
-→ 按朝汐人格转换成自然语言
+朝汐主回复链
+→ 读取 Persona，选择表达语气和已确认理由
+→ 运行时锁定 verdict 后输出自然语言
 ```
 
 不要让分类模型同时负责：
@@ -946,18 +946,18 @@ DecisionRenderer
 
 否则极容易重新出现 Prompt 污染。
 
-Renderer 只拿：
+主回复链只拿：
 
 ```json
 {
   "level": "L1",
-  "decision": "不去",
+  "verdict": "不去",
   "reasons": [...],
   "exception": null
 }
 ```
 
-再生成朝汐真正说出口的话。
+Decision Layer 不直接产生用户可见回复。主模型不能推翻 verdict，也不能用疑问句把 L0/L1 的结论退回给用户。若模型没有给出方向性 verdict，先重判；仍无法确认则升级到 L2。
 
 ---
 
@@ -1328,7 +1328,7 @@ RuleCandidate
 
 ### Phase 6：人格输出
 
-最后再接 `DecisionRenderer`。
+最后接入朝汐的主回复链，由 Persona 选择表达方式，运行时固定决策方向。
 
 不要一开始就调角色语气。
 

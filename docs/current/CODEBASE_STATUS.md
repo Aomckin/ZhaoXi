@@ -4,9 +4,13 @@
 
 > **默认分支：`main`，运行时版本 `1.2.7`**。以下旧版本章节是历史切片，其“当前”指当时状态。
 
+## v1.2.9 已实现增量（尚未发布）
+
+`decision` 包提供按需触发的结构化判定、少量规则检索、Agenda / Current Cognition / 长期 Memory 上下文、L0/L1/L2 Guard、JSONL 决策与人工覆盖记录。L0/L1 verdict 不能是疑问句，无法形成方向时升为 L2。`core/decision_reply.py` 在主回复链读取 Persona，受限地选择语气及已确认理由，运行时固定 verdict。Debug 可查看最近判定与独立重算。首批规则未授权自动工具执行，正式规则不会自动改写。具体实现及验收边界见 [v1.2.9 开发记录](../v1.2.x/Zhaoxi_v1.2.9_Decision_Layer_交付记录.md)。
+
 ## v1.2.8 已实现增量（尚未发布）
 
-`internal_activity` 提供持久化调度状态、候选选择、每轮 LLM/本地预算与失败退避；CLI 和 Web 生命周期驱动它，维护抽屉提供状态读取及指定活动手动触发。Current Cognition 可在达到对话阈值后由后台整理，长期 Memory 和 Agenda 的维护复用各自现有服务，主动检查纳入统一调度。前端近期状态使用 Current Cognition 名称，定时刷新；不同 presence 状态切换头像，Debug 可强制活跃、半活跃或离开。实现、配置和验收边界见 [v1.2.8 交付记录](../v1.2.x/Zhaoxi_v1.2.8_Internal_Activity_交付记录.md)。v1.2.9 Decision Layer 仅有任务书，尚未实施。
+`internal_activity` 提供持久化调度状态、候选选择、每轮 LLM/本地预算与失败退避；CLI 和 Web 生命周期驱动它，维护抽屉提供状态读取及指定活动手动触发。Current Cognition 可在达到对话阈值后由后台整理，长期 Memory 和 Agenda 的维护复用各自现有服务，主动检查纳入统一调度。前端近期状态使用 Current Cognition 名称，定时刷新；不同 presence 状态切换头像，Debug 可强制活跃、半活跃或离开。实现、配置和验收边界见 [v1.2.8 交付记录](../v1.2.x/Zhaoxi_v1.2.8_Internal_Activity_交付记录.md)。
 
 ## v1.2.7 当前增量
 

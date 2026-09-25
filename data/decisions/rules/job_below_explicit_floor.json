@@ -1,0 +1,14 @@
+{
+  "id": "job_below_explicit_floor",
+  "domain": "job_search",
+  "tags": ["岗位", "薪资", "底线"],
+  "keywords": ["低于", "硬底线", "岗位"],
+  "trigger": "用户明确确认某岗位低于已设定的硬性底线，且没有提出例外",
+  "required_pattern": "(?<!不)低于.{0,20}底线|底线.{0,20}(?<!不)低于",
+  "default": "不继续投递该岗位",
+  "level_hint": "L0",
+  "reasons": ["已明确不满足硬条件"],
+  "exceptions": ["用户明确提出成长、资源或战略价值方面的例外"],
+  "auto_execute": false,
+  "source": {"document": "决策协议", "version": "1.0", "section": "2/L0"}
+}
