@@ -16,6 +16,7 @@ class DecisionWorker:
         self.lock = asyncio.Lock()
         self.delivery_lock = asyncio.Lock()
         self.last_decision = None
+        self.activity = None
 
     async def tick(self, now=None):
         async with self.lock:
@@ -284,7 +285,8 @@ class DecisionWorker:
             await self.heartbeat.updated.wait()
             self.heartbeat.updated.clear()
             try:
-                for delivery in await self.tick():
+                deliveries = await self.activity.run_tick() if self.activity is not None else await self.tick()
+                for delivery in deliveries:
                     await publish({'type': 'proactive', 'delivery': delivery.model_dump(mode='json', exclude={'relevant_payload'})})
             except Exception:
                 self.heartbeat.metrics.increment('proactive.worker_errors')

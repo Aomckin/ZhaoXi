@@ -141,7 +141,7 @@ def test_budget_debug_exposes_effective_policy_and_last_request():
     assert response.json()["last_request"] == {"used": 900, "extension_count": 1}
 
 
-def test_recent_context_board_lists_agenda_and_public_stm_without_debug_fields():
+def test_recent_context_board_lists_agenda_and_current_cognition_without_debug_fields():
     agent = FakeAgent()
     agenda_item = SimpleNamespace(model_dump=lambda **_: {"title": "下午开会", "status": "planned"})
     agent.agenda = SimpleNamespace(list=lambda filter: [agenda_item] if filter == "all_recent" else [])
@@ -151,13 +151,13 @@ def test_recent_context_board_lists_agenda_and_public_stm_without_debug_fields()
     assert response.status_code == 200
     assert response.json() == {
         "agenda": [{"title": "下午开会", "status": "planned"}],
-        "short_term_memory": {"overview": "近期忙于秋招", "sections": {"active_context": [], "active_thread": ["仍在参与秋招"],
+        "current_cognition": {"overview": "近期忙于秋招", "sections": {"active_context": [], "active_thread": ["仍在参与秋招"],
                                 "recent_topic": [], "recent_change": [], "unresolved": []}, "updated_at": None},
         "errors": {},
     }
 
 
-def test_recent_context_board_keeps_stm_available_if_agenda_fails():
+def test_recent_context_board_keeps_cognition_available_if_agenda_fails():
     agent = FakeAgent()
     agent.agenda = SimpleNamespace(list=lambda _: (_ for _ in ()).throw(OSError("database offline")))
     agent.current_cognition = SimpleNamespace(state=lambda: SimpleNamespace(narrative="近期忙于秋招", ongoing_threads=[], attention=[], updated_at=None))
@@ -165,11 +165,11 @@ def test_recent_context_board_keeps_stm_available_if_agenda_fails():
         response = client.get("/api/recent-context")
     assert response.status_code == 200
     assert response.json()["agenda"] == []
-    assert response.json()["short_term_memory"]["overview"] == "近期忙于秋招"
+    assert response.json()["current_cognition"]["overview"] == "近期忙于秋招"
     assert response.json()["errors"] == {"agenda": "暂时无法读取。"}
 
 
-def test_recent_context_board_keeps_agenda_available_if_stm_fails():
+def test_recent_context_board_keeps_agenda_available_if_cognition_fails():
     agent = FakeAgent()
     agenda_item = SimpleNamespace(model_dump=lambda **_: {"id": "meeting", "title": "下午开会", "status": "planned"})
     agent.agenda = SimpleNamespace(list=lambda _: [agenda_item])
@@ -177,8 +177,8 @@ def test_recent_context_board_keeps_agenda_available_if_stm_fails():
     with TestClient(create_app(agent=agent)) as client:
         response = client.get("/api/recent-context")
     assert response.json()["agenda"] == [{"id": "meeting", "title": "下午开会", "status": "planned"}]
-    assert response.json()["short_term_memory"] is None
-    assert response.json()["errors"] == {"short_term_memory": "暂时无法读取。"}
+    assert response.json()["current_cognition"] is None
+    assert response.json()["errors"] == {"current_cognition": "暂时无法读取。"}
 
 
 class FailingPersistedAgent(FakeAgent):
@@ -687,7 +687,7 @@ def test_voice_api_is_disabled_without_runtime():
 
 def test_theme_assets_are_served_and_data_directory_is_not_exposed():
     with TestClient(create_app(agent=FakeAgent())) as client:
-        for asset, media in [('themes.css', 'text/css'), ('scene.css', 'text/css'), ('autumn-wheat.webp', 'image/webp'), ('avatar-default.webp', 'image/webp'), ('deskboard.js', 'javascript')]:
+        for asset, media in [('themes.css', 'text/css'), ('scene.css', 'text/css'), ('autumn-wheat.webp', 'image/webp'), ('avatar-default.webp', 'image/webp'), ('avatar-daydream.png', 'image/png'), ('avatar-nap.png', 'image/png'), ('deskboard.js', 'javascript')]:
             response = client.get('/static/' + asset)
             assert response.status_code == 200
             assert media in response.headers['content-type']

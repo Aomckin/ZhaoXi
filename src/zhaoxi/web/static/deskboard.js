@@ -96,9 +96,19 @@ document.querySelector('#endpoint').textContent = location.host;
 // One character configuration, independent of theme and with a deterministic fallback.
 const avatar = document.querySelector('#characterAvatar');
 const avatarFallback = document.querySelector('#avatarFallback');
+let defaultAvatar = '';
 avatar.onload = () => { avatar.hidden = false; avatarFallback.hidden = true; };
-avatar.onerror = () => { avatar.hidden = true; avatarFallback.hidden = false; };
+avatar.onerror = () => {
+  if (defaultAvatar && avatar.getAttribute('src') !== defaultAvatar) { avatar.src = defaultAvatar; return; }
+  avatar.hidden = true; avatarFallback.hidden = false;
+};
 try {
   const config = JSON.parse(document.querySelector('#characterConfig').textContent);
-  if (typeof config.avatar === 'string' && config.avatar) avatar.src = config.avatar;
+  defaultAvatar = typeof config.avatar === 'string' ? config.avatar : '';
+  const avatars = config.avatars || {};
+  window.setCharacterAvatarState = state => {
+    const source = typeof avatars[state] === 'string' ? avatars[state] : defaultAvatar;
+    if (source && avatar.getAttribute('src') !== source) avatar.src = source;
+  };
+  window.setCharacterAvatarState();
 } catch { /* Keep the 汐 fallback for absent or malformed character configuration. */ }

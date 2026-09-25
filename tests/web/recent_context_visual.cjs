@@ -23,7 +23,7 @@ const assets=path.resolve(__dirname,'../../src/zhaoxi/web/static');
           {id:'a',type:'event',title:'AI+创新产业大会（观众）',start_at:'2026-09-24T13:00:00+08:00',status:'planned',note:'提前确认路线'},
           {id:'a-window',type:'window',title:'作为观众参加 AI+创新产业大会',start_at:'2026-09-24T13:00:00+08:00',end_at:'2026-09-24T18:00:00+08:00',status:'planned'},
           {id:'b',type:'deadline',title:'网申截止',due_at:'2026-09-26T23:59:00+08:00',status:'planned'}],
-          short_term_memory:{overview:'近期仍在参与秋招，同时开发 Zhaoxi。',sections:{active_context:['秋招'],active_thread:['Zhaoxi v1.2.6']},updated_at:'2026-09-24T12:00:00+08:00'},errors:{}}});
+          current_cognition:{overview:'近期仍在参与秋招，同时开发 Zhaoxi。',sections:{active_context:['秋招'],active_thread:['Zhaoxi v1.2.6']},updated_at:'2026-09-24T12:00:00+08:00'},errors:{}}});
         const fixture={'/api/settings/interface':{input_merge_seconds:15,reply_interval_seconds:5},'/api/settings/thinking':{mode:'off'},'/api/voice/status':{enabled:false},'/api/session':{messages:[],timezone:'Asia/Shanghai'},'/api/proactive':{deliveries:[]},'/api/diagnostics':{presence:{},startup:{status:'ready'}}};
         return route.fulfill({json:fixture[url.pathname]||{}});
       });

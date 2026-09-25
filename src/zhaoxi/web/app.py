@@ -125,6 +125,15 @@ class RecentContextControlRequest(BaseModel):
     agenda_enabled: StrictBool | None = None
 
 
+class InternalActivityDebugRequest(BaseModel):
+    activity: Literal["tick", "current_cognition_consolidation", "memory_maintenance",
+                      "agenda_maintenance", "proactive_check"] = "tick"
+
+
+class PresenceDebugRequest(BaseModel):
+    state: Literal["ACTIVE", "SEMI_ACTIVE", "AWAY"] | None = Field(...)
+
+
 class EmojiMetadataRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     description: str = Field(min_length=2, max_length=2000)
@@ -301,6 +310,16 @@ def create_app(
             except Exception as exc:
                 logger.warning("proactive web loop failed type=%s", type(exc).__name__)
 
+    async def internal_activity_loop() -> None:
+        while True:
+            activity = getattr(core, "internal_activity", None)
+            if activity is not None:
+                try:
+                    await activity.run_tick()
+                except Exception as exc:
+                    logger.warning("internal activity loop failed type=%s", type(exc).__name__)
+            await asyncio.sleep(configured.proactive_heartbeat_seconds)
+
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         supervisor.start()
@@ -313,6 +332,7 @@ def create_app(
             supervisor.create(worker.run(events.publish), name="zhaoxi-tidal-decisions")
         else:
             supervisor.create(proactive_loop(), name="zhaoxi-proactive-web")
+            supervisor.create(internal_activity_loop(), name="zhaoxi-internal-activity")
         try:
             yield
         finally:
@@ -564,17 +584,45 @@ def create_app(
         if builder is None:
             raise HTTPException(status_code=409, detail="Context Builder 尚未就绪。")
         agenda = getattr(core, "agenda", None)
-        stm = getattr(core, "current_cognition", None)
+        cognition = getattr(core, "current_cognition", None)
         return {
             "agenda_enabled": bool(getattr(builder, "agenda_context_enabled", False)),
             "final_snapshots": getattr(builder, "last_recent_context", {}),
             "agenda": agenda.diagnostics() if agenda is not None else None,
-            "current_cognition": stm.diagnostics() if stm is not None else None,
+            "current_cognition": cognition.diagnostics() if cognition is not None else None,
         }
 
     @app.get("/api/debug/recent-context")
     async def debug_recent_context():
         return recent_context_snapshot()
+
+    @app.get("/api/debug/internal-activity")
+    async def debug_internal_activity():
+        activity = getattr(core, "internal_activity", None)
+        if activity is None:
+            raise HTTPException(status_code=409, detail="Internal Activity 尚未就绪。")
+        return activity.diagnostics()
+
+    @app.post("/api/debug/presence")
+    async def debug_presence(body: PresenceDebugRequest):
+        state = getattr(core, "proactive_state", None)
+        if state is None:
+            raise HTTPException(status_code=409, detail="Presence 尚未就绪。")
+        from zhaoxi.proactive.interaction import InteractionState
+
+        now = datetime.now(UTC)
+        state.interaction.force_debug_state(InteractionState(body.state) if body.state else None, now)
+        return state.interaction.diagnostics(now)
+
+    @app.post("/api/debug/internal-activity")
+    async def run_debug_internal_activity(body: InternalActivityDebugRequest):
+        activity = getattr(core, "internal_activity", None)
+        if activity is None:
+            raise HTTPException(status_code=409, detail="Internal Activity 尚未就绪。")
+        deliveries = await activity.run_tick(force=None if body.activity == "tick" else body.activity)
+        for delivery in deliveries:
+            await events.publish({"type": "proactive", "delivery": delivery.model_dump(mode="json", exclude={"relevant_payload"})})
+        return activity.diagnostics()
 
     @app.get("/api/debug/budget-context")
     async def debug_budget_context():
@@ -594,7 +642,7 @@ def create_app(
     @app.get("/api/recent-context")
     async def recent_context_board():
         """Public desk view; each context source can fail independently."""
-        result = {"agenda": [], "short_term_memory": None, "errors": {}}
+        result = {"agenda": [], "current_cognition": None, "errors": {}}
         agenda = getattr(core, "agenda", None)
         if agenda is not None:
             try:
@@ -603,21 +651,21 @@ def create_app(
             except Exception as exc:
                 logger.warning("recent context board read failed module=agenda type=%s", type(exc).__name__)
                 result["errors"]["agenda"] = "暂时无法读取。"
-        stm = getattr(core, "current_cognition", None)
-        if stm is not None:
+        cognition = getattr(core, "current_cognition", None)
+        if cognition is not None:
             try:
-                state = stm.state()
+                state = cognition.state()
                 sections = {category: [] for category in ("active_context", "active_thread", "recent_topic", "recent_change", "unresolved")}
                 sections["active_thread"] = state.ongoing_threads
                 sections["unresolved"] = state.attention
-                result["short_term_memory"] = {
+                result["current_cognition"] = {
                     "overview": state.narrative,
                     "sections": sections,
                     "updated_at": state.updated_at.isoformat() if state.updated_at else None,
                 }
             except Exception as exc:
-                logger.warning("recent context board read failed module=short_term_memory type=%s", type(exc).__name__)
-                result["errors"]["short_term_memory"] = "暂时无法读取。"
+                logger.warning("recent context board read failed module=current_cognition type=%s", type(exc).__name__)
+                result["errors"]["current_cognition"] = "暂时无法读取。"
         return result
 
     @app.post("/api/debug/recent-context")

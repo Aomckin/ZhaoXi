@@ -165,7 +165,6 @@ class AutoMemory:
             results = await self.service.remember_candidates(prepared)
             decision.applied_count = sum(item.created for item in results)
             decision.action = MemoryAction.CREATE if decision.applied_count else MemoryAction.IGNORE
-            await self.auto_consolidator.maybe_run()
             return decision
         if decision.action in {
             MemoryAction.ARCHIVE,
@@ -182,7 +181,6 @@ class AutoMemory:
             source_requeryable=source_requeryable,
             evidence_reference=evidence_reference,
         )
-        await self.auto_consolidator.maybe_run()
         return decision
 
     async def _request_decision(self, messages: list[Message]) -> MemoryDecision | None:

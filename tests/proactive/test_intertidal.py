@@ -35,6 +35,24 @@ def test_interaction_decay_and_refresh():
     assert [e[0] for e in state.pending_events] == ['conversation.started', 'conversation.cooled']
 
 
+def test_debug_presence_override_survives_sampling_until_chat_or_release():
+    state = Interaction()
+    state.interact(NOW)
+    state.force_debug_state(Mode.ACTIVE, NOW)
+    state.observe(PresenceSnapshot(last_input_seconds=1800), NOW + timedelta(seconds=30))
+    assert state.refresh(NOW + timedelta(seconds=30)) == Mode.ACTIVE
+    state.force_debug_state(Mode.SEMI_ACTIVE, NOW + timedelta(minutes=1))
+    state.observe(PresenceSnapshot(), NOW + timedelta(minutes=1))
+    assert state.refresh(NOW + timedelta(minutes=1)) == Mode.SEMI_ACTIVE
+    state.force_debug_state(Mode.AWAY, NOW + timedelta(minutes=2))
+    state.observe(PresenceSnapshot(), NOW + timedelta(minutes=3))
+    assert state.state == Mode.AWAY
+    state.force_debug_state(None, NOW + timedelta(minutes=3))
+    assert state.debug_forced_state is None
+    state.interact(NOW + timedelta(minutes=4))
+    assert state.state == Mode.ACTIVE
+
+
 def test_window_activation_does_not_override_locked_desktop():
     state = Interaction()
     state.observe(PresenceSnapshot(locked=True), NOW)

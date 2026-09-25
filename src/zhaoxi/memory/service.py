@@ -312,6 +312,52 @@ class MemoryService:
             if self.lifecycle_policy.maintain(record, now):
                 await self.repository.save(record)
                 changed.append(record)
+        # Only exact, timeless semantic duplicates are safe to retire without a model.
+        groups: dict[tuple[MemoryKind, str], list[MemoryRecord]] = defaultdict(list)
+        for record in records:
+            if (record.kind in {MemoryKind.SEMANTIC, MemoryKind.RELATIONSHIP}
+                    and record.status not in {MemoryStatus.FORGOTTEN, MemoryStatus.SUPERSEDED}
+                    and record.valid_from is None and record.valid_until is None):
+                groups[(record.kind, normalize_memory_text(record.content))].append(record)
+        for duplicates in groups.values():
+            if len(duplicates) < 2:
+                continue
+            survivor = max(duplicates, key=lambda item: (item.pinned, len(item.evidence_memory_ids),
+                                                        item.confidence, -item.created_at.timestamp()))
+            for duplicate in duplicates:
+                if duplicate.id == survivor.id or duplicate.pinned:
+                    continue
+                duplicate.status = MemoryStatus.SUPERSEDED
+                duplicate.updated_at = now
+                await self.repository.save(duplicate)
+                await self.repository.save_edge(MemoryEdge(
+                    source_id=survivor.id, target_id=duplicate.id,
+                    relation=MemoryRelation.SUPERSEDES, weight=1.0, confidence=1.0,
+                    evidence_memory_ids=[survivor.id, duplicate.id],
+                ))
+                changed.append(duplicate)
+        # Repair explicit conflict links and missing organization from older records.
+        for record in records:
+            if record.status in {MemoryStatus.FORGOTTEN, MemoryStatus.SUPERSEDED}:
+                continue
+            if record.supersedes_id:
+                previous = await self.repository.get(record.supersedes_id)
+                if previous and previous.status not in {MemoryStatus.FORGOTTEN, MemoryStatus.SUPERSEDED}:
+                    previous.status = MemoryStatus.SUPERSEDED
+                    previous.updated_at = now
+                    await self.repository.save(previous)
+                    await self.repository.save_edge(MemoryEdge(
+                        source_id=record.id, target_id=previous.id,
+                        relation=MemoryRelation.SUPERSEDES, weight=1.0,
+                        confidence=record.confidence, evidence_memory_ids=[record.id, previous.id],
+                    ))
+                    changed.append(previous)
+            if (record.cluster_id is None and record.status in {MemoryStatus.ACTIVE, MemoryStatus.COLD}
+                    and record.kind in {MemoryKind.SEMANTIC, MemoryKind.RELATIONSHIP}):
+                await self._ensure_embedding(record)
+                await self._organize(record)
+                if record.cluster_id is not None:
+                    changed.append(record)
         return changed
 
     async def consolidate(self, memory_ids: list[str], content: str, *, tags: list[str] | None = None) -> MemoryRecord:

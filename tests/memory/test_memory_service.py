@@ -37,6 +37,17 @@ async def test_exact_duplicate_does_not_create_another_record(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_maintenance_retires_existing_exact_semantic_duplicate(tmp_path):
+    service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"))
+    first = await service.remember(MemoryCreate(content="项目名是朝汐"))
+    duplicate = first.record.model_copy(update={"id": "legacy-duplicate"})
+    await service.repository.create(duplicate)
+    await service.maintain()
+    assert (await service.require(duplicate.id)).status == MemoryStatus.SUPERSEDED
+    assert (await service.require(first.record.id)).status != MemoryStatus.SUPERSEDED
+
+
+@pytest.mark.asyncio
 async def test_chinese_related_query_is_retrieved(tmp_path):
     service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"))
     await service.remember(MemoryCreate(content="我喝咖啡不加糖"))

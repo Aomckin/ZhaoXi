@@ -76,6 +76,7 @@ from zhaoxi.workflow.registry import WorkflowRegistry
 from zhaoxi.workflow.runtime import WorkflowRuntime
 from zhaoxi.workflow.sqlite import SQLiteWorkflowStore
 from zhaoxi.current_cognition import CurrentCognitionStore, CurrentCognitionService, CurrentCognitionMaintainer
+from zhaoxi.internal_activity import InternalActivityRuntime
 from zhaoxi.session.base import Session
 from zhaoxi.session.sqlite import SQLiteSessionStore
 from zhaoxi.reliability import (
@@ -525,6 +526,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         DataStoreSpec("reflection", Path(settings.reflection_db_path)),
         DataStoreSpec("agenda", Path(settings.agenda_db_path)),
         DataStoreSpec("current_cognition", Path(settings.current_cognition_db_path)),
+        DataStoreSpec("internal_activity", Path(settings.internal_activity_db_path)),
         DataStoreSpec("short_term_memory", Path(settings.short_term_memory_db_path)),  # Legacy backup only.
         DataStoreSpec("working_notes", Path(settings.working_notes_db_path)),  # Historical backups remain restorable.
         DataStoreSpec("permission_audit", Path(settings.permission_audit_path), kind="file"),
@@ -577,6 +579,10 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
                 ),
             ) if settings.auto_memory_enabled else None),
         )
+    agent.internal_activity = InternalActivityRuntime(agent, settings, settings.internal_activity_db_path)
+    if getattr(agent, "proactive_worker", None) is not None:
+        agent.internal_activity.proactive_check = agent.proactive_worker.tick
+        agent.proactive_worker.activity = agent.internal_activity
     return agent
 
 

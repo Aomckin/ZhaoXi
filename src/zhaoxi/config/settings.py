@@ -84,6 +84,20 @@ class Settings(BaseSettings):
     agenda_max_context_items: int = Field(default=8, ge=1, le=30)
     short_term_memory_db_path: str = ".zhaoxi/short-term-memory.db"
     current_cognition_db_path: str = ".zhaoxi/current-cognition.db"
+    internal_activity_db_path: str = ".zhaoxi/internal-activity.db"
+    internal_activity_enabled: bool = True
+    internal_activity_max_llm_per_tick: int = Field(default=1, ge=0, le=4)
+    internal_activity_max_local_per_tick: int = Field(default=3, ge=0, le=10)
+    current_cognition_consolidation_enabled: bool = True
+    current_cognition_consolidation_min_turns: int = Field(default=10, ge=1, le=100)
+    current_cognition_bootstrap_min_turns: int = Field(default=8, ge=1, le=100)
+    current_cognition_consolidation_min_interval_minutes: int = Field(default=30, ge=1, le=10080)
+    current_cognition_consolidation_max_hours: int = Field(default=24, ge=1, le=720)
+    memory_maintenance_enabled: bool = True
+    memory_maintenance_min_interval_minutes: int = Field(default=60, ge=1, le=10080)
+    agenda_maintenance_enabled: bool = True
+    agenda_maintenance_min_interval_minutes: int = Field(default=15, ge=1, le=10080)
+    proactive_activity_enabled: bool = True
     working_notes_db_path: str = ".zhaoxi/working-notes.db"  # Legacy backup only; never read as context.
     archive_enabled: bool = True
     archive_directory: str = "data/archive"

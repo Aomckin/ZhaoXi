@@ -1,4 +1,8 @@
-# v1.2.7 当前状态与使用说明
+# 当前状态与使用说明
+
+2026-09-25：代码已接入 v1.2.8 Internal Activity。后台按候选信号、间隔、优先级与每轮预算调度 Current Cognition 整理、长期 Memory 维护、Agenda 时间状态维护和主动检查；状态与最近结果写入 `.zhaoxi/internal-activity.db`，维护抽屉可查看和手动触发。小桌边将近期状态标为「Current Cognition」，自动刷新；头像按活跃、半活跃、闲置/离开状态切换。Debug 可临时强制活跃、半活跃或离开，再次点击恢复自动判断。运行时包版本仍为 `1.2.7`，v1.2.9 Decision Layer 尚未实施。验证及剩余人工验收见 [v1.2.8 交付记录](../v1.2.x/Zhaoxi_v1.2.8_Internal_Activity_交付记录.md)。
+
+以下是按时间保留的历史状态；涉及 STM 的描述仅对应当时版本。
 
 2026-09-24 v1.2.7.1：请求预算增加受控的两次 Planner 扩容、Hard Limit 与收尾保留额度；逐轮记录实际 Provider payload 的 Context 构成估算，并在维护抽屉新增 Budget / Context Debug。旧成功 Tool Result 仅在模型上下文副本中压缩，最终回复不再携带 Tool Schema。合成数据实机验收已验证一次扩容、多 Tool 收尾及 STM/Agenda/长期 Memory 连续性；中文 Planner 测试仍出现重复工具调用和过短回复。详见 [v1.2.7.1 交付记录](../v1.2.x/Zhaoxi_v1.2.7.1_Budget_Context_Tuning_Report.md)。
 

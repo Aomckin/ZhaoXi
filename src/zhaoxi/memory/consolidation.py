@@ -80,16 +80,18 @@ class AutoConsolidator:
         if not due:
             return False
         await self.service._increment_runtime("consolidation_checks")
-        await self.service.repository.set_runtime("last_consolidation_check_at", now.isoformat())
-        await self.service.repository.set_runtime("episodes_since_consolidation_check", "0")
         candidates = await self.prefilter()
         await self.service._increment_runtime("clusters_considered", len(candidates))
         if not candidates:
+            await self.service.repository.set_runtime("last_consolidation_check_at", now.isoformat())
+            await self.service.repository.set_runtime("episodes_since_consolidation_check", "0")
             return False
         await self.service._increment_runtime("consolidation_llm_calls")
         decisions = await self._ask(candidates)
         if decisions is None:
             return False
+        await self.service.repository.set_runtime("last_consolidation_check_at", now.isoformat())
+        await self.service.repository.set_runtime("episodes_since_consolidation_check", "0")
         by_cluster = {item.cluster_id: item for item in candidates}
         changed = False
         for decision in decisions.decisions:

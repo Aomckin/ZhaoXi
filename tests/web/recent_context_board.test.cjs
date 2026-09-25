@@ -12,7 +12,7 @@ function flatten(node){return [node,...node.children.flatMap(flatten)]}
 function setup(response){
   const agenda=element(),memory=element();
   const context=vm.createContext({
-    $:selector=>({'#agendaTimeline':agenda,'#shortTermMemory':memory})[selector],
+    $:selector=>({'#agendaTimeline':agenda,'#currentCognition':memory})[selector],
     document:{createElement:element},window:{},request:async()=>response,
     Intl,Date,formatTime:value=>value.slice(0,16),displayTimezone:'Asia/Shanghai',
   });
@@ -53,25 +53,25 @@ test('same-time event and matching window share one visual node without losing e
   assert.ok(nodes.some(n=>n.className==='agenda-title'&&n.textContent==='不同的活动'));
 });
 
-test('short-term memory uses one paper, hides absent sections and uses text-only content',async()=>{
-  const s=setup({agenda:[],short_term_memory:{overview:'最近持续开发 Zhaoxi',sections:{active_context:['秋招'],recent_change:['<script>alert(1)</script>']},updated_at:'2026-09-24T09:00:00+08:00'},errors:{}});
+test('current cognition uses one paper, hides absent sections and uses text-only content',async()=>{
+  const s=setup({agenda:[],current_cognition:{overview:'最近持续开发 Zhaoxi',sections:{active_context:['秋招'],recent_change:['<script>alert(1)</script>']},updated_at:'2026-09-24T09:00:00+08:00'},errors:{}});
   await s.context.setupRecentContextBoard();
   assert.equal(s.memory.children.length,1);
   const nodes=flatten(s.memory);
   assert.ok(nodes.some(n=>n.className==='memory-overview'&&n.textContent==='最近持续开发 Zhaoxi'));
   assert.ok(nodes.some(n=>n.tag==='li'&&n.textContent==='<script>alert(1)</script>'));
   assert.equal(nodes.filter(n=>n.className==='memory-section').length,2);
-  assert.match(html,/Agenda \/ Short-Term Memory Debug/);
+  assert.match(html,/Agenda \/ Current Cognition Debug/);
   assert.doesNotMatch(html,/workingNoteCards|Working Notes Context/);
 });
 
 test('independent failures and first-run empty state',async()=>{
-  const s=setup({agenda:[],short_term_memory:{overview:'仍在参与秋招',sections:{}},errors:{agenda:'暂时无法读取。'}});
+  const s=setup({agenda:[],current_cognition:{overview:'仍在参与秋招',sections:{}},errors:{agenda:'暂时无法读取。'}});
   await s.context.setupRecentContextBoard();
   assert.match(flatten(s.agenda)[1].textContent,/无法读取/);
   assert.equal(flatten(s.memory).find(n=>n.className==='memory-overview').textContent,'仍在参与秋招');
-  s.context.renderShortTermMemory(null,null);
+  s.context.renderCurrentCognition(null,null);
   assert.match(flatten(s.memory).find(n=>n.className==='memory-overview').textContent,/正在形成/);
-  s.context.renderShortTermMemory(null,true);
+  s.context.renderCurrentCognition(null,true);
   assert.match(flatten(s.memory)[2].textContent,/无法读取/);
 });

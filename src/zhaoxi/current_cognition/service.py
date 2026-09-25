@@ -18,6 +18,16 @@ from .store import CurrentCognitionStore
 
 logger = logging.getLogger("CURRENT_COGNITION")
 
+_TOPIC_ALIASES = {
+    "动漫": "动漫", "动画": "动漫", "二次元": "动漫", "番剧": "动漫",
+    "朝汐": "Zhaoxi开发", "zhaoxi": "Zhaoxi开发", "朝汐开发": "Zhaoxi开发",
+}
+
+
+def normalize_topic(key: str) -> str:
+    key = key.strip().casefold()
+    return _TOPIC_ALIASES.get(key, key)
+
 
 class NarrativeEdit(BaseModel):
     from_text: str = Field(alias="from", max_length=700)
@@ -97,20 +107,21 @@ class CurrentCognitionService:
 
     def apply(self, patch: CurrentCognitionPatch, *, source_by_id: dict[str, str],
               last_message_id: str, evidence_by_id: dict[str, str] | None = None,
-              now: datetime | None = None) -> CurrentCognitionState:
+              now: datetime | None = None, allow_empty_cursor: bool = False) -> CurrentCognitionState:
         now = now or datetime.now(self.timezone)
         state = self.state()
         evidence_by_id = evidence_by_id or {}
         # Observation counters are only a recent trend signal, not durable memory.
-        observations = {item.key: item for item in state.observations
+        observations = {normalize_topic(item.key): item for item in state.observations
                         if now - item.last_seen_at <= timedelta(days=7)}
         for proposal in patch.observations:
             if source_by_id.get(proposal.source_message_id) != "user":
                 continue
-            item = observations.get(proposal.key)
+            key = normalize_topic(proposal.key)
+            item = observations.get(key)
             if item is None:
-                item = TopicObservation(key=proposal.key, last_seen_at=now)
-                observations[proposal.key] = item
+                item = TopicObservation(key=key, last_seen_at=now)
+                observations[key] = item
             if proposal.source_message_id not in item.message_ids:
                 item.count += 1
                 item.message_ids = [*item.message_ids, proposal.source_message_id][-8:]
@@ -180,7 +191,9 @@ class CurrentCognitionService:
                   "reason": patch.reason or patch.reason_code, "rejection": rejection, "at": now.isoformat(),
                   "evidence_message_ids": patch.evidence_message_ids, "before_after_diff": diff,
                   "patch": patch.model_dump(mode="json", by_alias=True)}
-        state.last_processed_message_id = last_message_id
+        # A rejected patch and an empty bootstrap are still pending work.
+        if not rejection and (state.narrative or allow_empty_cursor):
+            state.last_processed_message_id = last_message_id
         state.last_maintenance = record
         state.recent_decisions = [*state.recent_decisions, {k: v for k, v in record.items() if k != "patch"}][-10:]
         self.store.save(state)
@@ -190,7 +203,8 @@ class CurrentCognitionService:
 
     def record_failure(self, exc: Exception, *, details: dict | None = None) -> None:
         state = self.state()
-        record = {"decision": "FAILED", "error_type": type(exc).__name__, **(details or {})}
+        record = {"decision": "FAILED", "error_type": type(exc).__name__,
+                  "at": datetime.now(self.timezone).isoformat(), **(details or {})}
         state.last_maintenance = record
         self.last_maintenance = record
         self.store.save(state)

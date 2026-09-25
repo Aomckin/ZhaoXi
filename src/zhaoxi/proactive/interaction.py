@@ -54,6 +54,7 @@ class Interaction:
         self.last_continuation_at = None
         self.signals = SignalAggregator()
         self.interruptibility = Interruptibility.NORMAL
+        self.debug_forced_state: InteractionState | None = None
 
     def _set(self, state, now):
         if state == self.state:
@@ -77,6 +78,7 @@ class Interaction:
             self.pending_events.append(("conversation.cooled", now))
 
     def interact(self, now):
+        self.debug_forced_state = None
         self.refresh(now)
         self.last_user_interaction_at = now
         self.active_until = now + timedelta(minutes=self.active_minutes)
@@ -84,6 +86,8 @@ class Interaction:
         self._set(InteractionState.ACTIVE, now)
 
     def receptive(self, now):
+        if self.debug_forced_state is not None:
+            return
         if self.state in {InteractionState.AWAY, InteractionState.ACTIVE}:
             return
         self.semi_active_until = now + timedelta(minutes=self.semi_active_minutes)
@@ -91,6 +95,9 @@ class Interaction:
             self._set(InteractionState.SEMI_ACTIVE, now)
 
     def refresh(self, now):
+        if self.debug_forced_state is not None:
+            self._set(self.debug_forced_state, now)
+            return self.state
         if self.state == InteractionState.AWAY:
             return self.state
         if self.active_until and now < self.active_until:
@@ -108,7 +115,9 @@ class Interaction:
         if not snapshot.healthy:
             return
         away = snapshot.locked or snapshot.last_input_seconds >= self.away_minutes * 60
-        if away:
+        if self.debug_forced_state is not None:
+            self._set(self.debug_forced_state, now)
+        elif away:
             self._set(InteractionState.AWAY, now)
         elif self.state == InteractionState.AWAY:
             # Physical return does not renew the old ACTIVE conversation window.
@@ -134,6 +143,22 @@ class Interaction:
         if not old or old.foreground_process != snapshot.foreground_process:
             self.foreground_since = now
         self._resolve_interruptibility(now)
+
+    def force_debug_state(self, state: InteractionState | None, now: datetime) -> None:
+        if state not in {None, InteractionState.ACTIVE, InteractionState.SEMI_ACTIVE, InteractionState.AWAY}:
+            raise ValueError("unsupported debug presence state")
+        self.debug_forced_state = state
+        if state is None:
+            # Recompute from the latest physical observation and conversation clock.
+            if self.snapshot and self.snapshot.healthy:
+                self.observe(self.snapshot, now)
+            else:
+                if self.state == InteractionState.AWAY:
+                    self._set(InteractionState.IDLE, now)
+                self.refresh(now)
+        else:
+            self._set(state, now)
+            self._resolve_interruptibility(now)
 
     def observe_signals(self, signals: list[StateSignal], now: datetime) -> None:
         self.signals.update(signals, now)
@@ -179,6 +204,7 @@ class Interaction:
         return {
             "active": self.beat_loop.diagnostics(now) if self.beat_loop else None,
             "interaction_state": self.state.value,
+            "debug_forced_state": self.debug_forced_state.value if self.debug_forced_state else None,
             "interruptibility": self.interruptibility.value,
             "interruptibility_reason": self.interruptibility_reason,
             "active_since": self.active_since,

@@ -48,6 +48,13 @@ def test_no_change_does_not_rephrase_and_keeps_processing_cursor(tmp_path):
     assert after.last_processed_message_id == "u2"
 
 
+def test_empty_bootstrap_no_change_preserves_cursor(tmp_path):
+    cognition = service(tmp_path)
+    cognition.apply(CurrentCognitionPatch(decision="NO_CHANGE"),
+                    source_by_id={"u1": "user"}, last_message_id="u1")
+    assert cognition.state().last_processed_message_id is None
+
+
 def test_targeted_change_and_user_correction(tmp_path):
     cognition = service(tmp_path)
     apply(cognition, update("近期在参与秋招，准备算法岗，同时持续开发朝汐。"))
@@ -152,6 +159,22 @@ async def test_tool_only_process_does_not_call_maintainer_model(tmp_path):
     assert cognition.state().narrative == ""
     assert cognition.state().last_processed_message_id == "t1"
     assert provider.requests == []
+
+
+@pytest.mark.asyncio
+async def test_validation_failure_keeps_bootstrap_window_and_field_detail(tmp_path):
+    cognition = service(tmp_path)
+    invalid = {"decision": "UPDATE", "narrative_patch": [{"from": "", "to": 123}]}
+    provider = FakeProvider([invalid, invalid])
+    result = await CurrentCognitionMaintainer(cognition, provider).maintain([
+        Message(message_id="u1", role=Role.USER, content="持续开发朝汐"),
+    ], background=True)
+    assert result == "FAILED"
+    state = cognition.state()
+    assert state.last_processed_message_id is None
+    assert state.last_maintenance["field_path"] == "narrative_patch.0.to"
+    assert state.last_maintenance["attempt"] == 2
+    assert state.last_maintenance["response_chars"] > 0
 
 
 def test_precise_agenda_and_lifehud_fields_do_not_enter_narrative(tmp_path):

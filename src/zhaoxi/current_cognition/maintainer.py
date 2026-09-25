@@ -37,7 +37,8 @@ class CurrentCognitionMaintainer:
         self.provider = provider
         self.timezone = ZoneInfo(timezone)
 
-    async def maintain(self, messages: list[Message], *, pending_override: list[Message] | None = None) -> str:
+    async def maintain(self, messages: list[Message], *, pending_override: list[Message] | None = None,
+                       background: bool = False) -> str:
         state = self.service.state()
         if not messages and not pending_override:
             return "NO_CHANGE"
@@ -63,11 +64,14 @@ class CurrentCognitionMaintainer:
             evidence.append({"id": message.message_id, "source": message.role.value, "text": content})
         if not any(item["source"] == "user" for item in evidence):
             self.service.apply(CurrentCognitionPatch(decision="NO_CHANGE"), source_by_id=source_by_id,
-                               last_message_id=last_id)
+                               last_message_id=last_id, allow_empty_cursor=True)
             return "NO_CHANGE"
         logger.info("COGNITION_MAINTAIN_START messages=%d version=%d", len(evidence), state.version)
         payload = {"current_state": state.model_dump(mode="json"), "new_messages": evidence,
                    "now": datetime.now(self.timezone).isoformat()}
+        if background:
+            payload["task"] = "BOOTSTRAP" if not state.narrative else "BACKGROUND_CONSOLIDATION"
+            payload["observation_buffer"] = [item.model_dump(mode="json") for item in state.observations]
         if not state.narrative and state.last_processed_message_id is None:
             payload["legacy_reference_untrusted"] = self.service.store.legacy_reference()
         fallback = (evidence if len(evidence) <= 16 else
@@ -98,12 +102,23 @@ class CurrentCognitionMaintainer:
                     patch = _parse_patch(raw)
                     break
                 except (json.JSONDecodeError, ValidationError, ValueError) as exc:
-                    logger.warning("COGNITION_INVALID_RESPONSE attempt=%d chars=%d type=%s",
-                                   attempt, len(raw), type(exc).__name__)
+                    diagnostic.update({"error_type": type(exc).__name__, "input_excerpt": raw[:240]})
+                    if isinstance(exc, ValidationError):
+                        first = exc.errors()[0]
+                        diagnostic.update({"field_path": ".".join(map(str, first["loc"])),
+                                           "error_message": first["msg"]})
+                    else:
+                        diagnostic.update({"field_path": "", "error_message": str(exc)[:240]})
+                    logger.warning("COGNITION_INVALID_RESPONSE attempt=%d chars=%d type=%s field=%s",
+                                   attempt, len(raw), type(exc).__name__, diagnostic["field_path"])
                     if attempt == 2:
                         raise
             self.service.apply(patch, source_by_id=source_by_id,
                                evidence_by_id=evidence_by_id, last_message_id=last_id)
+            if not self.service.state().narrative and background:
+                return "PENDING_BOOTSTRAP"
+            if self.service.last_maintenance.get("rejection"):
+                return "REJECTED"
             return self.service.last_maintenance["decision"]
         except Exception as exc:
             logger.warning("COGNITION_MAINTAIN_FAILED type=%s attempt=%s", type(exc).__name__,

@@ -55,6 +55,14 @@ def test_timeline_inspector_suggestions_and_clear_persist(tmp_path):
         assert client.get('/api/suggestions').status_code == 404
         assert provider.calls == 0
         assert client.get('/api/diagnostics').json()['presence']['interaction_state'] == 'ACTIVE'
+        assert client.post('/api/debug/presence', json={'state': 'ACTIVE'}).json()['debug_forced_state'] == 'ACTIVE'
+        forced = client.post('/api/debug/presence', json={'state': 'SEMI_ACTIVE'})
+        assert forced.status_code == 200
+        assert forced.json()['interaction_state'] == 'SEMI_ACTIVE'
+        assert client.get('/api/diagnostics').json()['presence']['debug_forced_state'] == 'SEMI_ACTIVE'
+        assert client.post('/api/debug/presence', json={'state': 'AWAY'}).json()['interaction_state'] == 'AWAY'
+        assert client.get('/api/diagnostics').json()['presence']['interaction_state'] == 'AWAY'
+        assert client.post('/api/debug/presence', json={'state': None}).json()['debug_forced_state'] is None
         assert client.get('/favicon.ico').content[:4] == b'\x00\x00\x01\x00'
         client.delete('/api/session')
         assert client.get('/api/session').json()['messages'] == []
