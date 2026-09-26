@@ -361,6 +361,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         agenda_service=agenda_service,
         current_cognition_service=current_cognition_service,
         agenda_context_enabled=settings.agenda_context_enabled,
+        image_thumbnail_cache=session_store.thumbnail_cache(session_record.id),
     )
     planner = None
     if settings.planner_enabled:

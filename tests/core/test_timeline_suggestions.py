@@ -1,5 +1,9 @@
 from datetime import UTC, datetime, timedelta
+import base64
+from io import BytesIO
 import json
+
+from PIL import Image
 
 from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.core.context import ContextBuilder
@@ -105,40 +109,68 @@ def test_repeated_old_turns_do_not_raise_model_visible_action_density():
     assert all((item.content or '').count('（') == 3 for item in conversation.messages)
 
 
-def test_old_images_are_summarized_while_last_twenty_messages_keep_payloads():
+def _large_image() -> str:
+    output = BytesIO()
+    Image.new("RGB", (1600, 1000), (20, 90, 150)).save(output, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(output.getvalue()).decode("ascii")
+
+
+def test_history_uses_thumbnails_and_current_message_keeps_original(tmp_path):
+    image = _large_image()
+    store = SQLiteSessionStore(tmp_path / "session.db")
     conversation = Conversation(max_messages=40)
-    for index in range(40):
-        conversation.add(Message(
-            role=Role.USER if index % 2 == 0 else Role.ASSISTANT,
-            content=f"消息 {index}",
-            images=[f"data:image/png;base64,image-{index}"],
-        ))
+    conversation.add_user("旧图", images=[image])
+    conversation.add_assistant("看到旧图了")
+    current = conversation.add_user("新图", images=[image])
+    builder = ContextBuilder("朝汐", image_thumbnail_cache=store.thumbnail_cache("local"))
 
+    context = builder.build(conversation)
+    assert context[1].images[0].startswith("data:image/jpeg;base64,")
+    assert context[3].images == [image]
+    assert conversation.messages[0].images == [image]
+    assert len(list(store.thumbnail_cache("local").directory.glob("*.jpg"))) == 1
+
+    previous = context[1].images[0]
+    with Image.open(BytesIO(base64.b64decode(previous.partition(",")[2]))) as thumbnail:
+        assert max(thumbnail.size) <= 512
+    assert len(previous) < len(image)
+
+    conversation.add_assistant("看到新图了")
+    active = builder.build(conversation, current_image_message_id=current.message_id)
+    assert active[3].images == [image]
+    context = builder.build(conversation)
+    assert context[3].images[0].startswith("data:image/jpeg;base64,")
+
+
+def test_unreadable_historical_image_never_replays_original():
+    conversation = Conversation()
+    conversation.add_user("旧图", images=["data:image/png;base64,AAAA"])
+    conversation.add_user("新消息")
     context = ContextBuilder("朝汐").build(conversation)
-    old_messages = context[1:21]
-    recent_messages = context[21:]
-
-    assert all(not message.images for message in old_messages)
-    assert all("历史图片摘要" in (message.content or "") for message in old_messages)
-    assert all(message.images for message in recent_messages)
-    assert all("历史图片摘要" not in (message.content or "") for message in recent_messages)
-    assert all(message.images for message in conversation.messages)
-
-
-def test_image_compaction_uses_last_twenty_messages_not_last_twenty_images():
-    conversation = Conversation(max_messages=40)
-    for index in range(25):
-        conversation.add_user(
-            f"消息 {index}",
-            images=[f"data:image/png;base64,image-{index}"] if index in {0, 4, 5, 24} else None,
-        )
-
-    context = ContextBuilder("朝汐").build(conversation)
-
     assert context[1].images == []
-    assert context[5].images == []
-    assert context[6].images
-    assert context[25].images
+    assert "历史图片摘要" in context[1].content
+
+
+def test_history_thumbnail_cache_is_removed_after_forty_message_window(tmp_path):
+    image = _large_image()
+    store = SQLiteSessionStore(tmp_path / "session.db", max_messages=40)
+    session = store.get_sync("local")
+    if session is None:
+        from zhaoxi.session.base import Session
+        session = Session(id="local", conversation=Conversation(max_messages=40))
+    first = session.conversation.add_user("旧图", images=[image])
+    session.conversation.add_assistant("收到")
+    builder = ContextBuilder("朝汐", image_thumbnail_cache=store.thumbnail_cache(session.id))
+    builder.build(session.conversation)
+    cache_dir = store.thumbnail_cache(session.id).directory
+    assert len(list(cache_dir.glob("*.jpg"))) == 1
+    store.save_sync(session)
+
+    for index in range(40):
+        session.conversation.add_assistant(f"消息 {index}")
+    assert first not in session.conversation.messages
+    store.save_sync(session)
+    assert list(cache_dir.glob("*.jpg")) == []
 
 
 async def test_old_activation_text_is_migrated_on_session_load(tmp_path):

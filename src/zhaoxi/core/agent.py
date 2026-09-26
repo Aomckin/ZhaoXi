@@ -673,6 +673,9 @@ class ZhaoxiAgent:
             exposed = {item["function"]["name"] for item in discovery.schemas(self.registry)}
             if required_tool not in exposed:
                 discovery.expanded.append(required_tool)
+        current_image_message_id = next((
+            item.message_id for item in reversed(self.conversation.messages) if item.role == Role.USER
+        ), None)
         self._tool_discovery_state = discovery
         capability_retry = False
         resolution_message = ""
@@ -708,6 +711,7 @@ class ZhaoxiAgent:
                     context_options["absorbed_tool_call_ids"] = absorbed
                 if final_only:
                     context_options["release_images"] = True
+                context_options["current_image_message_id"] = current_image_message_id
                 messages = self.context_builder.build(self.conversation, memories, **context_options)
                 compaction = getattr(self.context_builder, "last_compaction", {})
                 if trace and compaction.get("tool_results"):

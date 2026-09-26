@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from zhaoxi.core.conversation import Conversation
+from zhaoxi.core.image_thumbnails import ImageThumbnailCache
 from zhaoxi.core.message import (
     Message,
     Role,
@@ -42,6 +43,12 @@ class SQLiteSessionStore(SessionStore):
         self.max_messages = max_messages
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
+
+    def thumbnail_cache(self, session_id: str) -> ImageThumbnailCache:
+        directory = self.path.parent / "session-thumbnails" / hashlib.sha256(
+            session_id.encode("utf-8")
+        ).hexdigest()[:24]
+        return ImageThumbnailCache(directory)
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=10)
@@ -181,6 +188,10 @@ class SQLiteSessionStore(SessionStore):
                     json.dumps(safe_messages, ensure_ascii=False, separators=(",", ":")),
                 ),
             )
+        try:
+            self.thumbnail_cache(session.id).retain(session.conversation.recent(self.max_messages))
+        except OSError as exc:
+            logger.warning("thumbnail cache cleanup failed type=%s", type(exc).__name__)
 
     async def delete(self, session_id: str) -> bool:
         return await asyncio.to_thread(self._delete, session_id)
@@ -188,6 +199,11 @@ class SQLiteSessionStore(SessionStore):
     def _delete(self, session_id: str) -> bool:
         with self._connect() as connection:
             cursor = connection.execute("DELETE FROM sessions WHERE session_id=?", (session_id,))
+        if cursor.rowcount:
+            try:
+                self.thumbnail_cache(session_id).retain([])
+            except OSError as exc:
+                logger.warning("thumbnail cache cleanup failed type=%s", type(exc).__name__)
         return cursor.rowcount > 0
 
     async def list(self) -> list[Session]:
