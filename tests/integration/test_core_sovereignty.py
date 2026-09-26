@@ -51,7 +51,7 @@ def test_lifehud_can_be_completely_disabled(monkeypatch, tmp_path):
 
 
 def test_core_runs_when_no_tool_package_is_installed(monkeypatch, tmp_path):
-    monkeypatch.setattr("zhaoxi.cli.discover_tool_packages", lambda **kwargs: [])
+    monkeypatch.setattr("zhaoxi.bootstrap.tools.discover_tool_packages", lambda **kwargs: [])
     agent = build_agent(settings(tmp_path))
     assert agent.tool_packages == []
     assert "人格设定" in agent.context_builder.personality_prompt

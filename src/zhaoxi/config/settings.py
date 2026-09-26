@@ -82,7 +82,6 @@ class Settings(BaseSettings):
     agenda_context_enabled: bool = True
     agenda_db_path: str = ".zhaoxi/agenda.db"
     agenda_max_context_items: int = Field(default=8, ge=1, le=30)
-    short_term_memory_db_path: str = ".zhaoxi/short-term-memory.db"
     current_cognition_db_path: str = ".zhaoxi/current-cognition.db"
     internal_activity_db_path: str = ".zhaoxi/internal-activity.db"
     internal_activity_enabled: bool = True
@@ -98,7 +97,6 @@ class Settings(BaseSettings):
     agenda_maintenance_enabled: bool = True
     agenda_maintenance_min_interval_minutes: int = Field(default=15, ge=1, le=10080)
     proactive_activity_enabled: bool = True
-    working_notes_db_path: str = ".zhaoxi/working-notes.db"  # Legacy backup only; never read as context.
     archive_enabled: bool = True
     archive_directory: str = "data/archive"
     archive_db_path: str = ".zhaoxi/archive.db"
@@ -215,6 +213,10 @@ class Settings(BaseSettings):
     tts_rate: int = Field(default=0, ge=-10, le=10)
     tts_volume: int = Field(default=100, ge=0, le=100)
     tts_max_chars: int = Field(default=1200, ge=50, le=10_000)
+
+    # Legacy storage paths: retained for migration and backup/restore, not active Context.
+    short_term_memory_db_path: str = ".zhaoxi/short-term-memory.db"  # Legacy migration and backup only.
+    working_notes_db_path: str = ".zhaoxi/working-notes.db"  # Legacy backup only; never read as context.
 
     @model_validator(mode="after")
     def validate_planner_limits(self) -> "Settings":

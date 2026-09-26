@@ -1,1 +1,0 @@
-"""External system tool adapters."""

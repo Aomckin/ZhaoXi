@@ -2,49 +2,51 @@
 
 > 当前配置、界面行为与最新限制见 [当前状态](CURRENT_STATUS.md)。下文保留分阶段实现与验收记录；其中旧预算和测试数量不代表当前值。
 
-> **默认分支：`main`，运行时版本 `1.2.7`**。以下旧版本章节是历史切片，其“当前”指当时状态。
+> **默认分支：`main`，运行时版本 `1.2.9`**。v1.2.9 已正式发布；以下旧版本章节是历史切片，其“当前”指当时状态。旧测试数字只作为当时记录；当前行为以本页顶部、CURRENT_STATUS 和代码为准。
 
-## v1.2.9 已实现增量（尚未发布）
+## v1.2.9 当前稳定版本
+
+发布与结构收口见 [v1.2.9 发布说明](../v1.2.x/Zhaoxi_v1.2.9_Release_Notes.md)。
 
 `decision` 包提供按需触发的结构化判定、少量规则检索、Agenda / Current Cognition / 长期 Memory 上下文、L0/L1/L2 Guard、JSONL 决策与人工覆盖记录。L0/L1 verdict 不能是疑问句，无法形成方向时升为 L2。`core/decision_reply.py` 在主回复链读取 Persona，受限地选择语气及已确认理由，运行时固定 verdict。Debug 可查看最近判定与独立重算。首批规则未授权自动工具执行，正式规则不会自动改写。具体实现及验收边界见 [v1.2.9 开发记录](../v1.2.x/Zhaoxi_v1.2.9_Decision_Layer_交付记录.md)。
 
-## v1.2.8 已实现增量（尚未发布）
+## v1.2.8 已并入 v1.2.9
 
 `internal_activity` 提供持久化调度状态、候选选择、每轮 LLM/本地预算与失败退避；CLI 和 Web 生命周期驱动它，维护抽屉提供状态读取及指定活动手动触发。Current Cognition 可在达到对话阈值后由后台整理，长期 Memory 和 Agenda 的维护复用各自现有服务，主动检查纳入统一调度。前端近期状态使用 Current Cognition 名称，定时刷新；不同 presence 状态切换头像，Debug 可强制活跃、半活跃或离开。实现、配置和验收边界见 [v1.2.8 交付记录](../v1.2.x/Zhaoxi_v1.2.8_Internal_Activity_交付记录.md)。
 
-## v1.2.7 当前增量
+## v1.2.7 历史增量
 
 `observability.py` 维护单请求 AgentEvent 与 ActionTrace；Gateway 在 Chat、重新生成、权限续执行期间维持关联上下文，并向 Web SSE 推送安全事件。Agent、Tool Executor、Token Budget、Provider、Cognitive Router 和 Recovery 接入结构化阶段及错误码。UI 展示当前进展、历史步骤和安全 Debug 详情。Heartbeat 与 Life HUD Sensor 的静默失败已有日志。范围与验证见 [v1.2.7 发布说明](../v1.2.x/Zhaoxi_v1.2.7_Release_Notes.md)。
 
-## v1.2.6 当前增量
+## v1.2.6 历史增量
 
 Agenda 与 Short-Term Memory 是独立于长期 Memory 的近期 Context。Agenda 保留五类日程和生命周期、SQLite 存储及增改查询 Tool；STM 改为独立滚动状态，由后台 Maintainer 在主回复后按需合并、强化和衰减。两者每轮直接注入有界 Snapshot，最近约 40 条原始消息保持不变。旧 Working Notes 的领域模型、Tool 与 Context 路径已撤出；旧数据库只保留历史备份。小桌边现在展示 Agenda 日期时间线与单张 STM 状态纸页，桌面入口避开窗口栏。Debug 可查看最终 Snapshot 和 STM 维护结果。详见 [v1.2.6 交付与验收](../v1.2.x/Zhaoxi_v1.2.6_Release_Notes.md)。
 
-## v1.2.5 当前增量
+## v1.2.5 历史增量
 
 表情已改为 Core 级 Reply DSL：`[emoji:属性1,属性2]` 经统一 Parser 生成 `ReplySequence`，再由 `EmojiService.resolve_tags()` 本地解析为稳定 `emoji_id`。启用表情 tags 在每轮 Replyer 上下文中完整提供，但不暴露 ID 或路径。文本与表情段按原顺序作为结构化 assistant 消息持久化，历史恢复不重新解析；旧 emoji 图片消息继续兼容。
 
 `send_emoji` 已从公开 Tool 注册、Manifest、能力路由和 Tool 强制执行链路删除；`save_emoji`、表情柜、资源读取与管理 API 保留。Debug Emoji 现在围绕 Raw Reply、Parsed Segments、Requested Tags、Resolved IDs 和 recent history 展示。
 
-## v1.2.4.2 当前增量
+## v1.2.4.2 历史增量
 
 表情发送链路已补齐运行时 Tool Manifest、真实副作用执行契约、结构化发送结果、独立图片消息持久化、统一 Gateway 消息模型、实时/历史共用 Renderer、请求级 Emoji Trace 与前端渲染回执。完整根因、验证证据和剩余人工验收见 [v1.2.4.2 审计报告](../v1.2.x/Zhaoxi_v1.2.4.2_Emoji_Send_Stability_Audit_Report.md)。
 
-## v1.2.4.1 当前增量
+## v1.2.4.1 历史增量
 
 - `EmojiManager` 成为 Registry、正式图片和 Pending 图片的唯一写入口，提供增删改查、SHA-256 去重、原子替换、删除回滚与自动 Reload。
 - `save_emoji` 通过 `latest` / `latest:N` 引用会话附件；模型只生成 description/tags/emotion/intensity，不能传本地路径。
 - `/api/emoji` 提供正式图库 CRUD、搜索和重载；`/api/emoji/pending` 提供批量暂存、预览、丢弃与确认入库；`/api/emoji/analyze` 使用现有视觉模型生成待确认元数据。
 - 小桌边「表情柜」提供最近加入、搜索、详情编辑、enabled 开关、删除确认、批量导入与逐张确认流程。
 
-## v1.2.4 当前增量
+## v1.2.4 历史增量
 
 - `src/zhaoxi/expression/emoji_service.py` 负责本地 JSON 注册表、受控路径校验、语义检索、低分 no_match 与近期防重复。
 - 内置 `send_emoji` 仅接收 intent/emotion/intensity；命中后 Core 生成 `source=emoji` 的独立 assistant 图片消息。
 - Web 通过 `/api/expression/emoji/{emoji_id}` 安全读取本地图片；纯图片走 `.image-only` 组件，文字图片继续使用 `.bubble`。
 - `/api/debug/emoji` 支持运行时启停、重载与检索诊断；表情配置集中在 `Settings` 的 emoji 字段。
 
-## v1.2.3 当前增量
+## v1.2.3 历史增量
 
 在 v1.2.2 Tool Router 前补齐无额外 LLM 调用的语义能力预路由。Life HUD Manifest 提供面向用户自然任务的 aliases/intents；饮食、睡眠、任务、FocusSession、能量、经验与近期生活状态查询可预挂 `lifehud`，复盘类查找可预挂 `local_search + filesystem_read`，历史表达询问可直接使用记忆检索。可用性过滤优先于预挂，未命中继续走既有 Discovery；普通“今天铁幕做得累死了”等陈述不会因单一关键词误触发。
 

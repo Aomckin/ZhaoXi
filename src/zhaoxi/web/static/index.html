@@ -76,7 +76,7 @@
 <script id="characterConfig" type="application/json">{"avatar":"/static/avatar-default.webp","avatars":{"ACTIVE":"/static/avatar-default.webp","SEMI_ACTIVE":"/static/avatar-daydream.png","IDLE":"/static/avatar-nap.png","AWAY":"/static/avatar-nap.png"}}</script>
 <script src="/static/deskboard.js"></script>
 <script>
-const FRONTEND_BUILD_ID='v1.2.7-agent-observability-20260923',FRONTEND_LOADED_AT=new Date().toISOString();
+const FRONTEND_BUILD_ID='v1.2.9-closure-20260926',FRONTEND_LOADED_AT=new Date().toISOString();
 const $=s=>document.querySelector(s), messages=$('#messages'), input=$('#input'), send=$('#send'), mic=$('#mic'), activity=$('#activity'), debug=$('#debug'), voiceReview=$('#voiceReview'), voiceText=$('#voiceText');let busy=false,voiceEnabled=false,voiceRecording=false,speechActive=false,normalRegenerationEnabled=false;
 let activeTraceId=null,traceTerminated=false;
 function beginActionTrace(){activeTraceId=crypto.randomUUID();traceTerminated=false;$('#actionTrace').open=false;$('#actionTraceSummary').textContent='行动记录 · 进行中';$('#actionTraceEvents').replaceChildren();$('#actionTraceDebug').textContent='';activity.textContent='理解 · 耳朵竖起来了，先听清你的意思…';return activeTraceId}

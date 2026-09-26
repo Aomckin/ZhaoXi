@@ -1,6 +1,6 @@
 # v1.2.9 Decision Layer 开发记录
 
-日期：2026-09-25。依据 [开发任务书](<Zhaoxi_v1.2.9_Decision Layer_Task.md>)、`data/archive/zhaoxi/先声 v0.1.md` 与 `data/archive/user/决策协议 v1.0.md`。运行时版本号维持原值；本记录是功能开发结果，不代表正式发布。
+日期：2026-09-25。依据 [开发任务书](<Zhaoxi_v1.2.9_Decision Layer_Task.md>)、`data/archive/zhaoxi/先声 v0.1.md` 与 `data/archive/user/决策协议 v1.0.md`。运行时版本号维持原值；本记录仅描述当日功能开发状态；正式发布见 [v1.2.9 发布说明](Zhaoxi_v1.2.9_Release_Notes.md)。
 
 ## 已实现
 
