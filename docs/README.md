@@ -11,6 +11,9 @@
 
 ## v1.3.x
 
+- [v1.3.1 开发记录](v1.3.x/Zhaoxi_v1.3.1_开发记录.md)
+- [v1.3.1 外部认知统一与 QQ 体验补全任务书](v1.3.x/Zhaoxi_v1.3.1_外部认知统一与QQ体验补全任务书.md)
+
 - [v1.3.0 发布说明与验收](v1.3.x/Zhaoxi_v1.3.0_Release_Notes.md)
 - [v1.3.0 Perception System 开发任务书](v1.3.x/Zhaoxi_v1.3.0_Perception_System_开发任务书.md)
 - [QQ / NapCat 本机配置](guides/qq-napcat.md)

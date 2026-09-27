@@ -100,7 +100,8 @@ class CognitiveCoordinator:
             content = result.content
             goal_id = result.goal_id
         elif decision.route == CognitiveRoute.DIRECT:
-            result = await self.agent.run_direct(user_message)
+            result = await self.agent.run_direct(
+                user_message, no_tools=decision.reason == "recent qq self activity")
             if result.used_tool_path:
                 decision.route = CognitiveRoute.TOOL
             content = result.content

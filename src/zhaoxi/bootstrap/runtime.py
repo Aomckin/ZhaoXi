@@ -46,6 +46,18 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     )
     agent.session_store = session_store
     agent.session_record = session_record
+    if settings.perception_enabled:
+        import json
+        from zhaoxi.perception.ledger import InteractionLedger
+        shared_ledger = InteractionLedger(settings.perception_db_path,
+                                          settings.interaction_ledger_ttl_hours)
+        def shared_self_context():
+            state = json.dumps(shared_ledger.runtime_state(), ensure_ascii=False)
+            events = (shared_ledger.context(settings.interaction_ledger_context_limit,
+                settings.interaction_ledger_context_max_chars)
+                if settings.interaction_ledger_enabled else "")
+            return "[Runtime Self State]\n" + state + "\n[/Runtime Self State]\n" + events
+        context_builder.self_activity_provider = shared_self_context
     agent.tool_packages = package_records
     agent.tool_package_instances = {package.package_id: package for package in tool_packages}
     agent.tool_package_errors = tool_package_errors

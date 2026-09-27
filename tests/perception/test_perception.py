@@ -55,7 +55,11 @@ def test_ambient_batch_and_external_boundary(tmp_path):
     async def run():
         settings = Settings(perception_db_path=str(tmp_path / "perception.db"),
                             perception_batch_max_messages=2)
-        provider = SimpleNamespace(generate=AsyncMock(return_value=ModelResponse(content="你好")))
+        provider = SimpleNamespace(generate=AsyncMock(side_effect=[
+            ModelResponse(content="你好"),
+            ModelResponse(content='{"reply":true,"reason":"direct"}'),
+            ModelResponse(content="你好"),
+        ]))
         conversation = SimpleNamespace(messages=[])
         agent = SimpleNamespace(provider=provider, metrics=MetricRegistry(),
             context_builder=SimpleNamespace(character_prompt="朝汐"),
@@ -71,7 +75,7 @@ def test_ambient_batch_and_external_boundary(tmp_path):
         assert agent.conversation.messages == []
         messages, tools = provider.generate.await_args.args
         assert tools == []
-        assert all(message.role is Role.SYSTEM for message in messages)
-        assert "不得自动写长期记忆" in messages[0].content
+        assert messages[-1].role is Role.EXTERNAL
+        assert "私人日程" in messages[0].content
         assert await runtime.ingest(direct) is None
     asyncio.run(run())

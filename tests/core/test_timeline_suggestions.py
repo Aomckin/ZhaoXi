@@ -245,7 +245,7 @@ async def test_session_v2_migrates_polluted_assistant_headers_on_disk(tmp_path):
     with sqlite3.connect(path) as connection:
         raw = connection.execute('SELECT messages_json FROM sessions').fetchone()[0]
         assert '23:59:41' not in raw
-        assert connection.execute('SELECT version FROM schema_version').fetchone()[0] == 2
+        assert connection.execute('SELECT version FROM schema_version').fetchone()[0] == 3
 
 
 async def test_history_read_repairs_late_pollution_after_schema_migration(tmp_path):

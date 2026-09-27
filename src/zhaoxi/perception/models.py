@@ -29,6 +29,14 @@ class ObservationStatus(StrEnum):
     FAILED = "FAILED"
 
 
+class ObservationPart(BaseModel):
+    type: str
+    text: str | None = None
+    url: str | None = None
+    file: str | None = None
+    target: str | None = None
+
+
 class Observation(BaseModel):
     observation_id: str = Field(default_factory=lambda: uuid4().hex)
     source: str
@@ -40,6 +48,16 @@ class Observation(BaseModel):
     conversation_kind: str | None = None
     content: str = ""
     attachments: list[dict[str, Any]] = Field(default_factory=list)
+    parts: list[ObservationPart] = Field(default_factory=list)
+
+    @property
+    def effective_parts(self) -> list[ObservationPart]:
+        if self.parts:
+            return self.parts
+        result = [ObservationPart(type="text", text=self.content)] if self.content else []
+        result += [ObservationPart(type="image", url=item.get("url"), file=item.get("file"))
+                   for item in self.attachments if item.get("type") == "image"]
+        return result
     occurred_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     received_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     trust_level: TrustLevel = TrustLevel.UNVERIFIED

@@ -1,6 +1,6 @@
 # Zhaoxi / 朝汐
 
-朝汐是一个以本地运行、长期陪伴和可控工具执行为核心的个人 Agent。当前稳定版本为 **1.3.0**。Perception System 已接入 QQ / NapCat，并完成私聊、群聊 Direct 和群消息摘要的实机验证。配置、验收和限制见 [v1.3.0 发布说明](docs/v1.3.x/Zhaoxi_v1.3.0_Release_Notes.md)及[QQ / NapCat 本机配置](docs/guides/qq-napcat.md)。
+朝汐是一个以本地运行、长期陪伴和可控工具执行为核心的个人 Agent。当前开发版本为 **1.3.1**，主要 QQ 场景已完成实机冒烟，长时连接与真实断线重连仍待观察。Perception System 已接入 QQ / NapCat；v1.3.1 增加共享近期活动、独立 QQ Session、外部认知 Planner、图片理解与逐段回复。v1.3.0 的私聊、群聊 Direct 和群消息摘要已完成实机验证。v1.3.1 开发状态见 [开发记录](docs/v1.3.x/Zhaoxi_v1.3.1_开发记录.md)；v1.3.0 配置、验收和限制见 [发布说明](docs/v1.3.x/Zhaoxi_v1.3.0_Release_Notes.md)及[QQ / NapCat 本机配置](docs/guides/qq-napcat.md)。
 
 ## 主要特点
 

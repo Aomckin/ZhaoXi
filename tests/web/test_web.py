@@ -527,6 +527,8 @@ def test_interface_settings_persist_across_app_rebuilds(tmp_path):
         assert client.get("/api/settings/interface").json() == {
             "input_merge_seconds": 7,
             "reply_interval_seconds": 2,
+            "external_input_debounce_seconds": 5,
+            "external_reply_interval_seconds": 0.5,
             "long_wait_enabled": True,
         }
 
@@ -716,3 +718,24 @@ async def test_event_stream_pushes_proactive_delivery_without_session_refresh():
 
     assert payload == {"type": "proactive", "delivery": delivery}
     await stream.aclose()
+
+
+def test_external_timing_settings_persist_and_validate(tmp_path):
+    path = tmp_path / "interface-settings.json"
+    settings = Settings(_env_file=None, interface_settings_path=str(path))
+    with TestClient(create_app(agent=FakeAgent(), settings=settings)) as client:
+        response = client.put("/api/settings/interface", json={
+            "input_merge_seconds": 15,
+            "reply_interval_seconds": 5,
+            "external_input_debounce_seconds": 3,
+            "external_reply_interval_seconds": 1.2,
+        })
+        assert response.status_code == 200
+        assert client.get("/api/settings/interface").json()["external_reply_interval_seconds"] == 1.2
+        assert client.put("/api/settings/interface", json={
+            "external_input_debounce_seconds": 16,
+        }).status_code == 422
+    from zhaoxi.config.external_timing import load_external_timing
+    timing = load_external_timing(path)
+    assert timing.debounce_seconds == 3
+    assert timing.reply_interval_seconds == 1.2

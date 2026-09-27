@@ -21,7 +21,8 @@ COGNITION = "current_cognition_consolidation"
 MEMORY = "memory_maintenance"
 AGENDA = "agenda_maintenance"
 PROACTIVE = "proactive_check"
-NAMES = (COGNITION, MEMORY, AGENDA, PROACTIVE)
+PERCEPTION_COGNITION = "perception_cognition"
+NAMES = (COGNITION, MEMORY, AGENDA, PERCEPTION_COGNITION, PROACTIVE)
 
 
 class InternalActivityRuntime:
@@ -64,6 +65,7 @@ class InternalActivityRuntime:
             MEMORY: self.settings.memory_maintenance_min_interval_minutes,
             AGENDA: self.settings.agenda_maintenance_min_interval_minutes,
             PROACTIVE: 0,
+            PERCEPTION_COGNITION: 0,
         }[name]
         return timedelta(minutes=minutes)
 
@@ -73,6 +75,7 @@ class InternalActivityRuntime:
             MEMORY: self.settings.memory_maintenance_enabled,
             AGENDA: self.settings.agenda_maintenance_enabled,
             PROACTIVE: self.settings.proactive_activity_enabled,
+            PERCEPTION_COGNITION: getattr(self.settings, "external_cognition_ambient_enabled", False),
         }[name])
 
     def _last(self, name: str, field: str) -> datetime | None:
@@ -138,6 +141,12 @@ class InternalActivityRuntime:
                         reason = "periodic"
                 priority = 100 if reason == "bootstrap" else 70
                 kind = "llm"
+            elif name == PERCEPTION_COGNITION:
+                runtime = getattr(self.agent, "perception", None)
+                pending = len(runtime.store.pending_snapshots(1)) if runtime else 0
+                self.state[name]["pending_signal_count"] = pending
+                reason = reason or ("pending_snapshot" if pending else "")
+                priority, kind = 65, "llm"
             elif name == MEMORY:
                 try:
                     needs_model = await self._memory_due(now)
@@ -224,6 +233,9 @@ class InternalActivityRuntime:
                                        getattr(provider, "max_total_tokens", 100_000)):
                 return await self.agent.current_cognition_maintainer.maintain(
                     messages, pending_override=messages, background=True)
+        if name == PERCEPTION_COGNITION:
+            runtime = getattr(self.agent, "perception", None)
+            return "UPDATE" if runtime and await runtime.process_pending_snapshot() else "NO_CHANGE"
         if name == MEMORY:
             auto = getattr(getattr(self.agent, "cognitive", None), "auto_memory", None)
             service = getattr(self.agent, "memory_service", None) or (auto.service if auto else None)
@@ -251,5 +263,5 @@ class InternalActivityRuntime:
                 "skipped": self.last_skipped, "activities": {
                     name: {**self.state[name], "enabled": self._enabled(name),
                            "min_interval_minutes": int(self._interval(name).total_seconds() / 60),
-                           "priority": {COGNITION: 70, MEMORY: 60, AGENDA: 90, PROACTIVE: 50}[name]}
+                           "priority": {COGNITION: 70, MEMORY: 60, AGENDA: 90, PERCEPTION_COGNITION: 65, PROACTIVE: 50}[name]}
                     for name in NAMES}}

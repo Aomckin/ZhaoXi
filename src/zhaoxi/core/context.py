@@ -69,6 +69,7 @@ class ContextBuilder:
         self.memory_retriever = memory_retriever
         self.timezone = ZoneInfo(timezone)
         self.interaction = None
+        self.self_activity_provider = None
 
     @property
     def character_prompt(self) -> str:
@@ -104,6 +105,11 @@ class ContextBuilder:
             add(name, prompt.strip())
         add("system.runtime_rules", f"\n\n运行规则：\n{self.runtime_rules}")
         self.last_recent_context = {"agenda": None, "current_cognition": None, "errors": {}}
+        if self.self_activity_provider is not None:
+            try:
+                add("runtime.shared_self", "\n\n" + self.self_activity_provider())
+            except Exception as exc:
+                logging.getLogger("CONTEXT").warning("shared self context unavailable type=%s", type(exc).__name__)
         if self.agenda_context_enabled and self.agenda_service is not None:
             try:
                 snapshot = self.agenda_service.snapshot(now=now)

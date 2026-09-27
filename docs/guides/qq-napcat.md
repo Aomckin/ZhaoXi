@@ -21,6 +21,10 @@ ZHAOXI_QQ_OWNER_USER_ID=2305396720
 
 修改 `.env` 后，需从系统托盘完全退出朝汐，再重新打开。维护抽屉的 **Perception Debug** 可查看 `connected`、`identity_verified` 和 `logged_in_qq`。若账号不是 2899706784，连接会被拒绝处理与发信。
 
+## Desktop 中的外部消息节奏
+
+在朝汐 Desktop 的「设置」中调整「外部输入防抖」与「外部逐段发送间隔」。防抖范围为 0–15 秒，0 表示关闭；同一会话、同一发言者在安静窗口内连续发送的 QQ Direct 会合并处理，图和文字可作为一次输入。发送间隔范围为 0–5 秒，0 表示立即发送后续段。设置保存后对后续消息生效，无需重启 Core。普通群消息仍按 Ambient 处理。
+
 ## 联调记录
 
 2026-09-27：3002 的 `get_login_info` 返回 2899706784；朝汐桌面进程保持 WebSocket 长连接。朝汐发往 2305396720 的私信返回 `retcode=0`，用户确认收到并回复；该入站私聊按 Direct 处理，用户确认收到自动回复。群聊普通消息保持在 Ambient Buffer；用户 `@朝汐` 后，群聊 Direct 被处理且用户确认看到回复。群聊形成 20 条消息的 SocialSnapshot，Observation ID 和 raw_ref 各保留 20 个。

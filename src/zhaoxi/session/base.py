@@ -15,11 +15,20 @@ class Session(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
     id: str = Field(default_factory=lambda: uuid4().hex)
     conversation: Conversation = Field(default_factory=Conversation)
+    channel_metadata: dict[str, str] = Field(default_factory=dict)
+    recent_message_refs: list[str] = Field(default_factory=list, max_length=40)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class SessionStore(ABC):
+    async def get_or_create(self, session_key: str) -> Session:
+        session = await self.get(session_key)
+        if session is None:
+            session = Session(id=session_key)
+            await self.save(session)
+        return session
+
     @abstractmethod
     async def create(self) -> Session: ...
 

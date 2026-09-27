@@ -16,6 +16,7 @@ class Role(StrEnum):
     USER = "user"
     ASSISTANT = "assistant"
     TOOL = "tool"
+    EXTERNAL = "external"
 
 
 _TIMELINE_HEADER = re.compile(
@@ -77,7 +78,7 @@ class Message(BaseModel):
 
     def to_provider_dict(self) -> dict[str, Any]:
         """Convert only at the provider boundary."""
-        result: dict[str, Any] = {"role": self.role.value, "content": self.content}
+        result: dict[str, Any] = {"role": "user" if self.role is Role.EXTERNAL else self.role.value, "content": self.content}
         if self.images and self.source != "emoji":
             result["content"] = [
                 {"type": "text", "text": self.content or "请查看图片。"},

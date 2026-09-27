@@ -21,7 +21,7 @@ from zhaoxi.core.message import (
 from zhaoxi.session.base import Session, SessionStore
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 logger = logging.getLogger("SESSION")
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
@@ -30,7 +30,9 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     max_messages INTEGER NOT NULL,
-    messages_json TEXT NOT NULL
+    messages_json TEXT NOT NULL,
+    channel_metadata_json TEXT NOT NULL DEFAULT '{}',
+    recent_refs_json TEXT NOT NULL DEFAULT '[]'
 );
 """
 
@@ -66,6 +68,12 @@ class SQLiteSessionStore(SessionStore):
                 raise RuntimeError("Session 数据库版本高于当前程序支持版本。")
             if row is not None and row["version"] < 2:
                 self._migrate_timeline_headers(connection)
+            columns = {item["name"] for item in connection.execute("PRAGMA table_info(sessions)")}
+            if "channel_metadata_json" not in columns:
+                connection.execute("ALTER TABLE sessions ADD COLUMN channel_metadata_json TEXT NOT NULL DEFAULT '{}'")
+            if "recent_refs_json" not in columns:
+                connection.execute("ALTER TABLE sessions ADD COLUMN recent_refs_json TEXT NOT NULL DEFAULT '[]'")
+            if row is not None and row["version"] < SCHEMA_VERSION:
                 connection.execute("UPDATE schema_version SET version=?", (SCHEMA_VERSION,))
 
     @staticmethod
@@ -98,6 +106,14 @@ class SQLiteSessionStore(SessionStore):
                     "UPDATE sessions SET messages_json=? WHERE session_id=?",
                     (cleaned, row["session_id"]),
                 )
+
+    async def get_or_create(self, session_key: str) -> Session:
+        session = await self.get(session_key)
+        if session is None:
+            session = Session(id=session_key,
+                              conversation=Conversation(max_messages=self.max_messages))
+            await self.save(session)
+        return session
 
     async def create(self) -> Session:
         session = Session(conversation=Conversation(max_messages=self.max_messages))
@@ -145,6 +161,8 @@ class SQLiteSessionStore(SessionStore):
         return Session(
             id=row["session_id"],
             conversation=Conversation(messages, max_messages=row["max_messages"]),
+            channel_metadata=json.loads(row["channel_metadata_json"]),
+            recent_message_refs=json.loads(row["recent_refs_json"]),
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )
@@ -156,7 +174,7 @@ class SQLiteSessionStore(SessionStore):
         session.updated_at = datetime.now(UTC)
         safe_messages = []
         for message in session.conversation.recent(self.max_messages):
-            if message.role not in {Role.USER, Role.ASSISTANT} or message.content is None:
+            if message.role not in {Role.USER, Role.EXTERNAL, Role.ASSISTANT} or message.content is None:
                 continue
             content = message.content
             if message.role == Role.ASSISTANT:
@@ -176,16 +194,20 @@ class SQLiteSessionStore(SessionStore):
             )
         with self._connect() as connection:
             connection.execute(
-                """INSERT INTO sessions(session_id, created_at, updated_at, max_messages, messages_json)
-                VALUES (?, ?, ?, ?, ?)
+                """INSERT INTO sessions(session_id, created_at, updated_at, max_messages, messages_json,
+                    channel_metadata_json, recent_refs_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(session_id) DO UPDATE SET created_at=excluded.created_at, updated_at=excluded.updated_at,
-                max_messages=excluded.max_messages, messages_json=excluded.messages_json""",
+                max_messages=excluded.max_messages, messages_json=excluded.messages_json,
+                channel_metadata_json=excluded.channel_metadata_json, recent_refs_json=excluded.recent_refs_json""",
                 (
                     session.id,
                     session.created_at.isoformat(),
                     session.updated_at.isoformat(),
                     self.max_messages,
                     json.dumps(safe_messages, ensure_ascii=False, separators=(",", ":")),
+                    json.dumps(session.channel_metadata, ensure_ascii=False),
+                    json.dumps(session.recent_message_refs[-40:], ensure_ascii=False),
                 ),
             )
         try:

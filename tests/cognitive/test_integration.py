@@ -502,3 +502,16 @@ def test_emoji_send_is_direct_but_saving_remains_a_tool_request():
     saving = router._fallback('把这张图收藏成表情')
     assert saving.route is CognitiveRoute.TOOL
     assert saving.required_tool == 'save_emoji'
+
+
+@pytest.mark.asyncio
+async def test_recent_qq_activity_routes_without_tool_discovery():
+    provider = FakeProvider([])
+    router = CognitiveRouter(provider)
+    for question in ("看看QQ私聊那边发了啥", "刚刚QQ发的图是什么"):
+        decision = await router.route(question)
+        assert decision.route is CognitiveRoute.DIRECT
+        assert not decision.requires_tool_call
+        assert decision.reason == "recent qq self activity"
+    assert not provider.calls
+    assert CognitiveRouter.is_recent_qq_activity_question("发送QQ消息") is False

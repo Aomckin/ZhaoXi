@@ -1,6 +1,6 @@
 """OneBot 11 message decoding; meta and notice events are transport events."""
 from datetime import UTC, datetime
-from zhaoxi.perception.models import AttentionHint, Observation, TrustLevel
+from zhaoxi.perception.models import AttentionHint, Observation, ObservationPart, TrustLevel
 
 
 def decode(event: dict, *, self_id: str | None, owner_id: str = "") -> Observation | None:
@@ -19,7 +19,7 @@ def decode(event: dict, *, self_id: str | None, owner_id: str = "") -> Observati
     segments = event.get("message") or []
     if isinstance(segments, str):
         segments = [{"type": "text", "data": {"text": segments}}]
-    text, attachments = [], []
+    text, attachments, parts = [], [], []
     directed = False
     reply_to = None
     for part in segments:
@@ -28,16 +28,21 @@ def decode(event: dict, *, self_id: str | None, owner_id: str = "") -> Observati
         data = part.get("data") or {}
         typ = part.get("type")
         if typ == "text":
-            text.append(str(data.get("text") or ""))
+            value = str(data.get("text") or "")
+            text.append(value)
+            parts.append(ObservationPart(type="text", text=value))
         elif typ == "at":
             qq = str(data.get("qq") or "")
             if self_id and qq == str(self_id):
                 directed = True
             text.append("@" + qq)
+            parts.append(ObservationPart(type="mention", target=qq))
         elif typ == "reply":
             reply_to = str(data.get("id") or "")
+            parts.append(ObservationPart(type="reply", target=reply_to))
         elif typ == "image":
             attachments.append({"type": "image", "url": data.get("url"), "file": data.get("file")})
+            parts.append(ObservationPart(type="image", url=data.get("url"), file=data.get("file")))
     content = "".join(text).strip()[:20000]
     if kind == "group" and (content.startswith("朝汐") or content.startswith("@朝汐")):
         directed = True
@@ -48,7 +53,7 @@ def decode(event: dict, *, self_id: str | None, owner_id: str = "") -> Observati
     return Observation(source="qq", source_kind=kind + "_message", actor_id=actor_id,
         actor_name=sender.get("card") or sender.get("nickname") or None,
         actor_role="OWNER" if owner else "EXTERNAL", conversation_id=conversation_id,
-        conversation_kind=kind, content=content, attachments=attachments,
+        conversation_kind=kind, content=content, attachments=attachments, parts=parts,
         occurred_at=occurred, trust_level=TrustLevel.TRUSTED if owner else
             (TrustLevel.LOW if kind == "group" else TrustLevel.NORMAL),
         attention_hint=AttentionHint.IGNORE if own else AttentionHint.AMBIENT,

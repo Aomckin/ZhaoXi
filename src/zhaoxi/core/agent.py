@@ -464,7 +464,7 @@ class ZhaoxiAgent:
                 return True
         return False
 
-    async def run_direct(self, user_message: str) -> AgentResponse:
+    async def run_direct(self, user_message: str, *, no_tools: bool = False) -> AgentResponse:
         """Answer a direct turn while preserving the always-on memory tools."""
         if not user_message.strip():
             raise ValueError("消息不能为空。")
@@ -491,7 +491,7 @@ class ZhaoxiAgent:
                 )
         try:
             return await asyncio.wait_for(
-                self._run_loop(request_id, memories, clean_message),
+                self._run_loop(request_id, memories, clean_message, no_tools=no_tools),
                 timeout=self.timeout_seconds,
             )
         except TimeoutError as exc:
@@ -663,6 +663,7 @@ class ZhaoxiAgent:
         lookup_commitment: str = "",
         discovery: ToolDiscoveryState | None = None,
         turn_images: tuple[str, ...] = (),
+        no_tools: bool = False,
     ) -> AgentResponse:
         if discovery is None:
             routing_intent = f"{user_intent}\n{lookup_commitment}" if lookup_commitment else user_intent
@@ -693,7 +694,7 @@ class ZhaoxiAgent:
                 trace.emit("model_step_started", "model", "running", "正在思考下一步…", step_id=step)
             try:
                 budget_stage, final_only = self._budget_mode(tool_called, trace, step)
-                schemas = [] if final_only else discovery.schemas(self.registry)
+                schemas = [] if final_only or no_tools else discovery.schemas(self.registry)
                 self.registry.exposed_names = {item["function"]["name"] for item in schemas}
                 absorbed = set()
                 if trace and trace.actions:
@@ -709,7 +710,7 @@ class ZhaoxiAgent:
                 context_options = {}
                 if absorbed:
                     context_options["absorbed_tool_call_ids"] = absorbed
-                if final_only:
+                if final_only or no_tools:
                     context_options["release_images"] = True
                 context_options["current_image_message_id"] = current_image_message_id
                 messages = self.context_builder.build(self.conversation, memories, **context_options)
@@ -724,7 +725,12 @@ class ZhaoxiAgent:
                 if trace and (compaction.get("tool_results") or compaction.get("images_released")):
                     trace.emit("context_compacted", "context", "success", "已整理本轮上下文",
                                step_id=step, metadata=compaction)
-                catalog = "" if final_only else discovery.catalog(self.registry) + resolution_message
+                catalog = "" if final_only or no_tools else discovery.catalog(self.registry) + resolution_message
+                if no_tools:
+                    messages[0].content = (messages[0].content or "") + (
+                        "\n当前问题询问你自己近期的 QQ 互动。Recent Self Activity 记录的是你的经历，"
+                        "用第一人称直接回答，普通追问优先一两句话；不要主动解释记录、进程、"
+                        "另一个自己或列时间线。没有记录的图片内容才说明不确定。")
                 messages[0].content = (messages[0].content or "") + catalog
                 messages[0].metadata.setdefault("prompt_components", []).append(
                     {"name": "runtime.capability_catalog", "chars": len(catalog)}
@@ -829,7 +835,7 @@ class ZhaoxiAgent:
                 ) from exc
 
             if not response.tool_calls:
-                if (not tool_called and not capability_retry and is_action_request(user_intent)
+                if (not no_tools and not tool_called and not capability_retry and is_action_request(user_intent)
                     and re.search(r"没有.{0,12}(?:工具|能力|钥匙)|无法完成|做不了|不能.{0,6}(?:查|找|读|执行)", response.content or "")):
                     capability_retry = True
                     resolution = resolve_capability(user_intent, self.registry.manifest())
@@ -839,7 +845,7 @@ class ZhaoxiAgent:
                             discovery.request({"group": group}, self.registry)
                         resolution_message = "\nCore 已检查实时钥匙柜并尝试加载匹配能力：" + json.dumps(resolution, ensure_ascii=False) + "。请使用当前可用钥匙继续原任务，不要把未携带误判为不存在。"
                         continue
-                if not tool_called and self._promises_lookup(response.content or ""):
+                if not no_tools and not tool_called and self._promises_lookup(response.content or ""):
                     require_tool_call = True
                 if require_tool_call and not tool_called and not corrective_retry:
                     corrective_retry = True

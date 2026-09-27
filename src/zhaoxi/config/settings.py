@@ -20,6 +20,19 @@ class Settings(BaseSettings):
     perception_context_max_chars: int = Field(default=4000, ge=200)
     perception_snapshot_limit: int = Field(default=3, ge=1)
     perception_observation_ttl_hours: int = Field(default=168, ge=1)
+    interaction_ledger_enabled: bool = True
+    interaction_ledger_ttl_hours: int = Field(default=48, ge=1)
+    interaction_ledger_context_limit: int = Field(default=8, ge=1, le=20)
+    interaction_ledger_context_max_chars: int = Field(default=1500, ge=100)
+    external_cognition_enabled: bool = True
+    external_cognition_ambient_enabled: bool = True
+    perception_image_temp_dir: str = ".zhaoxi/tmp/perception"
+    perception_image_max_bytes: int = Field(default=10_485_760, ge=1024)
+    perception_image_ttl_hours: int = Field(default=24, ge=1)
+    qq_private_reply_max_segments: int = Field(default=4, ge=1, le=10)
+    qq_group_reply_max_segments: int = Field(default=3, ge=1, le=10)
+    qq_reply_segment_delay_min_ms: int = Field(default=300, ge=0)
+    qq_reply_segment_delay_max_ms: int = Field(default=800, ge=0)
     qq_enabled: bool = False
     qq_ws_url: str = "ws://127.0.0.1:3001"
     qq_access_token: str = ""

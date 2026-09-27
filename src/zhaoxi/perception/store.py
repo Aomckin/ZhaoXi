@@ -22,6 +22,8 @@ class PerceptionStore:
                 CREATE TABLE IF NOT EXISTS snapshots (
                     id TEXT PRIMARY KEY, source TEXT NOT NULL, conversation_id TEXT NOT NULL,
                     window_end TEXT NOT NULL, payload TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS snapshot_cognition (
+                    snapshot_id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'PENDING');
             """)
 
     def fail_inflight(self) -> None:
@@ -67,6 +69,8 @@ class PerceptionStore:
             db.execute("INSERT INTO snapshots VALUES (?,?,?,?,?)", (
                 snapshot.snapshot_id, snapshot.source, snapshot.conversation_id,
                 snapshot.window_end.isoformat(), snapshot.model_dump_json()))
+            db.execute("INSERT INTO snapshot_cognition(snapshot_id,status) VALUES (?,?)",
+                       (snapshot.snapshot_id, "PENDING"))
             db.executemany("UPDATE observations SET status=? WHERE id=? AND status=?", (
                 (ObservationStatus.PROCESSED.value, item_id, ObservationStatus.BUFFERED.value)
                 for item_id in batch.observation_ids))
@@ -83,6 +87,7 @@ class PerceptionStore:
         with self._connect() as db:
             cursor = db.execute("DELETE FROM observations WHERE received_at < ?", (threshold,))
             db.execute("DELETE FROM snapshots WHERE window_end < ?", (threshold,))
+            db.execute("DELETE FROM snapshot_cognition WHERE snapshot_id NOT IN (SELECT id FROM snapshots)")
             stale_batches = [row[0] for row in db.execute("SELECT id, payload FROM batches")
                 if ObservationBatch.model_validate_json(row[1]).window_end.astimezone(UTC).isoformat() < threshold]
             db.executemany("DELETE FROM batches WHERE id=?", ((item,) for item in stale_batches))
@@ -105,3 +110,15 @@ class PerceptionStore:
     def counts(self) -> dict[str, int]:
         with self._connect() as db:
             return {row[0]: row[1] for row in db.execute("SELECT status, COUNT(*) FROM observations GROUP BY status")}
+
+    def pending_snapshots(self, limit: int = 5) -> list[SocialSnapshot]:
+        with self._connect() as db:
+            rows = db.execute("""SELECT s.payload FROM snapshots s
+                JOIN snapshot_cognition c ON c.snapshot_id=s.id
+                WHERE c.status='PENDING' ORDER BY s.window_end LIMIT ?""", (limit,)).fetchall()
+        return [SocialSnapshot.model_validate_json(row[0]) for row in rows]
+
+    def set_snapshot_cognition(self, snapshot_id: str, status: str) -> None:
+        with self._connect() as db:
+            db.execute("UPDATE snapshot_cognition SET status=? WHERE snapshot_id=?",
+                       (status, snapshot_id))

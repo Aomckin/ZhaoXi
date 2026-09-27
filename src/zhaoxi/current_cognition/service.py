@@ -107,7 +107,8 @@ class CurrentCognitionService:
 
     def apply(self, patch: CurrentCognitionPatch, *, source_by_id: dict[str, str],
               last_message_id: str, evidence_by_id: dict[str, str] | None = None,
-              now: datetime | None = None, allow_empty_cursor: bool = False) -> CurrentCognitionState:
+              now: datetime | None = None, allow_empty_cursor: bool = False,
+              advance_cursor: bool = True) -> CurrentCognitionState:
         now = now or datetime.now(self.timezone)
         state = self.state()
         evidence_by_id = evidence_by_id or {}
@@ -115,7 +116,7 @@ class CurrentCognitionService:
         observations = {normalize_topic(item.key): item for item in state.observations
                         if now - item.last_seen_at <= timedelta(days=7)}
         for proposal in patch.observations:
-            if source_by_id.get(proposal.source_message_id) != "user":
+            if source_by_id.get(proposal.source_message_id) not in {"user", "owner_external"}:
                 continue
             key = normalize_topic(proposal.key)
             item = observations.get(key)
@@ -135,7 +136,7 @@ class CurrentCognitionService:
         rejection = None
         if decision == "UPDATE":
             trusted = [message_id for message_id in patch.evidence_message_ids
-                       if source_by_id.get(message_id) == "user"]
+                       if source_by_id.get(message_id) in {"user", "owner_external"}]
             evidence = "\n".join(evidence_by_id.get(message_id, "") for message_id in trusted)
             proposed = " ".join([edit.to for edit in patch.narrative_patch] + patch.threads_add + patch.attention_add)
             if not trusted:
@@ -192,7 +193,7 @@ class CurrentCognitionService:
                   "evidence_message_ids": patch.evidence_message_ids, "before_after_diff": diff,
                   "patch": patch.model_dump(mode="json", by_alias=True)}
         # A rejected patch and an empty bootstrap are still pending work.
-        if not rejection and (state.narrative or allow_empty_cursor):
+        if advance_cursor and not rejection and (state.narrative or allow_empty_cursor):
             state.last_processed_message_id = last_message_id
         state.last_maintenance = record
         state.recent_decisions = [*state.recent_decisions, {k: v for k, v in record.items() if k != "patch"}][-10:]

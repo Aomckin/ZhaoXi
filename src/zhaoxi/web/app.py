@@ -99,6 +99,8 @@ class ToolCapabilityRequest(BaseModel):
 class InterfaceSettingsRequest(BaseModel):
     input_merge_seconds: int = Field(default=15, ge=0, le=30)
     reply_interval_seconds: int = Field(default=5, ge=0, le=15)
+    external_input_debounce_seconds: float = Field(default=5, ge=0, le=15)
+    external_reply_interval_seconds: float = Field(default=0.5, ge=0, le=5)
     long_wait_enabled: StrictBool = False
 
 
@@ -591,6 +593,51 @@ def create_app(
             raise HTTPException(status_code=503, detail="Perception 未启用")
         return {"observations": [x.model_dump(mode="json") for x in perception.store.recent_observations()],
                 "snapshots": [x.model_dump(mode="json") for x in perception.store.recent_all_snapshots()]}
+
+    @app.get("/api/perception/sessions")
+    async def perception_sessions():
+        if perception is None:
+            raise HTTPException(status_code=503, detail="Perception 未启用")
+        sessions = await core.session_store.list()
+        return {"sessions": [{"id": item.id, "updated_at": item.updated_at.isoformat(),
+                              "messages": len(item.conversation.messages)}
+                             for item in sessions if item.id.startswith("qq/")][:30]}
+
+    @app.get("/api/perception/self-events")
+    async def perception_self_events():
+        if perception is None:
+            raise HTTPException(status_code=503, detail="Perception 未启用")
+        return {"events": [item.model_dump(mode="json") for item in perception.ledger.recent(20)]}
+
+    @app.post("/api/perception/process-pending")
+    async def perception_process_pending():
+        if perception is None:
+            raise HTTPException(status_code=503, detail="Perception 未启用")
+        return {"processed": await perception.process_pending_snapshot()}
+
+    @app.post("/api/perception/clear-ledger")
+    async def perception_clear_ledger():
+        if perception is None:
+            raise HTTPException(status_code=503, detail="Perception 未启用")
+        return {"deleted": perception.ledger.clear_expired()}
+
+    @app.post("/api/perception/resolve-last-image")
+    async def perception_resolve_last_image():
+        if perception is None:
+            raise HTTPException(status_code=503, detail="Perception 未启用")
+        item = next((x for x in perception.store.recent_observations(30)
+                     if any(part.type == "image" for part in x.effective_parts)), None)
+        if item is None:
+            return {"status": "none"}
+        images = await perception._images(item)
+        return {"status": perception.images.last_status, "resolved_count": len(images),
+                "raw_ref": item.raw_ref}
+
+    @app.get("/api/perception/expression")
+    async def perception_expression():
+        from zhaoxi.perception.context import ChannelExpressionPolicy
+        return {"private": ChannelExpressionPolicy.prompt("private"),
+                "group": ChannelExpressionPolicy.prompt("group")}
 
     @app.post("/api/perception/reconnect")
     async def perception_reconnect():
