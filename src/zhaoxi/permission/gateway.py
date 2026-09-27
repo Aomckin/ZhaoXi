@@ -10,6 +10,7 @@ from zhaoxi.permission.models import (
     PermissionRequest,
     PermissionGrant,
     PermissionStatus,
+    InvocationOrigin,
 )
 from zhaoxi.errors import InvalidGrantError
 from zhaoxi.permission.policy import DefaultPermissionPolicy
@@ -37,6 +38,10 @@ class PermissionGateway:
         confirm_write: bool | None = None,
     ) -> tuple[PermissionDecision, PendingConfirmation | None]:
         self._audit(request, "permission_requested")
+        if request.origin is InvocationOrigin.EXTERNAL:
+            decision = PermissionDecision(status=PermissionStatus.DENY, reason_code="external_origin_denied")
+            self._audit(request, "permission_denied", reason_code=decision.reason_code)
+            return decision, None
         if self.store.consume_matching(request):
             decision = PermissionDecision(status=PermissionStatus.ALLOW, reason_code="approved_once")
             self._audit(request, "policy_allowed", reason_code=decision.reason_code)

@@ -578,3 +578,15 @@ async def test_cancelling_planner_invalidates_pending_confirmation():
     confirmation = executor.gateway.store.pending[confirmation_id]
     assert confirmation.resolved and confirmation.approved is False
     assert tool.values == []
+
+
+async def test_external_origin_cannot_read_or_write_even_if_policy_allows():
+    registry, tool, _, executor = permission_runtime()
+    registry.register(InjectionReadTool())
+    for name, arguments in (("write_value", {"value": "secret"}),
+                            ("read_external", {"value": "secret"})):
+        result = await executor.execute(name, arguments, request_id="external",
+                                        origin=InvocationOrigin.EXTERNAL)
+        assert not result.waiting_for_permission
+        assert result.result is not None and not result.result.success
+    assert tool.values == []

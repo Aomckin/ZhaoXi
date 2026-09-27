@@ -9,6 +9,12 @@
 - [未来开发计划](<roadmap/Zhaoxi 未来开发计划.md>)
 - [常驻与自启动](guides/presence-autostart.md)
 
+## v1.3.x
+
+- [v1.3.0 发布说明与验收](v1.3.x/Zhaoxi_v1.3.0_Release_Notes.md)
+- [v1.3.0 Perception System 开发任务书](v1.3.x/Zhaoxi_v1.3.0_Perception_System_开发任务书.md)
+- [QQ / NapCat 本机配置](guides/qq-napcat.md)
+
 ## v1.2.x
 
 - [v1.2.9 Decision Layer 开发记录](v1.2.x/Zhaoxi_v1.2.9_Decision_Layer_交付记录.md)

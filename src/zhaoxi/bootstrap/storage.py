@@ -84,6 +84,7 @@ def build_data_store_specs(settings: Settings, *, archive_enabled: bool) -> list
     ):
         specs.append(DataStoreSpec(name, Path(path), kind="file"))
     specs.append(DataStoreSpec("internal_activity", Path(settings.internal_activity_db_path)))
+    specs.append(DataStoreSpec("perception", Path(settings.perception_db_path)))
     # Legacy backup/restore only; neither source enters the current Context.
     specs.append(DataStoreSpec("short_term_memory", Path(settings.short_term_memory_db_path)))
     specs.append(DataStoreSpec("working_notes", Path(settings.working_notes_db_path)))

@@ -1,8 +1,10 @@
-# 当前稳定版本：v1.2.9（2026-09-26 正式发布）
+# 当前稳定版本：v1.3.0（2026-09-27 正式发布）
 
-当前运行时以 Current Cognition 为唯一近期认知状态；v1.2.8 Internal Activity 和 v1.2.9 Decision Layer 已并入稳定版本。下方按日期保留的旧状态和测试数字仅代表当时版本，不代表当前运行时。
+当前运行时以 Current Cognition 为唯一近期认知状态；v1.2.8 Internal Activity、v1.2.9 Decision Layer 和 v1.3.0 Perception System 已并入稳定版本。下方按日期保留的旧状态和测试数字仅代表当时版本，不代表当前运行时。
 
 # 当前状态与使用说明
+
+2026-09-27：v1.3.0 Perception System 已发布。QQ / NapCat 正向 WebSocket 接入朝汐账号 2899706784，私聊和群聊定向消息进入受限 Direct，普通群消息进入 Ambient Buffer 并按窗口或条数生成 Snapshot。QQ 来源不授予本地工具或私有资料权限；Owner QQ 2305396720 也遵守该边界。私聊与群聊回复、20 条群消息摘要已实机验证；真实断线重连和长时运行仍待观察。配置和验收证据见 [v1.3.0 发布说明](../v1.3.x/Zhaoxi_v1.3.0_Release_Notes.md)。
 
 2026-09-26：代码已接入 v1.2.9 Decision Layer 开发增量。明确决策问题按需检索少量规则、日程、今日主线和近期状态，输出经 Guard 校验的 L0/L1/L2 结构化结果；L0/L1 verdict 必须给出方向，朝汐主回复链只选择语气及已确认理由，不能改写方向。决策日志、人工覆盖和 Debug 重算已接入；首批规则未授权自动工具执行。运行时包版本为 `1.2.9`，已正式发布。范围和限制见 [v1.2.9 开发记录](../v1.2.x/Zhaoxi_v1.2.9_Decision_Layer_交付记录.md)。
 

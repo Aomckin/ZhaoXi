@@ -13,6 +13,20 @@ class Settings(BaseSettings):
         env_prefix="ZHAOXI_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
+    perception_enabled: bool = True
+    perception_db_path: str = ".zhaoxi/perception.db"
+    perception_batch_window_seconds: int = Field(default=300, ge=1)
+    perception_batch_max_messages: int = Field(default=20, ge=1)
+    perception_context_max_chars: int = Field(default=4000, ge=200)
+    perception_snapshot_limit: int = Field(default=3, ge=1)
+    perception_observation_ttl_hours: int = Field(default=168, ge=1)
+    qq_enabled: bool = False
+    qq_ws_url: str = "ws://127.0.0.1:3001"
+    qq_access_token: str = ""
+    qq_owner_user_id: str = ""
+    qq_bot_user_id: str = ""
+    qq_reconnect_seconds: float = Field(default=5, ge=0.1)
+
     desktop_activity_enabled: bool = True
     desktop_activity_window_title_enabled: bool = True
     desktop_activity_input_rate_enabled: bool = True

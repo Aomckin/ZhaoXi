@@ -265,6 +265,18 @@ def create_app(
     static_dir = Path(__file__).with_name("static")
     speech_policy = SpeechPolicy()
     supervisor = TaskSupervisor()
+    perception = None
+    qq_adapter = None
+    if configured.perception_enabled and not isinstance(core, StartupUnavailableAgent):
+        try:
+            from zhaoxi.perception import PerceptionRuntime
+            perception = PerceptionRuntime(configured, core)
+            core.perception = perception
+            if configured.qq_enabled:
+                from zhaoxi.adapters.qq import QQAdapter
+                qq_adapter = QQAdapter(perception, configured)
+        except Exception as exc:
+            logger.warning("perception startup degraded type=%s", type(exc).__name__)
     current_time = now_provider or (lambda: datetime.now().astimezone())
     interface_settings_path = Path(configured.interface_settings_path)
     filesystem_access_path = Path(configured.filesystem_access_path)
@@ -338,9 +350,20 @@ def create_app(
         else:
             supervisor.create(proactive_loop(), name="zhaoxi-proactive-web")
             supervisor.create(internal_activity_loop(), name="zhaoxi-internal-activity")
+        if perception is not None:
+            supervisor.create(perception.run(), name="zhaoxi-perception")
+        if qq_adapter is not None:
+            supervisor.create(qq_adapter.run(), name="zhaoxi-qq-adapter")
         try:
             yield
         finally:
+            if qq_adapter is not None:
+                await qq_adapter.close()
+            if perception is not None:
+                try:
+                    await asyncio.wait_for(perception.flush(force=True), timeout=5)
+                except Exception as exc:
+                    logger.warning("perception shutdown flush deferred type=%s", type(exc).__name__)
             if voice_runtime is not None:
                 await voice_runtime.cancel("application_shutdown")
             result = await supervisor.shutdown(
@@ -543,7 +566,39 @@ def create_app(
             "tool_inventory": tool_snapshot()["summary"] if getattr(core, "registry", None) is not None else None,
             "startup": getattr(core, "startup_diagnostics", None),
             "storage": backup_manager.health() if backup_manager is not None else {},
+            "perception": perception.diagnostics() if perception else {"enabled": False},
         }
+
+    @app.get("/api/perception/inspect")
+    async def perception_inspect():
+        return perception.diagnostics() if perception else {"enabled": False}
+
+    @app.post("/api/perception/flush")
+    async def perception_flush():
+        if perception is None:
+            raise HTTPException(status_code=503, detail="Perception 未启用")
+        return {"batches": await perception.flush(force=True)}
+
+    @app.post("/api/perception/clear-expired")
+    async def perception_clear_expired():
+        if perception is None:
+            raise HTTPException(status_code=503, detail="Perception 未启用")
+        return {"deleted": perception.store.clear_expired(configured.perception_observation_ttl_hours)}
+
+    @app.get("/api/perception/recent")
+    async def perception_recent():
+        if perception is None:
+            raise HTTPException(status_code=503, detail="Perception 未启用")
+        return {"observations": [x.model_dump(mode="json") for x in perception.store.recent_observations()],
+                "snapshots": [x.model_dump(mode="json") for x in perception.store.recent_all_snapshots()]}
+
+    @app.post("/api/perception/reconnect")
+    async def perception_reconnect():
+        if qq_adapter is None:
+            raise HTTPException(status_code=503, detail="QQ 未启用")
+        if qq_adapter.transport.socket is not None:
+            await qq_adapter.transport.socket.close()
+        return {"requested": True}
 
     @app.get("/api/capabilities")
     async def capabilities():

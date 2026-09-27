@@ -38,6 +38,7 @@ class InvocationOrigin(StrEnum):
     AUTO_MEMORY = "auto_memory"
     USER_COMMAND = "user_command"
     PROACTIVE = "proactive"
+    EXTERNAL = "external"
 
 
 class PermissionRequest(BaseModel):
