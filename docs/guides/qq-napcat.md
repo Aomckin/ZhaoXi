@@ -6,20 +6,19 @@
 
 1. 在朝汐 2899706784 的卡片点设置，进入网络配置，新建连接。
 2. 选择 **WebSocket 服务器**，启用；Host 填 `127.0.0.1`，Port 填 `3002`，消息格式选 `array`，强制推送事件保持开启。
-3. 保存。若设置访问 Token，将相同值填到朝汐 `.env` 的 `ZHAOXI_QQ_ACCESS_TOKEN`。本机环回联调可留空。WebUI 登录 Token 与 OneBot WebSocket Token 是两个不同配置。
+3. 保存。若设置访问 Token，将相同值填到本机 `config/plugins/qq_napcat.toml` 的 `access_token`。本机环回联调可留空。WebUI 登录 Token 与 OneBot WebSocket Token 是两个不同配置。
 
-朝汐 `.env`：
+将 `config/plugins/qq_napcat.example.toml` 复制为 `config/plugins/qq_napcat.toml`，并配置：
 
-```dotenv
-ZHAOXI_PERCEPTION_ENABLED=true
-ZHAOXI_QQ_ENABLED=true
-ZHAOXI_QQ_WS_URL=ws://127.0.0.1:3002
-ZHAOXI_QQ_ACCESS_TOKEN=
-ZHAOXI_QQ_BOT_USER_ID=2899706784
-ZHAOXI_QQ_OWNER_USER_ID=2305396720
+```toml
+enabled = true
+ws_url = "ws://127.0.0.1:3002"
+access_token = ""
+bot_user_id = "2899706784"
+owner_user_id = "2305396720"
 ```
 
-修改 `.env` 后，需从系统托盘完全退出朝汐，再重新打开。维护抽屉的 **Perception Debug** 可查看 `connected`、`identity_verified` 和 `logged_in_qq`。若账号不是 2899706784，连接会被拒绝处理与发信。
+首次安装插件后重启朝汐；之后可在维护抽屉 **External Sources** 运行时启停或重启，并查看 `connected`、`identity_verified` 和 `logged_in_qq`。若账号不匹配，插件拒绝处理与发信。旧 `ZHAOXI_QQ_*` 环境变量在插件配置迁移期仍可读取，但启用开关以插件 TOML 为准。
 
 ## Desktop 中的外部消息节奏
 

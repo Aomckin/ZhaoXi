@@ -66,7 +66,8 @@
         <details id="emojiDebugPanel"><summary>表情包系统 Debug</summary><section aria-label="表情包系统调试"><p><label><input id="emojiToggle" type="checkbox"> Emoji Module</label> <button id="emojiReload" type="button">Reload Registry</button></p><p><input id="emojiIntent" maxlength="500" placeholder="测试表情 intent"><button id="emojiTest" type="button">测试检索</button></p><p><button id="emojiDirectTest" type="button">直发测试表情</button> <button id="emojiModelTest" type="button">让模型发送测试表情</button></p><div id="emojiDebug" class="debug">展开后读取表情模块…</div></section></details>
         <details id="recentContextDebugPanel"><summary>Agenda / Current Cognition Debug</summary><section aria-label="近期 Context 调试"><p><label><input id="agendaContextToggle" type="checkbox"> Agenda Context</label> <button id="recentContextRefresh" type="button">刷新快照</button></p><div id="recentContextDebug" class="debug">展开后读取近期 Context…</div></section></details>
         <details id="internalActivityPanel"><summary>Internal Activity Debug</summary><section aria-label="内部活动调试"><p><button id="internalActivityRefresh" type="button">刷新状态</button> <button class="runInternalActivity" data-activity="tick" type="button">Run Activity Tick</button> <button class="runInternalActivity" data-activity="current_cognition_consolidation" type="button">Run Cognition Consolidation</button> <button class="runInternalActivity" data-activity="memory_maintenance" type="button">Run Memory Maintenance</button> <button class="runInternalActivity" data-activity="agenda_maintenance" type="button">Run Agenda Maintenance</button> <button class="runInternalActivity" data-activity="proactive_check" type="button">Run Proactive Check</button></p><pre id="internalActivityDebug" class="debug">展开后读取内部活动…</pre></section></details>
-        <details id="perceptionPanel"><summary>Perception Debug</summary><section aria-label="外界感知调试"><p><button id="perceptionRefresh" type="button">刷新状态</button> <button id="perceptionRecent" type="button">最近观察</button> <button id="perceptionFlush" type="button">刷新缓存</button> <button id="perceptionClear" type="button">清理过期</button> <button id="perceptionReconnect" type="button">重连 QQ</button> <button id="perceptionSessions" type="button">QQ Sessions</button> <button id="perceptionEvents" type="button">Self Events</button> <button id="perceptionPending" type="button">处理 Snapshot</button> <button id="perceptionLedgerClear" type="button">清理 Ledger</button> <button id="perceptionImage" type="button">重解析图片</button> <button id="perceptionExpression" type="button">表达策略</button></p><pre id="perceptionDebug" class="debug">展开后读取感知状态…</pre></section></details>
+        <details id="externalSourcesPanel"><summary>External Sources</summary><section aria-label="外部信息源"><button id="externalSourcesRefresh" type="button">刷新状态</button><div id="externalSourcesList"></div></section></details>
+        <details id="perceptionPanel"><summary>Perception Debug</summary><section aria-label="外界感知调试"><p><button id="perceptionRefresh" type="button">刷新状态</button> <button id="perceptionRecent" type="button">最近观察</button> <button id="perceptionFlush" type="button">刷新缓存</button> <button id="perceptionClear" type="button">清理过期</button> <button id="perceptionSessions" type="button">External Sessions</button> <button id="perceptionEvents" type="button">Self Events</button> <button id="perceptionPending" type="button">处理 Snapshot</button> <button id="perceptionLedgerClear" type="button">清理 Ledger</button> <button id="perceptionImage" type="button">重解析图片</button> <button id="perceptionExpression" type="button">表达策略</button></p><pre id="perceptionDebug" class="debug">展开后读取感知状态…</pre></section></details>
         <details id="cognitiveStreamPanel"><summary>Cognitive Stream Debug</summary><section aria-label="统一经历调试"><p><button id="cognitiveStreamRefresh" type="button">最近 50 个事件</button> <input id="cognitiveStreamFilter" maxlength="128" placeholder="Channel / Actor / Session"><select id="cognitiveStreamFilterKind"><option value="channel">Channel</option><option value="actor">Actor</option><option value="session">Session</option></select><button id="cognitiveStreamApply" type="button">筛选</button></p><p><input id="cognitiveAttentionQuery" maxlength="500" placeholder="测试 Attention 检索"><button id="cognitiveAttentionRun" type="button">检索</button><button id="cognitiveSessionRun" type="button">投影 Session</button></p><pre id="cognitiveStreamDebug" class="debug">展开后读取统一经历…</pre></section></details>
         <details id="decisionDebugPanel"><summary>Decision Layer Debug</summary><section aria-label="决策层调试"><p><button id="decisionDebugRefresh" type="button">刷新状态</button></p><p><input id="decisionDebugInput" maxlength="1000" placeholder="输入测试决策"><select id="decisionDebugLevel"><option value="">自动分层</option><option value="L0">测试 L0</option><option value="L1">测试 L1</option><option value="L2">测试 L2</option></select><button id="decisionDebugEvaluate" type="button">重新 evaluate</button></p><pre id="decisionDebugOutput" class="debug">展开后读取决策层…</pre></section></details>
         <details id="budgetDebugPanel"><summary>Budget / Context Debug</summary><button id="budgetDebugRefresh" type="button">刷新预算诊断</button><pre id="budgetDebug" class="debug">展开后读取预算与 Context 诊断…</pre></details>
@@ -374,7 +375,30 @@ $('#perceptionRefresh').onclick=()=>perceptionAction('/api/perception/inspect');
 $('#perceptionRecent').onclick=()=>perceptionAction('/api/perception/recent');
 $('#perceptionFlush').onclick=()=>perceptionAction('/api/perception/flush','POST');
 $('#perceptionClear').onclick=()=>perceptionAction('/api/perception/clear-expired','POST');
-$('#perceptionReconnect').onclick=()=>perceptionAction('/api/perception/reconnect','POST');
+async function refreshExternalSources(){
+  const panel=$('#externalSourcesList');
+  try{
+    const sources=await request('/api/external-sources');
+    panel.replaceChildren();
+    if(!sources.length){panel.textContent='未安装外部信息源';return}
+    for(const source of sources){
+      const row=document.createElement('div');
+      const heading=document.createElement('p');
+      heading.textContent=source.name+' ('+source.plugin_id+') · '+source.status;
+      row.append(heading);
+      for(const action of ['enable','disable','restart']){
+        const button=document.createElement('button');
+        button.type='button';button.textContent=action;
+        button.onclick=async()=>{await request('/api/external-sources/'+encodeURIComponent(source.plugin_id)+'/'+action,{method:'POST'});await refreshExternalSources()};
+        row.append(button)
+      }
+      const details=document.createElement('pre');details.className='debug';
+      details.textContent=JSON.stringify(source,null,2);row.append(details);panel.append(row)
+    }
+  }catch(error){panel.textContent=error.message}
+}
+$('#externalSourcesPanel').addEventListener('toggle',event=>{if(event.target.open)void refreshExternalSources()});
+$('#externalSourcesRefresh').onclick=()=>refreshExternalSources();
 $('#perceptionSessions').onclick=()=>perceptionAction('/api/perception/sessions');
 $('#perceptionEvents').onclick=()=>perceptionAction('/api/perception/self-events');
 $('#perceptionPending').onclick=()=>perceptionAction('/api/perception/process-pending','POST');

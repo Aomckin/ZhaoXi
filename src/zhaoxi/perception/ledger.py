@@ -68,8 +68,8 @@ class InteractionLedger:
         for item in reversed(events):
             summary = item.summary
             if item.private and not include_private:
-                summary = ("已通过 QQ 私聊回复 Owner" if item.event_type == "external_reply_sent"
-                           else "通过 QQ 私聊收到 Owner 消息")
+                summary = ("已通过外部私聊回复 Owner" if item.event_type == "external_reply_sent"
+                           else "通过外部私聊收到 Owner 消息")
             lines.append(f"{item.occurred_at.astimezone().strftime('%m-%d %H:%M')} {summary}")
         prefix = "[Interaction Ledger Debug]\n"
         suffix = "\n[/Interaction Ledger Debug]"
@@ -94,10 +94,11 @@ class InteractionLedger:
         with self._connect() as db:
             row = db.execute("SELECT updated_at,payload FROM runtime_self_state WHERE id=1").fetchone()
         if row is None:
-            return {"perception": {"enabled": False}, "qq": {"connected": False}}
+            return {"perception": {"enabled": False}, "external_sources": []}
         state = json.loads(row[1])
         if datetime.now(UTC) - datetime.fromisoformat(row[0]) > timedelta(seconds=90):
-            state.setdefault("qq", {})["connected"] = False
-            state["qq"]["identity_verified"] = False
-            state["qq"]["stale"] = True
+            for source in state.get("external_sources", []):
+                source["status"] = "stale"
+                source["plugin"] = {"connected": False}
+            state["stale"] = True
         return state

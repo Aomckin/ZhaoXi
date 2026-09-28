@@ -1,6 +1,6 @@
 # Zhaoxi / 朝汐
 
-朝汐是一个以本地运行、长期陪伴和可控工具执行为核心的个人 Agent。当前开发版本为 **1.3.1**，主要 QQ 场景已完成实机冒烟，长时连接与真实断线重连仍待观察。Perception System 已接入 QQ / NapCat；v1.3.1 增加共享近期活动、独立 QQ Session、外部认知 Planner、图片理解与逐段回复。v1.3.0 的私聊、群聊 Direct 和群消息摘要已完成实机验证。v1.3.1 开发状态见 [开发记录](docs/v1.3.x/Zhaoxi_v1.3.1_开发记录.md)；v1.3.0 配置、验收和限制见 [发布说明](docs/v1.3.x/Zhaoxi_v1.3.0_Release_Notes.md)及[QQ / NapCat 本机配置](docs/guides/qq-napcat.md)。
+朝汐是一个以本地运行、长期陪伴和可控工具执行为核心的个人 Agent。当前开发版本为 **1.3.3**。Core 提供 Perception、认知时间线和 External Source Plugin 协议；QQ / NapCat 作为可选插件接入。
 
 ## 主要特点
 
@@ -85,3 +85,7 @@ python -m pytest
 - [未来开发计划](<docs/roadmap/Zhaoxi 未来开发计划.md>)
 
 各版本任务书、发布说明和历史验收记录全部位于 `docs/`，根 README 只维护当前产品特点和使用方式。
+
+## External Source Plugins
+
+Core 默认不启用任何第三方聊天平台。插件通过 `ObservationSink` 发送标准 Observation，Core 负责认知、权限和回复路由。仓库附带可选的 QQ / NapCat 插件；将 `config/plugins/qq_napcat.example.toml` 复制为被 Git 忽略的 `config/plugins/qq_napcat.toml`，配置账号与连接并设置 `enabled = true` 后启用，也可在维护抽屉的 External Sources 中运行时启停或重启。移除插件包后，Core 的本地对话、Memory 和 Experience Stream 继续可用。协议和配置见 [External Source Plugin Spec](docs/plugin/External_Source_Plugin_Spec.md) 与 [QQ 插件](docs/plugin/QQ_NapCat_Plugin.md)。

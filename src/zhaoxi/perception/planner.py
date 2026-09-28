@@ -109,7 +109,7 @@ class ExternalCognitionPlanner:
                 self.rejected_candidate_count += 1
                 continue
             try:
-                candidate = MemoryCandidate(content=claim.strip(), source="qq:owner",
+                candidate = MemoryCandidate(content=claim.strip(), source=item.source + ":owner",
                     source_ref=item.raw_ref, source_message_id=item.observation_id,
                     source_message_ids=[item.observation_id],
                     metadata={"external_source": "OWNER_EXTERNAL", "actor_role": "OWNER"},

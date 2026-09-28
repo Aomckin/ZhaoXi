@@ -42,6 +42,7 @@ class CognitiveIngress:
             occurred_at=item.occurred_at, received_at=item.received_at,
             source_refs=refs, importance=0.7 if item.actor_role == "OWNER" else 0.3,
             metadata={"conversation_kind": item.conversation_kind, "source_kind": item.source_kind,
+                      "source_plugin": item.source_plugin,
                       "directed_to_zhaoxi": item.directed_to_zhaoxi,
                       "sender_is_bot": bool(item.metadata.get("sender_is_bot"))}))
 

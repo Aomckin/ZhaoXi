@@ -11,6 +11,11 @@
 
 ## v1.3.x
 
+- [v1.3.3 External Source Pluginization 任务书](v1.3.x/Zhaoxi_v1.3.3_External_Source_Pluginization_开发任务书.md)
+- [v1.3.3 开发记录](v1.3.x/Zhaoxi_v1.3.3_开发记录.md)
+- [External Source Plugin 协议](plugin/External_Source_Plugin_Spec.md)
+- [QQ / NapCat 可选插件](plugin/QQ_NapCat_Plugin.md)
+
 - [v1.3.1 开发记录](v1.3.x/Zhaoxi_v1.3.1_开发记录.md)
 - [v1.3.1 外部认知统一与 QQ 体验补全任务书](v1.3.x/Zhaoxi_v1.3.1_外部认知统一与QQ体验补全任务书.md)
 

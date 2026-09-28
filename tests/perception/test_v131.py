@@ -6,8 +6,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from zhaoxi.adapters.qq.codec import decode
-from zhaoxi.adapters.qq.outbound import send_reply
+from zhaoxi_ext.qq_napcat.codec import decode
+from zhaoxi_ext.qq_napcat.outbound import send_reply
+from zhaoxi.plugins.source_router import outbound_message
 from zhaoxi.config.settings import Settings
 from zhaoxi.core.context import ContextBuilder
 from zhaoxi.core.agent import ZhaoxiAgent
@@ -131,10 +132,10 @@ async def test_qq_sends_each_text_segment_and_emoji(tmp_path):
         status="matched", emoji_id="one"), image_path=lambda emoji_id: image)
     transport = SimpleNamespace(action=AsyncMock(return_value={"status": "ok"}))
     item = decode(qq_event(8), self_id="42")
-    settings = Settings(_env_file=None, qq_reply_segment_delay_min_ms=0,
-                        qq_reply_segment_delay_max_ms=0)
-    count = await send_reply(transport, item, "第一段\n\n第二段[emoji:开心]\n\n第三段",
-                             settings=settings, emoji_service=service)
+    from zhaoxi_ext.qq_napcat.config import QQConfig
+    settings = QQConfig(reply_segment_delay_min_ms=0, reply_segment_delay_max_ms=0)
+    count = await send_reply(transport, item, outbound_message("第一段\n\n第二段[emoji:开心]\n\n第三段", service),
+                             settings=settings)
     assert count == 4
     assert transport.action.await_count == 4
     messages = [call.args[1]["message"] for call in transport.action.await_args_list]
@@ -173,13 +174,14 @@ def test_runtime_state_stale_across_processes(tmp_path):
     path = tmp_path / "shared.db"
     first = InteractionLedger(path)
     first.save_runtime_state({"perception": {"enabled": True},
-                              "qq": {"connected": True, "identity_verified": True}})
-    assert InteractionLedger(path).runtime_state()["qq"]["connected"]
+                              "external_sources": [{"plugin_id": "qq_napcat",
+                                  "status": "running", "plugin": {"connected": True}}]})
+    assert InteractionLedger(path).runtime_state()["external_sources"][0]["plugin"]["connected"]
     with sqlite3.connect(path) as db:
         db.execute("UPDATE runtime_self_state SET updated_at=? WHERE id=1",
                    ((datetime.now(UTC) - timedelta(minutes=3)).isoformat(),))
     state = InteractionLedger(path).runtime_state()
-    assert not state["qq"]["connected"] and state["qq"]["stale"]
+    assert not state["external_sources"][0]["plugin"]["connected"] and state["stale"]
 
 
 
@@ -239,13 +241,15 @@ async def test_owner_adjacent_image_and_text_use_same_visual_input(tmp_path):
 
 @pytest.mark.asyncio
 async def test_qq_external_debounce_merges_adjacent_image_and_text(tmp_path):
-    from zhaoxi.adapters.qq.adapter import QQAdapter
+    from zhaoxi_ext.qq_napcat.plugin import QQNapCatPlugin
+    from zhaoxi_ext.qq_napcat.config import QQConfig
     path = tmp_path / "interface-settings.json"
     path.write_text('{"external_input_debounce_seconds":0.05,"external_reply_interval_seconds":0}', encoding="utf-8")
     settings = Settings(_env_file=None, interface_settings_path=str(path))
     runtime = SimpleNamespace(agent=SimpleNamespace(metrics=MetricRegistry()),
                               ingest=AsyncMock(return_value=None))
-    adapter = QQAdapter(runtime, settings)
+    adapter = QQNapCatPlugin(QQConfig(interface_settings_path=str(path)))
+    adapter.sink = SimpleNamespace(emit=AsyncMock(return_value=None))
     adapter.transport.identity_verified = True
     adapter.transport.self_id = "42"
     png = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"abc").decode()
@@ -253,8 +257,8 @@ async def test_qq_external_debounce_merges_adjacent_image_and_text(tmp_path):
     await asyncio.sleep(0.01)
     await adapter.on_event(qq_event(102, text="这张图里有什么？"))
     await first
-    runtime.ingest.assert_awaited_once()
-    item = runtime.ingest.await_args.args[0]
+    adapter.sink.emit.assert_awaited_once()
+    item = adapter.sink.emit.await_args.args[0]
     assert item.content == "这张图里有什么？"
     assert [part.type for part in item.parts] == ["image", "text"]
     assert item.metadata["merged_refs"] == ["qq:private:8:101", "qq:private:8:102"]
@@ -262,26 +266,29 @@ async def test_qq_external_debounce_merges_adjacent_image_and_text(tmp_path):
 
 @pytest.mark.asyncio
 async def test_qq_external_reply_delay_uses_desktop_setting(tmp_path, monkeypatch):
-    from zhaoxi.adapters.qq import outbound
+    from zhaoxi_ext.qq_napcat import outbound
     path = tmp_path / "interface-settings.json"
     path.write_text('{"external_reply_interval_seconds":1.2}', encoding="utf-8")
-    settings = Settings(_env_file=None, interface_settings_path=str(path))
+    from zhaoxi_ext.qq_napcat.config import QQConfig
+    settings = QQConfig(interface_settings_path=str(path))
     transport = SimpleNamespace(action=AsyncMock(return_value={"status": "ok"}))
     sleep = AsyncMock()
     monkeypatch.setattr(outbound.asyncio, "sleep", sleep)
     item = decode(qq_event(103), self_id="42")
-    assert await outbound.send_reply(transport, item, "第一段\n\n第二段", settings=settings) == 2
+    assert await outbound.send_reply(transport, item, outbound_message("第一段\n\n第二段"), settings=settings) == 2
     sleep.assert_awaited_once_with(1.2)
 
 
 @pytest.mark.asyncio
 async def test_external_debounce_keeps_actors_and_ambient_separate(tmp_path):
-    from zhaoxi.adapters.qq.adapter import QQAdapter
+    from zhaoxi_ext.qq_napcat.plugin import QQNapCatPlugin
+    from zhaoxi_ext.qq_napcat.config import QQConfig
     path = tmp_path / "interface-settings.json"
     path.write_text('{"external_input_debounce_seconds":0.02}', encoding="utf-8")
     settings = Settings(_env_file=None, interface_settings_path=str(path))
     runtime = SimpleNamespace(agent=SimpleNamespace(metrics=MetricRegistry()))
-    adapter = QQAdapter(runtime, settings)
+    adapter = QQNapCatPlugin(QQConfig(interface_settings_path=str(path)))
+    adapter.sink = SimpleNamespace(emit=AsyncMock(return_value=None))
     one = decode(qq_event(201, user_id=8), self_id="42", owner_id="8")
     two = decode(qq_event(202, user_id=9), self_id="42", owner_id="8")
     first, second = await asyncio.gather(adapter._debounce_direct(one), adapter._debounce_direct(two))

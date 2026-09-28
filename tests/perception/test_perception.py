@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from zhaoxi.adapters.qq.codec import decode
+from zhaoxi_ext.qq_napcat.codec import decode
 from zhaoxi.config.settings import Settings
 from zhaoxi.core.message import Role
 from zhaoxi.core.context import ContextBuilder

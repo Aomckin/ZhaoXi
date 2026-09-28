@@ -54,7 +54,7 @@ def decode(event: dict, *, self_id: str | None, owner_id: str = "") -> Observati
     if not message_id:
         return None
     occurred = datetime.fromtimestamp(float(event.get("time") or datetime.now(UTC).timestamp()), UTC)
-    return Observation(source="qq", source_kind=kind + "_message", actor_id=actor_id,
+    return Observation(source="qq", source_plugin="qq_napcat", source_kind=kind + "_message", actor_id=actor_id,
         actor_name=sender.get("card") or sender.get("nickname") or None,
         actor_role="OWNER" if owner else "EXTERNAL", conversation_id=conversation_id,
         conversation_kind=kind, content=content, attachments=attachments, parts=parts,

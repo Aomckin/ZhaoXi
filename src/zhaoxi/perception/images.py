@@ -1,4 +1,4 @@
-"""Controlled QQ image resolution for provider vision input."""
+"""Controlled external image resolution for provider vision input."""
 import asyncio
 import base64
 import ipaddress
@@ -27,7 +27,7 @@ def _mime(data: bytes) -> str | None:
 class ImageResolver:
     def __init__(self, directory: str | Path, max_bytes: int, ttl_hours: int,
                  trusted_host: str | None = None, trusted_port: int | None = None):
-        self.directory = Path(directory) / "qq"
+        self.directory = Path(directory) / "external"
         self.directory.mkdir(parents=True, exist_ok=True)
         self.max_bytes = max_bytes
         self.ttl_hours = ttl_hours

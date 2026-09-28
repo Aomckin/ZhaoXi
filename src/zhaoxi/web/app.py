@@ -268,15 +268,52 @@ def create_app(
     speech_policy = SpeechPolicy()
     supervisor = TaskSupervisor()
     perception = None
-    qq_adapter = None
+    source_runtime = None
     if configured.perception_enabled and not isinstance(core, StartupUnavailableAgent):
         try:
             from zhaoxi.perception import PerceptionRuntime
+            from zhaoxi.plugins.runtime import PluginRuntime
+            from zhaoxi.plugins.source_router import PerceptionSink
+            from zhaoxi.plugins.loader import discover
+            import tomllib
             perception = PerceptionRuntime(configured, core)
             core.perception = perception
-            if configured.qq_enabled:
-                from zhaoxi.adapters.qq import QQAdapter
-                qq_adapter = QQAdapter(perception, configured)
+            source_runtime = PluginRuntime(None)
+            source_runtime.sink = PerceptionSink(perception, source_runtime)
+            perception.sources = source_runtime
+            plugin_dir = Path(__file__).resolve().parents[2] / "zhaoxi_ext"
+            discovery_errors = []
+            manifests = discover(plugin_dir, discovery_errors)
+            for plugin_id, manifest in discover(Path("plugins/external_sources"), discovery_errors).items():
+                if plugin_id in manifests:
+                    discovery_errors.append((plugin_id, "DuplicatePluginId"))
+                else:
+                    manifests[plugin_id] = manifest
+            for bad_id, error in discovery_errors:
+                from zhaoxi.plugins.manifests import PluginManifest
+                safe_id = "invalid_" + re.sub(r"[^a-z0-9_]", "_", bad_id.lower())
+                broken = PluginManifest(id=safe_id, name=bad_id, version="invalid",
+                                        entrypoint="invalid:Invalid")
+                if safe_id in source_runtime._state:
+                    continue
+                source_runtime.register(broken)
+                source_runtime._state[safe_id]["status"] = "degraded"
+                source_runtime._state[safe_id]["last_error"] = error
+                logger.warning("external source manifest failed id=%s error=%s", bad_id, error)
+            for manifest in manifests.values():
+                config_path = Path("config/plugins") / (manifest.id + ".toml")
+                try:
+                    if config_path.is_file():
+                        with config_path.open("rb") as stream:
+                            enabled = bool(tomllib.load(stream).get("enabled", False))
+                    else:
+                        enabled = False
+                    source_runtime.register(manifest, enabled=enabled)
+                except Exception as exc:
+                    source_runtime.register(manifest)
+                    state = source_runtime._state[manifest.id]
+                    state["status"] = "degraded"
+                    state["last_error"] = type(exc).__name__
         except Exception as exc:
             logger.warning("perception startup degraded type=%s", type(exc).__name__)
     current_time = now_provider or (lambda: datetime.now().astimezone())
@@ -354,13 +391,15 @@ def create_app(
             supervisor.create(internal_activity_loop(), name="zhaoxi-internal-activity")
         if perception is not None:
             supervisor.create(perception.run(), name="zhaoxi-perception")
-        if qq_adapter is not None:
-            supervisor.create(qq_adapter.run(), name="zhaoxi-qq-adapter")
+        if source_runtime is not None:
+            for source in source_runtime.diagnostics():
+                if source["enabled"]:
+                    await source_runtime.enable(source["plugin_id"])
         try:
             yield
         finally:
-            if qq_adapter is not None:
-                await qq_adapter.close()
+            if source_runtime is not None:
+                await source_runtime.stop()
             if perception is not None:
                 try:
                     await asyncio.wait_for(perception.flush(force=True), timeout=5)
@@ -569,6 +608,7 @@ def create_app(
             "startup": getattr(core, "startup_diagnostics", None),
             "storage": backup_manager.health() if backup_manager is not None else {},
             "perception": perception.diagnostics() if perception else {"enabled": False},
+            "external_sources": source_runtime.diagnostics() if source_runtime else [],
         }
 
     @app.get("/api/perception/inspect")
@@ -601,7 +641,7 @@ def create_app(
         sessions = await core.session_store.list()
         return {"sessions": [{"id": item.id, "updated_at": item.updated_at.isoformat(),
                               "messages": len(item.conversation.messages)}
-                             for item in sessions if item.id.startswith("qq/")][:30]}
+                             for item in sessions if item.id.count("/") >= 2 and not item.id.startswith("local/")][:30]}
 
     @app.get("/api/perception/self-events")
     async def perception_self_events():
@@ -639,13 +679,30 @@ def create_app(
         return {"private": ChannelExpressionPolicy.prompt("private"),
                 "group": ChannelExpressionPolicy.prompt("group")}
 
-    @app.post("/api/perception/reconnect")
-    async def perception_reconnect():
-        if qq_adapter is None:
-            raise HTTPException(status_code=503, detail="QQ 未启用")
-        if qq_adapter.transport.socket is not None:
-            await qq_adapter.transport.socket.close()
-        return {"requested": True}
+    @app.get("/api/external-sources")
+    async def external_sources():
+        return source_runtime.diagnostics() if source_runtime else []
+
+    @app.post("/api/external-sources/{plugin_id}/enable")
+    async def enable_external_source(plugin_id: str):
+        if source_runtime is None or plugin_id not in source_runtime._state:
+            raise HTTPException(status_code=404, detail="Source unavailable")
+        await source_runtime.enable(plugin_id)
+        return source_runtime.diagnostics()
+
+    @app.post("/api/external-sources/{plugin_id}/disable")
+    async def disable_external_source(plugin_id: str):
+        if source_runtime is None or plugin_id not in source_runtime._state:
+            raise HTTPException(status_code=404, detail="Source unavailable")
+        await source_runtime.disable(plugin_id)
+        return source_runtime.diagnostics()
+
+    @app.post("/api/external-sources/{plugin_id}/restart")
+    async def restart_external_source(plugin_id: str):
+        if source_runtime is None or plugin_id not in source_runtime._state:
+            raise HTTPException(status_code=404, detail="Source unavailable")
+        await source_runtime.restart(plugin_id)
+        return source_runtime.diagnostics()
 
     @app.get("/api/capabilities")
     async def capabilities():
@@ -761,7 +818,7 @@ def create_app(
                     active.images == (channel,))}
             finally:
                 reset_current_turn(token)
-        results = await asyncio.gather(probe("desktop"), probe("qq"))
+        results = await asyncio.gather(probe("desktop"), probe("external"))
         return {"passed": all(item["isolated"] for item in results), "results": results}
 
     @app.get("/api/debug/cognitive-stream/unit")

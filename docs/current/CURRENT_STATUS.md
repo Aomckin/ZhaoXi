@@ -1,4 +1,6 @@
-# 当前开发版本：v1.3.2（代码已开发；跨频道最终验收待完成）
+# 当前开发版本：v1.3.3（插件化代码与自动测试已完成；实机验收待完成）
+
+2026-09-28：v1.3.3 已将 QQ / NapCat 协议、连接和配置迁入可选扩展包；Core 通过 External Source Plugin 协议接收 Observation 并路由回复，支持零插件与运行时启停。自动回归通过；真实 NapCat 收发、重连和长时运行尚未在本次变更后实测。见 [v1.3.3 开发记录](../v1.3.x/Zhaoxi_v1.3.3_开发记录.md)。
 
 2026-09-28：v1.3.2 Recent Timeline Context 改由 ExperienceStream 生成。近期 Owner 对话、第三方 Observation、SocialSnapshot、朝汐回复与 Tool/Workflow/Planner/Proactive/System 事件按时间进入同一消息序列；行动事件压缩后以自身 Experience 角色呈现，Attention 仅补充近期时间窗外的相关事件。Session 只承载局部视图和输出路由，Interaction Ledger 不再注入认知 Prompt。已完整重启桌面程序，并在真实 NapCat 群 `1043364342` 验证夏苟首次定向提问获得回复、紧接追问被拦截，原始输入和回复均进入 ExperienceStream。任务书 A–E 的 Desktop ↔ QQ 连续性、并发回复对齐等完整黑盒场景尚未全部实机验收；当前不标记 v1.3.2 正式收口。详见 [v1.3.2 开发记录](../v1.3.x/Zhaoxi_v1.3.2_开发记录.md)。
 

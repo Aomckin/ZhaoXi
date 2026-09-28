@@ -1,7 +1,7 @@
 """External observations retain source provenance and never become user turns."""
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 from pydantic import BaseModel, Field, field_validator
 
@@ -37,9 +37,17 @@ class ObservationPart(BaseModel):
     target: str | None = None
 
 
+class Attachment(BaseModel):
+    type: Literal["image", "audio", "file", "video", "structured"]
+    url: str | None = None
+    file: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class Observation(BaseModel):
     observation_id: str = Field(default_factory=lambda: uuid4().hex)
     source: str
+    source_plugin: str | None = None
     source_kind: str
     actor_id: str | None = None
     actor_name: str | None = None
@@ -47,7 +55,7 @@ class Observation(BaseModel):
     conversation_id: str | None = None
     conversation_kind: str | None = None
     content: str = ""
-    attachments: list[dict[str, Any]] = Field(default_factory=list)
+    attachments: list[Attachment] = Field(default_factory=list)
     parts: list[ObservationPart] = Field(default_factory=list)
 
     @property
@@ -55,8 +63,8 @@ class Observation(BaseModel):
         if self.parts:
             return self.parts
         result = [ObservationPart(type="text", text=self.content)] if self.content else []
-        result += [ObservationPart(type="image", url=item.get("url"), file=item.get("file"))
-                   for item in self.attachments if item.get("type") == "image"]
+        result += [ObservationPart(type="image", url=item.url, file=item.file)
+                   for item in self.attachments if item.type == "image"]
         return result
     occurred_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     received_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

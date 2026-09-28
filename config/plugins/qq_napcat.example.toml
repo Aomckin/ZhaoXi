@@ -1,0 +1,7 @@
+enabled = false
+ws_url = "ws://127.0.0.1:3001"
+access_token = ""
+owner_user_id = ""
+bot_user_id = ""
+external_bot_user_ids = ""
+reconnect_seconds = 5

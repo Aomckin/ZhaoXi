@@ -1,7 +1,7 @@
 import asyncio
 import json
 from websockets.asyncio.server import serve
-from zhaoxi.adapters.qq.transport import QQTransport
+from zhaoxi_ext.qq_napcat.transport import QQTransport
 
 
 def test_transport_auth_echo_inbound_and_close():

@@ -1,18 +1,18 @@
-"""NapCat source adapter; failures are isolated from the core lifecycle."""
+"""QQ/NapCat I/O plugin. No cognitive state or provider access."""
 import asyncio
 import logging
 from dataclasses import dataclass, field
 from time import monotonic
-
+from urllib.parse import urlparse
 from zhaoxi.config.external_timing import load_external_timing
-from zhaoxi.perception.models import AttentionHint
-from zhaoxi.perception.router import route
-from zhaoxi.adapters.qq.codec import decode
-from zhaoxi.adapters.qq.outbound import send_reply
-from zhaoxi.adapters.qq.transport import QQTransport
+from zhaoxi.perception.images import ImageResolver
+from zhaoxi.sdk.external_source import SourceCapabilities, SendResult
+from zhaoxi_ext.qq_napcat.codec import decode
+from zhaoxi_ext.qq_napcat.outbound import send_reply
+from zhaoxi_ext.qq_napcat.transport import QQTransport
+from zhaoxi_ext.qq_napcat.config import QQConfig
 
-logger = logging.getLogger("QQ_ADAPTER")
-
+logger = logging.getLogger("QQ_PLUGIN")
 
 @dataclass
 class _PendingDirect:
@@ -21,27 +21,25 @@ class _PendingDirect:
     last_at: float
     changed: asyncio.Event = field(default_factory=asyncio.Event)
 
+class QQNapCatPlugin:
+    plugin_id = "qq_napcat"
 
-class QQAdapter:
-    def __init__(self, runtime, settings):
-        self.runtime = runtime
-        self.settings = settings
-        self.transport = QQTransport(settings.qq_ws_url, settings.qq_access_token,
-                                     settings.qq_reconnect_seconds,
-                                     on_state=self._on_state,
-                                     expected_user_id=settings.qq_bot_user_id)
-        self._pending_direct: dict[tuple[str, str, str], _PendingDirect] = {}
+    def __init__(self, config: QQConfig | None = None):
+        self.config = config or QQConfig.load()
+        self.transport = QQTransport(self.config.ws_url, self.config.access_token,
+            self.config.reconnect_seconds, on_state=self._on_state,
+            expected_user_id=self.config.bot_user_id)
+        parsed = urlparse(self.config.ws_url)
+        self.images = ImageResolver(".zhaoxi/tmp/plugins", 10_485_760, 24,
+                                    trusted_host=parsed.hostname, trusted_port=parsed.port)
+        self.sink = None
+        self._pending_direct = {}
         self._pending_lock = asyncio.Lock()
         self.received_count = 0
         self.sent_count = 0
-        self.runtime.source = self
 
     def _on_state(self, state):
-        self.runtime.agent.metrics.increment("qq." + state)
-        self.runtime.publish_runtime_state()
-        if state in {"connected", "disconnected"} and self.settings.interaction_ledger_enabled:
-            self.runtime.ledger.record("channel_" + state, "qq",
-                "QQ 通道已连接" if state == "connected" else "QQ 通道已断开")
+        logger.info("QQ transport state=%s", state)
 
     @staticmethod
     def _merge_direct(items):
@@ -59,8 +57,8 @@ class QQAdapter:
         })
 
     async def _debounce_direct(self, item):
-        seconds = load_external_timing(self.settings.interface_settings_path).debounce_seconds
-        if not seconds or route(item) is not AttentionHint.DIRECT:
+        seconds = load_external_timing(self.config.interface_settings_path).debounce_seconds
+        if not seconds or (item.conversation_kind != "private" and not item.directed_to_zhaoxi):
             return item
         key = (item.conversation_kind or "", item.conversation_id or "", item.actor_id or "")
         now = monotonic()
@@ -91,17 +89,17 @@ class QQAdapter:
                     self._pending_direct.pop(key, None)
 
     async def on_event(self, event):
-        if event.get("post_type") != "message":
+        if event.get("post_type") != "message" or not self.transport.identity_verified:
             return
-        if not self.transport.identity_verified:
-            return
-        if self.settings.qq_bot_user_id and self.transport.self_id != self.settings.qq_bot_user_id:
+        if self.config.bot_user_id and self.transport.self_id != self.config.bot_user_id:
             return
         if event.get("self_id") and str(event["self_id"]) != str(self.transport.self_id):
             return
-        item = decode(event, self_id=self.transport.self_id, owner_id=self.settings.qq_owner_user_id)
+        item = decode(event, self_id=self.transport.self_id, owner_id=self.config.owner_user_id)
         if item is None:
             return
+        if item.actor_id in {value.strip() for value in self.config.external_bot_user_ids.split(",") if value.strip()}:
+            item.metadata["sender_is_bot"] = True
         reply_id = item.metadata.get("reply_to")
         if reply_id and not item.directed_to_zhaoxi:
             try:
@@ -111,33 +109,49 @@ class QQAdapter:
                     item.directed_to_zhaoxi = True
             except Exception as exc:
                 logger.warning("reply lookup failed type=%s", type(exc).__name__)
-        self.received_count += 1
-        self.runtime.agent.metrics.increment("qq.message.received")
         item = await self._debounce_direct(item)
         if item is None:
             return
-        response = await self.runtime.ingest(item)
-        if response:
-            try:
-                count = await send_reply(self.transport, item, response,
-                    settings=self.settings, emoji_service=getattr(self.runtime.agent, "emoji_service", None))
-                await self.runtime.reply_sent(item, response, count)
-                self.sent_count += count
-                self.runtime.agent.metrics.increment("qq.message.sent")
-            except Exception as exc:
-                self.runtime.last_error = type(exc).__name__
-                self.runtime.agent.metrics.increment("qq.action.failed")
-                logger.warning("reply failed type=%s", type(exc).__name__)
+        for part in item.parts:
+            if part.type == "image":
+                resolved = await self.images.resolve({"url": part.url, "file": part.file})
+                if resolved:
+                    part.url, part.file = resolved, None
+        self.received_count += 1
+        await self.sink.emit(item)
 
-    async def run(self):
+    async def start(self, sink):
+        self.sink = sink
         await self.transport.run(self.on_event)
 
-    async def close(self):
+    async def stop(self):
         await self.transport.close()
+        self.sink = None
+
+    def capabilities(self):
+        return SourceCapabilities(text_in=True, text_out=True, image_in=True, image_out=True,
+                                  reply=True, mention=True, private_chat=True, group_chat=True,
+                                  realtime=True)
+
+    async def send(self, target, content):
+        if not self.transport.identity_verified:
+            return SendResult(sent=False, error="source disconnected")
+        try:
+            count = await send_reply(self.transport, target, content, settings=self.config)
+            self.sent_count += count
+            return SendResult(sent=True, segment_count=count)
+        except Exception as exc:
+            logger.warning("QQ send failed type=%s", type(exc).__name__)
+            return SendResult(sent=False, error=type(exc).__name__)
+
+    async def reply(self, target, reply_to, content):
+        return await self.send(target.model_copy(update={"message_ref": reply_to}), content)
 
     def diagnostics(self):
-        return {"connected": self.transport.connected, "identity_verified": self.transport.identity_verified,
-                "expected_qq": self.settings.qq_bot_user_id or None,
+        return {"connected": self.transport.connected,
+                "identity_verified": self.transport.identity_verified,
+                "expected_qq": self.config.bot_user_id or None,
                 "logged_in_qq": self.transport.self_id,
-                "reconnect_count": self.transport.reconnect_count, "last_error": self.transport.last_error,
+                "reconnect_count": self.transport.reconnect_count,
+                "last_error": self.transport.last_error,
                 "received_count": self.received_count, "sent_count": self.sent_count}

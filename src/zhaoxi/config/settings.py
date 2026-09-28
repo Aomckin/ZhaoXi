@@ -29,18 +29,6 @@ class Settings(BaseSettings):
     perception_image_temp_dir: str = ".zhaoxi/tmp/perception"
     perception_image_max_bytes: int = Field(default=10_485_760, ge=1024)
     perception_image_ttl_hours: int = Field(default=24, ge=1)
-    qq_private_reply_max_segments: int = Field(default=4, ge=1, le=10)
-    qq_group_reply_max_segments: int = Field(default=3, ge=1, le=10)
-    qq_reply_segment_delay_min_ms: int = Field(default=300, ge=0)
-    qq_reply_segment_delay_max_ms: int = Field(default=800, ge=0)
-    qq_enabled: bool = False
-    qq_ws_url: str = "ws://127.0.0.1:3001"
-    qq_access_token: str = ""
-    qq_owner_user_id: str = ""
-    qq_bot_user_id: str = ""
-    qq_external_bot_user_ids: str = ""
-    qq_reconnect_seconds: float = Field(default=5, ge=0.1)
-
     desktop_activity_enabled: bool = True
     desktop_activity_window_title_enabled: bool = True
     desktop_activity_input_rate_enabled: bool = True

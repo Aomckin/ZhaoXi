@@ -1,0 +1,14 @@
+id = "qq_napcat"
+name = "QQ via NapCat"
+version = "1.0.0"
+entrypoint = "zhaoxi_ext.qq_napcat.plugin:QQNapCatPlugin"
+[capabilities]
+text_in = true
+text_out = true
+image_in = true
+image_out = true
+reply = true
+mention = true
+private_chat = true
+group_chat = true
+realtime = true

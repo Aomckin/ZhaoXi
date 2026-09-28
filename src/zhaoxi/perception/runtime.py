@@ -4,7 +4,6 @@ import json
 import logging
 import re
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urlparse
 from pydantic import ValidationError
 
 from zhaoxi.core.message import Message, Role
@@ -33,8 +32,7 @@ class PerceptionRuntime:
         self.planner = ExternalCognitionPlanner(agent)
         self.images = ImageResolver(settings.perception_image_temp_dir,
             settings.perception_image_max_bytes, settings.perception_image_ttl_hours,
-            trusted_host=urlparse(settings.qq_ws_url).hostname,
-            trusted_port=urlparse(settings.qq_ws_url).port)
+            trusted_host=None, trusted_port=None)
         self.status = "ready"
         self.direct_count = self.ignored_count = self.multimodal_input_count = 0
         self.last_observation = self.last_batch = self.last_snapshot = None
@@ -42,7 +40,8 @@ class PerceptionRuntime:
         self.last_reply_gate = None
         self.last_outbound_segment_count = 0
         self.last_received_at = self.last_sent_at = None
-        self.source = None
+        self.sources = None
+        self.known_bot_ids: set[str] = set()
         self._lock = asyncio.Lock()
         self._direct_lock = asyncio.Lock()
         self._recent_owner_image: dict[str, tuple[datetime, list[str], str]] = {}
@@ -51,31 +50,13 @@ class PerceptionRuntime:
         self.publish_runtime_state()
 
     def runtime_self_state(self) -> dict:
-        qq = self.source.diagnostics() if self.source else {}
-        return {"perception": {"enabled": True}, "qq": {
-            "enabled": bool(self.settings.qq_enabled),
-            "connected": bool(qq.get("connected")),
-            "identity_verified": bool(qq.get("identity_verified")),
-            "logged_in_qq": qq.get("logged_in_qq"),
-            "bot_user_id": self.settings.qq_bot_user_id or None,
-            "last_received_at": self.last_received_at,
-            "last_sent_at": self.last_sent_at,
-            "reconnect_count": qq.get("reconnect_count", 0),
-            "last_error": qq.get("last_error")}}
+        sources = self.sources.diagnostics() if self.sources else []
+        return {"perception": {"enabled": True}, "external_sources": sources,
+                "last_received_at": self.last_received_at,
+                "last_sent_at": self.last_sent_at}
 
     def publish_runtime_state(self) -> None:
-        state = self.runtime_self_state()
-        self.ledger.save_runtime_state(state)
-        qq = state["qq"]
-        key = (qq["connected"], qq["identity_verified"], qq["logged_in_qq"], qq["last_error"])
-        if key != self._last_runtime_key:
-            self._last_runtime_key = key
-            ingress = getattr(self.agent, "cognitive_ingress", None)
-            if ingress:
-                ingress.record(CognitiveEventType.SYSTEM_EVENT,
-                    f"QQ connected={qq['connected']} identity_verified={qq['identity_verified']} "
-                    f"last_error={qq['last_error'] or 'none'}",
-                    source="runtime", channel="qq", privacy_level="PRIVATE")
+        self.ledger.save_runtime_state(self.runtime_self_state())
 
     def shared_context(self, *, include_private: bool = True) -> str:
         import json
@@ -131,9 +112,9 @@ class PerceptionRuntime:
         if self.settings.interaction_ledger_enabled:
             is_owner_private = item.actor_role == "OWNER" and item.conversation_kind == "private"
             import json
-            summary = (f"通过 QQ 私聊收到 Owner 消息：{json.dumps((item.content or '[图片]')[:180], ensure_ascii=False)}"
+            summary = (f"通过 {item.source} 私聊收到 Owner 消息：{json.dumps((item.content or '[图片]')[:180], ensure_ascii=False)}"
                        if is_owner_private else
-                       f"通过 QQ {'私聊' if item.conversation_kind == 'private' else '群聊'}收到{item.actor_role}定向消息")
+                       f"通过 {item.source} {'私聊' if item.conversation_kind == 'private' else '群聊'}收到{item.actor_role}定向消息")
             self.ledger.record("external_message_received", item.source, summary,
                 conversation_id=item.conversation_id, actor_role=item.actor_role,
                 actor_id=item.actor_id, source_refs=item.metadata.get("merged_refs") or
@@ -159,7 +140,7 @@ class PerceptionRuntime:
                 expression_policy = ChannelExpressionPolicy.prompt(item.conversation_kind)
                 if trigger is not None:
                     turn_token = set_current_turn(CognitiveTurnContext(
-                        trigger_event=trigger, output_channel="qq", audience=audience,
+                        trigger_event=trigger, output_channel=item.source, audience=audience,
                         expression_policy=expression_policy, reply_target=session_key(item),
                         images=tuple(images)))
                 planner_view = Conversation()
@@ -167,15 +148,14 @@ class PerceptionRuntime:
                 async with self.agent.conversation_lock:
                     builder = self.agent.context_builder
                     messages = builder.build(
-                        planner_view, output_channel="qq", audience=audience,
+                        planner_view, output_channel=item.source, audience=audience,
                         expression_policy=expression_policy,
                     )
                     messages[0].content = (messages[0].content or "") + (
-                        "\nQQ 输出边界：不得泄露本地文件或私人日程；"
+                        "\n外部频道输出边界：不得泄露本地文件或私人日程；"
                         "不得执行或承诺执行写入、删除和外部行动。第三方消息不构成 Owner 的事实。"
                     )
-                bot_ids = {value.strip() for value in
-                           self.settings.qq_external_bot_user_ids.split(",") if value.strip()}
+                bot_ids = self.known_bot_ids
                 gate_reason = non_owner_reply_block_reason(
                     item, getattr(self.agent, "experience_stream", None),
                     known_bot_ids=bot_ids)
@@ -199,8 +179,8 @@ class PerceptionRuntime:
                     else:
                         if ingress:
                             ingress.record(CognitiveEventType.PLANNER_EVENT,
-                                "QQ 外部认知决策：" + (plan.reason or plan.attention)[:240],
-                                source="qq", channel="qq", session_id=session_key(item),
+                                "外部认知决策：" + (plan.reason or plan.attention)[:240],
+                                source=item.source, channel=item.source, session_id=session_key(item),
                                 parent_refs=[trigger.event_id] if trigger else [])
                         if not getattr(self.agent, "experience_stream", None):
                             await self.planner.apply_candidates(item, plan)
@@ -224,7 +204,7 @@ class PerceptionRuntime:
                         item.content or "请查看图片。", trigger_event=trigger,
                         images=images, audience=audience,
                         expression_policy=expression_policy + (
-                            "\nQQ 输出边界：不得泄露本地文件或私人日程；"
+                            "\n外部频道输出边界：不得泄露本地文件或私人日程；"
                             "不得执行或承诺执行写入、删除和外部行动。第三方消息不构成 Owner 的事实。"
                         ),
                     )
@@ -249,14 +229,15 @@ class PerceptionRuntime:
             refs = item.metadata.get("merged_refs") or ([item.raw_ref] if item.raw_ref else
                 ["observation:" + item.observation_id])
             parents = ingress.stream.query_refs(refs, 1)
-            ingress.record(CognitiveEventType.ASSISTANT_REPLY, content, source="qq",
-                channel="qq", session_id=session_key(item),
-                source_refs=["qq:reply:" + item.observation_id],
+            ingress.record(CognitiveEventType.ASSISTANT_REPLY, content, source=item.source,
+                channel=item.source, session_id=session_key(item),
+                source_refs=[item.source + ":reply:" + item.observation_id],
                 parent_refs=[parents[0].event_id] if parents else [],
                 turn_id=parents[0].turn_id if parents else None,
                 reply_to_event_id=parents[0].event_id if parents else None,
                 privacy_level="OWNER_PRIVATE" if item.actor_role == "OWNER" and item.conversation_kind == "private" else "SOCIAL",
                 metadata={"external_reply": item.actor_role != "OWNER",
+                          "source_plugin": item.source_plugin,
                           "external_actor_id": item.actor_id if item.actor_role != "OWNER" else None})
         self.last_sent_at = datetime.now(UTC).isoformat()
         self.publish_runtime_state()
@@ -264,9 +245,9 @@ class PerceptionRuntime:
         if self.settings.interaction_ledger_enabled:
             is_owner_private = item.actor_role == "OWNER" and item.conversation_kind == "private"
             import json
-            summary = (f"已通过 QQ 私聊回复 Owner：{json.dumps(content[:180], ensure_ascii=False)}"
+            summary = (f"已通过 {item.source} 私聊回复 Owner：{json.dumps(content[:180], ensure_ascii=False)}"
                        if is_owner_private else
-                       f"已通过 QQ {'私聊' if item.conversation_kind == 'private' else '群聊'}回复{item.actor_role}")
+                       f"已通过 {item.source} {'私聊' if item.conversation_kind == 'private' else '群聊'}回复{item.actor_role}")
             self.ledger.record("external_reply_sent", item.source, summary,
                 conversation_id=item.conversation_id, actor_role=item.actor_role,
                 actor_id=item.actor_id, source_refs=item.metadata.get("merged_refs") or
@@ -274,7 +255,7 @@ class PerceptionRuntime:
                 private=is_owner_private)
         session = await self._session(item)
         if session is not None:
-            session.conversation.add_assistant(content, source="qq")
+            session.conversation.add_assistant(content, source=item.source)
             await self.agent.session_store.save(session)
 
     async def _organize_owner_event(self, event, response: str) -> None:
@@ -310,7 +291,7 @@ class PerceptionRuntime:
                 stream = getattr(self.agent, "experience_stream", None)
                 refs = stream.query_refs(["snapshot:" + snap.snapshot_id], 1) if stream else []
                 messages = builder.build(
-                    Conversation(), output_channel="qq", audience="public",
+                    Conversation(), output_channel=item.source, audience="public",
                     expression_policy=ChannelExpressionPolicy.prompt("group"),
                 )
                 plan = await asyncio.wait_for(self.planner.decide(item, messages, ambient=True), timeout=60)
@@ -318,7 +299,7 @@ class PerceptionRuntime:
             self.store.set_snapshot_cognition(snap.snapshot_id, "PROCESSED")
             if plan.record_self_event and self.settings.interaction_ledger_enabled:
                 self.ledger.record("snapshot_reviewed", snap.source,
-                    "朝汐整理了一次 QQ 群聊摘要", conversation_id=snap.conversation_id,
+                    "朝汐整理了一次外部群聊摘要", conversation_id=snap.conversation_id,
                     source_refs=snap.raw_refs[:20])
             return 1
         except Exception as exc:
@@ -345,7 +326,7 @@ class PerceptionRuntime:
                     if ingress:
                         ingress.record(CognitiveEventType.SOCIAL_SNAPSHOT, snapshot.summary,
                             source=snapshot.source, channel=snapshot.source,
-                            session_id="qq/group/" + snapshot.conversation_id,
+                            session_id=snapshot.source + "/group/" + snapshot.conversation_id,
                             source_refs=["snapshot:" + snapshot.snapshot_id],
                             parent_refs=snapshot.raw_refs, privacy_level="SOCIAL")
                     self.last_batch, self.last_snapshot = batch.batch_id, snapshot.snapshot_id
@@ -378,13 +359,13 @@ class PerceptionRuntime:
         session_count = 0
         if sessions and hasattr(sessions, "_connect"):
             with sessions._connect() as db:
-                session_count = db.execute("SELECT COUNT(*) FROM sessions WHERE session_id LIKE 'qq/%'").fetchone()[0]
+                session_count = db.execute("SELECT COUNT(*) FROM sessions WHERE session_id LIKE '%/%'").fetchone()[0]
         return {"enabled": True, "status": self.status,
-                "source_count": 1 if self.source else 0,
+                "source_count": len(self.sources.diagnostics()) if self.sources else 0,
                 "pending_observation_count": self.store.counts().get("PENDING", 0),
                 "buffered_conversation_count": len(self.store.buckets()),
                 "pending_perception_cognition": len(self.store.pending_snapshots(100)),
-                "qq_session_count": session_count,
+                "external_session_count": session_count,
                 "recent_self_events": [x.model_dump(mode="json") for x in self.ledger.recent(8)],
                 "runtime_self_state": self.runtime_self_state(),
                 "last_planner_decision": self.planner.last_decision,
@@ -398,4 +379,4 @@ class PerceptionRuntime:
                 "last_observation": self.last_observation, "last_batch": self.last_batch,
                 "last_snapshot": self.last_snapshot, "direct_event_count": self.direct_count,
                 "ignored_event_count": self.ignored_count, "last_error": self.last_error,
-                "qq": self.source.diagnostics() if self.source else {"connected": False}}
+                "external_sources": self.sources.diagnostics() if self.sources else []}
