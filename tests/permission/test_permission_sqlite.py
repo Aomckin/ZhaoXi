@@ -1,5 +1,9 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
+from zhaoxi.errors import ConfirmationExpiredError
+
 from zhaoxi.permission.models import (
     InvocationOrigin,
     PendingConfirmation,
@@ -52,3 +56,21 @@ def test_permission_denial_survives_restart(tmp_path):
     store.save_pending(pending)
     store.deny(pending.confirmation_id)
     assert SQLitePermissionStore(path).pending[pending.confirmation_id].approved is False
+
+
+def test_expired_pending_can_be_closed_without_allowing_approval(tmp_path):
+    path = tmp_path / "permission.db"
+    store = SQLitePermissionStore(path)
+    pending = PendingConfirmation(
+        request=request(), question="允许吗", risk_summary="写入",
+        expires_at=datetime.now(UTC) - timedelta(minutes=1),
+    )
+    store.save_pending(pending)
+
+    with pytest.raises(ConfirmationExpiredError):
+        store.approve(pending.confirmation_id)
+    store.deny(pending.confirmation_id)
+
+    restored = SQLitePermissionStore(path).pending[pending.confirmation_id]
+    assert restored.resolved is True
+    assert restored.approved is False

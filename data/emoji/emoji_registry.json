@@ -188,5 +188,20 @@
     "emotion": "吐槽、半眯眼鄙视",
     "intensity": 0.8,
     "enabled": true
+  },
+  {
+    "id": "emoji_0014",
+    "file": "images/emoji_0014.png",
+    "description": "朝汐气鼓鼓地伸爪指着屏幕，张嘴大喊「原来是低等犬娘」，用来在被暗苟酱嘴、被吐槽身份或地位时反击式调侃",
+    "tags": [
+      "反击",
+      "吐槽",
+      "气鼓鼓",
+      "指认",
+      "嘴炮"
+    ],
+    "emotion": "气鼓鼓、不服、吐槽",
+    "intensity": 0.8,
+    "enabled": true
   }
 ]

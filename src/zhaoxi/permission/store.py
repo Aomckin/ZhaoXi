@@ -50,7 +50,10 @@ class InMemoryPermissionStore:
         return grant
 
     def deny(self, confirmation_id: str) -> PendingConfirmation:
-        item = self.require_pending(confirmation_id)
+        try:
+            item = self.pending[confirmation_id]
+        except KeyError as exc:
+            raise InvalidGrantError("没有找到该权限确认。") from exc
         if not item.resolved:
             item.resolved = True
             item.approved = False
