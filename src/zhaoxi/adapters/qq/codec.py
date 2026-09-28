@@ -10,6 +10,10 @@ def decode(event: dict, *, self_id: str | None, owner_id: str = "") -> Observati
     if kind not in ("group", "private"):
         return None
     sender = event.get("sender") or {}
+    bot_markers = (event.get("is_bot"), event.get("sender_is_bot"),
+                   sender.get("is_bot"), sender.get("bot"))
+    sender_is_bot = any(value is True or value == 1 or str(value).lower() == "true"
+                        for value in bot_markers) or str(sender.get("role") or "").lower() == "bot"
     actor_id = str(event.get("user_id") or sender.get("user_id") or "")
     own = bool(self_id and actor_id == str(self_id)) or bool(event.get("self_message"))
     owner = bool(owner_id and actor_id == owner_id)
@@ -59,4 +63,4 @@ def decode(event: dict, *, self_id: str | None, owner_id: str = "") -> Observati
         attention_hint=AttentionHint.IGNORE if own else AttentionHint.AMBIENT,
         directed_to_zhaoxi=directed, raw_ref=f"qq:{kind}:{conversation_id}:{message_id}",
         requeryable=True, metadata={"message_id": message_id, "reply_to": reply_to,
-                                    "self_message": own})
+                                    "self_message": own, "sender_is_bot": sender_is_bot})

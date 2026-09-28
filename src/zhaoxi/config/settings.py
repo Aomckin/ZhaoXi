@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     qq_access_token: str = ""
     qq_owner_user_id: str = ""
     qq_bot_user_id: str = ""
+    qq_external_bot_user_ids: str = ""
     qq_reconnect_seconds: float = Field(default=5, ge=0.1)
 
     desktop_activity_enabled: bool = True

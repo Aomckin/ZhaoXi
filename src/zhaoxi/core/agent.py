@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from zhaoxi.core.context import ContextBuilder
+from zhaoxi.cognitive_stream.models import CognitiveEventType
 from zhaoxi.core.conversation import Conversation
 from zhaoxi.core.message import Role, strip_echoed_timeline_header
 from zhaoxi.core.reply import commit_reply
@@ -107,7 +108,9 @@ class ZhaoxiAgent:
                 registry.register(control_tool)
         self.context_builder = context_builder
         self.emoji_service = getattr(context_builder, "emoji_service", None)
-        self.conversation = conversation or Conversation()
+        from contextvars import ContextVar
+        self._conversation = conversation or Conversation()
+        self._conversation_override = ContextVar("active_conversation", default=None)
         self.max_steps = max_steps
         self.timeout_seconds = timeout_seconds
         self.planner = planner
@@ -497,6 +500,56 @@ class ZhaoxiAgent:
         except TimeoutError as exc:
             raise AgentLoopError(f"请求超过 {self.timeout_seconds:g} 秒，已停止。") from exc
 
+    @property
+    def conversation(self) -> Conversation:
+        override = getattr(self, "_conversation_override", None)
+        active = override.get() if override is not None else None
+        return active if active is not None else self._conversation
+
+    @conversation.setter
+    def conversation(self, value: Conversation) -> None:
+        self._conversation = value
+
+    async def run_channel_reply(
+        self, user_message: str, *, trigger_event, images: list[str] | None = None,
+        audience: str = "owner", expression_policy: str = "",
+    ) -> AgentResponse:
+        """Use the same final reply loop with a channel-scoped transient view."""
+        if not user_message.strip() and not images:
+            raise ValueError("消息不能为空。")
+        from zhaoxi.cognitive_stream.turn import CognitiveTurnContext, current_turn, set_current_turn, reset_current_turn
+        scoped = current_turn()
+        token = None
+        if scoped is None or scoped.trigger_event.event_id != trigger_event.event_id:
+            token = set_current_turn(CognitiveTurnContext(
+                trigger_event=trigger_event, output_channel="qq", audience=audience,
+                expression_policy=expression_policy, images=tuple(images or ())))
+        view = Conversation()
+        view.add_user(user_message.strip() or "请查看图片。", images=images)
+        conversation_token = self._conversation_override.set(view)
+        try:
+            correlation = current_correlation()
+            request_id = correlation.request_id if correlation and correlation.request_id else uuid4().hex
+            memories = []
+            retriever = self.context_builder.memory_retriever
+            if audience == "owner" and retriever and user_message.strip():
+                try:
+                    memories = await retriever.retrieve(user_message)
+                except Exception as exc:
+                    log_internal_failure("request=%s memory retrieval failed", request_id, exc=exc)
+            return await asyncio.wait_for(
+                self._run_loop(
+                    request_id, memories, user_message, no_tools=True,
+                    output_channel="qq", audience=audience,
+                    expression_policy=expression_policy,
+                ),
+                timeout=self.timeout_seconds,
+            )
+        finally:
+            self._conversation_override.reset(conversation_token)
+            if token is not None:
+                reset_current_turn(token)
+
     async def resume_current_turn(self, user_message: str) -> AgentResponse:
         """Continue an interrupted model turn without replaying completed tools."""
         correlation = current_correlation()
@@ -527,11 +580,14 @@ class ZhaoxiAgent:
             raise AgentLoopError(f"请求超过 {self.timeout_seconds:g} 秒，已停止。") from exc
 
     def _recent_tool_context(self, limit: int = 6) -> list[str]:
-        return [
-            message.content[:600]
-            for message in self.conversation.recent(limit)
-            if message.role.value in {"user", "assistant"} and message.content
-        ]
+        stream = getattr(self, "experience_stream", None)
+        if stream is not None:
+            from zhaoxi.cognitive_stream.timeline import cognitive_timeline
+            return [item.content[:600] for item in cognitive_timeline(
+                stream, limit=limit, max_chars=3600
+            ) if item.role in {Role.USER, Role.ASSISTANT} and item.content]
+        return []
+
 
     def _recoverable_turn_content(self, notice: str) -> str | None:
         """Recover a bounded status reply without exposing raw tool payloads."""
@@ -664,6 +720,9 @@ class ZhaoxiAgent:
         discovery: ToolDiscoveryState | None = None,
         turn_images: tuple[str, ...] = (),
         no_tools: bool = False,
+        output_channel: str = "desktop",
+        audience: str = "owner",
+        expression_policy: str = "",
     ) -> AgentResponse:
         if discovery is None:
             routing_intent = f"{user_intent}\n{lookup_commitment}" if lookup_commitment else user_intent
@@ -710,10 +769,12 @@ class ZhaoxiAgent:
                 context_options = {}
                 if absorbed:
                     context_options["absorbed_tool_call_ids"] = absorbed
-                if final_only or no_tools:
+                if final_only:
                     context_options["release_images"] = True
                 context_options["current_image_message_id"] = current_image_message_id
-                messages = self.context_builder.build(self.conversation, memories, **context_options)
+                messages = self.context_builder.build(
+                    self.conversation, memories, output_channel=output_channel,
+                    audience=audience, expression_policy=expression_policy, **context_options)
                 compaction = getattr(self.context_builder, "last_compaction", {})
                 if trace and compaction.get("tool_results"):
                     trace.emit("tool_result_compacted", "context", "success", "已压缩旧工具结果",
@@ -726,11 +787,6 @@ class ZhaoxiAgent:
                     trace.emit("context_compacted", "context", "success", "已整理本轮上下文",
                                step_id=step, metadata=compaction)
                 catalog = "" if final_only or no_tools else discovery.catalog(self.registry) + resolution_message
-                if no_tools:
-                    messages[0].content = (messages[0].content or "") + (
-                        "\n当前问题询问你自己近期的 QQ 互动。Recent Self Activity 记录的是你的经历，"
-                        "用第一人称直接回答，普通追问优先一两句话；不要主动解释记录、进程、"
-                        "另一个自己或列时间线。没有记录的图片内容才说明不确定。")
                 messages[0].content = (messages[0].content or "") + catalog
                 messages[0].metadata.setdefault("prompt_components", []).append(
                     {"name": "runtime.capability_catalog", "chars": len(catalog)}
@@ -834,6 +890,8 @@ class ZhaoxiAgent:
                     ), code=error_code
                 ) from exc
 
+            if no_tools and response.tool_calls:
+                raise AgentLoopError("受限回复不能调用工具。")
             if not response.tool_calls:
                 if (not no_tools and not tool_called and not capability_retry and is_action_request(user_intent)
                     and re.search(r"没有.{0,12}(?:工具|能力|钥匙)|无法完成|做不了|不能.{0,6}(?:查|找|读|执行)", response.content or "")):
@@ -1064,6 +1122,20 @@ class ZhaoxiAgent:
             tool_call_id=call.id,
             name=call.name,
         )
+        ingress = getattr(self, "cognitive_ingress", None)
+        if ingress is not None:
+            from zhaoxi.cognitive_stream.turn import current_turn
+            turn = current_turn()
+            trigger = turn.trigger_event if turn else None
+            action = ingress.record(CognitiveEventType.TOOL_ACTION,
+                f"调用 {call.name}", source="tool", channel="desktop", session_id="local",
+                parent_refs=[trigger.event_id] if trigger else [],
+                source_refs=["tool:action:" + call.id], metadata={"tool_name": call.name})
+            ingress.record(CognitiveEventType.TOOL_OBSERVATION,
+                f"{call.name}: {result.content[:500]}", source="tool", channel="desktop",
+                session_id="local", parent_refs=[action.event_id], caused_by_event_id=action.event_id,
+                source_refs=["tool:" + call.id],
+                metadata={"tool_name": call.name, "status": "success" if result.success else "failed"})
 
     @staticmethod
     def _finish_traced_tool(trace, attempt, execution) -> None:

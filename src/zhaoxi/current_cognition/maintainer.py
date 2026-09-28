@@ -37,6 +37,22 @@ class CurrentCognitionMaintainer:
         self.provider = provider
         self.timezone = ZoneInfo(timezone)
 
+    async def maintain_events(self, stream, *, background: bool = False) -> str:
+        """Consume trusted Owner events from the shared timeline."""
+        from zhaoxi.cognitive_stream.models import CognitiveEventType
+        marker = self.service.state().last_processed_message_id
+        events = stream.events_after(marker, limit=200)
+        trusted = [event for event in events if event.actor_role == "OWNER" and
+                   event.event_type in {CognitiveEventType.USER_MESSAGE,
+                                        CognitiveEventType.EXTERNAL_MESSAGE} and
+                   event.content and event.trust_level in {"TRUSTED", "NORMAL"}]
+        if not trusted:
+            return "NO_CHANGE"
+        messages = [Message(message_id=event.event_id, role=Role.USER,
+                            content=event.content, timestamp=event.occurred_at,
+                            source=event.source) for event in trusted[:40]]
+        return await self.maintain(messages, pending_override=messages, background=background)
+
     async def maintain(self, messages: list[Message], *, pending_override: list[Message] | None = None,
                        background: bool = False) -> str:
         state = self.service.state()

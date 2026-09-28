@@ -90,6 +90,16 @@ class AutoMemory:
         self.service = service
         self.auto_consolidator = AutoConsolidator(provider, service, consolidation_config)
 
+    async def process_event(self, event, assistant_response: str = "") -> MemoryDecision:
+        """Organize only trusted Owner statements from the shared event source."""
+        if event.actor_role != "OWNER" or event.trust_level not in {"TRUSTED", "NORMAL"}:
+            return MemoryDecision(action=MemoryAction.IGNORE, reason="untrusted event")
+        if event.event_type.value not in {"USER_MESSAGE", "EXTERNAL_MESSAGE"} or not event.content:
+            return MemoryDecision(action=MemoryAction.IGNORE, reason="not an owner statement")
+        return await self.process(event.content, assistant_response,
+                                  source_name=f"{event.source}:owner",
+                                  evidence_reference=event.source_refs[0] if event.source_refs else event.event_id)
+
     async def process(
         self,
         user_message: str,

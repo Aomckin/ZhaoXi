@@ -1,4 +1,8 @@
-# 当前开发版本：v1.3.1（主要场景已实机验证）
+# 当前开发版本：v1.3.2（代码已开发；跨频道最终验收待完成）
+
+2026-09-28：v1.3.2 Recent Timeline Context 改由 ExperienceStream 生成。近期 Owner 对话、第三方 Observation、SocialSnapshot、朝汐回复与 Tool/Workflow/Planner/Proactive/System 事件按时间进入同一消息序列；行动事件压缩后以自身 Experience 角色呈现，Attention 仅补充近期时间窗外的相关事件。Session 只承载局部视图和输出路由，Interaction Ledger 不再注入认知 Prompt。已完整重启桌面程序，并在真实 NapCat 群 `1043364342` 验证夏苟首次定向提问获得回复、紧接追问被拦截，原始输入和回复均进入 ExperienceStream。任务书 A–E 的 Desktop ↔ QQ 连续性、并发回复对齐等完整黑盒场景尚未全部实机验收；当前不标记 v1.3.2 正式收口。详见 [v1.3.2 开发记录](../v1.3.x/Zhaoxi_v1.3.2_开发记录.md)。
+
+2026-09-27：v1.3.2 Unified Cognitive Timeline 已接入统一事件流、跨频道 Attention、Owner 来源边界、工具与主动事件和备份；自动测试通过，QQ 跨频道实机冒烟待验收，详见 [v1.3.2 开发记录](../v1.3.x/Zhaoxi_v1.3.2_开发记录.md)。
 
 2026-09-27：v1.3.1 外部认知统一与 QQ 体验补全已完成代码开发和自动测试。QQ 独立 Session、Interaction Ledger、Runtime Self State、外部认知 Planner、Owner 候选 Guard、群聊 Snapshot 后台整理、图片视觉输入、频道表达策略及逐段图文发送已接入。Owner QQ 私聊文字、纯图片识别、图文追问、分段发送、群聊 @ 短回复及 Desktop 跨窗口复述已实机验证，详见 [v1.3.1 开发记录](../v1.3.x/Zhaoxi_v1.3.1_开发记录.md)。
 

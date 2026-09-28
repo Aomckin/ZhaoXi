@@ -443,6 +443,25 @@ class PlannerRuntime:
                     error="confirmation_required",
                 )
             last_result = execution.result
+            ingress = getattr(self, "cognitive_ingress", None)
+            if ingress is not None:
+                from zhaoxi.cognitive_stream.models import CognitiveEventType
+                trigger_provider = getattr(self, "current_trigger_provider", None)
+                trigger = trigger_provider() if trigger_provider else None
+                action = ingress.record(
+                    CognitiveEventType.TOOL_ACTION, f"调用 {call.name}",
+                    source="tool", channel="desktop", session_id="local",
+                    parent_refs=[trigger.event_id] if trigger else [],
+                    source_refs=["planner:action:" + execution.request.invocation_id],
+                )
+                ingress.record(
+                    CognitiveEventType.TOOL_OBSERVATION,
+                    f"{call.name}: {last_result.content[:500]}",
+                    source="tool", channel="desktop", session_id="local",
+                    parent_refs=[action.event_id],
+                    source_refs=["planner:result:" + execution.request.invocation_id],
+                    metadata={"status": "success" if last_result.success else "failed"},
+                )
             retryable = bool(last_result.metadata.get("retryable", False))
             observation = Observation(
                 step_id=step.id,

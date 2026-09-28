@@ -41,6 +41,7 @@ class InternalActivityRuntime:
         self.last_tick = previous.get("last_tick_at")
         self.last_selected: list[str] = previous.get("selected", [])
         self.last_skipped: dict[str, str] = previous.get("skipped", {})
+        self.last_stream_cleanup = previous.get("last_stream_cleanup")
 
     def _connect(self):
         return sqlite3.connect(self.path, timeout=10)
@@ -88,11 +89,14 @@ class InternalActivityRuntime:
                     name, reason, now.isoformat())
 
     def _pending_turns(self) -> int:
-        messages = self.agent.conversation.messages
-        marker = self.state[COGNITION].get("last_consolidated_user_id")
-        users = [item for item in messages if item.role == Role.USER]
-        ids = [item.message_id for item in users]
-        return len(ids) - ids.index(marker) - 1 if marker in ids else len(ids)
+        stream = getattr(self.agent, "experience_stream", None)
+        if stream is not None:
+            marker = self.agent.current_cognition.state().last_processed_message_id
+            pending = stream.events_after(marker, limit=200)
+            return sum(event.actor_role == "OWNER" and event.content and
+                       event.event_type.value in {"USER_MESSAGE", "EXTERNAL_MESSAGE"}
+                       for event in pending)
+        return 0
 
     async def _memory_due(self, now: datetime) -> bool:
         auto = getattr(getattr(self.agent, "cognitive", None), "auto_memory", None)
@@ -109,7 +113,10 @@ class InternalActivityRuntime:
 
     async def _candidates(self, now: datetime, forced: str | None) -> list[tuple[int, str, str, str]]:
         candidates = []
-        users = sum(item.role == Role.USER for item in self.agent.conversation.messages)
+        stream = getattr(self.agent, "experience_stream", None)
+        users = (sum(event.actor_role == "OWNER" and event.event_type.value in
+                     {"USER_MESSAGE", "EXTERNAL_MESSAGE"} for event in stream.recent(200))
+                 if stream else 0)
         cognition = self.agent.current_cognition.state()
         for name in NAMES:
             if forced and name != forced:
@@ -184,6 +191,11 @@ class InternalActivityRuntime:
             self.last_tick = now.isoformat()
             self.last_selected = []
             self.last_skipped = {}
+            stream = getattr(self.agent, "experience_stream", None)
+            last_cleanup = datetime.fromisoformat(self.last_stream_cleanup) if self.last_stream_cleanup else None
+            if stream is not None and (last_cleanup is None or now - last_cleanup >= timedelta(days=1)):
+                stream.clear_expired(now)
+                self.last_stream_cleanup = now.isoformat()
             logger.info("ACTIVITY_TICK_START started_at=%s", self.last_tick)
             deliveries = []
             candidates = await self._candidates(now, force)
@@ -205,10 +217,6 @@ class InternalActivityRuntime:
                         raise RuntimeError(result)
                     item.update({"last_success_at": datetime.now(UTC).isoformat(), "last_result": result,
                                  "failure_count": 0, "dirty": False, "degraded": False})
-                    if name == COGNITION:
-                        users = [m for m in self.agent.conversation.messages if m.role == Role.USER]
-                        if users:
-                            item["last_consolidated_user_id"] = users[-1].message_id
                     logger.info("ACTIVITY_SUCCESS activity_name=%s reason=%s started_at=%s duration=%.3f result=%s",
                                 name, reason, now.isoformat(), monotonic() - started, result)
                 except Exception as exc:
@@ -219,20 +227,21 @@ class InternalActivityRuntime:
                                    name, reason, now.isoformat(), monotonic() - started, type(exc).__name__)
                 self._save(name)
             self.state["__runtime__"] = {"last_tick_at": self.last_tick,
-                                          "selected": self.last_selected, "skipped": self.last_skipped}
+                                          "selected": self.last_selected, "skipped": self.last_skipped,
+                                          "last_stream_cleanup": self.last_stream_cleanup}
             self._save("__runtime__")
             return deliveries
 
     async def _execute(self, name: str, kind: str):
         if name == COGNITION:
-            messages = self.agent.conversation.messages[-40:]
-            if not any(item.role == Role.USER for item in messages):
+            stream = getattr(self.agent, "experience_stream", None)
+            if stream is None:
                 return "SKIP"
             provider = self.agent.current_cognition_maintainer.provider
             with provider_budget_scope(getattr(provider, "max_calls", 12),
                                        getattr(provider, "max_total_tokens", 100_000)):
-                return await self.agent.current_cognition_maintainer.maintain(
-                    messages, pending_override=messages, background=True)
+                return await self.agent.current_cognition_maintainer.maintain_events(
+                    stream, background=True)
         if name == PERCEPTION_COGNITION:
             runtime = getattr(self.agent, "perception", None)
             return "UPDATE" if runtime and await runtime.process_pending_snapshot() else "NO_CHANGE"

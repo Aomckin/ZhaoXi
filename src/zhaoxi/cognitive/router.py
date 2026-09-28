@@ -64,6 +64,7 @@ class CognitiveRouter:
         "WORKFLOW 仅用于已经注册并由运行时提供的已知流程；"
         "用户要求检查外部事实或明确使用工具时选择 TOOL；"
         "询问朝汐自身设定、用户长期资料或项目正式文档中的具体事实时选择 TOOL，以便查询潮庭书库；"
+        "询问刚才在 Desktop 或 QQ 说过什么、做过什么时，应依据 Recent Experience 直接回答，除非明确要求检索外部资料，不要改查潮庭书库；"
         "请求朝汐发送或使用表情属于普通回复表达，选择 DIRECT；只有保存或收藏会话图片才使用 save_emoji Tool；"
         "不要选择 DIRECT 后声称稍后检查。"
         "简单请求禁止选择 PLAN。"
@@ -109,8 +110,6 @@ class CognitiveRouter:
 
     async def route(self, user_message: str, *, recent_context: str = "") -> RouteDecision:
         self.last_provider_failed = False
-        if self.is_recent_qq_activity_question(user_message):
-            return RouteDecision(route=CognitiveRoute.DIRECT, reason="recent qq self activity")
         routing_input = user_message
         if recent_context.strip():
             routing_input = (
@@ -148,14 +147,6 @@ class CognitiveRouter:
             except ValidationError:
                 break
         return self._fallback(user_message)
-
-    @staticmethod
-    def is_recent_qq_activity_question(message: str) -> bool:
-        text = message.casefold()
-        return ("qq" in text and
-                any(word in text for word in ("刚才", "刚刚", "那边", "私聊")) and
-                any(word in text for word in ("发", "收", "聊", "图", "怎么", "怎么样")) and
-                not any(word in text for word in ("发送", "转发", "删除", "设置", "连接", "查询历史", "搜索历史")))
 
     def _hint_decision(self, user_message: str) -> RouteDecision | None:
         text = user_message.casefold()

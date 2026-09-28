@@ -10,6 +10,8 @@ from zhaoxi.adapters.qq.codec import decode
 from zhaoxi.adapters.qq.outbound import send_reply
 from zhaoxi.config.settings import Settings
 from zhaoxi.core.context import ContextBuilder
+from zhaoxi.core.agent import ZhaoxiAgent
+from zhaoxi.tools.registry import ToolRegistry
 from zhaoxi.core.message import Role
 from zhaoxi.models.types import ModelResponse
 from zhaoxi.perception.runtime import PerceptionRuntime
@@ -32,9 +34,21 @@ def make_runtime(tmp_path, generate):
                         perception_image_temp_dir=str(tmp_path / "images"),
                         qq_reply_segment_delay_min_ms=0, qq_reply_segment_delay_max_ms=0)
     builder = ContextBuilder("朝汐")
-    agent = SimpleNamespace(provider=SimpleNamespace(generate=generate),
-        metrics=MetricRegistry(), context_builder=builder,
-        conversation_lock=asyncio.Lock(), session_store=SQLiteSessionStore(settings.session_db_path))
+    async def provider_generate(messages, tools=None, **kwargs):
+        return await generate(messages, tools)
+    agent = ZhaoxiAgent(
+        provider=SimpleNamespace(generate=provider_generate),
+        registry=ToolRegistry(override_path=tmp_path / "tools.json"),
+        context_builder=builder,
+    )
+    agent.metrics = MetricRegistry()
+    agent.conversation_lock = asyncio.Lock()
+    agent.session_store = SQLiteSessionStore(settings.session_db_path)
+    from zhaoxi.cognitive_stream import CognitiveIngress, ExperienceStream, AttentionRetriever
+    agent.experience_stream = ExperienceStream(tmp_path / "experience.db")
+    agent.cognitive_ingress = CognitiveIngress(agent.experience_stream)
+    agent.attention_retriever = AttentionRetriever(agent.experience_stream)
+    builder.attention_retriever = agent.attention_retriever
     return PerceptionRuntime(settings, agent), agent
 
 
@@ -54,18 +68,15 @@ async def test_external_sessions_and_shared_self(tmp_path):
     assert await runtime.ingest(second) == "收到"
     session = await agent.session_store.get("qq/private/8")
     assert session and [m.role for m in session.conversation.messages] == [
-        Role.EXTERNAL, Role.ASSISTANT, Role.EXTERNAL]
+        Role.USER, Role.ASSISTANT, Role.USER]
     assert await agent.session_store.get("local") is None
     assert session.channel_metadata["conversation_kind"] == "private"
     assert session.recent_message_refs == [first.raw_ref, second.raw_ref]
     assert any("第一轮" in m.content for m in seen[-1] if m.content)
-    assert "已通过 QQ 私聊回复" in runtime.shared_context()
-    assert "同一个持续的自我" in runtime.shared_context()
-    assert "不要说‘另一个我’" in runtime.shared_context()
-    assert "第一轮" in runtime.shared_context()
-    assert "第一轮" not in runtime.shared_context(include_private=False)
+    assert "已通过 QQ 私聊回复" not in runtime.shared_context()
+    assert "第一轮" not in runtime.shared_context()
     from zhaoxi.core.conversation import Conversation
-    assert "已通过 QQ 私聊回复" in agent.context_builder.build(Conversation())[0].content
+    assert "已通过 QQ 私聊回复" not in agent.context_builder.build(Conversation())[0].content
 
 
 @pytest.mark.asyncio
@@ -80,8 +91,8 @@ async def test_planner_can_skip_and_image_reaches_both_calls(tmp_path):
     png = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"abc").decode()
     item = decode(qq_event(3, text="", image="base64://" + png), self_id="42")
     assert await runtime.ingest(item) == "看到了"
-    assert len(seen) == 2
-    assert all(any(m.images for m in messages) for messages in seen)
+    assert len(seen) == 1
+    assert any(m.images for m in seen[0])
     assert runtime.multimodal_input_count == 1
     assert item.parts[0].type == "image"
 
@@ -101,7 +112,7 @@ async def test_third_party_candidate_rejected_and_ambient_once(tmp_path):
     group = decode(qq_event(5, text="@朝汐 暗苟明天去深圳", kind="group"), self_id="42")
     group.directed_to_zhaoxi = True
     assert await runtime.ingest(group) is None
-    assert runtime.planner.rejected_candidate_count == 2
+    assert runtime.planner.rejected_candidate_count == 0
     assert not hasattr(agent, "memory_service")
     runtime.settings.perception_batch_max_messages = 2
     for n in (6, 7):
@@ -198,7 +209,7 @@ async def test_owner_image_survives_malformed_planner_json(tmp_path):
     assert await runtime.ingest(item) == "图里是一只猫"
     assert len(seen) == 2
     assert all(any(m.images for m in call) for call in seen)
-    assert "已按配置核验为暗苟本人" in seen[1][0].content
+    assert "已按配置核验为暗苟本人" not in seen[1][0].content
     assert runtime.planner.cognition_candidate_count == 0
     assert runtime.planner.memory_candidate_count == 0
     assert runtime.store.counts().get("FAILED", 0) == 0
@@ -222,8 +233,8 @@ async def test_owner_adjacent_image_and_text_use_same_visual_input(tmp_path):
     assert await runtime.ingest(text) == "一只猫"
     assert len(seen) == 4
     assert all(any(message.images for message in call) for call in seen)
-    assert image.raw_ref in seen[-1][1].content
-    assert "昵称 A 就是暗苟的 QQ 昵称" in seen[-1][0].content
+    assert any(message.role == Role.USER and message.images for message in seen[-1])
+    assert "昵称 A 就是暗苟的 QQ 昵称" not in seen[-1][0].content
 
 
 @pytest.mark.asyncio
@@ -277,3 +288,163 @@ async def test_external_debounce_keeps_actors_and_ambient_separate(tmp_path):
     assert first is one and second is two
     ambient = decode(qq_event(203, kind="group", user_id=9), self_id="42", owner_id="8")
     assert await adapter._debounce_direct(ambient) is ambient
+
+
+@pytest.mark.asyncio
+async def test_owner_qq_receives_recent_desktop_reply_from_stream(tmp_path):
+    from zhaoxi.cognitive_stream import CognitiveIngress, ExperienceStream, AttentionRetriever
+    from zhaoxi.cognitive_stream.models import CognitiveEventType
+    seen = []
+    async def generate(messages, tools):
+        seen.append(messages)
+        if "外部认知 Planner" in messages[0].content:
+            return ModelResponse(content='{"reply":true,"reason":"cross channel"}')
+        return ModelResponse(content="我看到主窗口刚才的回复了")
+    runtime, agent = make_runtime(tmp_path, generate)
+    stream = ExperienceStream(tmp_path / "experience.db")
+    ingress = CognitiveIngress(stream)
+    agent.experience_stream = stream
+    agent.cognitive_ingress = ingress
+    agent.attention_retriever = AttentionRetriever(stream)
+    agent.context_builder.attention_retriever = agent.attention_retriever
+    owner = ingress.desktop("主窗口问同步了吗", message_id="desktop-test")
+    ingress.record(CognitiveEventType.ASSISTANT_REPLY,
+        "主窗口刚才明确说：现在还是单向同步", source="desktop", channel="web",
+        session_id="local", parent_refs=[owner.event_id])
+    item = decode(qq_event(42, text="刚刚主窗口那边你不是这么说的"),
+                  self_id="42", owner_id="8")
+    assert await runtime.ingest(item) == "我看到主窗口刚才的回复了"
+    assert any("主窗口刚才明确说：现在还是单向同步" in (message.content or "")
+               for message in seen[-1])
+
+@pytest.mark.asyncio
+async def test_qq_reply_is_desktop_assistant_history_from_stream(tmp_path):
+    seen = []
+    async def generate(messages, tools):
+        seen.append(messages)
+        if "外部认知 Planner" in messages[0].content:
+            return ModelResponse(content='{"reply":true}')
+        return ModelResponse(content="QQ 上的回复")
+    runtime, agent = make_runtime(tmp_path, generate)
+    item = decode(qq_event(99, text="先在 QQ 说一句"), self_id="42", owner_id="8")
+    content = await runtime.ingest(item)
+    assert content == "QQ 上的回复"
+    await runtime.reply_sent(item, content, 1)
+    trigger = agent.cognitive_ingress.desktop("现在在桌面继续", message_id="desktop-after-qq")
+    from zhaoxi.cognitive_stream.turn import CognitiveTurnContext, set_current_turn, reset_current_turn
+    from zhaoxi.core.conversation import Conversation
+    view = Conversation()
+    view.add_user("现在在桌面继续")
+    token = set_current_turn(CognitiveTurnContext(trigger_event=trigger))
+    try:
+        messages = agent.context_builder.build(view)
+    finally:
+        reset_current_turn(token)
+    assert any(message.role is Role.ASSISTANT and message.content.endswith("QQ 上的回复")
+               for message in messages)
+    assert all("Self Event:" not in (message.content or "") for message in messages)
+
+
+@pytest.mark.asyncio
+async def test_non_owner_first_reply_then_bot_loop_stops(tmp_path):
+    seen = []
+    async def generate(messages, tools):
+        seen.append(messages)
+        if "外部认知 Planner" in messages[0].content:
+            return ModelResponse(content='{"reply":true,"reason":"owner"}')
+        return ModelResponse(content="这是一次答复")
+    runtime, agent = make_runtime(tmp_path, generate)
+
+    bot_event = qq_event(201, text="请问你是谁？", user_id=9)
+    bot_event["sender"]["is_bot"] = True
+    bot = decode(bot_event, self_id="42", owner_id="8")
+    assert bot.metadata["sender_is_bot"] is True
+    assert await runtime.ingest(bot) == "这是一次答复"
+    assert len(seen) == 1  # Non-owner first request goes directly to final reply.
+    await runtime.reply_sent(bot, "这是一次答复", 1)
+
+    bot_followup = decode(qq_event(202, text="请问还有呢？", user_id=9),
+                          self_id="42", owner_id="8")
+    bot_followup.metadata["sender_is_bot"] = True
+    assert await runtime.ingest(bot_followup) is None
+    assert runtime.last_reply_gate["reason"] == "bot_already_answered"
+    assert len(seen) == 1
+    assert agent.experience_stream.query_refs([bot_followup.raw_ref])
+
+    greeting = decode(qq_event(203, text="你好", user_id=10), self_id="42", owner_id="8")
+    assert await runtime.ingest(greeting) is None
+    assert runtime.last_reply_gate["reason"] == "no_explicit_request"
+    assert len(seen) == 1
+
+    question = decode(qq_event(204, text="请问你能解释一下吗？", user_id=10),
+                      self_id="42", owner_id="8")
+    assert await runtime.ingest(question) == "这是一次答复"
+    assert len(seen) == 2
+    await runtime.reply_sent(question, "这是一次答复", 1)
+    followup = decode(qq_event(205, text="那请问下一题呢？", user_id=10),
+                      self_id="42", owner_id="8")
+    assert await runtime.ingest(followup) is None
+    assert runtime.last_reply_gate["reason"] == "recent_external_reply"
+    assert len(seen) == 2
+
+    owner = decode(qq_event(206, text="请问下一题呢？", user_id=8),
+                   self_id="42", owner_id="8")
+    assert await runtime.ingest(owner) == "这是一次答复"
+    assert runtime.last_reply_gate["blocked"] is False
+    assert len(seen) == 4
+
+
+def test_non_owner_cooldown_is_actor_and_short_session_window(tmp_path):
+    from datetime import timedelta
+    from zhaoxi.cognitive_stream import CognitiveIngress, ExperienceStream, CognitiveEventType
+    from zhaoxi.perception.reply_guard import non_owner_reply_block_reason
+    stream = ExperienceStream(tmp_path / "experience.db")
+    ingress = CognitiveIngress(stream)
+    def group_question(message_id, actor_id):
+        item = decode(qq_event(message_id, text="请问这是什么？", kind="group", user_id=actor_id),
+                      self_id="42", owner_id="8")
+        item.directed_to_zhaoxi = True
+        return item
+    first = group_question(301, 9)
+    trigger = ingress.observation(first, session_id="qq/group/123")
+    reply = ingress.record(CognitiveEventType.ASSISTANT_REPLY, "一次回答", source="qq",
+                           session_id="qq/group/123", parent_refs=[trigger.event_id],
+                           reply_to_event_id=trigger.event_id, turn_id=trigger.turn_id,
+                           metadata={"external_reply": True, "external_actor_id": first.actor_id})
+    other = group_question(302, 10)
+    assert non_owner_reply_block_reason(other, stream,
+        now=reply.received_at + timedelta(seconds=30)) == "recent_external_reply"
+    assert non_owner_reply_block_reason(other, stream,
+        now=reply.received_at + timedelta(seconds=46)) is None
+    same = group_question(303, 9)
+    assert non_owner_reply_block_reason(same, stream,
+        now=reply.received_at + timedelta(minutes=4)) == "recent_external_reply"
+    assert non_owner_reply_block_reason(same, stream,
+        now=reply.received_at + timedelta(minutes=6)) is None
+
+
+def test_known_bot_gets_one_reply_until_owner_intervenes(tmp_path):
+    from datetime import timedelta
+    from zhaoxi.cognitive_stream import CognitiveIngress, ExperienceStream, CognitiveEventType
+    from zhaoxi.perception.reply_guard import non_owner_reply_block_reason
+    stream = ExperienceStream(tmp_path / "experience.db")
+    ingress = CognitiveIngress(stream)
+    def group_item(message_id, actor_id, text="请问这是什么？"):
+        item = decode(qq_event(message_id, text=text, kind="group", user_id=actor_id),
+                      self_id="42", owner_id="8")
+        item.directed_to_zhaoxi = True
+        return item
+    bot = group_item(401, 9)
+    assert non_owner_reply_block_reason(bot, stream, known_bot_ids={"9"}) is None
+    trigger = ingress.observation(bot, session_id="qq/group/123")
+    reply = ingress.record(CognitiveEventType.ASSISTANT_REPLY, "一次回答", source="qq",
+                           session_id="qq/group/123", parent_refs=[trigger.event_id],
+                           reply_to_event_id=trigger.event_id, turn_id=trigger.turn_id,
+                           metadata={"external_reply": True, "external_actor_id": "9"})
+    next_bot = group_item(402, 9)
+    assert non_owner_reply_block_reason(next_bot, stream,
+        now=reply.received_at + timedelta(minutes=6), known_bot_ids={"9"}) == "bot_already_answered"
+    owner = group_item(403, 8, "朝汐，继续")
+    ingress.observation(owner, session_id="qq/group/123")
+    assert non_owner_reply_block_reason(next_bot, stream,
+        now=reply.received_at + timedelta(minutes=6), known_bot_ids={"9"}) is None

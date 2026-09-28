@@ -10,6 +10,7 @@ from time import monotonic
 from typing import Any
 
 from zhaoxi.core.agent import ZhaoxiAgent
+from zhaoxi.cognitive_stream.models import CognitiveEventType
 from zhaoxi.core.message import Message, Role
 from zhaoxi.core.reply.renderer import catalog_emoji_prefix
 from zhaoxi.observability import action_trace_scope, current_trace
@@ -84,6 +85,14 @@ class InterfaceGateway:
             trace = None
             budget = None
             try:
+                ingress = getattr(self.agent, "cognitive_ingress", None)
+                trigger = ingress.desktop(message.content, message_id=message.message_id,
+                    images=message.images, session_id=message.session_id,
+                    channel=message.channel.value, occurred_at=message.created_at) if ingress else None
+                from zhaoxi.cognitive_stream.turn import CognitiveTurnContext, set_current_turn
+                turn_token = set_current_turn(CognitiveTurnContext(
+                    trigger_event=trigger, request_id=message.request_id,
+                    output_channel=message.channel.value, images=tuple(message.images or ()))) if trigger else None
                 await self._sync_deliveries()
                 provider = getattr(self.agent, "provider", None)
                 max_calls = getattr(provider, "max_calls", 12)
@@ -94,6 +103,15 @@ class InterfaceGateway:
                     response = await self.agent.run_natural(
                         message.content, **({"images": message.images} if message.images else {})
                     )
+                    auto = getattr(getattr(self.agent, "cognitive", None), "auto_memory", None)
+                    if trigger is not None and auto is not None and getattr(
+                            response, "permission_confirmation", None) is None:
+                        try:
+                            decision = await auto.process_event(trigger, response.content)
+                            if hasattr(response, "memory_action"):
+                                response.memory_action = decision.action
+                        except Exception as exc:
+                            logger.warning("experience memory failed type=%s", type(exc).__name__)
                     if getattr(response, "permission_confirmation", None) is not None:
                         trace.terminal_status = "waiting_for_permission"
                         trace.response_status = "waiting_for_permission"
@@ -114,6 +132,11 @@ class InterfaceGateway:
                 beat = getattr(getattr(state, "interaction", None), "beat_loop", None)
                 if beat:
                     beat.note_assistant(datetime.now(UTC))
+                if ingress and result.content:
+                    ingress.record(CognitiveEventType.ASSISTANT_REPLY, result.content,
+                        source="desktop", channel=message.channel.value, session_id=message.session_id,
+                        parent_refs=[trigger.event_id] if trigger else [],
+                        source_refs=["desktop:reply:" + message.request_id])
                 self._cache(result)
                 await self._persist_session()
                 if getattr(response, "permission_confirmation", None) is None:
@@ -157,6 +180,9 @@ class InterfaceGateway:
                         )
                 raise
             finally:
+                if "turn_token" in locals() and turn_token is not None:
+                    from zhaoxi.cognitive_stream.turn import reset_current_turn
+                    reset_current_turn(turn_token)
                 if budget is not None:
                     self.agent.last_budget_snapshot = budget.snapshot()
                 if state is not None:
@@ -480,12 +506,16 @@ class InterfaceGateway:
             return
         try:
             messages = self.agent.conversation.messages
-            if bootstrap and (not messages or maintainer.service.state().last_processed_message_id is not None):
+            stream = getattr(self.agent, "experience_stream", None)
+            if bootstrap and maintainer.service.state().last_processed_message_id is not None:
                 return
             provider = getattr(self.agent, "provider", None)
             with provider_budget_scope(getattr(provider, "max_calls", 12),
                                        getattr(provider, "max_total_tokens", 100_000)):
-                await maintainer.maintain(messages, pending_override=pending_messages)
+                if stream is not None:
+                    await maintainer.maintain_events(stream)
+                else:
+                    await maintainer.maintain(messages, pending_override=pending_messages)
         except Exception as exc:
             logger.warning("COGNITION_MAINTAIN_FAILED type=%s", type(exc).__name__)
 

@@ -6,6 +6,10 @@ from unittest.mock import AsyncMock
 from zhaoxi.adapters.qq.codec import decode
 from zhaoxi.config.settings import Settings
 from zhaoxi.core.message import Role
+from zhaoxi.core.context import ContextBuilder
+from zhaoxi.core.agent import ZhaoxiAgent
+from zhaoxi.tools.registry import ToolRegistry
+from zhaoxi.cognitive_stream import CognitiveIngress, ExperienceStream, AttentionRetriever
 from zhaoxi.models.types import ModelResponse
 from zhaoxi.perception import PerceptionRuntime, PerceptionStore
 from zhaoxi.perception.models import AttentionHint, Observation, TrustLevel
@@ -55,27 +59,37 @@ def test_ambient_batch_and_external_boundary(tmp_path):
     async def run():
         settings = Settings(perception_db_path=str(tmp_path / "perception.db"),
                             perception_batch_max_messages=2)
-        provider = SimpleNamespace(generate=AsyncMock(side_effect=[
+        responses = AsyncMock(side_effect=[
             ModelResponse(content="你好"),
-            ModelResponse(content='{"reply":true,"reason":"direct"}'),
             ModelResponse(content="你好"),
-        ]))
-        conversation = SimpleNamespace(messages=[])
-        agent = SimpleNamespace(provider=provider, metrics=MetricRegistry(),
-            context_builder=SimpleNamespace(character_prompt="朝汐"),
-            conversation=conversation, conversation_lock=asyncio.Lock())
+        ])
+        async def generate(messages, tools=None, **kwargs):
+            return await responses(messages, tools)
+        provider = SimpleNamespace(generate=generate)
+        builder = ContextBuilder("朝汐")
+        agent = ZhaoxiAgent(
+            provider=provider, registry=ToolRegistry(override_path=tmp_path / "tools.json"),
+            context_builder=builder,
+        )
+        agent.metrics = MetricRegistry()
+        agent.conversation_lock = asyncio.Lock()
+        agent.experience_stream = ExperienceStream(tmp_path / "experience.db")
+        agent.cognitive_ingress = CognitiveIngress(agent.experience_stream)
+        agent.attention_retriever = AttentionRetriever(agent.experience_stream)
+        builder.attention_retriever = agent.attention_retriever
         runtime = PerceptionRuntime(settings, agent)
         await runtime.ingest(decode(event(1), self_id="42"))
-        assert provider.generate.await_count == 0
+        assert responses.await_count == 0
         await runtime.ingest(decode(event(2), self_id="42"))
         snapshots = runtime.store.recent_snapshots("qq", "123")
         assert len(snapshots) == 1 and snapshots[0].message_count == 2
-        direct = decode(event(3, [{"type": "at", "data": {"qq": "42"}}]), self_id="42")
+        direct = decode(event(3, [{"type": "at", "data": {"qq": "42"}},
+                                  {"type": "text", "data": {"text": " 请问这是什么？"}}]), self_id="42")
         assert await runtime.ingest(direct) == "你好"
         assert agent.conversation.messages == []
-        messages, tools = provider.generate.await_args.args
-        assert tools == []
-        assert messages[-1].role is Role.EXTERNAL
+        messages, tools = responses.await_args.args
+        assert tools is None
+        assert any(message.role is Role.EXTERNAL for message in messages)
         assert "私人日程" in messages[0].content
         assert await runtime.ingest(direct) is None
     asyncio.run(run())

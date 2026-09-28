@@ -35,6 +35,7 @@ class DecisionContext(BaseModel):
     today_mainline: str | None = None
     schedule: list[str] = Field(default_factory=list)
     short_term_note: str | None = None
+    attention_summary: str | None = None
     relevant_memories: list[str] = Field(default_factory=list)
     matched_rules: list[DecisionRule] = Field(default_factory=list)
     available_tools: list[str] = Field(default_factory=list)

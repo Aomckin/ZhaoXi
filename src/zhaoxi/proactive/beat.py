@@ -55,6 +55,7 @@ class ConversationBeatLoop(ConversationContinuation):
         super().__init__()
         self.settings, self.interaction, self.conversation = settings, interaction, conversation
         self.pending_work = pending_work
+        self.experience_stream = None
         self.session = None
         self.last_model_decision = None
         self.model_failure = None
@@ -149,7 +150,9 @@ class ConversationBeatLoop(ConversationContinuation):
 
     def context(self, now, history):
         s = self.session
-        messages = [m for m in self.conversation.recent(12) if m.role in {Role.USER, Role.ASSISTANT}]
+        from zhaoxi.cognitive_stream.timeline import cognitive_timeline
+        messages = (cognitive_timeline(self.experience_stream, limit=12)
+                    if self.experience_stream is not None else [])
         recent = [{'role': m.role.value, 'content': (m.content or '')[:600]} for m in messages]
         activity = self.interaction.desktop_activity
         timezone_name = getattr(now.tzinfo, "key", None) or str(now.tzinfo)

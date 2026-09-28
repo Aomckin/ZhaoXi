@@ -17,6 +17,7 @@ class Role(StrEnum):
     ASSISTANT = "assistant"
     TOOL = "tool"
     EXTERNAL = "external"
+    EXPERIENCE = "experience"
 
 
 _TIMELINE_HEADER = re.compile(
@@ -32,13 +33,16 @@ _INTERNAL_ASSISTANT_MARKERS = (
     "ACTIVE 对话中的自然续聊。",
     "active_conversation_beat",
 )
+_SOURCE_MARKER = re.compile(
+    r"(?im)\[(?:来源\s*[:：]|source\s*=|channel\s*=|Owner QQ Message|External Social Snapshot|Recent Self Activity|Recent Timeline|External Observation)[^\]\n]*\]\s*"
+)
 _ROLE_TRANSCRIPT_LINE = re.compile(r"(?im)^\s*(?:user|assistant|system)\s*[:：]")
 
 
 def strip_echoed_timeline_header(content: str) -> str:
     """Remove exact leaked internal timeline metadata from a reply."""
     clean = _TIMELINE_HEADER.sub("", content, count=1)
-    return _INTERNAL_CONTEXT_LINE.sub("", clean).rstrip()
+    return _SOURCE_MARKER.sub("", _INTERNAL_CONTEXT_LINE.sub("", clean)).rstrip()
 
 
 def assistant_persistence_violations(content: str) -> list[str]:
@@ -78,7 +82,9 @@ class Message(BaseModel):
 
     def to_provider_dict(self) -> dict[str, Any]:
         """Convert only at the provider boundary."""
-        result: dict[str, Any] = {"role": "user" if self.role is Role.EXTERNAL else self.role.value, "content": self.content}
+        result: dict[str, Any] = {"role": ("user" if self.role is Role.EXTERNAL else
+                           "assistant" if self.role is Role.EXPERIENCE else self.role.value),
+                                  "content": self.content}
         if self.images and self.source != "emoji":
             result["content"] = [
                 {"type": "text", "text": self.content or "请查看图片。"},

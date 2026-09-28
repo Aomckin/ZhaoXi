@@ -35,13 +35,20 @@ class ModelDecision:
         self.provider, self.personality = provider, personality
         self.conversation = conversation
         self.continuation = continuation
+        self.attention_retriever = None
 
     async def activity_context(self, state, now, conversation=''):
         activity = state.interaction.desktop_activity
         if not activity:
             return None
-        if not conversation and self.conversation is not None:
-            conversation = '\n'.join(str(m.content or '')[:400] for m in self.conversation.recent()[-4:] if m.role in {Role.USER, Role.ASSISTANT})
+        if not conversation and self.attention_retriever is not None:
+            from zhaoxi.cognitive_stream.timeline import cognitive_timeline
+            conversation = "\n".join(
+                f"{message.role.value}: {message.content[:300]}"
+                for message in cognitive_timeline(
+                    self.attention_retriever.stream, limit=4, max_chars=1200,
+                )
+            )
         intents = [item.summary for item in self.continuation.background_intents[-5:]] if self.continuation else []
         await activity.infer(self.provider, state.interaction, now, conversation, intents)
         return asdict(AmbientContextSnapshot(
@@ -50,7 +57,9 @@ class ModelDecision:
             recent_activity_transition=activity.diagnostics()['last_transition'],
             activity_state=activity.activity_abstraction(now), recent_conversation_topics=conversation[:1200],
             tool_signals=state.interaction.signals.snapshot(now), time=now.isoformat(), current_intents=intents,
-            recent_proactive_history=[str(m.content or '')[:300] for m in self.conversation.recent() if m.delivery_id][-3:] if self.conversation else [],
+            recent_proactive_history=[e.content[:300] for e in self.attention_retriever.stream.recent(30)
+                                      if e.event_type.value == 'PROACTIVE_EVENT' and e.content][:3]
+                                      if self.attention_retriever else [],
         ))
 
     async def decide(self, events, now, state):

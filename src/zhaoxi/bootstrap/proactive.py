@@ -63,7 +63,9 @@ def attach_proactive_runtime(agent, settings: Settings, proactive, proactive_sch
             settings, proactive_state.interaction, agent.conversation,
             pending_work=lambda: any(not p.resolved for p in agent.tool_executor.gateway.store.pending.values()),
         )
+        agent.conversation_continuation.experience_stream = agent.experience_stream
         agent.proactive_heartbeat.continuation = agent.conversation_continuation
-        agent.proactive_worker = DecisionWorker(
-            agent.proactive_heartbeat, ModelDecision(provider, context_builder.character_prompt, agent.conversation, agent.conversation_continuation),
-        )
+        decision = ModelDecision(provider, context_builder.character_prompt,
+                                 agent.conversation, agent.conversation_continuation)
+        decision.attention_retriever = getattr(agent, "attention_retriever", None)
+        agent.proactive_worker = DecisionWorker(agent.proactive_heartbeat, decision)

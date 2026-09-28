@@ -1,4 +1,5 @@
 """Natural-language entrypoint integrating routing, execution, and memory."""
+from zhaoxi.cognitive_stream.turn import current_turn
 
 import logging
 from dataclasses import dataclass
@@ -55,7 +56,7 @@ class CognitiveCoordinator:
             if trace:
                 trace.emit("model_step_started", "routing", "running", "正在理解请求…", step_id=0)
             with budget_stage_scope("understanding"):
-                decision = await self.router.route(user_message, recent_context=self._recent_routing_context())
+                decision = await self.router.route(user_message, recent_context=self._recent_routing_context(user_message))
             if trace and not getattr(self.router, "last_provider_failed", False):
                 trace.emit("model_step_finished", "routing", "success", "已确定处理方式", step_id=0)
         logger.info(
@@ -95,13 +96,29 @@ class CognitiveCoordinator:
                 self.agent.conversation.add_assistant(result.content)
             content = result.content
             goal_id = None
+            ingress = getattr(self.agent, "cognitive_ingress", None)
+            if ingress:
+                from zhaoxi.cognitive_stream.models import CognitiveEventType
+                ingress.record(CognitiveEventType.WORKFLOW_EVENT,
+                    f"Workflow {decision.workflow_id}: {content[:300]}", source="workflow",
+                    channel="desktop", session_id="local",
+                    parent_refs=([current_turn().trigger_event.event_id]
+                                 if current_turn() else []))
         elif decision.route == CognitiveRoute.PLAN and self.agent.planner is not None:
             result = await self.agent.run_planned(user_message)
+            ingress = getattr(self.agent, "cognitive_ingress", None)
+            if ingress:
+                from zhaoxi.cognitive_stream.models import CognitiveEventType
+                ingress.record(CognitiveEventType.PLANNER_EVENT,
+                    f"Planner Goal {result.goal_id or 'unknown'}: {result.content[:300]}",
+                    source="planner", channel="desktop", session_id="local",
+                    parent_refs=([current_turn().trigger_event.event_id]
+                                 if current_turn() else []))
             content = result.content
             goal_id = result.goal_id
         elif decision.route == CognitiveRoute.DIRECT:
             result = await self.agent.run_direct(
-                user_message, no_tools=decision.reason == "recent qq self activity")
+                user_message)
             if result.used_tool_path:
                 decision.route = CognitiveRoute.TOOL
             content = result.content
@@ -117,12 +134,16 @@ class CognitiveCoordinator:
             content = result.content
             goal_id = None
         memory_action = MemoryAction.IGNORE
-        if self.auto_memory is not None:
+        if self.auto_memory is not None and getattr(self.agent, "experience_stream", None) is None:
             if trace:
                 trace.emit("memory_maintenance_started", "memory", "running", "正在整理相关记忆…")
             try:
                 with budget_stage_scope("finalization"):
-                    memory_decision = await self.auto_memory.process(user_message, content)
+                    turn = current_turn()
+                    event = turn.trigger_event if turn else None
+                    memory_decision = (await self.auto_memory.process_event(event, content)
+                                       if event is not None else
+                                       await self.auto_memory.process(user_message, content))
                 memory_action = memory_decision.action
                 logger.info("auto_memory action=%s", memory_action.value)
                 if trace:
@@ -141,11 +162,17 @@ class CognitiveCoordinator:
             workflow_run_id=workflow_run_id,
         )
 
-    def _recent_routing_context(self, limit: int = 6, max_chars: int = 2400) -> str:
+    def _recent_routing_context(self, query: str = "", limit: int = 6, max_chars: int = 2400) -> str:
         """Provide bounded dialogue context to the router without Tool observations or metadata."""
-        lines = []
-        for message in self.agent.conversation.recent(limit):
-            if message.role.value not in {"user", "assistant"} or not message.content:
-                continue
-            lines.append(f"{message.role.value}: {message.content[:600]}")
-        return "\n".join(lines)[-max_chars:]
+        stream = getattr(self.agent, "experience_stream", None)
+        if stream is None:
+            return ""
+        from zhaoxi.cognitive_stream.timeline import cognitive_timeline
+        messages = cognitive_timeline(
+            stream, query=query, attention=getattr(self.agent, "attention_retriever", None),
+            limit=limit, max_chars=max_chars,
+        )
+        return "\n".join(
+            f"{message.role.value}: {message.content[:600]}"
+            for message in messages if message.content
+        )[-max_chars:]

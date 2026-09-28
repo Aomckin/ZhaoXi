@@ -699,6 +699,104 @@ def create_app(
             "current_cognition": cognition.diagnostics() if cognition is not None else None,
         }
 
+    @app.get("/api/debug/cognitive-stream")
+    async def debug_cognitive_stream(channel: str | None = None, actor: str | None = None,
+                                     session: str | None = None, limit: int = 50):
+        stream = getattr(core, "experience_stream", None)
+        if stream is None:
+            return {"enabled": False}
+        limit = max(1, min(50, limit))
+        events = (stream.query_by_channel(channel, limit) if channel else
+                  stream.query_by_actor(actor, limit) if actor else
+                  stream.query_by_session(session, limit) if session else stream.recent(limit))
+        retriever = getattr(core, "attention_retriever", None)
+        marker = getattr(getattr(core, "current_cognition", None), "state", lambda: None)()
+        cursor = marker.last_processed_message_id if marker else None
+        pending = stream.events_after(cursor, limit=200)
+        return {**stream.stats(), "recent_events": [item.model_dump(mode="json") for item in events],
+                "pending_cognition_events": sum(item.actor_role == "OWNER" and
+                    item.event_type.value in {"USER_MESSAGE", "EXTERNAL_MESSAGE"} for item in pending),
+                "last_attention_event_ids": retriever.last_result if retriever else [],
+                "last_cross_channel_event_ids": retriever.last_cross_channel_result if retriever else [],
+                "legacy_session_fallback_count": getattr(getattr(core, "context_builder", None),
+                    "legacy_session_fallback_count", 0),
+                "interaction_ledger_fallback_count": 0,
+                "ingestion_errors": getattr(getattr(core, "cognitive_ingress", None), "errors", 0)}
+
+    @app.get("/api/debug/cognitive-stream/turn")
+    async def debug_cognitive_turn(turn_id: str):
+        stream = getattr(core, "experience_stream", None)
+        if stream is None:
+            raise HTTPException(status_code=409, detail="Experience Stream 尚未就绪。")
+        events = stream.query_by_turn(turn_id)
+        return {"turn_id": turn_id, "events": [item.model_dump(mode="json") for item in reversed(events)]}
+
+    @app.get("/api/debug/cognitive-stream/reply-chain")
+    async def debug_cognitive_reply_chain(event_id: str):
+        stream = getattr(core, "experience_stream", None)
+        if stream is None:
+            raise HTTPException(status_code=409, detail="Experience Stream 尚未就绪。")
+        trigger = stream.get(event_id)
+        replies = stream.query_by_reply_to(event_id)
+        return {"trigger": trigger.model_dump(mode="json") if trigger else None,
+                "replies": [item.model_dump(mode="json") for item in reversed(replies)]}
+
+    @app.post("/api/debug/cognitive-stream/simulate-concurrent")
+    async def debug_cognitive_simulate_concurrent():
+        import asyncio
+        from zhaoxi.cognitive_stream.models import CognitiveEvent, CognitiveEventType
+        from zhaoxi.cognitive_stream.turn import CognitiveTurnContext, current_turn, reset_current_turn, set_current_turn
+        async def probe(channel: str) -> dict:
+            trigger = CognitiveEvent(event_type=CognitiveEventType.USER_MESSAGE,
+                                     source=channel, channel=channel, actor_role="OWNER")
+            token = set_current_turn(CognitiveTurnContext(
+                trigger_event=trigger, output_channel=channel, reply_target=channel,
+                images=(channel,)))
+            try:
+                await asyncio.sleep(0)
+                active = current_turn()
+                return {"channel": channel, "isolated": bool(active and
+                    active.trigger_event.event_id == trigger.event_id and
+                    active.output_channel == channel and active.reply_target == channel and
+                    active.images == (channel,))}
+            finally:
+                reset_current_turn(token)
+        results = await asyncio.gather(probe("desktop"), probe("qq"))
+        return {"passed": all(item["isolated"] for item in results), "results": results}
+
+    @app.get("/api/debug/cognitive-stream/unit")
+    async def debug_cognitive_unit(unit_id: str):
+        stream = getattr(core, "experience_stream", None)
+        unit = stream.resolve_timeline_unit(unit_id) if stream else None
+        if unit is None:
+            raise HTTPException(status_code=404, detail="Timeline Unit 不存在。")
+        return unit
+
+    @app.get("/api/debug/cognitive-stream/context")
+    async def debug_cognitive_context():
+        from zhaoxi.cognitive_stream.turn import active_turns
+        builder = getattr(core, "context_builder", None)
+        return {"last_rendered": getattr(builder, "last_cognitive_context", {}),
+                "active_turns": active_turns()}
+
+    @app.get("/api/debug/cognitive-stream/session")
+    async def debug_cognitive_session(session: str = "local"):
+        projector = getattr(core, "session_projector", None)
+        if projector is None:
+            return {"session_id": session, "recent_events": []}
+        view = projector.project(session)
+        return {"session_id": view.session_id, "channel_metadata": view.channel_metadata,
+                "recent_events": [item.model_dump(mode="json") for item in view.recent_events]}
+
+    @app.get("/api/debug/cognitive-stream/attention")
+    async def debug_cognitive_attention(query: str, session: str = "local"):
+        retriever = getattr(core, "attention_retriever", None)
+        if retriever is None:
+            return {"events": []}
+        context = retriever.retrieve(query, session_id=session)
+        return {"events": [item.model_dump(mode="json") for item in context.events],
+                "rendered": context.render()}
+
     @app.get("/api/debug/recent-context")
     async def debug_recent_context():
         return recent_context_snapshot()

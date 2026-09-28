@@ -6,6 +6,7 @@ import pytest
 
 from zhaoxi.core.message import Message, Role
 from zhaoxi.internal_activity.runtime import InternalActivityRuntime
+from zhaoxi.cognitive_stream import ExperienceStream, CognitiveEvent, CognitiveEventType
 
 
 def runtime(tmp_path):
@@ -26,8 +27,15 @@ def runtime(tmp_path):
             Message(role=Role.USER, content="朝汐开发", message_id="u1"),
             Message(role=Role.USER, content="继续开发", message_id="u2"),
         ]),
-        current_cognition=SimpleNamespace(state=lambda: SimpleNamespace(narrative="", observations=[])),
+        current_cognition=SimpleNamespace(state=lambda: SimpleNamespace(narrative="", observations=[], last_processed_message_id=None)),
     )
+    stream = ExperienceStream(tmp_path / "experience.db")
+    for content in ("朝汐开发", "继续开发"):
+        stream.append(CognitiveEvent(
+            event_type=CognitiveEventType.USER_MESSAGE, source="desktop",
+            actor_role="OWNER", trust_level="TRUSTED", content=content,
+        ))
+    agent.experience_stream = stream
     return InternalActivityRuntime(agent, settings, tmp_path / "activity.db")
 
 

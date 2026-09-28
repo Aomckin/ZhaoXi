@@ -40,6 +40,7 @@ class DecisionService:
         self.agenda = agenda
         self.current_cognition = current_cognition
         self.memory_retriever = memory_retriever
+        self.attention_retriever = None
         self.tool_catalog = tool_catalog or []
         self.timezone = ZoneInfo(timezone)
         self.last_result: DecisionResult | None = None
@@ -86,6 +87,15 @@ class DecisionService:
             except Exception as exc:
                 logger.warning("current cognition decision read failed type=%s", type(exc).__name__)
                 context.current_constraints.append("近期状态暂时无法核实")
+        if self.attention_retriever is not None:
+            from zhaoxi.cognitive_stream.timeline import cognitive_timeline
+            context.attention_summary = "\n".join(
+                f"{message.role.value}: {message.content[:300]}"
+                for message in cognitive_timeline(
+                    self.attention_retriever.stream, query=text,
+                    attention=self.attention_retriever, limit=5, max_chars=1000,
+                )
+            )
         if self.memory_retriever:
             try:
                 memories = await self.memory_retriever.retrieve(text)
@@ -136,7 +146,7 @@ class DecisionService:
         metadata = next((item for item in self.tool_catalog if item.get("name") == proposal.action), None)
         result = guard(proposal, context, forced_level=forced_level, tool_metadata=metadata)
         result.context_sources = [name for name, value in (("agenda", context.schedule or context.today_mainline),
-            ("current_cognition", context.short_term_note), ("memory", context.relevant_memories),
+            ("current_cognition", context.short_term_note), ("experience", context.attention_summary), ("memory", context.relevant_memories),
             ("rules", context.matched_rules)) if value]
         self.last_result = result
         if record:

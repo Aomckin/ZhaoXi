@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from zhaoxi.config.settings import Settings
+from zhaoxi.cognitive_stream import ExperienceStream, CognitiveIngress, AttentionRetriever, SessionProjector
 from zhaoxi.cognitive.coordinator import CognitiveCoordinator
 from zhaoxi.cognitive.memory_decision import AutoMemory
 from zhaoxi.memory.consolidation import AutoConsolidationConfig
@@ -44,6 +45,16 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         proactive_state=proactive_state,
         tool_router_mode=settings.tool_router_mode,
     )
+    agent.experience_stream = ExperienceStream(Path(".zhaoxi") / "experience.db")
+    agent.experience_stream.clear_expired()
+    agent.cognitive_ingress = CognitiveIngress(agent.experience_stream)
+    if planner is not None:
+        planner.cognitive_ingress = agent.cognitive_ingress
+        from zhaoxi.cognitive_stream.turn import current_turn
+        planner.current_trigger_provider = lambda: (current_turn().trigger_event if current_turn() else None)
+    agent.attention_retriever = AttentionRetriever(agent.experience_stream)
+    agent.session_projector = SessionProjector(agent.experience_stream)
+    context_builder.attention_retriever = agent.attention_retriever
     agent.session_store = session_store
     agent.session_record = session_record
     if settings.perception_enabled:
@@ -53,10 +64,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
                                           settings.interaction_ledger_ttl_hours)
         def shared_self_context():
             state = json.dumps(shared_ledger.runtime_state(), ensure_ascii=False)
-            events = (shared_ledger.context(settings.interaction_ledger_context_limit,
-                settings.interaction_ledger_context_max_chars)
-                if settings.interaction_ledger_enabled else "")
-            return "[Runtime Self State]\n" + state + "\n[/Runtime Self State]\n" + events
+            return "[Runtime Self State]\n" + state + "\n[/Runtime Self State]"
         context_builder.self_activity_provider = shared_self_context
     agent.tool_packages = package_records
     agent.tool_package_instances = {package.package_id: package for package in tool_packages}
@@ -77,6 +85,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         tool_catalog=registry.manifest(),
         timezone=settings.proactive_timezone,
     )
+    agent.decision_service.attention_retriever = agent.attention_retriever
     agent.current_cognition_maintainer = CurrentCognitionMaintainer(
         current_cognition_service, provider, timezone=settings.proactive_timezone,
     )
@@ -110,6 +119,14 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         ],
     }
     agent.metrics = provider.metrics
+    if proactive is not None:
+        from zhaoxi.cognitive_stream.models import CognitiveEventType
+        def record_delivery(delivery):
+            agent.cognitive_ingress.record(CognitiveEventType.PROACTIVE_EVENT,
+                delivery.content or "", source="proactive", channel="desktop",
+                session_id="local", source_refs=["proactive:" + delivery.delivery_id],
+                metadata={"event_type": delivery.event_type})
+        proactive.sink.on_delivered = record_delivery
     attach_proactive_runtime(agent, settings, proactive, proactive_scheduler, proactive_state, tool_packages, package_capabilities, tool_package_errors, provider, context_builder)
     data_stores = build_data_store_specs(settings, archive_enabled=archive_service is not None)
     agent.backup_manager = BackupManager(
