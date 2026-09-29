@@ -63,7 +63,7 @@ async def test_discovery_continues_business_call_retains_schema_and_resets_next_
     assert result.used_tool_path
     assert names(provider.tool_schemas[0]) == {"remember_memory", "update_memory", "search_memories", "request_tool_group", "inspect_tool_catalog"}
     assert "archive_search" in names(provider.tool_schemas[1])
-    assert "archive_search" in names(provider.tool_schemas[2])
+    assert provider.tool_schemas[2] is None
     tool_results = [json.loads(m.content) for m in provider.calls[2] if m.role.value == "tool"]
     assert len(tool_results) == 1 and tool_results[0]["success"]
     assert not any(m.role.value == "tool" for m in provider.calls[1])
@@ -111,8 +111,6 @@ async def test_expansion_survives_permission_and_remaining_discovery_calls():
             ToolCall(id="write", name="mcp_filesystem_write_file"),
             ToolCall(id="time", name="request_tool_group", arguments={"group": "time"}),
         ]),
-        call("request_tool_group", group="web"),
-        call("archive_search"),
         ModelResponse(content="完成"),
     ])
     agent = ZhaoxiAgent(provider=provider, registry=registry, context_builder=ContextBuilder("朝汐"))
@@ -120,10 +118,8 @@ async def test_expansion_survives_permission_and_remaining_discovery_calls():
     assert pending.permission_confirmation
     result = await agent.approve_permission(pending.permission_confirmation.confirmation_id)
     assert result.content == "完成"
-    for schemas in provider.tool_schemas[2:]:
-        assert {"archive_search", "current_time"} <= names(schemas)
-        assert "mcp_fetch_fetch" not in names(schemas)
-    assert "expansion_limit" in provider.calls[-1][0].content
+    assert provider.tool_schemas[2] is None
+    assert provider.options[2]["tool_router"]["final_exposed_tools"] == []
 
 
 def test_all_mode_requests_do_not_expand_and_diagnostics_are_metadata_only():

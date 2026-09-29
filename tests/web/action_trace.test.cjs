@@ -123,7 +123,10 @@ test('live calls show duration and final metrics distinguish ordinary agent exec
   const s=setup();s.context.beginActionTrace();
   s.emit('llm_call_finished','model','success','模型调用已结束',{metadata:{index:2,owner:'agent',duration_ms:1234.56}});
   assert.match(s.list.children.at(-1).textContent,/agent #2.*1234.56 ms/);
-  s.emit('runtime_metrics_finalized','metrics','success','运行指标已汇总',{metadata:{runtime_metrics:{total_ms:2000,ttfr_ms:1000,planner_used:false,llm_calls:[],tool_calls:[]}}});
+  s.emit('runtime_metrics_finalized','metrics','success','运行指标已汇总',{metadata:{runtime_metrics:{total_ms:2000,ttfr_ms:1000,planner_used:false,runtime_lane:'fast',route_source:'fast_gate',foreground_llm_calls:1,background_llm_calls:0,router_llm_calls:0,agent_llm_calls:1,planner_llm_calls:0,memory_search_count:0,tool_rounds:0,catalog_inspections:0,fast_gate_reason:'safe_conversation',llm_calls:[],tool_calls:[]}}});
+  assert.match(s.nodes['#actionRuntimeSummary'].textContent,/FAST \/ 轻量对话/);
+  assert.match(s.nodes['#actionRuntimeSummary'].textContent,/前台模型 1.*Router 0/);
+  assert.match(s.nodes['#actionRuntimeSummary'].textContent,/Fast Gate：safe_conversation/);
   assert.match(s.nodes['#actionRuntimeSummary'].textContent,/2000.00 ms/);
   assert.match(s.nodes['#actionPlannerStatus'].textContent,/普通 Agent/);
 });

@@ -13,6 +13,7 @@ from zhaoxi.observability import current_trace, llm_owner_scope
 
 
 class CognitiveRoute(StrEnum):
+    FAST_CHAT = "fast_chat"
     DIRECT = "direct"
     TOOL = "tool"
     PLAN = "plan"
@@ -138,6 +139,8 @@ class CognitiveRouter:
                 continue
             try:
                 value = RouteInput.model_validate(call.arguments)
+                if value.route is CognitiveRoute.FAST_CHAT:
+                    value.route = CognitiveRoute.DIRECT
                 required_tool = value.required_tool if value.required_tool in self.available_tool_names else None
                 return self._guard_simple_request(
                     user_message, RouteDecision(route=value.route, reason=value.reason,

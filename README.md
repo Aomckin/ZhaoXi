@@ -1,6 +1,6 @@
 # Zhaoxi / 朝汐
 
-朝汐是一个以本地运行、长期陪伴和可控工具执行为核心的个人 Agent。当前开发版本为 **1.4.0**。Core 提供请求级运行观测、长任务中间回复、Perception、认知时间线和 External Source Plugin 协议；QQ / NapCat 作为可选插件接入。
+朝汐是一个以本地运行、长期陪伴和可控工具执行为核心的个人 Agent。当前开发版本为 **1.4.1**。Core 提供请求级运行观测、长任务中间回复、Perception、认知时间线和 External Source Plugin 协议；QQ / NapCat 作为可选插件接入。
 
 ## 主要特点
 
@@ -11,6 +11,8 @@
 - 潮庭书库、本地资料检索、Planner 和确定性 Workflow。
 - 按需触发的 Decision Layer，结合当前事实与少量规则给出 L0/L1/L2 方向；朝汐主回复链负责表达。
 - 统一 Tool Registry、动态能力发现、权限确认和脱敏审计。
+- FAST_CHAT 轻量对话通道：Desktop / Web 与 Owner QQ 私聊的普通聊天跳过 Router、外部 Planner、长期记忆与工具目录，仅做一次前台模型调用；Debug 可临时强制使用。
+- STANDARD 单工具任务在业务工具成功后直接进入无工具 Finalization，避免无意义的能力发现与额外轮次。
 - 请求级运行指标、LLM/Tool 归属与耗时、Memory Retrieval Inspector、Planner Trace 桥接和独立的长任务中间回复。
 - 请求级行动轨迹、Tool 最终状态归并与 Token 预算错误归因。
 - 主动心跳、桌面活动感知、语音输入与朗读。

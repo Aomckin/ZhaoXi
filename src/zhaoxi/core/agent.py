@@ -578,6 +578,36 @@ class ZhaoxiAgent:
             if token is not None:
                 reset_current_turn(token)
 
+    async def run_fast_channel_reply(
+        self, user_message: str, *, trigger_event, audience: str = "owner",
+        expression_policy: str = "", force: bool = False,
+    ):
+        """Run the channel-scoped FAST_CHAT lane without memory or tools."""
+        if not user_message.strip():
+            raise ValueError("消息不能为空。")
+        from zhaoxi.cognitive_stream.turn import CognitiveTurnContext, current_turn, set_current_turn, reset_current_turn
+        scoped = current_turn()
+        token = None
+        output_channel = getattr(trigger_event, "channel", "qq") or "qq"
+        if scoped is None or scoped.trigger_event.event_id != trigger_event.event_id:
+            token = set_current_turn(CognitiveTurnContext(
+                trigger_event=trigger_event, output_channel=output_channel, audience=audience,
+                expression_policy=expression_policy))
+        view = Conversation()
+        conversation_token = self._conversation_override.set(view)
+        try:
+            runtime = getattr(getattr(self, "cognitive", None), "fast_chat", None)
+            if runtime is None:
+                raise AgentLoopError("FAST_CHAT 运行时不可用。", code="fast_chat_unavailable")
+            return await runtime.run_fast_chat(
+                user_message, output_channel=output_channel, audience=audience,
+                expression_policy=expression_policy, force=force,
+            )
+        finally:
+            self._conversation_override.reset(conversation_token)
+            if token is not None:
+                reset_current_turn(token)
+
     async def resume_current_turn(self, user_message: str) -> AgentResponse:
         """Continue an interrupted model turn without replaying completed tools."""
         correlation = current_correlation()
@@ -747,6 +777,7 @@ class ZhaoxiAgent:
         required_tool: str | None = None,
         lookup_commitment: str = "",
         discovery: ToolDiscoveryState | None = None,
+        successful_tool_already: bool = False,
         turn_images: tuple[str, ...] = (),
         no_tools: bool = False,
         output_channel: str = "desktop",
@@ -769,6 +800,7 @@ class ZhaoxiAgent:
         capability_retry = False
         resolution_message = ""
         tool_called = discovery.business_tool_called
+        business_tool_succeeded = successful_tool_already
         corrective_retry = bool(lookup_commitment)
         trace = current_trace()
         response_started = False
@@ -782,8 +814,10 @@ class ZhaoxiAgent:
                 trace.emit("model_step_started", "model", "running", "正在思考下一步…", step_id=step)
             try:
                 budget_stage, final_only = self._budget_mode(tool_called, trace, step)
-                final_only = final_only or discovery.stalled >= 2 or (tool_called and trace is not None
+                final_only = final_only or business_tool_succeeded or discovery.stalled >= 2 or (tool_called and trace is not None
                     and time.monotonic() - trace.started_monotonic >= self.timeout_seconds * 0.75)
+                if trace and step > 2 and not trace.extra_round_reason:
+                    trace.extra_round_reason = ("tool_repair" if trace.tool_rounds > 1 else "discovery_or_model_retry")
                 schemas = [] if final_only or no_tools else discovery.schemas(self.registry)
                 interim_available = bool(trace and schemas and trace.interim_enabled
                     and trace.interim_replies < trace.interim_max_count
@@ -865,6 +899,10 @@ class ZhaoxiAgent:
                     )
                 self.last_tool_diagnostics = discovery.diagnostics(self.registry)
                 if final_only:
+                    self.last_tool_diagnostics.update({
+                        "final_exposed_tools": [], "total_exposed_tools_count": 0,
+                        "tool_schema_chars": 0, "final_only": True,
+                    })
                     messages[0].content = (messages[0].content or "") + (
                         "\n本轮只整理已经完成、失败或未知的操作并给出自然语言回复；"
                         "不再探索新工具，不得把尚未完成的动作说成完成。"
@@ -987,6 +1025,8 @@ class ZhaoxiAgent:
 
             control_names = {"request_tool_group", "inspect_tool_catalog", "emit_interim_reply"}
             business_calls = [call for call in response.tool_calls if call.name not in control_names]
+            if trace and business_calls:
+                trace.tool_rounds += 1
             # Discovery controls mutate only this turn's schema selection. Replaying
             # them as provider tool transcripts is both unnecessary and rejected by
             # providers that emitted the control call through a textual protocol.
@@ -1014,6 +1054,10 @@ class ZhaoxiAgent:
                         trace.emit_interim(str(call.arguments.get("content", "")), reason="agent")
                     continue
                 if call.name in {"request_tool_group", "inspect_tool_catalog"}:
+                    if business_tool_succeeded:
+                        continue
+                    if trace and call.name == "inspect_tool_catalog":
+                        trace.catalog_inspections += 1
                     result = self._run_control_tool(call, discovery)
                     discovery.record_observation(call.name, result)
                     if (call.name == "inspect_tool_catalog" and result.success
@@ -1069,6 +1113,8 @@ class ZhaoxiAgent:
                 if trace and attempt:
                     self._finish_traced_tool(trace, attempt, execution)
                 tool_logger.info("request=%s tool=%s success=%s", request_id, observable_name, result.success)
+                if result.success:
+                    business_tool_succeeded = True
 
         logger.error("request=%s reached max steps=%d", request_id, self.max_steps)
         if trace:
@@ -1110,6 +1156,7 @@ class ZhaoxiAgent:
         else:
             self.tool_executor.gateway.deny(confirmation_id)
 
+        approved_tool_succeeded = False
         for position, call in enumerate(batch_calls, start=1):
             trace = current_trace()
             invocation_id = pending.invocation_id if position == 1 else uuid4().hex
@@ -1137,6 +1184,7 @@ class ZhaoxiAgent:
                     error="permission_denied",
                 )
             self._record_tool_result(call, result)
+            approved_tool_succeeded = approved_tool_succeeded or result.success
             if trace and attempt:
                 if position in approved_positions:
                     self._finish_traced_tool(trace, attempt, execution)
@@ -1161,7 +1209,9 @@ class ZhaoxiAgent:
         if continued is not None:
             return continued
         return await self._run_loop(pending.request_id, user_intent=pending.user_intent,
-                                    discovery=pending.discovery, turn_images=pending.images)
+                                    discovery=pending.discovery,
+                                    successful_tool_already=approved_tool_succeeded,
+                                    turn_images=pending.images)
 
     def _record_tool_result(self, call: ToolCall, result: ToolResult) -> None:
         provider_result = result

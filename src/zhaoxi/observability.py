@@ -92,6 +92,13 @@ class ActionTrace:
     final_reply_ready_ms: float | None = None
     interim_replies: int = 0
     route: str | None = None
+    runtime_lane: str | None = None
+    route_source: str | None = None
+    fast_gate_reason: str | None = None
+    escalation_reason: str | None = None
+    extra_round_reason: str | None = None
+    tool_rounds: int = 0
+    catalog_inspections: int = 0
     interim_enabled: bool = True
     interim_threshold_seconds: float = 10
     interim_max_count: int = 1
@@ -288,13 +295,22 @@ class ActionTrace:
                 "finished_at": self.finished_at, "total_ms": total, "ttfr_ms": self.first_reply_ms,
                 "final_response_ms": self.final_response_ms, "final_reply_ready_ms": self.final_reply_ready_ms, **values,
                 "llm_call_count": len(self.llm_calls), "llm_calls": self.llm_calls,
+                "foreground_llm_calls": sum(call.get("owner") not in {"auto_memory", "current_cognition"} for call in self.llm_calls),
+                "background_llm_calls": sum(call.get("owner") in {"auto_memory", "current_cognition"} for call in self.llm_calls),
+                "router_llm_calls": sum(call.get("owner") == "router" for call in self.llm_calls),
+                "agent_llm_calls": sum(call.get("owner") in {"agent", "fast_chat"} for call in self.llm_calls),
+                "planner_llm_calls": sum(call.get("owner") == "planner" for call in self.llm_calls),
                 "tool_call_count": len(self.tool_calls), "tool_calls": self.tool_calls,
                 "control_call_count": sum(e.event_type == "control_call_finished" for e in self.events),
                 "stage_times_are_inclusive": True,
-                "memory_hits": self.memory_hits, "memory_candidates": self.memory_candidates,
+                "memory_hits": self.memory_hits, "memory_search_count": sum(e.event_type == "memory_search_started" for e in self.events),
+                "memory_candidates": self.memory_candidates, "tool_rounds": self.tool_rounds,
+                "catalog_inspections": self.catalog_inspections,
                 "planner_used": self.planner_used, "decision_used": self.decision_used,
                 "interim_replies": self.interim_replies,
-                "route": self.route,
+                "route": self.route, "runtime_lane": self.runtime_lane, "route_source": self.route_source,
+                "fast_gate_reason": self.fast_gate_reason, "escalation_reason": self.escalation_reason,
+                "extra_round_reason": self.extra_round_reason,
                 "timeline": [event.payload() for event in self.events]}
 
     def start_tool(self, name: str, call_id: str, invocation_id: str, step: int | str | None) -> ActionAttempt:

@@ -10,6 +10,9 @@ from zhaoxi_ext.qq_napcat.codec import decode
 from zhaoxi_ext.qq_napcat.outbound import send_reply
 from zhaoxi.plugins.source_router import outbound_message
 from zhaoxi.config.settings import Settings
+from zhaoxi.cognitive.coordinator import CognitiveCoordinator
+from zhaoxi.cognitive.fast_gate import FastDialogueGate
+from zhaoxi.cognitive.router import CognitiveRouter
 from zhaoxi.core.context import ContextBuilder
 from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.tools.registry import ToolRegistry
@@ -455,3 +458,69 @@ def test_known_bot_gets_one_reply_until_owner_intervenes(tmp_path):
     ingress.observation(owner, session_id="qq/group/123")
     assert non_owner_reply_block_reason(next_bot, stream,
         now=reply.received_at + timedelta(minutes=6), known_bot_ids={"9"}) is None
+
+
+@pytest.mark.asyncio
+async def test_owner_qq_private_uses_fast_chat_without_external_planner(tmp_path):
+    seen = []
+
+    async def generate(messages, tools):
+        seen.append((messages, tools))
+        return ModelResponse(content="在呢。")
+
+    runtime, agent = make_runtime(tmp_path, generate)
+    agent.cognitive = CognitiveCoordinator(
+        agent=agent, router=CognitiveRouter(agent.provider), fast_gate=FastDialogueGate(),
+    )
+    item = decode(qq_event(501, text="在吗？"), self_id="42", owner_id="8")
+
+    assert await runtime.ingest(item) == "在呢。"
+    assert len(seen) == 1
+    assert seen[0][1] is None
+    assert "FAST_CHAT" in seen[0][0][0].content
+    assert "外部频道输出边界" in seen[0][0][0].content
+    assert runtime.last_fast_gate["reason"] == "safe_conversation"
+
+
+@pytest.mark.asyncio
+async def test_debug_force_fast_applies_to_owner_private_action_request(tmp_path):
+    seen = []
+
+    async def generate(messages, tools):
+        seen.append((messages, tools))
+        return ModelResponse(content="先聊这句话。")
+
+    runtime, agent = make_runtime(tmp_path, generate)
+    agent.cognitive = CognitiveCoordinator(
+        agent=agent, router=CognitiveRouter(agent.provider), fast_gate=FastDialogueGate(),
+    )
+    agent.cognitive.force_fast_chat = True
+    item = decode(qq_event(502, text="帮我查一下最新消息"), self_id="42", owner_id="8")
+
+    assert await runtime.ingest(item) == "先聊这句话。"
+    assert len(seen) == 1
+    assert seen[0][1] is None
+    assert runtime.last_fast_gate["reason"] == "debug_force_fast"
+
+
+@pytest.mark.asyncio
+async def test_debug_force_fast_does_not_apply_to_non_owner_or_group(tmp_path):
+    seen = []
+
+    async def generate(messages, tools):
+        seen.append((messages, tools))
+        return ModelResponse(content="普通外部回复")
+
+    runtime, agent = make_runtime(tmp_path, generate)
+    agent.cognitive = CognitiveCoordinator(
+        agent=agent, router=CognitiveRouter(agent.provider), fast_gate=FastDialogueGate(),
+    )
+    agent.cognitive.force_fast_chat = True
+    item = decode(qq_event(503, text="请问你是谁？", kind="group", user_id=9),
+                  self_id="42", owner_id="8")
+    item.directed_to_zhaoxi = True
+
+    assert await runtime.ingest(item) == "普通外部回复"
+    assert len(seen) == 1
+    assert "FAST_CHAT" not in seen[0][0][0].content
+    assert runtime.last_fast_gate is None

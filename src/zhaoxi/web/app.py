@@ -109,6 +109,7 @@ class InterfaceSettingsRequest(BaseModel):
     external_input_debounce_seconds: float = Field(default=5, ge=0, le=15)
     external_reply_interval_seconds: float = Field(default=0.5, ge=0, le=5)
     long_wait_enabled: StrictBool = False
+    force_fast_chat: StrictBool = False
 
 
 class FilesystemAccessRequest(BaseModel):
@@ -197,6 +198,11 @@ def _apply_request_timeout(core, *, enabled: bool, default_seconds: float) -> No
         if hasattr(item, "timeout"):
             item.timeout = timeout
 
+
+def _apply_force_fast_chat(core, *, enabled: bool) -> None:
+    cognitive = getattr(core, "cognitive", None)
+    if cognitive is not None:
+        cognitive.force_fast_chat = enabled
 
 class ChatResponse(BaseModel):
     timestamp: datetime | None = None
@@ -336,11 +342,13 @@ def create_app(
     current_time = now_provider or (lambda: datetime.now().astimezone())
     interface_settings_path = Path(configured.interface_settings_path)
     filesystem_access_path = Path(configured.filesystem_access_path)
+    interface_settings_value = _load_interface_settings(interface_settings_path)
     _apply_request_timeout(
         core,
-        enabled=_load_interface_settings(interface_settings_path).long_wait_enabled,
+        enabled=interface_settings_value.long_wait_enabled,
         default_seconds=configured.request_timeout_seconds,
     )
+    _apply_force_fast_chat(core, enabled=interface_settings_value.force_fast_chat)
 
     def voice_policy(*, text: str, explicit: bool, permission_pending: bool = False):
         now = current_time()
@@ -548,6 +556,7 @@ def create_app(
             enabled=request.long_wait_enabled,
             default_seconds=configured.request_timeout_seconds,
         )
+        _apply_force_fast_chat(core, enabled=request.force_fast_chat)
         return request
 
     @app.post("/api/proactive/active/poke")

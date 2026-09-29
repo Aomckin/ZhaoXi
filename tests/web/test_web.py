@@ -507,7 +507,9 @@ def test_web_shell_has_keyboard_and_live_status_accessibility_baseline():
     assert "function addRetryableError(content)" in page
     assert 'id="regenerateDebugToggle" type="checkbox"' in page
     assert 'id="longWaitToggle" type="checkbox"' in page
+    assert 'id="forceFastChatToggle" type="checkbox"' in page
     assert "long_wait_enabled:$('#longWaitToggle').checked" in page
+    assert "force_fast_chat:$('#forceFastChatToggle').checked" in page
     assert "normalRegenerationEnabled=false" in page
     assert "button.classList.add('normal-regenerate')" in page
     with TestClient(app) as client:
@@ -546,6 +548,7 @@ def test_interface_settings_persist_across_app_rebuilds(tmp_path):
             "input_merge_seconds": 7,
             "reply_interval_seconds": 2,
             "long_wait_enabled": True,
+            "force_fast_chat": True,
         })
         assert response.status_code == 200
 
@@ -556,6 +559,7 @@ def test_interface_settings_persist_across_app_rebuilds(tmp_path):
             "external_input_debounce_seconds": 5,
             "external_reply_interval_seconds": 0.5,
             "long_wait_enabled": True,
+            "force_fast_chat": True,
         }
 
 
@@ -787,3 +791,20 @@ def test_runtime_debug_and_memory_inspector_expose_scores():
         assert item["content"] == "interview record"
         assert item["final_score"] == 0.91
         assert item["why_selected"] == ["text match"]
+
+
+def test_force_fast_chat_setting_updates_runtime_and_restores(tmp_path):
+    path = tmp_path / "interface-settings.json"
+    settings = Settings(_env_file=None, interface_settings_path=str(path))
+    agent = FakeAgent()
+    agent.cognitive = SimpleNamespace(force_fast_chat=False)
+
+    with TestClient(create_app(agent=agent, settings=settings)) as client:
+        response = client.put("/api/settings/interface", json={"force_fast_chat": True})
+        assert response.status_code == 200
+        assert agent.cognitive.force_fast_chat is True
+
+    restored_agent = FakeAgent()
+    restored_agent.cognitive = SimpleNamespace(force_fast_chat=False)
+    with TestClient(create_app(agent=restored_agent, settings=settings)):
+        assert restored_agent.cognitive.force_fast_chat is True

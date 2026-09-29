@@ -1,8 +1,8 @@
 # 朝汐 ZhaoXi 代码现状与交接说明
 
-## v1.4.0 开发状态
+## v1.4.1 开发状态
 
-代码版本为 1.4.0。请求级 Runtime Metrics 记录阶段、LLM/Tool 调用、TTFR 与时间线；Web 通过独立 SSE 展示 Agent / Planner 的真实中间回复。补丁已统一工具内部消息可见性，将 AutoMemory / Current Cognition 后置到持久化队列，移除定时气泡，Final 分段延迟仅服从用户设置并覆盖整次图文回复，同时加入工具发现收口、Planner 细节、阶段耗时、浏览器渲染回执及本轮真实 Memory 候选展示。维护抽屉已完成简体中文化。自动回归通过；真实模型的自然措辞、端到端延迟与桌面交互仍待重启实机验收。详见 [v1.4.0 开发记录](../v1.4.x/Zhaoxi_v1.4.0_开发记录.md)及[补丁任务书](../v1.4.x/Zhaoxi_v1.4.0_Progressive_Response_Visibility_Patch_Task.md)。
+代码版本为 1.4.1。普通 Owner 桌面/Web 对话与 QQ 私聊文本默认先经过 Fast Dialogue Gate；FAST_CHAT 单次无工具生成，Debug 可持久化强制 FAST 且不覆盖群聊、第三方、图片或待授权边界，明确非聊天请求直接进入 STANDARD / DEEP，单业务工具成功后强制无工具 Finalization。Runtime Observatory 已补充 lane、route source、前后台 LLM、Memory Search、Tool Round、Catalog Inspection 和升级原因。v1.4.0 的请求级 Runtime Metrics 记录阶段、LLM/Tool 调用、TTFR 与时间线；Web 通过独立 SSE 展示 Agent / Planner 的真实中间回复。补丁已统一工具内部消息可见性，将 AutoMemory / Current Cognition 后置到持久化队列，移除定时气泡，Final 分段延迟仅服从用户设置并覆盖整次图文回复，同时加入工具发现收口、Planner 细节、阶段耗时、浏览器渲染回执及本轮真实 Memory 候选展示。维护抽屉已完成简体中文化。自动回归通过；真实模型的自然措辞、端到端延迟与桌面交互仍待重启实机验收。详见 [v1.4.0 开发记录](../v1.4.x/Zhaoxi_v1.4.0_开发记录.md)及[补丁任务书](../v1.4.x/Zhaoxi_v1.4.0_Progressive_Response_Visibility_Patch_Task.md)。
 
 ## v1.3.3 历史开发状态
 
@@ -10,7 +10,7 @@
 
 > 当前配置、界面行为与最新限制见 [当前状态](CURRENT_STATUS.md)。下文保留分阶段实现与验收记录；其中旧预算和测试数量不代表当前值。
 
-> **默认分支：`main`，代码版本 `1.4.0`**。v1.3.0 已正式发布；以下旧版本章节是历史切片，其“当前”指当时状态。旧测试数字只作为当时记录；当前行为以本页顶部、CURRENT_STATUS 和代码为准。
+> **默认分支：`main`，代码版本 `1.4.1`**。v1.3.0 已正式发布；以下旧版本章节是历史切片，其“当前”指当时状态。旧测试数字只作为当时记录；当前行为以本页顶部、CURRENT_STATUS 和代码为准。
 
 ## v1.3.0 当前稳定版本
 
@@ -490,7 +490,7 @@ python main.py
 git diff --check
 ```
 
-当前自动化测试基线：**615 项 Python 通过、1 项跳过；35 项无需浏览器的 Node 前端测试通过**。3 项 Playwright 冒烟测试需先安装对应 Node 依赖。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
+当前自动化测试基线：**798 项 Python 通过、1 项跳过；50 项无需浏览器的 Node 前端测试通过**。3 项 Playwright 冒烟测试需先安装对应 Node 依赖。开发时至少运行与改动相关的测试；提交版本切片前运行全量测试、编译检查和 `git diff --check`。
 
 ## 接手建议
 

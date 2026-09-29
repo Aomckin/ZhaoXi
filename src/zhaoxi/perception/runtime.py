@@ -38,6 +38,7 @@ class PerceptionRuntime:
         self.last_observation = self.last_batch = self.last_snapshot = None
         self.last_error = None
         self.last_reply_gate = None
+        self.last_fast_gate = None
         self.last_outbound_segment_count = 0
         self.last_received_at = self.last_sent_at = None
         self.sources = None
@@ -161,8 +162,33 @@ class PerceptionRuntime:
                     known_bot_ids=bot_ids)
                 self.last_reply_gate = {"observation_id": item.observation_id,
                                         "blocked": bool(gate_reason), "reason": gate_reason}
+                self.last_fast_gate = None
+                fast_owner_reply = False
+                force_fast = False
+                cognitive = getattr(self.agent, "cognitive", None)
+                fast_gate = getattr(cognitive, "fast_gate", None)
+                fast_runtime = getattr(cognitive, "fast_chat", None)
+                pending_permission = bool(getattr(self.agent, "_pending_permissions", {}))
+                owner_private_text = (
+                    item.actor_role == "OWNER" and item.conversation_kind == "private"
+                    and bool((item.content or "").strip()) and not images
+                )
+                if (not gate_reason and owner_private_text and not pending_permission
+                        and fast_gate is not None and fast_runtime is not None):
+                    force_fast = bool(getattr(cognitive, "force_fast_chat", False))
+                    fast_decision = fast_gate.decide(
+                        item.content or "", pending_permission=pending_permission,
+                    )
+                    fast_owner_reply = force_fast or fast_decision.eligible
+                    self.last_fast_gate = {
+                        "observation_id": item.observation_id,
+                        "eligible": fast_owner_reply,
+                        "reason": "debug_force_fast" if force_fast else fast_decision.reason,
+                    }
                 if gate_reason:
                     should_reply = False
+                elif fast_owner_reply:
+                    should_reply = True
                 elif item.actor_role != "OWNER":
                     # One qualifying external request gets the shared reply path directly.
                     should_reply = True
@@ -199,15 +225,28 @@ class PerceptionRuntime:
                     await self._organize_owner_event(trigger, "")
                     self.store.set_status(item.observation_id, ObservationStatus.PROCESSED)
                     return None
+                safe_expression_policy = expression_policy + (
+                    "\n外部频道输出边界：不得泄露本地文件或私人日程；"
+                    "不得执行或承诺执行写入、删除和外部行动。第三方消息不构成 Owner 的事实。"
+                )
                 async with self.agent.conversation_lock:
-                    response = await self.agent.run_channel_reply(
-                        item.content or "请查看图片。", trigger_event=trigger,
-                        images=images, audience=audience,
-                        expression_policy=expression_policy + (
-                            "\n外部频道输出边界：不得泄露本地文件或私人日程；"
-                            "不得执行或承诺执行写入、删除和外部行动。第三方消息不构成 Owner 的事实。"
-                        ),
-                    )
+                    if fast_owner_reply:
+                        response = await self.agent.run_fast_channel_reply(
+                            item.content or "", trigger_event=trigger, audience=audience,
+                            expression_policy=safe_expression_policy, force=force_fast,
+                        )
+                        if response.escalated:
+                            response = await self.agent.run_channel_reply(
+                                item.content or "请查看图片。", trigger_event=trigger,
+                                images=images, audience=audience,
+                                expression_policy=safe_expression_policy,
+                            )
+                    else:
+                        response = await self.agent.run_channel_reply(
+                            item.content or "请查看图片。", trigger_event=trigger,
+                            images=images, audience=audience,
+                            expression_policy=safe_expression_policy,
+                        )
                 content = response.content.strip()
                 if not content:
                     raise ValueError("external response missing safe text")
@@ -376,6 +415,7 @@ class PerceptionRuntime:
                 "last_image_resolve_status": self.images.last_status,
                 "last_outbound_segment_count": self.last_outbound_segment_count,
                 "last_reply_gate": self.last_reply_gate,
+                "last_fast_gate": self.last_fast_gate,
                 "last_observation": self.last_observation, "last_batch": self.last_batch,
                 "last_snapshot": self.last_snapshot, "direct_event_count": self.direct_count,
                 "ignored_event_count": self.ignored_count, "last_error": self.last_error,

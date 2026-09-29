@@ -1,4 +1,6 @@
-# 当前开发版本：v1.4.0（运行观测与中间回复已实现；实机长任务验收待完成）
+# 当前开发版本：v1.4.1（Fast Dialogue Lane 与单工具强制收口已实现）
+
+2026-09-29：v1.4.1 已加入 Router 前置的本地 Fast Dialogue Gate 与独立 `run_fast_chat` 通道。普通聊天只携带人格、Current Cognition、当前时间和有限 Owner 对话，跳过 Router LLM、长期 Memory、Tool Schema、Decision 与 Planner；Owner QQ 私聊文本现已复用同一 FAST 通道并保留外部隐私边界，Debug 可持久化强制 FAST，群聊、第三方、图片与待授权流程不受影响；明确动作、回忆、实时查询和多步任务由本地规则直接升级 STANDARD / DEEP，只有歧义承接进入 Router。FAST 动作承诺最多升级一次。STANDARD 业务 Tool 成功后下一轮强制关闭 Tool 与 Discovery 并进入 Finalization。Runtime Metrics 增加 lane、route source、前后台模型、Memory 搜索、Tool round、目录检查及升级/额外轮次原因。全量 Python 自动回归 798 项通过、1 项跳过；真实模型桌面端延迟与措辞仍需重启实机验收。见 [v1.4.1 开发记录](../v1.4.x/Zhaoxi_v1.4.1_开发记录.md)。
 
 2026-09-29：v1.4.0 回复交付与可见性补丁已完成代码实施。工具内部轮次使用持久化 visibility 统一过滤；Final 在会话持久化后立即交付，AutoMemory / Current Cognition 进入可恢复后台队列；重复工具发现有界收口；定时中间气泡已移除，Final 分段延迟只服从用户设置并覆盖整次图文回复；Planner、阶段耗时、服务端交付边界、浏览器渲染回执和本轮真实 Memory 候选可诊断。维护抽屉已完成简体中文化。Python / Node 自动回归通过，重启后的真实模型桌面端验收待完成。见 [v1.4.0 补丁任务书](../v1.4.x/Zhaoxi_v1.4.0_Progressive_Response_Visibility_Patch_Task.md)。
 

@@ -4,10 +4,12 @@ from pathlib import Path
 from zhaoxi.config.settings import Settings
 from zhaoxi.cognitive_stream import ExperienceStream, CognitiveIngress, AttentionRetriever, SessionProjector
 from zhaoxi.cognitive.coordinator import CognitiveCoordinator
+from zhaoxi.cognitive.fast_gate import FastDialogueGate
 from zhaoxi.cognitive.memory_decision import AutoMemory
 from zhaoxi.memory.consolidation import AutoConsolidationConfig
 from zhaoxi.cognitive.router import CognitiveRouter
 from zhaoxi.core.agent import ZhaoxiAgent
+from zhaoxi.core.fast_chat import FastChatRuntime
 from zhaoxi.errors import ConfigError
 from zhaoxi.permission.models import InvocationOrigin
 from zhaoxi.current_cognition import CurrentCognitionMaintainer
@@ -166,6 +168,11 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
                 tool_catalog=registry.manifest(),
                 archive_enabled=archive_service is not None,
             ),
+            fast_gate=(FastDialogueGate() if settings.fast_dialogue_enabled else None),
+            fast_chat=(FastChatRuntime(
+                agent, recent_limit=settings.fast_dialogue_recent_limit,
+                max_chars=settings.fast_dialogue_context_max_chars,
+            ) if settings.fast_dialogue_enabled else None),
             auto_memory=(AutoMemory(
                 provider, memory_service,
                 consolidation_config=AutoConsolidationConfig(
