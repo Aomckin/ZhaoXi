@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -9,9 +10,10 @@ from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
 
-from zhaoxi.core.message import Message, Role
+from zhaoxi.core.message import Message, Role, is_cognition_message
 from zhaoxi.errors import ProviderError
 from zhaoxi.models.base import ModelProvider
+from zhaoxi.observability import llm_owner_scope
 
 from .prompts import MAINTAINER_PROMPT
 from .service import CurrentCognitionPatch, CurrentCognitionService
@@ -33,6 +35,7 @@ def _parse_patch(raw: str) -> CurrentCognitionPatch:
 class CurrentCognitionMaintainer:
     def __init__(self, service: CurrentCognitionService, provider: ModelProvider,
                  *, timezone: str = "Asia/Shanghai") -> None:
+        self._lock = asyncio.Lock()
         self.service = service
         self.provider = provider
         self.timezone = ZoneInfo(timezone)
@@ -55,6 +58,11 @@ class CurrentCognitionMaintainer:
 
     async def maintain(self, messages: list[Message], *, pending_override: list[Message] | None = None,
                        background: bool = False) -> str:
+        async with self._lock:
+            return await self._maintain(messages, pending_override=pending_override, background=background)
+
+    async def _maintain(self, messages: list[Message], *, pending_override: list[Message] | None = None,
+                        background: bool = False) -> str:
         state = self.service.state()
         if not messages and not pending_override:
             return "NO_CHANGE"
@@ -72,7 +80,7 @@ class CurrentCognitionMaintainer:
         source_by_id: dict[str, str] = {}
         evidence_by_id: dict[str, str] = {}
         for message in pending:
-            if message.role not in {Role.USER, Role.ASSISTANT} or not message.content:
+            if not is_cognition_message(message) or not message.content:
                 continue
             source_by_id[message.message_id] = message.role.value
             content = message.content[:1200 if message.role == Role.USER else 350]
@@ -101,7 +109,8 @@ class CurrentCognitionMaintainer:
                 if json_mode:
                     options["response_format"] = {"type": "json_object"}
                 try:
-                    response = await self.provider.generate([
+                    with llm_owner_scope("current_cognition", "current_cognition"):
+                        response = await self.provider.generate([
                         Message(role=Role.SYSTEM, content=MAINTAINER_PROMPT),
                         Message(role=Role.USER, content=json.dumps(payload, ensure_ascii=False, default=str)),
                     ], None, **options)

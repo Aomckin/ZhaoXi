@@ -48,6 +48,8 @@ async def test_current_cognition_maintenance_runs_after_reply_and_is_nonfatal():
     response = await gateway.chat(UnifiedMessage(
         request_id="cognition-post-turn", channel=InterfaceChannel.WEB, content="你好"))
     assert response.content == "回复：你好"
+    assert seen == []
+    await gateway.maintenance_queue().worker
     assert seen == [[("user", "你好"), ("assistant", "回复：你好")]]
 
 
@@ -69,8 +71,9 @@ async def test_current_cognition_bootstrap_uses_existing_history_once():
     agent.current_cognition_maintainer = Maintainer()
     gateway = InterfaceGateway(agent)
     await gateway.chat(UnifiedMessage(request_id="bootstrap", channel=InterfaceChannel.WEB, content="新消息"))
-    assert seen[0] == ["旧会话里的秋招讨论", "先继续准备"]
-    assert seen[1][-2:] == ["新消息", "回复：新消息"]
+    assert seen == []
+    await gateway.maintenance_queue().worker
+    assert seen[0] == ["旧会话里的秋招讨论", "先继续准备", "新消息", "回复：新消息"]
 
 
 class CorrelationAgent(FakeAgent):

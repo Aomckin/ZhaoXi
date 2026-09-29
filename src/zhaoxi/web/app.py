@@ -67,6 +67,13 @@ class RegenerateRequest(BaseModel):
     request_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
+class ReplyRenderedRequest(BaseModel):
+    request_id: str = Field(min_length=1, max_length=128)
+    message_id: str = Field(min_length=1, max_length=128)
+    first_render_ms: float | None = Field(default=None, ge=0, le=300_000)
+    fully_rendered_ms: float | None = Field(default=None, ge=0, le=300_000)
+
+
 class ToolControlRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     scope: Literal["tool", "group", "all"]
@@ -261,6 +268,16 @@ def create_app(
         except ZhaoxiError as exc:
             core = StartupUnavailableAgent(startup_diagnostics(configured), str(exc))
     adapter = WebInterfaceAdapter(core)
+
+    def delivered(result: WebResult) -> ChatResponse:
+        if result.request_id and result.message_id:
+            receipt = adapter.gateway.render_receipts.setdefault(
+                result.request_id, {"message_id": result.message_id}
+            )
+            receipt.setdefault("response_sent_at", datetime.now(UTC).isoformat())
+            while len(adapter.gateway.render_receipts) > 100:
+                adapter.gateway.render_receipts.popitem(last=False)
+        return _response(result)
     core_started_at = datetime.now(UTC)
     events = EventBroadcaster()
     adapter.gateway.event_sink = events.publish_nowait
@@ -379,6 +396,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         supervisor.start()
+        adapter.gateway.maintenance_queue().start()
         heartbeat = getattr(core, "proactive_heartbeat", None)
         worker = getattr(core, "proactive_worker", None)
         if heartbeat is not None and worker is not None:
@@ -407,6 +425,7 @@ def create_app(
                     logger.warning("perception shutdown flush deferred type=%s", type(exc).__name__)
             if voice_runtime is not None:
                 await voice_runtime.cancel("application_shutdown")
+            await adapter.gateway.maintenance_queue().shutdown(configured.shutdown_grace_seconds)
             result = await supervisor.shutdown(
                 configured.shutdown_grace_seconds, cancel_immediately=True
             )
@@ -739,6 +758,31 @@ def create_app(
                 },
                 "diagnostics": getattr(core, "last_tool_diagnostics", None)}
 
+    @app.get("/api/debug/runtime")
+    async def debug_runtime():
+        return {**(getattr(core, "last_action_trace", {}) or {}),
+                "maintenance": adapter.gateway.maintenance_queue().diagnostics(),
+                "render_receipts": dict(adapter.gateway.render_receipts)}
+
+    @app.get("/api/debug/memory-retrieval")
+    async def debug_memory_retrieval(query: str, limit: int = 10):
+        if not configured.memory_retrieval_debug_enabled:
+            raise HTTPException(status_code=404, detail="Memory Inspector 未启用。")
+        service = getattr(core, "memory_service", None)
+        if service is None:
+            raise HTTPException(status_code=409, detail="Memory 尚未就绪。")
+        from zhaoxi.memory.models import MemoryQuery
+        items = await service.inspect_retrieval(MemoryQuery(text=query[:1000], limit=max(1, min(limit, 30))))
+        return {"query": query[:1000], "candidates": [{
+            "content": item["record"]["content"], "final_score": item["score"],
+            "contextual_relevance": item["contextual_relevance"],
+            "text_score": item["text_score"], "semantic_score": item["semantic_score"],
+            "graph_score": item["graph_score"], "time_score": item["time_score"],
+            "activation_score": item["activation_score"], "importance_score": item["importance_score"],
+            "status": item["record"]["status"], "importance": item["record"]["importance"],
+            "activation": item["record"]["activation"], "why_selected": item["why_selected"],
+        } for item in items]}
+
     @app.get("/api/debug/tools")
     async def debug_tools():
         return tool_snapshot()
@@ -1065,7 +1109,7 @@ def create_app(
             "请在完整回复中使用 Reply DSL 表达此刻测试成功的心情。",
             request_id=f"emoji_model_{uuid4().hex}",
         )
-        return _response(result)
+        return delivered(result)
 
     @app.get("/api/emoji")
     async def list_emoji(q: str = "", enabled: bool | None = None):
@@ -1226,6 +1270,23 @@ def create_app(
             raise HTTPException(status_code=422, detail="回顾生成失败，请稍后重试或检查数据来源。") from exc
         return _safe_reflection(record)
 
+    @app.post("/api/chat/rendered")
+    async def reply_rendered(request: ReplyRenderedRequest):
+        # Receipt is a server observation of browser acknowledgement, not network-free latency.
+        result = adapter.gateway._responses.get(request.request_id)
+        if result is None or result.message_id != request.message_id:
+            raise HTTPException(status_code=404, detail="找不到对应回复")
+        receipts = adapter.gateway.render_receipts
+        receipt = receipts.setdefault(request.request_id, {"message_id": request.message_id})
+        receipt.update({
+            "render_ack_received_at": datetime.now(UTC).isoformat(),
+            "first_render_ms": request.first_render_ms,
+            "fully_rendered_ms": request.fully_rendered_ms,
+        })
+        while len(receipts) > 100:
+            receipts.popitem(last=False)
+        return {"status": "recorded"}
+
     @app.post("/api/chat", response_model=ChatResponse)
     async def chat(request: ChatRequest):
         request_id = request.request_id or uuid4().hex
@@ -1255,7 +1316,7 @@ def create_app(
                              request_id, request_id)
             raise HTTPException(status_code=500, detail="这次操作遇到了内部错误，请稍后重试。") from exc
         await events.publish({"type": "activity", "label": "完成", "detail": result.activity})
-        return _response(result)
+        return delivered(result)
 
     @app.post("/api/chat/regenerate", response_model=ChatResponse)
     async def regenerate(request: RegenerateRequest):
@@ -1280,19 +1341,19 @@ def create_app(
                              request_id, request_id)
             raise HTTPException(status_code=500, detail="重新生成遇到了内部错误，请稍后重试。") from exc
         await events.publish({"type": "activity", "label": "完成", "detail": result.activity})
-        return _response(result)
+        return delivered(result)
 
     @app.post("/api/permission/{confirmation_id}/approve", response_model=ChatResponse)
     async def approve(confirmation_id: str, request_id: str | None = None):
         try:
-            return _response(await adapter.resolve_permission(confirmation_id, approve=True, request_id=request_id))
+            return delivered(await adapter.resolve_permission(confirmation_id, approve=True, request_id=request_id))
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.post("/api/permission/{confirmation_id}/deny", response_model=ChatResponse)
     async def deny(confirmation_id: str, request_id: str | None = None):
         try:
-            return _response(await adapter.resolve_permission(confirmation_id, approve=False, request_id=request_id))
+            return delivered(await adapter.resolve_permission(confirmation_id, approve=False, request_id=request_id))
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -1396,7 +1457,7 @@ def create_app(
         )
         if action is SpeechAction.SPEAK_NOW:
             await voice_runtime.speak(web_result.content, max_chars=configured.tts_max_chars)
-        return _response(web_result)
+        return delivered(web_result)
 
     @app.post("/api/voice/cancel")
     async def voice_cancel():

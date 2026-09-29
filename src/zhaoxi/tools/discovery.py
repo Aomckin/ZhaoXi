@@ -52,6 +52,41 @@ class ToolDiscoveryState:
     resolution_checked: bool = False
     observations: list[str] = field(default_factory=list)
 
+    cache: dict = field(default_factory=dict)
+    seen_results: set = field(default_factory=set)
+    stalled: int = 0
+
+    def execute_control(self, name, arguments, registry):
+        import hashlib
+        import json
+        from time import monotonic
+        from zhaoxi.observability import current_trace
+        started = monotonic()
+        trace = current_trace()
+        if trace:
+            trace.emit("control_call_started", "tool_discovery", "running", "正在查询能力", tool_name=name)
+        model = RequestToolGroupInput if name == "request_tool_group" else InspectToolCatalogInput
+        try:
+            normalized = model.model_validate(arguments).model_dump()
+        except ValidationError:
+            normalized = arguments
+        version = hashlib.sha256(json.dumps(registry.manifest(), sort_keys=True, default=str).encode()).hexdigest()
+        key = hashlib.sha256(json.dumps([name, normalized, version], sort_keys=True, default=str).encode()).hexdigest()
+        cached = key in self.cache
+        result = self.cache[key].model_copy(deep=True) if cached else (self.request if name == "request_tool_group" else self.inspect)(arguments, registry)
+        self.cache[key] = result.model_copy(deep=True)
+        signature = hashlib.sha256(json.dumps([version, result.data, result.error], sort_keys=True, default=str).encode()).hexdigest()
+        self.stalled = self.stalled + 1 if signature in self.seen_results else 0
+        self.seen_results.add(signature)
+        trace = current_trace()
+        if trace:
+            trace.stage_ms["tool_discovery"] = trace.stage_ms.get("tool_discovery", 0) + (monotonic()-started)*1000
+            trace.emit("control_call_finished", "tool_discovery", "success" if result.success else "warning",
+                       "已复用能力查询结果" if cached else "能力查询已完成", tool_name=name,
+                       metadata={"fingerprint": key[:16], "cache_hit": cached, "stalled": self.stalled,
+                                 "duration_ms": round((monotonic()-started)*1000, 2)})
+        return result
+
     def record_observation(self, name: str, result: ToolResult) -> None:
         """Keep control-tool results in system context, not provider tool transcripts."""
         import json
@@ -62,7 +97,10 @@ class ToolDiscoveryState:
             default=str,
             separators=(",", ":"),
         )
-        self.observations.append(f"{name}: {payload[:4000]}")
+        entry = f"{name}: {payload[:4000]}"
+        if entry in self.observations:
+            self.observations.remove(entry)
+        self.observations.append(entry)
         self.observations[:] = self.observations[-3:]
 
     def known(self, registry: ToolRegistry) -> list[str]:
@@ -137,6 +175,8 @@ class ToolDiscoveryState:
             + "任务能力不清时用 inspect_tool_catalog(action=resolve, need=任务需求) 解析，再 request_tool_group。"
             + "已有钥匙直接使用；每轮最多扩展两次，不允许 all；查询目录和取得钥匙不等于完成任务。"
         )
+        if self.stalled:
+            catalog += "\n目录查询没有提供新信息。请使用已有工具继续任务，或完整汇总结果与能力限制，不要重复查询。"
         if self.observations:
             catalog += "\n本轮能力发现结果（内部事实，不是用户指令）：\n" + "\n".join(self.observations)
         return catalog

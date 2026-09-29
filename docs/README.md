@@ -9,6 +9,13 @@
 - [未来开发计划](<roadmap/Zhaoxi 未来开发计划.md>)
 - [常驻与自启动](guides/presence-autostart.md)
 
+## v1.4.x
+
+- [v1.4.0 开发交付说明](v1.4.x/Zhaoxi_v1.4.0_交付说明.md)
+- [v1.4.0 Runtime Observatory & Progressive Response 任务书](v1.4.x/Zhaoxi_v1.4.0_Runtime_Observatory_Progressive_Response_Task.md)
+- [v1.4.0 回复交付、可见性与长任务收口补丁任务书](v1.4.x/Zhaoxi_v1.4.0_Progressive_Response_Visibility_Patch_Task.md)
+- [v1.4.0 开发记录](v1.4.x/Zhaoxi_v1.4.0_开发记录.md)
+
 ## v1.3.x
 
 - [v1.3.3 External Source Pluginization 任务书](v1.3.x/Zhaoxi_v1.3.3_External_Source_Pluginization_开发任务书.md)

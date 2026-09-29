@@ -68,10 +68,18 @@ class CognitiveCoordinator:
             getattr(self.router, "available_tool_names", []),
             decision.reason[:160],
         )
+        if trace:
+            trace.route = decision.route.value
         if decision_service is not None and not images:
             planner_requested = (decision.route == CognitiveRoute.PLAN and
                                  any(marker in user_message for marker in ("还是", "或者", "选", "方向")))
+            if trace:
+                trace.emit("decision_started", "decision", "running", "正在检查是否需要决策…")
             result = await decision_service.evaluate(user_message, planner_requested=planner_requested)
+            if trace:
+                trace.emit("decision_finished", "decision", "success", "决策检查已完成",
+                           metadata={"used": result is not None})
+                trace.decision_used = result is not None
             if result is not None:
                 reply = await self.agent.run_decision_reply(
                     user_message, result,
@@ -82,6 +90,8 @@ class CognitiveCoordinator:
         workflow_run_id = None
         if decision.route == CognitiveRoute.WORKFLOW and self.agent.workflow is not None and decision.workflow_id:
             self.agent.conversation.add_user(user_message.strip())
+            if trace:
+                trace.emit("workflow_started", "workflow", "running", "正在执行流程…")
             try:
                 workflow_run = await self.agent.workflow.start(
                     decision.workflow_id,
@@ -94,6 +104,9 @@ class CognitiveCoordinator:
                 logger.warning("workflow rejected trace_id=%s error=%s", exc.trace_id, str(exc))
                 result = self.agent._workflow_response_error(exc.user_message, exc.trace_id)
                 self.agent.conversation.add_assistant(result.content)
+            finally:
+                if trace:
+                    trace.emit("workflow_finished", "workflow", "success", "流程阶段已结束")
             content = result.content
             goal_id = None
             ingress = getattr(self.agent, "cognitive_ingress", None)
@@ -105,7 +118,13 @@ class CognitiveCoordinator:
                     parent_refs=([current_turn().trigger_event.event_id]
                                  if current_turn() else []))
         elif decision.route == CognitiveRoute.PLAN and self.agent.planner is not None:
-            result = await self.agent.run_planned(user_message)
+            if trace:
+                trace.emit("planner_started", "planner", "running", "正在安排任务…")
+            try:
+                result = await self.agent.run_planned(user_message)
+            finally:
+                if trace:
+                    trace.emit("planner_finished", "planner", "success", "规划阶段已结束")
             ingress = getattr(self.agent, "cognitive_ingress", None)
             if ingress:
                 from zhaoxi.cognitive_stream.models import CognitiveEventType

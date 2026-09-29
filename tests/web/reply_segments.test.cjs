@@ -37,30 +37,73 @@ test('formatting and literal HTML are unchanged before safe rendering',()=>{
   assert.deepEqual(split('**你好**\n\n<script>alert(1)</script>'),['**你好**','<script>alert(1)</script>']);
 });
 
-test('live replies wait a random 5–10 seconds between bubbles, never before the first',async()=>{
-  const scheduled=[], displayed=[];
-  const fakeMath=Object.create(Math);
-  let random=0;
-  fakeMath.random=()=>random;
+test('live replies honor the configured random segment delay and never wait before the first',async()=>{
+  const scheduled=[],displayed=[],fakeMath=Object.create(Math);
+  let random=0;fakeMath.random=()=>random;
   const paced=vm.createContext({
-    activity:{textContent:''}, Math:fakeMath,
+    activity:{textContent:''},replyIntervalMs:2000,Math:fakeMath,
     setTimeout:(callback,delay)=>scheduled.push({callback,delay}),
     addMessageBubble:(...args)=>displayed.push(args),
   });
   vm.runInContext(source,paced);
   const done=paced.sendReply('一\n\n二\n\n三');
   assert.equal(displayed.length,1);
-  assert.equal(scheduled[0].delay,5000);
+  assert.equal(scheduled[0].delay,2000);
   random=0.999999;
   scheduled[0].callback();
-  await Promise.resolve();
-  await Promise.resolve();
+  await Promise.resolve();await Promise.resolve();
   assert.equal(displayed.length,2);
-  assert.equal(scheduled[1].delay,10000);
+  assert.equal(scheduled[1].delay,4000);
   scheduled[1].callback();
   await done;
   assert.equal(displayed.length,3);
-  assert.equal(scheduled.length,2);
+});
+
+test('separate output messages share one pacing sequence',async()=>{
+  const delays=[],displayed=[],fakeMath=Object.create(Math);fakeMath.random=()=>0;
+  const paced=vm.createContext({
+    activity:{textContent:''},replyIntervalMs:1000,Math:fakeMath,
+    setTimeout:(callback,delay)=>{delays.push(delay);callback()},
+    addMessageBubble:(...args)=>displayed.push(args),
+    acknowledgeEmojiTrace:()=>{},
+  });
+  vm.runInContext(source,paced);
+  await paced.renderResponse({output_messages:[
+    {role:'assistant',text:'第一条'},
+    {role:'assistant',text:'第二条'},
+    {role:'assistant',text:'第三条'},
+  ]});
+  assert.deepEqual(displayed.map(args=>args[1]),['第一条','第二条','第三条']);
+  assert.deepEqual(delays,[1000,1000]);
+});
+
+test('emoji output also participates in the shared pacing sequence',async()=>{
+  const delays=[],displayed=[];
+  const paced=vm.createContext({
+    activity:{textContent:''},replyIntervalMs:1000,
+    setTimeout:(callback,delay)=>{delays.push(delay);callback()},
+    addMessageBubble:(...args)=>displayed.push(args),
+    addMessage:(...args)=>{displayed.push(args);return [{}]},acknowledgeEmojiTrace:()=>{},
+  });
+  vm.runInContext(source,paced);
+  await paced.renderResponse({trace_id:'trace',output_messages:[
+    {role:'assistant',text:'前文'},
+    {role:'assistant',text:'',images:['/api/expression/emoji/a'],source:'emoji'},
+    {role:'assistant',text:'后文'},
+  ]});
+  assert.equal(displayed.length,3);
+  assert.equal(delays.length,2);
+});
+
+test('zero segment delay renders every segment immediately',async()=>{
+  const displayed=[];
+  const immediate=vm.createContext({
+    replyIntervalMs:0,setTimeout:()=>assert.fail('unexpected pacing'),
+    addMessageBubble:(...args)=>displayed.push(args),
+  });
+  vm.runInContext(source,immediate);
+  await immediate.sendReply('一\n\n二\n\n三');
+  assert.equal(displayed.length,3);
 });
 
 test('single-segment live reply has no delay',async()=>{

@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -18,7 +19,7 @@ from zhaoxi.core.reply import commit_reply
 from zhaoxi.errors import AgentLoopError, ProviderError
 from zhaoxi.models.base import ModelProvider
 from zhaoxi.models.types import ToolCall
-from zhaoxi.observability import current_trace
+from zhaoxi.observability import current_trace, llm_owner_scope
 from zhaoxi.memory.models import MemorySearchResult
 from zhaoxi.permission.executor import ToolExecutor
 from zhaoxi.permission.models import InvocationOrigin, PendingConfirmation
@@ -129,6 +130,15 @@ class ZhaoxiAgent:
         sequence, message_ids = commit_reply(
             self.conversation, raw_reply, getattr(self, "emoji_service", None)
         )
+        turn_messages = []
+        for item in reversed(self.conversation.messages):
+            if item.role == Role.USER:
+                break
+            turn_messages.append(item)
+        if any(item.tool_calls or item.tool_turn for item in turn_messages):
+            for item in turn_messages:
+                if item.message_id in message_ids:
+                    item.tool_turn = True
         emoji_segments = [
             item for item in sequence.segments if item.type == "emoji"
         ]
@@ -200,7 +210,8 @@ class ZhaoxiAgent:
               "最终文字由运行时用已确定的内容组成。[/当前决策状态]"
         )
         try:
-            response = await asyncio.wait_for(self.provider.generate(messages, [EXPRESSION_SCHEMA]),
+            with llm_owner_scope("decision_expression", "decision_expression"):
+                response = await asyncio.wait_for(self.provider.generate(messages, [EXPRESSION_SCHEMA]),
                                               timeout=getattr(self, "timeout_seconds", 60))
             call = next(call for call in response.tool_calls if call.name == "select_decision_expression")
             return DecisionExpression.model_validate(call.arguments)
@@ -318,7 +329,7 @@ class ZhaoxiAgent:
         )
         content = ""
         try:
-            with budget_stage_scope("finalization"):
+            with budget_stage_scope("finalization"), llm_owner_scope("workflow_finalization", "workflow_finalization"):
                 model_response = await asyncio.wait_for(
                     self.provider.generate(messages, None), timeout=self.timeout_seconds
                 )
@@ -431,6 +442,7 @@ class ZhaoxiAgent:
             try:
                 memories = await self.context_builder.memory_retriever.retrieve(clean_message)
                 if trace:
+                    trace.record_memory_candidates(memories)
                     trace.emit("memory_search_finished", "memory_search", "success", "已检索相关记忆", metadata={"hit_count": len(memories)})
                 logger.info("request=%s memory_hits=%d", request_id, len(memories))
             except Exception as exc:
@@ -455,7 +467,22 @@ class ZhaoxiAgent:
             )
         except TimeoutError as exc:
             logger.error("request=%s timed out", request_id)
-            raise AgentLoopError(f"请求超过 {self.timeout_seconds:g} 秒，已停止。") from exc
+            trace = current_trace()
+            if trace and trace.actions:
+                step = max((event.step_id or 0 for event in trace.events
+                            if event.event_type == "model_step_started"), default=0)
+                trace.emit("model_step_failed", "model", "failed", "模型请求超时",
+                           step_id=step, error_code="agent_timeout")
+                trace.emit("response_generation_failed", "response_generation", "failed",
+                           "最终回复生成超时", step_id=step, error_code="agent_timeout")
+                trace.response_status = "failed"
+                degraded = self._return_degraded(
+                    request_id, step,
+                    f"（提醒：本次请求超过 {self.timeout_seconds:g} 秒，最终回复未能生成；已完成的操作均已保留。）",
+                )
+                if degraded is not None:
+                    return degraded
+            raise AgentLoopError(f"请求超过 {self.timeout_seconds:g} 秒，已停止。", code="agent_timeout") from exc
 
     @staticmethod
     def _promises_lookup(content: str) -> bool:
@@ -483,6 +510,7 @@ class ZhaoxiAgent:
             try:
                 memories = await self.context_builder.memory_retriever.retrieve(clean_message)
                 if trace:
+                    trace.record_memory_candidates(memories)
                     trace.emit("memory_search_finished", "memory_search", "success", "已检索相关记忆", metadata={"hit_count": len(memories)})
             except Exception as exc:
                 if trace:
@@ -570,6 +598,7 @@ class ZhaoxiAgent:
                     request_id,
                     memories,
                     user_message,
+                    no_tools=True,
                     discovery=getattr(self, "_tool_discovery_state", None),
                     turn_images=next((tuple(item.images) for item in reversed(self.conversation.messages)
                                       if item.role is Role.USER), ()),
@@ -645,7 +674,7 @@ class ZhaoxiAgent:
                 trace.emit("recovery_failed", "recovery", "failed", "无法确认本次操作结果", step_id=step,
                            error_code="response_generation_error")
             return None
-        self.conversation.add_assistant(content)
+        self.conversation.add_assistant(content, visibility="notice", tool_turn=True)
         if trace:
             trace.emit("recovery_finished", "recovery", "success", "已整理操作结果", step_id=step,
                        metadata={"task_status": trace.task_status})
@@ -753,8 +782,21 @@ class ZhaoxiAgent:
                 trace.emit("model_step_started", "model", "running", "正在思考下一步…", step_id=step)
             try:
                 budget_stage, final_only = self._budget_mode(tool_called, trace, step)
+                final_only = final_only or discovery.stalled >= 2 or (tool_called and trace is not None
+                    and time.monotonic() - trace.started_monotonic >= self.timeout_seconds * 0.75)
                 schemas = [] if final_only or no_tools else discovery.schemas(self.registry)
-                self.registry.exposed_names = {item["function"]["name"] for item in schemas}
+                interim_available = bool(trace and schemas and trace.interim_enabled
+                    and trace.interim_replies < trace.interim_max_count
+                    and (tool_called or step > 1)
+                    and time.monotonic() - trace.started_monotonic >= trace.interim_threshold_seconds)
+                if interim_available:
+                    schemas.append({"type": "function", "function": {
+                        "name": "emit_interim_reply",
+                        "description": "任务还要继续时，先向用户说一句自然、简短且不提前宣布结果的话；这不是最终回复。",
+                        "parameters": {"type": "object", "properties": {
+                            "content": {"type": "string", "maxLength": 180}},
+                            "required": ["content"], "additionalProperties": False}}})
+                self.registry.exposed_names = {item["function"]["name"] for item in schemas if item["function"]["name"] != "emit_interim_reply"}
                 absorbed = set()
                 if trace and trace.actions:
                     for action in trace.actions[:-1]:
@@ -772,9 +814,12 @@ class ZhaoxiAgent:
                 if final_only:
                     context_options["release_images"] = True
                 context_options["current_image_message_id"] = current_image_message_id
+                context_started = time.monotonic()
                 messages = self.context_builder.build(
                     self.conversation, memories, output_channel=output_channel,
                     audience=audience, expression_policy=expression_policy, **context_options)
+                if trace:
+                    trace.record_interval("context_build", context_started)
                 compaction = getattr(self.context_builder, "last_compaction", {})
                 if trace and compaction.get("tool_results"):
                     trace.emit("tool_result_compacted", "context", "success", "已压缩旧工具结果",
@@ -787,7 +832,11 @@ class ZhaoxiAgent:
                     trace.emit("context_compacted", "context", "success", "已整理本轮上下文",
                                step_id=step, metadata=compaction)
                 catalog = "" if final_only or no_tools else discovery.catalog(self.registry) + resolution_message
-                messages[0].content = (messages[0].content or "") + catalog
+                messages[0].content = (messages[0].content or "") + catalog + (
+                    "\n交付规则：带工具调用的内部草稿未向用户展示；中间回复也不是正式答案。"
+                    "最终答复必须独立覆盖原请求主要事项、已确认结果及失败或未完成事项。"
+                    "不要因为内部草稿写过，就把正式答案缩成一句收尾；不要声称未经确认的操作已完成。"
+                )
                 messages[0].metadata.setdefault("prompt_components", []).append(
                     {"name": "runtime.capability_catalog", "chars": len(catalog)}
                 )
@@ -826,7 +875,7 @@ class ZhaoxiAgent:
                     and required_tool
                     and any(item["function"]["name"] == required_tool for item in schemas)
                 ) else None
-                with budget_stage_scope(budget_stage):
+                with budget_stage_scope(budget_stage), llm_owner_scope("agent", "response_generation" if final_only else "model"):
                     response = await self.provider.generate(
                         messages,
                         schemas or None,
@@ -936,7 +985,7 @@ class ZhaoxiAgent:
                     used_tool_path=tool_called,
                 )
 
-            control_names = {"request_tool_group", "inspect_tool_catalog"}
+            control_names = {"request_tool_group", "inspect_tool_catalog", "emit_interim_reply"}
             business_calls = [call for call in response.tool_calls if call.name not in control_names]
             # Discovery controls mutate only this turn's schema selection. Replaying
             # them as provider tool transcripts is both unnecessary and rejected by
@@ -947,7 +996,9 @@ class ZhaoxiAgent:
                     for key in ("reasoning_content", "tool_call_transport")
                     if key in response.raw_metadata
                 }
-                self.conversation.add_assistant(response.content, tool_calls=business_calls,
+                self.conversation.add_assistant(
+                    None if any(call.name == "emit_interim_reply" for call in response.tool_calls) else response.content,
+                    tool_calls=business_calls,
                     metadata=transcript_metadata)
             for call_index, call in enumerate(response.tool_calls):
                 observable_name = self._observable_tool_name(call.name)
@@ -958,6 +1009,10 @@ class ZhaoxiAgent:
                     sorted(str(key) for key in call.arguments if key in self.registry.get(call.name).input_model.model_fields)
                     if observable_name != "unknown_tool" else [],
                 )
+                if call.name == "emit_interim_reply":
+                    if trace:
+                        trace.emit_interim(str(call.arguments.get("content", "")), reason="agent")
+                    continue
                 if call.name in {"request_tool_group", "inspect_tool_catalog"}:
                     result = self._run_control_tool(call, discovery)
                     discovery.record_observation(call.name, result)
@@ -1029,8 +1084,7 @@ class ZhaoxiAgent:
     def _run_control_tool(self, call: ToolCall, discovery: ToolDiscoveryState) -> ToolResult:
         if not self.registry.usable(call.name):
             return ToolResult(success=False, content="这把钥匙已停用或不可用。", error="tool_unavailable")
-        handler = discovery.request if call.name == "request_tool_group" else discovery.inspect
-        return handler(call.arguments, self.registry)
+        return discovery.execute_control(call.name, call.arguments, self.registry)
 
     async def approve_permission(self, confirmation_id: str) -> AgentResponse:
         """Approve and resume the exact immutable Tool Call that was paused."""
@@ -1146,7 +1200,7 @@ class ZhaoxiAgent:
         item = data.get("item") if isinstance(data.get("item"), dict) else {}
         raw_id = item.get("id") or data.get("id") or data.get("record_id")
         record_id = hashlib.sha256(str(raw_id).encode()).hexdigest()[:12] if raw_id else None
-        result_code = result.metadata.get("result_code")
+        result_code = result.metadata.get("result_code") or result.error
         if not isinstance(result_code, str):
             result_code = "created" if data.get("created") is True else "updated" if data.get("created") is False else "success" if result.success else None
         elif not re.fullmatch(r"[A-Za-z0-9_.-]{1,40}", result_code):

@@ -13,6 +13,13 @@ class Settings(BaseSettings):
         env_prefix="ZHAOXI_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
+    runtime_metrics_enabled: bool = True
+    interim_reply_enabled: bool = True
+    interim_reply_threshold_seconds: float = Field(default=10, ge=0)
+    interim_reply_max_count: int = Field(default=1, ge=0, le=3)
+    planner_interim_reply_max_count: int = Field(default=2, ge=0, le=4)
+    memory_retrieval_debug_enabled: bool = True
+
     perception_enabled: bool = True
     perception_db_path: str = ".zhaoxi/perception.db"
     perception_batch_window_seconds: int = Field(default=300, ge=1)

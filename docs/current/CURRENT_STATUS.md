@@ -1,4 +1,8 @@
-# 当前开发版本：v1.3.3（插件化代码与自动测试已完成；实机验收待完成）
+# 当前开发版本：v1.4.0（运行观测与中间回复已实现；实机长任务验收待完成）
+
+2026-09-29：v1.4.0 回复交付与可见性补丁已完成代码实施。工具内部轮次使用持久化 visibility 统一过滤；Final 在会话持久化后立即交付，AutoMemory / Current Cognition 进入可恢复后台队列；重复工具发现有界收口；定时中间气泡已移除，Final 分段延迟只服从用户设置并覆盖整次图文回复；Planner、阶段耗时、服务端交付边界、浏览器渲染回执和本轮真实 Memory 候选可诊断。维护抽屉已完成简体中文化。Python / Node 自动回归通过，重启后的真实模型桌面端验收待完成。见 [v1.4.0 补丁任务书](../v1.4.x/Zhaoxi_v1.4.0_Progressive_Response_Visibility_Patch_Task.md)。
+
+2026-09-28：v1.4.0 增加 Request / Stage / LLM / Tool 指标、TTFR、Runtime Debug 与 Memory Retrieval Inspector；长任务的模型控制指令可发独立 SSE 中间回复，Planner 主要事件桥接 ActionTrace。中间回复不写 Conversation、AutoMemory 或 Current Cognition；次数、阈值与第二次进展由 Runtime 控制。自动测试已通过，真实模型和桌面长任务仍需实机验收。见 [v1.4.0 开发记录](../v1.4.x/Zhaoxi_v1.4.0_开发记录.md)。
 
 2026-09-28：v1.3.3 已将 QQ / NapCat 协议、连接和配置迁入可选扩展包；Core 通过 External Source Plugin 协议接收 Observation 并路由回复，支持零插件与运行时启停。自动回归通过；真实 NapCat 收发、重连和长时运行尚未在本次变更后实测。见 [v1.3.3 开发记录](../v1.3.x/Zhaoxi_v1.3.3_开发记录.md)。
 

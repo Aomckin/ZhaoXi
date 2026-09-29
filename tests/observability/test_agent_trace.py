@@ -144,6 +144,26 @@ async def test_budget_failure_after_write_preserves_completed_task():
     assert terminal["metadata"]["response_status"] == "failed"
 
 
+async def test_timeout_after_write_returns_tool_status_instead_of_losing_result():
+    class SlowClosingProvider(FakeProvider):
+        async def generate(self, messages, tools=None, **kwargs):
+            if self.calls:
+                await asyncio.sleep(1)
+            return await super().generate(messages, tools, **kwargs)
+
+    tool = AddTool()
+    agent, gateway, emitted = setup_gateway([], tool)
+    agent.provider = SlowClosingProvider([ModelResponse(tool_calls=[call("a", "甲")])])
+    agent.timeout_seconds = 0.05
+    result = await send(gateway)
+    assert tool.calls == 1
+    assert "已完成：agenda_add" in result.content
+    assert "最终回复未能生成" in result.content
+    assert agent.last_action_trace["task_status"] == "completed"
+    assert agent.last_action_trace["response_status"] == "failed"
+    assert any(item["event"]["error_code"] == "agent_timeout" for item in emitted)
+
+
 async def test_provider_http_error_is_not_tool_error():
     class HttpProvider(FakeProvider):
         async def generate(self, messages, tools=None, **kwargs):
@@ -168,6 +188,7 @@ async def test_final_tool_failure_is_not_repaired_by_a_failed_retry():
         ModelResponse(content="没办成。")], tool)
     await send(gateway)
     assert [item["status"] for item in agent.last_action_trace["actions"]] == ["superseded", "failed"]
+    assert agent.last_action_trace["actions"][-1]["result_code"] == "write_failed"
     assert agent.last_action_trace["task_status"] == "failed"
     with correlation_scope(CorrelationContext(trace_id="recovery", request_id="recovery")), action_trace_scope() as trace:
         trace.actions = []

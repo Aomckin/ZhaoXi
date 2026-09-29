@@ -6,18 +6,18 @@ const path=require('node:path');
 const html=fs.readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/index.html'),'utf8');
 const source=html.slice(html.indexOf('let INPUT_MERGE_MS='),html.indexOf('async function resolve('));
 function setup(){
-  let id=0;const timers=new Map(),requests=[],payloads=[],bubbles=[],clear={replaceChildren(){},append(){}};
-  const node=()=>({removed:false,append(){},setAttribute(){},remove(){this.removed=true},querySelector(){return this}});
-  const context=vm.createContext({busy:false,send:{},input:{value:'',focus(){}},activity:{},debug:{},
-    showActivityHint:text=>{context.activity.textContent=text},
+  let id=0;const timers=new Map(),requests=[],payloads=[],bubbles=[],retries=[],clear={replaceChildren(){},append(){}};
+  const node=()=>({removed:false,parentElement:{},append(){},setAttribute(){},remove(){this.removed=true},querySelector(){return this}});
+  const context=vm.createContext({busy:false,send:{},input:{value:'',focus(){}},activity:{},debug:{},performance:{now:()=>0},
+    showActivityHint:text=>{context.activity.textContent=text},attachRegenerate:(...args)=>retries.push(args),
     $:()=>clear,document:{createElement:node},addMessage:(...args)=>{bubbles.push(args);return [node()]},permissionCard(){},
     setTimeout:(fn,ms)=>{assert.equal(ms,15000);timers.set(++id,fn);return id},clearTimeout:id=>timers.delete(id),
     request:async(url,options)=>{payloads.push(JSON.parse(options.body));requests.push(JSON.parse(options.body).message);return {content:'回复'}},
     sendReply:async()=>{},drainDeliveries:async()=>{},setupDiagnostics:async()=>{},
-    beginActionTrace:()=> 'test-request',endActionTraceFallback:()=>{},
+    acknowledgeReply:()=>{},beginActionTrace:()=> 'test-request',endActionTraceFallback:()=>{},
   });
   vm.runInContext(source,context);
-  return {context,requests,payloads,bubbles,clear,timers,
+  return {context,requests,payloads,bubbles,retries,clear,timers,
     submit:text=>{context.input.value=text;context.submit()},
     fire:async()=>{const callbacks=[...timers.values()];timers.clear();callbacks.forEach(fn=>fn());for(let i=0;i<8;i++)await Promise.resolve()},
   };
@@ -50,7 +50,7 @@ test('empty input is ignored; errors release busy state without automatic retrie
   };s.submit('你好');await s.fire();
   assert.equal(s.context.busy,false);assert.equal(s.clear.disabled,false);
   assert.deepEqual(s.bubbles.at(-1).slice(0,2),['assistant','离线']);
-  assert.deepEqual(s.bubbles.at(-1).slice(5),['failed-user',true,false]);assert.equal(s.timers.size,0);
+  assert.equal(s.retries[0][1],'failed-user');assert.equal(s.retries[0][2],false);assert.equal(s.timers.size,0);
 });
 
 test('errors after a tool call attach retry to the interrupted assistant turn',async()=>{
@@ -62,7 +62,22 @@ test('errors after a tool call attach retry to the interrupted assistant turn',a
     throw Error('模型服务当前不可访问');
   };
   s.submit('记住这个');await s.fire();
-  assert.deepEqual(s.bubbles.at(-1).slice(5),['interrupted-assistant',true,false]);
+  assert.equal(s.retries[0][1],'interrupted-assistant');assert.equal(s.retries[0][2],false);
+});
+
+test('error bubble appears before the session lookup completes',async()=>{
+  const s=setup();let release;
+  s.context.request=async url=>{
+    if(url==='/api/session')return new Promise(resolve=>{release=resolve});
+    throw Error('请求超时');
+  };
+  s.submit('记录晚饭');await s.fire();
+  assert.equal(s.context.busy,false);
+  assert.deepEqual(s.bubbles.at(-1).slice(0,2),['assistant','请求超时']);
+  assert.equal(s.retries.length,0);
+  release({messages:[{role:'user',message_id:'failed-user'}]});
+  await Promise.resolve();await Promise.resolve();
+  assert.equal(s.retries[0][1],'failed-user');
 });
 
 test('image-only and following text merge without losing the image',async()=>{

@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from typing import Any, Sequence
+from datetime import UTC, datetime
+from time import monotonic
+
+from zhaoxi.observability import current_trace, current_llm_owner
 
 from zhaoxi.core.message import Message
 from zhaoxi.errors import ProviderError
@@ -59,7 +63,31 @@ class ResilientProvider(ModelProvider):
             async def invoke():
                 consume_provider_budget()
                 self.metrics.increment("provider.calls")
-                return await provider.generate(messages, tools, **kwargs)
+                trace = current_trace()
+                owner, stage = current_llm_owner()
+                started_at = datetime.now(UTC).isoformat()
+                started = monotonic()
+                if trace and trace.metrics_enabled:
+                    trace.emit("llm_call_started", "model", "running", "正在调用模型…",
+                               metadata={"index": len(trace.llm_calls) + 1, "owner": owner, "stage": stage})
+                response = None
+                try:
+                    response = await provider.generate(messages, tools, **kwargs)
+                    return response
+                finally:
+                    if trace and trace.metrics_enabled:
+                        usage = response.usage if response is not None else {}
+                        item = {"index": len(trace.llm_calls) + 1, "owner": owner, "stage": stage,
+                                "started_at": started_at, "finished_at": datetime.now(UTC).isoformat(),
+                                "duration_ms": round((monotonic() - started) * 1000, 2),
+                                "prompt_tokens": usage.get("prompt_tokens", usage.get("input_tokens")),
+                                "output_tokens": usage.get("completion_tokens", usage.get("output_tokens")),
+                                "total_tokens": usage.get("total_tokens"),
+                                "tool_call_count": len(response.tool_calls) if response else 0,
+                                "finish_reason": response.finish_reason if response else None}
+                        trace.llm_calls.append(item)
+                        trace.emit("llm_call_finished", "model", "success" if response else "failed",
+                                   "模型调用已结束" if response else "模型调用失败", metadata=item)
 
             try:
                 options = {

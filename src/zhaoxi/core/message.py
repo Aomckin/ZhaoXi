@@ -6,7 +6,7 @@ import re
 from typing import Any
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from zhaoxi.models.types import ToolCall
 
@@ -56,6 +56,8 @@ def assistant_persistence_violations(content: str) -> list[str]:
 class Message(BaseModel):
     """Provider-independent message used throughout the core."""
 
+    tool_turn: bool = False
+    visibility: str = Field(default="conversation", pattern="^(conversation|internal|interim|notice)$")
     message_id: str = Field(default_factory=lambda: uuid4().hex)
     role: Role
     content: str | None = None
@@ -73,6 +75,12 @@ class Message(BaseModel):
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     delivery_id: str | None = None
     background: str = Field(default="", max_length=2000)
+
+    @model_validator(mode="after")
+    def classify_internal(self):
+        if self.role in {Role.TOOL, Role.SYSTEM, Role.EXPERIENCE} or self.tool_calls:
+            self.visibility = "internal"
+        return self
 
     @field_validator("timestamp")
     @classmethod
@@ -123,3 +131,11 @@ def json_dumps(value: Any) -> str:
 
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
+
+
+def is_user_visible_message(message: Message) -> bool:
+    return message.role in {Role.USER, Role.ASSISTANT} and message.visibility in {"conversation", "notice"} and not message.tool_calls
+
+
+def is_cognition_message(message: Message) -> bool:
+    return is_user_visible_message(message) and message.visibility == "conversation"

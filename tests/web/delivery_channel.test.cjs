@@ -16,8 +16,10 @@ test('live proactive replies use normal reply queue and deduplicate restored del
  c.receiveDelivery(d);assert.equal(sent.length,1);
  c.receiveDelivery({...d,delivery_id:'sys',event_type:'system.warning'});assert.equal(notices.length,1);
 });
-test('action trace is in the sidebar and system messages remain collapsible',()=>{
- assert.match(html,/<div class="desk-content">[\s\S]*<details id="actionTrace" class="action-trace">/);
+test('sidebar shows live action steps while raw details stay in Debug',()=>{
+ assert.match(html,/<div class="desk-content">[\s\S]*<div id="actionTrace" class="action-trace">/);
+ assert.match(html,/<div id="actionTrace" class="action-trace">[\s\S]*?id="actionTraceEvents"/);
+ assert.match(html,/<details id="runtimeDebugPanel">[\s\S]*?id="actionTraceDebug"/);
  assert.doesNotMatch(html,/可以这样找我|id="capabilities"|\/api\/suggestions/);
  assert.match(html,/<details><summary>系统消息<\/summary>/);
  assert.doesNotMatch(html,/class="badge">主动消息/);

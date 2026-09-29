@@ -45,6 +45,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         proactive_state=proactive_state,
         tool_router_mode=settings.tool_router_mode,
     )
+    agent.settings = settings
     agent.experience_stream = ExperienceStream(Path(".zhaoxi") / "experience.db")
     agent.experience_stream.clear_expired()
     agent.cognitive_ingress = CognitiveIngress(agent.experience_stream)

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from zhaoxi.core.message import Message, Role
 from zhaoxi.models.base import ModelProvider
-from zhaoxi.observability import current_trace
+from zhaoxi.observability import current_trace, llm_owner_scope
 
 
 class CognitiveRoute(StrEnum):
@@ -117,7 +117,8 @@ class CognitiveRouter:
                 f"{recent_context.strip()}\n\n当前用户消息：\n{user_message}"
             )
         try:
-            response = await self.provider.generate(
+            with llm_owner_scope("router", "routing"):
+                response = await self.provider.generate(
                 [
                     Message(role=Role.SYSTEM, content=self._system_prompt()),
                     Message(role=Role.USER, content=routing_input),

@@ -404,6 +404,32 @@ def test_web_request_id_is_idempotent():
         assert len(client.get("/api/session").json()["messages"]) == 2
 
 
+def test_reply_delivery_records_server_boundary_and_browser_render_receipt():
+    app = create_app(agent=FakeAgent())
+    with TestClient(app) as client:
+        reply = client.post("/api/chat", json={
+            "message": "你好", "request_id": "render-request-1"
+        }).json()
+        runtime = client.get("/api/debug/runtime").json()
+        sent = runtime["render_receipts"]["render-request-1"]
+        assert sent["message_id"] == reply["message_id"]
+        assert sent["response_sent_at"]
+
+        rendered = client.post("/api/chat/rendered", json={
+            "request_id": "render-request-1",
+            "message_id": reply["message_id"],
+            "first_render_ms": 12.5,
+            "fully_rendered_ms": 18.75,
+        })
+        assert rendered.json() == {"status": "recorded"}
+        receipt = client.get("/api/debug/runtime").json()["render_receipts"]["render-request-1"]
+        assert receipt["first_render_ms"] == 12.5
+        assert receipt["fully_rendered_ms"] == 18.75
+        assert client.post("/api/chat/rendered", json={
+            "request_id": "render-request-1", "message_id": "wrong"
+        }).status_code == 404
+
+
 def test_permission_card_is_safe_and_approve_resumes_core():
     app = create_app(agent=FakeAgent())
     with TestClient(app) as client:
@@ -478,7 +504,7 @@ def test_web_shell_has_keyboard_and_live_status_accessibility_baseline():
     assert "button.textContent='🔄'" in page
     assert "'/api/chat/regenerate'" in page
     assert "aria-label','重新生成这条回复'" in page
-    assert "async function addRetryableError(content)" in page
+    assert "function addRetryableError(content)" in page
     assert 'id="regenerateDebugToggle" type="checkbox"' in page
     assert 'id="longWaitToggle" type="checkbox"' in page
     assert "long_wait_enabled:$('#longWaitToggle').checked" in page
@@ -489,8 +515,8 @@ def test_web_shell_has_keyboard_and_live_status_accessibility_baseline():
     assert "写入前确认" in tool_control
     assert "regenerateDebugToggle.checked=false" in page
     assert 'id="toolCabinetPanel"><summary>钥匙柜</summary>' in page
-    assert 'id="debugPanel"><summary>Debug</summary>' in page
-    assert "Debug · 钥匙柜" not in page
+    assert 'id="debugPanel"><summary>调试</summary>' in page
+    assert "调试 · 钥匙柜" not in page
 
 
 def test_core_restart_endpoint_schedules_desktop_restart():
@@ -739,3 +765,25 @@ def test_external_timing_settings_persist_and_validate(tmp_path):
     timing = load_external_timing(path)
     assert timing.debounce_seconds == 3
     assert timing.reply_interval_seconds == 1.2
+
+
+def test_runtime_debug_and_memory_inspector_expose_scores():
+    agent = FakeAgent()
+    agent.last_action_trace = {"runtime_metrics": {"request_id": "run-1", "total_ms": 42}}
+    class MemoryInspector:
+        async def inspect_retrieval(self, query):
+            return [{"record": {"content": "interview record", "status": "active",
+                                "importance": 0.7, "activation": 0.8},
+                     "score": 0.91, "contextual_relevance": 0.9, "text_score": 0.8,
+                     "semantic_score": 0.7, "graph_score": 0.1, "time_score": 0.4,
+                     "activation_score": 0.8, "importance_score": 0.7,
+                     "why_selected": ["text match"]}]
+    agent.memory_service = MemoryInspector()
+    with TestClient(create_app(agent=agent)) as client:
+        assert client.get("/api/debug/runtime").json()["runtime_metrics"]["total_ms"] == 42
+        response = client.get("/api/debug/memory-retrieval", params={"query": "interview"})
+        assert response.status_code == 200
+        item = response.json()["candidates"][0]
+        assert item["content"] == "interview record"
+        assert item["final_score"] == 0.91
+        assert item["why_selected"] == ["text match"]

@@ -192,3 +192,16 @@ async def test_ten_thousand_memory_linear_keyword_and_embedding_scan(tmp_path):
     assert semantic[0].record.id == "bulk-7777"
     keyword = await service.search(MemoryQuery(text="marker-9999", limit=3))
     assert keyword[0].record.id == "bulk-9999"
+
+
+@pytest.mark.asyncio
+async def test_retrieval_inspector_does_not_activate_memories(tmp_path):
+    service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"))
+    record = (await service.remember(MemoryCreate(
+        kind=MemoryKind.EPISODIC, content="interview notes from today"))).record
+    before = await service.require(record.id)
+    rows = await service.inspect_retrieval(MemoryQuery(text="interview notes", limit=5))
+    after = await service.require(record.id)
+    assert rows and rows[0]["why_selected"]
+    assert after.activation == before.activation
+    assert after.updated_at == before.updated_at

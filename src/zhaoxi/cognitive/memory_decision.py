@@ -20,6 +20,7 @@ from zhaoxi.memory.models import (
 from zhaoxi.memory.service import MemoryService
 from zhaoxi.memory.consolidation import AutoConsolidationConfig, AutoConsolidator
 from zhaoxi.models.base import ModelProvider
+from zhaoxi.observability import llm_owner_scope
 from zhaoxi.errors import ProviderError
 
 
@@ -195,7 +196,8 @@ class AutoMemory:
 
     async def _request_decision(self, messages: list[Message]) -> MemoryDecision | None:
         try:
-            response = await self.provider.generate(
+            with llm_owner_scope("auto_memory", "auto_memory"):
+                response = await self.provider.generate(
                 messages,
                 None,
                 temperature=0,

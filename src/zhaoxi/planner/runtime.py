@@ -3,6 +3,8 @@
 import asyncio
 import copy
 import json
+import time
+from uuid import uuid4
 from dataclasses import dataclass
 from typing import Any
 
@@ -18,6 +20,7 @@ from zhaoxi.errors import (
     PlannerTimeoutError,
 )
 from zhaoxi.models.base import ModelProvider
+from zhaoxi.observability import current_trace, llm_owner_scope
 from zhaoxi.models.types import ToolCall
 from zhaoxi.planner.models import (
     Goal,
@@ -57,6 +60,11 @@ class FinishTaskInput(BaseModel):
     summary: str = Field(min_length=1)
 
 
+class InterimReplyInput(BaseModel):
+    content: str = Field(min_length=1, max_length=180)
+    progress: str = Field(default="", max_length=160)
+
+
 class BudgetExtensionInput(BaseModel):
     reason: str = Field(min_length=1, max_length=240)
     remaining_actions: int = Field(ge=0)
@@ -71,6 +79,7 @@ CONTROL_MODELS = {
     "request_user_input": RequestInputInput,
     "finish_task": FinishTaskInput,
     "request_budget_extension": BudgetExtensionInput,
+    "emit_interim_reply": InterimReplyInput,
 }
 
 CONTROL_DESCRIPTIONS = {
@@ -79,6 +88,7 @@ CONTROL_DESCRIPTIONS = {
     "request_user_input": "缺少继续执行所必需的信息时暂停任务并询问用户。",
     "finish_task": "所有必要步骤完成后，提交最终结果并结束任务。",
     "request_budget_extension": "预算接近上限且已有实际进展时，结构化申请额外 Token；Runtime 独立审批，最多两次。",
+    "emit_interim_reply": "长任务仍需继续时，先给用户一句自然进度回复，不宣布未完成的结果；第二次必须说明新进展。",
 }
 
 
@@ -287,7 +297,6 @@ class PlannerRuntime:
                 memories = await self.context_builder.memory_retriever.retrieve(goal.description)
             except Exception:
                 memories = []
-        schemas = [*control_schemas(), *(tool.schema() for tool in self.registry.list())]
         for action_index in range(1, self.max_steps + 1):
             self._check_cancelled(goal)
             plan = goal.current_plan
@@ -311,6 +320,12 @@ class PlannerRuntime:
                                                "stalled_rounds": max(0, action_index - len(goal.observations) - 1),
                                                "remaining_actions_verified": True},
                         ))
+            schemas = [*control_schemas(), *(tool.schema() for tool in self.registry.list())]
+            action_trace = current_trace()
+            if not (action_trace and action_trace.interim_enabled
+                    and time.monotonic() - action_trace.started_monotonic >= action_trace.interim_threshold_seconds
+                    and action_trace.interim_replies < action_trace.planner_interim_max_count):
+                schemas = [schema for schema in schemas if schema["function"]["name"] != "emit_interim_reply"]
             messages = self.context_builder.build(
                 self.conversation,
                 memories,
@@ -319,7 +334,7 @@ class PlannerRuntime:
             )
             if finalizing:
                 messages[0].content = (messages[0].content or "") + "\n计划步骤已完成，只生成最终自然语言回复，不再调用工具。"
-            with budget_stage_scope(stage):
+            with budget_stage_scope(stage), llm_owner_scope("workflow_finalization" if finalizing else "planner", stage):
                 response = await self.provider.generate(messages, None if finalizing else schemas)
             self._check_cancelled(goal)
             if not response.tool_calls:
@@ -336,8 +351,18 @@ class PlannerRuntime:
                 self.conversation.add_assistant(response.content)
                 continue
 
-            self.conversation.add_assistant(response.content, tool_calls=response.tool_calls)
+            durable_calls = [call for call in response.tool_calls if call.name != "emit_interim_reply"]
+            if durable_calls:
+                self.conversation.add_assistant(
+                    None if len(durable_calls) != len(response.tool_calls) else response.content,
+                    tool_calls=durable_calls)
             for call in response.tool_calls:
+                if call.name == "emit_interim_reply":
+                    trace = current_trace()
+                    if trace:
+                        trace.emit_interim(str(call.arguments.get("content", "")), reason="planner",
+                                          progress=str(call.arguments.get("progress", "")))
+                    continue
                 result = await self._handle_call(goal, call)
                 if goal.status == GoalStatus.WAITING_FOR_USER:
                     self.conversation.add_tool(
@@ -423,7 +448,17 @@ class PlannerRuntime:
                 step_id=step.id,
                 metadata={"tool": call.name, "attempt": step.attempt_count},
             )
-            execution = await self._execute_tool(goal, call)
+            action_trace = current_trace()
+            invocation_id = uuid4().hex
+            attempt = action_trace.start_tool(call.name, call.id, invocation_id, step.id) if action_trace else None
+            execution = await self._execute_tool(goal, call, invocation_id=invocation_id)
+            if action_trace and attempt:
+                if execution.waiting_for_permission:
+                    action_trace.emit("tool_call_waiting_permission", "tool_execution", "info", "操作正在等待确认",
+                                      tool_name=call.name, invocation_id=invocation_id, tool_call_id=call.id)
+                else:
+                    action_trace.finish_tool(attempt, success=bool(execution.result and execution.result.success),
+                                             result_code=getattr(execution.result, "error", None))
             if execution.waiting_for_permission:
                 confirmation = execution.confirmation
                 goal.permission_confirmation = confirmation
@@ -613,13 +648,14 @@ class PlannerRuntime:
             raise PlanValidationError(result.content)
         return self._response(goal, content, steps)
 
-    async def _execute_tool(self, goal: Goal, call: ToolCall):
+    async def _execute_tool(self, goal: Goal, call: ToolCall, *, invocation_id: str | None = None):
         try:
             return await asyncio.wait_for(
                 self.tool_executor.execute(
                     call.name,
                     call.arguments,
                     request_id=goal.id,
+                    invocation_id=invocation_id,
                     origin=InvocationOrigin.PLANNER,
                     user_intent=goal.description,
                     goal_id=goal.id,

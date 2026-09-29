@@ -6,12 +6,21 @@ const path=require('node:path');
 
 const html=fs.readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/index.html'),'utf8');
 const source=html.slice(html.indexOf('let activeTraceId='),html.indexOf('let activityHintTimer='));
+test('the live action list is visible in the side panel',()=>{
+  const summary=html.indexOf('id="actionTraceSummary"');
+  const list=html.indexOf('id="actionTraceEvents"');
+  const debug=html.indexOf('id="runtimeDebugPanel"');
+  assert.ok(summary>=0&&list>summary&&list<debug);
+  assert.equal(html.split('id="actionTraceEvents"').length-1,1);
+});
+
 
 function setup(){
   const list={children:[],append(row){this.children.push(row)},replaceChildren(){this.children=[]}};
   const nodes={
     '#actionTrace':{open:false},'#actionTraceSummary':{textContent:''},
     '#actionTraceEvents':list,'#actionTraceDebug':{textContent:''},
+    '#actionRuntimeSummary':{textContent:''},'#actionPlannerStatus':{textContent:''},
   };
   const activity={textContent:''};
   const context=vm.createContext({
@@ -28,17 +37,17 @@ function setup(){
   return {context,nodes,list,activity,emit};
 }
 
-test('sidebar keeps the concrete event sequence while the composer shows one characterful stage',()=>{
+test('side panel keeps the concrete event sequence while the composer shows one characterful stage',()=>{
   const s=setup();
   assert.equal(s.context.beginActionTrace(),'request-1');
-  assert.equal(s.nodes['#actionTrace'].open,false);
+  assert.equal(s.nodes['#actionTraceSummary'].textContent,'行动记录 · 进行中');
   assert.match(s.activity.textContent,/^理解 · 耳朵/);
   s.emit('request_started','request','running','正在处理请求…');
   s.emit('model_step_started','model','running','正在思考下一步…',{step_id:1});
   s.emit('model_step_finished','model','success','已确定下一步',{step_id:1});
   s.emit('model_step_started','model','running','正在思考下一步…',{step_id:2});
   assert.equal(s.list.children.length,4);
-  assert.equal(s.list.children[3].textContent,'第2轮 · 正在思考下一步…');
+  assert.equal(s.list.children[3].textContent,'正在思考下一步…');
   assert.match(s.activity.textContent,/^理解 · 耳朵/);
   s.emit('memory_search_started','memory_search','running','正在检索相关记忆…');
   assert.match(s.activity.textContent,/^检索 · 顺着线索/);
@@ -53,29 +62,31 @@ test('sidebar keeps the concrete event sequence while the composer shows one cha
   assert.match(s.activity.textContent,/^整理 · 把结果叼回来/);
   s.emit('task_completed','task','success','本次任务已完成');
   assert.equal(s.list.children.at(-1).textContent,'本次任务已完成');
+  assert.equal(s.nodes['#actionTraceSummary'].textContent,'行动记录 · 进行中');
+  s.context.endActionTraceFallback('本次任务已完成');
   assert.equal(s.nodes['#actionTraceSummary'].textContent,'行动记录 · 已完成');
-  assert.equal(s.activity.textContent,'完成 · 好啦，事情办妥了汪。');
   assert.doesNotMatch(s.activity.textContent,/call-private|invoke-private|步骤|Token|第2轮/);
   assert.match(s.nodes['#actionTraceDebug'].textContent,/call-private/);
 });
 
-test('token details remain in the sidebar and never appear above the input',()=>{
+test('token details remain in Debug and never appear above the input',()=>{
   const s=setup();s.context.beginActionTrace();
   s.emit('model_step_failed','model','failed','本次请求 Token 预算已耗尽',{
     step_id:3,error_code:'token_budget_exhausted',metadata:{remaining_tokens:0},
   });
   assert.match(s.activity.textContent,/^整理 · /);
   assert.doesNotMatch(s.activity.textContent,/Token|第3轮/);
-  assert.equal(s.list.children[0].textContent,'第3轮 · 本次请求 Token 预算已耗尽');
+  assert.equal(s.list.children[0].textContent,'本次请求 Token 预算已耗尽');
   assert.match(s.nodes['#actionTraceDebug'].textContent,/remaining_tokens/);
   s.emit('task_completed','task','success','已完成的操作均已保留',{
     metadata:{task_status:'completed',response_status:'failed'},
   });
-  assert.match(s.activity.textContent,/^完成 · /);
+  assert.equal(s.nodes['#actionTraceSummary'].textContent,'行动记录 · 回复未完成');
+  s.context.endActionTraceFallback('本次任务未完成',true);
   assert.equal(s.nodes['#actionTraceSummary'].textContent,'行动记录 · 回复未完成');
 });
 
-test('budget requests appear in the sidebar while context estimates stay in Debug',()=>{
+test('budget requests appear in Debug while context estimates stay in raw events',()=>{
   const s=setup();s.context.beginActionTrace();
   const before=s.activity.textContent;
   s.emit('budget_extension_requested','token_budget','info','已申请额外预算',{metadata:{requested_extra:3000}});
@@ -85,4 +96,34 @@ test('budget requests appear in the sidebar while context estimates stay in Debu
   assert.equal(s.list.children.length,1);
   assert.match(s.nodes['#actionTraceDebug'].textContent,/tool_schema/);
   assert.doesNotMatch(s.activity.textContent,/3000|120/);
+});
+
+test('runtime observatory renders actual memory candidate score components',()=>{
+  const node={textContent:''};
+  const context=vm.createContext({
+    $:selector=>selector==='#runtimeMemoryCandidates'?node:null,
+    activity:{textContent:''},crypto:{randomUUID:()=> 'request-1'},
+    document:{createElement:()=>({})},
+  });
+  vm.runInContext(source,context);
+  context.renderMemoryCandidates([{
+    rank:1,kind:'semantic',status:'active',cluster:'开发习惯',content:'晚间开发效率更高',
+    final_score:0.91,contextual_relevance:0.82,text_score:0.73,semantic_score:0.64,
+    graph_score:0.12,time_score:0.55,activation_score:0.44,importance_score:0.66,
+    why_selected:['embedding=0.640'],
+  }]);
+  assert.match(node.textContent,/晚间开发效率更高/);
+  assert.match(node.textContent,/Final 0.9100/);
+  assert.match(node.textContent,/Semantic 0.6400/);
+  assert.match(node.textContent,/Graph 0.1200/);
+  assert.match(node.textContent,/embedding=0.640/);
+});
+
+test('live calls show duration and final metrics distinguish ordinary agent execution',()=>{
+  const s=setup();s.context.beginActionTrace();
+  s.emit('llm_call_finished','model','success','模型调用已结束',{metadata:{index:2,owner:'agent',duration_ms:1234.56}});
+  assert.match(s.list.children.at(-1).textContent,/agent #2.*1234.56 ms/);
+  s.emit('runtime_metrics_finalized','metrics','success','运行指标已汇总',{metadata:{runtime_metrics:{total_ms:2000,ttfr_ms:1000,planner_used:false,llm_calls:[],tool_calls:[]}}});
+  assert.match(s.nodes['#actionRuntimeSummary'].textContent,/2000.00 ms/);
+  assert.match(s.nodes['#actionPlannerStatus'].textContent,/普通 Agent/);
 });

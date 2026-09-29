@@ -179,7 +179,7 @@ class MemoryService:
             raise MemoryNotFoundError(f"记忆不存在：{memory_id}")
         return record
 
-    async def search(self, query: MemoryQuery) -> list[MemorySearchResult]:
+    async def search(self, query: MemoryQuery, *, activate: bool = True) -> list[MemorySearchResult]:
         if not query.text:
             return await self.repository.search(query)
         now = query.now or utc_now()
@@ -247,12 +247,12 @@ class MemoryService:
             selected.append(item)
             if len(selected) >= query.limit:
                 break
-        if query.statuses == [MemoryStatus.ACTIVE]:
+        if activate and query.statuses == [MemoryStatus.ACTIVE]:
             await self._activate_selected(selected, query.min_edge_weight, now)
         return selected
 
     async def inspect_retrieval(self, query: MemoryQuery) -> list[dict[str, object]]:
-        results = await self.search(query)
+        results = await self.search(query, activate=False)
         return [item.model_dump(mode="json", exclude={"record": {"normalized_content", "metadata"}}) for item in results]
 
     async def update(self, memory_id: str, patch: MemoryUpdate) -> MemoryRecord:

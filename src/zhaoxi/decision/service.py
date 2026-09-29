@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from zhaoxi.agenda.models import AgendaType
 from zhaoxi.core.message import Message, Role
-from zhaoxi.observability import current_trace
+from zhaoxi.observability import current_trace, llm_owner_scope
 
 from .guard import guard
 from .models import DecisionContext, DecisionLevel, DecisionProposal, DecisionResult, is_directional_verdict
@@ -127,7 +127,8 @@ class DecisionService:
                   "rule_ids 只能引用 matched_rules 中的 ID。reasons 最多两条。只调用 classify_decision。")
         try:
             async def classify(instruction: str) -> DecisionProposal:
-                response = await self.provider.generate([
+                with llm_owner_scope("decision", "decision"):
+                    response = await self.provider.generate([
                     Message(role=Role.SYSTEM, content=instruction),
                     Message(role=Role.USER, content=context.model_dump_json(exclude_none=True))], [SCHEMA])
                 call = next(call for call in response.tool_calls if call.name == "classify_decision")

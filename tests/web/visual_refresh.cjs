@@ -57,7 +57,7 @@ const action='（尾巴轻轻摇了摇。）\n今天也辛苦啦。要在这里�
   await page.locator('#actionTrace > summary').click();
   assert.equal(await page.locator('#actionTrace').evaluate(el=>el.open),true);
   await page.locator('#actionTrace > summary').click();
-  await page.locator('.maintenance > summary').click();await page.getByText('Debug',{exact:true}).click();
+  await page.locator('.maintenance > summary').click();await page.getByText('调试',{exact:true}).click();
   await page.locator('#restartCore').scrollIntoViewIfNeeded();assert.equal(await page.locator('#restartCore').isVisible(),true);
   await page.screenshot({path:path.join(output,'maintenance.png')});
   await page.keyboard.press('Escape');

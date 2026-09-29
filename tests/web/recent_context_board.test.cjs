@@ -61,7 +61,7 @@ test('current cognition uses one paper, hides absent sections and uses text-only
   assert.ok(nodes.some(n=>n.className==='memory-overview'&&n.textContent==='最近持续开发 Zhaoxi'));
   assert.ok(nodes.some(n=>n.tag==='li'&&n.textContent==='<script>alert(1)</script>'));
   assert.equal(nodes.filter(n=>n.className==='memory-section').length,2);
-  assert.match(html,/Agenda \/ Current Cognition Debug/);
+  assert.match(html,/日程 \/ 近期状态调试/);
   assert.doesNotMatch(html,/workingNoteCards|Working Notes Context/);
 });
 

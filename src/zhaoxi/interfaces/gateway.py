@@ -11,9 +11,9 @@ from typing import Any
 
 from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.cognitive_stream.models import CognitiveEventType
-from zhaoxi.core.message import Message, Role
+from zhaoxi.core.message import Message, Role, is_user_visible_message, is_cognition_message
 from zhaoxi.core.reply.renderer import catalog_emoji_prefix
-from zhaoxi.observability import action_trace_scope, current_trace
+from zhaoxi.observability import action_trace_scope, bind_action_trace, current_trace
 from zhaoxi.proactive.models import DeliveryStatus
 from zhaoxi.interfaces.models import (
     MessageOrigin,
@@ -52,8 +52,21 @@ class InterfaceGateway:
         self._responses: OrderedDict[str, UnifiedResponse] = OrderedDict()
         self._response_cache_size = response_cache_size
         self.event_sink = None
+        self._maintenance = None
+        self.render_receipts = OrderedDict()
+
+    def _configure_trace(self, trace) -> None:
+        settings = getattr(self.agent, "settings", None)
+        if settings is None:
+            return
+        trace.metrics_enabled = settings.runtime_metrics_enabled
+        trace.interim_enabled = settings.interim_reply_enabled
+        trace.interim_threshold_seconds = settings.interim_reply_threshold_seconds
+        trace.interim_max_count = settings.interim_reply_max_count
+        trace.planner_interim_max_count = settings.planner_interim_reply_max_count
 
     async def chat(self, message: UnifiedMessage) -> UnifiedResponse:
+        received_monotonic = monotonic()
         if message.origin is not MessageOrigin.USER:
             self.metrics.increment("interface.chat.rejected")
             raise ValueError("只有 user origin 可以进入对话认知链路")
@@ -97,21 +110,19 @@ class InterfaceGateway:
                 provider = getattr(self.agent, "provider", None)
                 max_calls = getattr(provider, "max_calls", 12)
                 max_total_tokens = getattr(provider, "max_total_tokens", 100_000)
-                await self._maintain_current_cognition(bootstrap=True)
+                bootstrap_ms = 0
                 with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens, policy=getattr(provider, "budget_policy", None)) as budget, action_trace_scope(self.event_sink) as trace:
+                    self._configure_trace(trace)
+                    trace.started_monotonic = received_monotonic
+                    trace.started_at = message.created_at.isoformat()
+                    if trace.metrics_enabled:
+                        trace.stage_ms["current_cognition"] = round(bootstrap_ms, 2)
+                    trace.emit("runtime_started", "runtime", "running", "运行已开始")
                     trace.emit("request_started", "request", "running", "正在处理请求…")
                     response = await self.agent.run_natural(
                         message.content, **({"images": message.images} if message.images else {})
                     )
-                    auto = getattr(getattr(self.agent, "cognitive", None), "auto_memory", None)
-                    if trigger is not None and auto is not None and getattr(
-                            response, "permission_confirmation", None) is None:
-                        try:
-                            decision = await auto.process_event(trigger, response.content)
-                            if hasattr(response, "memory_action"):
-                                response.memory_action = decision.action
-                        except Exception as exc:
-                            logger.warning("experience memory failed type=%s", type(exc).__name__)
+                    trace.final_reply_ready_ms = (monotonic() - trace.started_monotonic) * 1000
                     if getattr(response, "permission_confirmation", None) is not None:
                         trace.terminal_status = "waiting_for_permission"
                         trace.response_status = "waiting_for_permission"
@@ -137,10 +148,9 @@ class InterfaceGateway:
                         source="desktop", channel=message.channel.value, session_id=message.session_id,
                         parent_refs=[trigger.event_id] if trigger else [],
                         source_refs=["desktop:reply:" + message.request_id])
+                await self._persist_session(trace)
                 self._cache(result)
-                await self._persist_session()
-                if getattr(response, "permission_confirmation", None) is None:
-                    await self._maintain_current_cognition()
+                self._enqueue_maintenance(message.request_id, response, trace, trigger=trigger, session_id=message.session_id)
                 emoji_trace = getattr(self.agent, "last_emoji_trace", None)
                 if emoji_trace and emoji_trace.get("trace_id") == message.request_id:
                     emoji_trace["persisted"] = any(
@@ -157,6 +167,8 @@ class InterfaceGateway:
                         len(emoji_trace.get("message_ids", [])),
                     )
                 self.metrics.increment("interface.chat.completed")
+                trace.emit("runtime_finished", "runtime", "success", "运行已结束")
+                trace.finish()
                 self.agent.last_action_trace = trace.summary()
                 return result
             except Exception:
@@ -165,6 +177,8 @@ class InterfaceGateway:
                     trace.terminal_status = trace.task_status if trace.actions else "failed"
                     trace.emit("task_" + trace.task_status, "task", trace.task_outcome,
                                "已完成的操作均已保留" if trace.task_status == "completed" else "本次任务未完成")
+                    trace.emit("runtime_finished", "runtime", "failed", "运行未完成")
+                    trace.finish()
                     self.agent.last_action_trace = trace.summary()
                 self.metrics.increment("interface.chat.failed")
                 # The model/tool path may fail after accepting the user turn.
@@ -172,7 +186,7 @@ class InterfaceGateway:
                 self._attach_display_parts(message, previous_messages)
                 if any(id(item) not in previous_messages for item in self.agent.conversation.messages):
                     try:
-                        await self._persist_session()
+                        await self._persist_session(trace)
                     except Exception as persist_error:
                         logger.warning(
                             "failed to persist conversation after chat error type=%s",
@@ -227,7 +241,10 @@ class InterfaceGateway:
 
             original = messages
             source_user = messages[user_index].model_copy(deep=True)
-            resume_in_place = target.role == Role.ASSISTANT and bool(target.tool_calls)
+            resume_in_place = any(item.tool_calls for item in messages[user_index:]) or target.visibility == "notice" or target.tool_turn
+            if resume_in_place and not target.tool_calls and target.role == Role.ASSISTANT:
+                prior = target.model_copy(update={"visibility": "internal"})
+                self.agent.conversation.replace([*messages[:target_index], prior])
             if not resume_in_place:
                 self.agent.conversation.replace(messages[:user_index])
             previous_messages = {id(item) for item in self.agent.conversation.messages}
@@ -243,6 +260,8 @@ class InterfaceGateway:
                 max_calls = getattr(provider, "max_calls", 12)
                 max_total_tokens = getattr(provider, "max_total_tokens", 100_000)
                 with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens, policy=getattr(provider, "budget_policy", None)) as budget, action_trace_scope(self.event_sink) as trace:
+                    self._configure_trace(trace)
+                    trace.emit("runtime_started", "runtime", "running", "运行已开始")
                     trace.emit("request_started", "request", "running", "正在重新生成…")
                     if resume_in_place:
                         response = await self.agent.resume_current_turn(
@@ -272,13 +291,9 @@ class InterfaceGateway:
                     message_id=self._new_assistant_id(previous_messages),
                     output_messages=self._new_output_messages(previous_messages),
                 )
+                await self._persist_session(trace)
                 self._cache(result)
-                await self._persist_session()
-                if getattr(response, "permission_confirmation", None) is None:
-                    await self._maintain_current_cognition(
-                        pending_messages=[item for item in self.agent.conversation.messages
-                                          if id(item) not in previous_messages
-                                          and item.message_id != source_user.message_id])
+                self._enqueue_maintenance(request_id, response, trace)
                 emoji_trace = getattr(self.agent, "last_emoji_trace", None)
                 if emoji_trace and emoji_trace.get("trace_id") == request_id:
                     emoji_trace["persisted"] = any(
@@ -295,6 +310,8 @@ class InterfaceGateway:
                         len(emoji_trace.get("message_ids", [])),
                     )
                 self.metrics.increment("interface.regenerate.completed")
+                trace.emit("runtime_finished", "runtime", "success", "运行已结束")
+                trace.finish()
                 self.agent.last_action_trace = trace.summary()
                 return result
             except Exception:
@@ -303,9 +320,11 @@ class InterfaceGateway:
                     trace.terminal_status = trace.task_status if trace.actions else "failed"
                     trace.emit("task_" + trace.task_status, "task", trace.task_outcome,
                                "已完成的操作均已保留" if trace.task_status == "completed" else "本次任务未完成")
+                    trace.emit("runtime_finished", "runtime", "failed", "运行未完成")
+                    trace.finish()
                     self.agent.last_action_trace = trace.summary()
                 self.agent.conversation.replace(original)
-                await self._persist_session()
+                await self._persist_session(trace)
                 self.metrics.increment("interface.regenerate.failed")
                 raise
             finally:
@@ -397,29 +416,32 @@ class InterfaceGateway:
             budget = None
             try:
                 with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens, policy=getattr(provider, "budget_policy", None)) as budget, action_trace_scope(self.event_sink) as trace:
+                    self._configure_trace(trace)
+                    trace.emit("runtime_started", "runtime", "running", "运行已开始")
                     trace.emit("request_started", "request", "running", "正在处理操作确认…",
                                metadata={"parent_request_id": pending.request.request_id})
                     if confirmation_id in self.agent._pending_permissions:
                         method = self.agent.approve_permission if approve else self.agent.deny_permission
-                        response = await method(confirmation_id)
+                        response = await self._bounded_permission(method(confirmation_id), trace)
                     elif self.agent.planner and confirmation_id in self.agent.planner._pending_permissions:
                         method = self.agent.planner.approve_permission if approve else self.agent.planner.deny_permission
-                        response = await method(confirmation_id)
+                        response = await self._bounded_permission(method(confirmation_id), trace)
                     elif self.agent.workflow:
-                        response = await self._resolve_workflow(confirmation_id, approve)
+                        response = await self._bounded_permission(self._resolve_workflow(confirmation_id, approve), trace)
                     else:
                         raise KeyError("找不到待确认操作的原始任务。")
                     trace.response_status = "succeeded" if trace.response_status == "pending" else trace.response_status
                     trace.emit("task_" + trace.task_status, "task", trace.task_outcome,
                                "本次操作已完成" if trace.task_status == "completed" else "本次操作未完成")
-                await self._persist_session()
-                if getattr(response, "permission_confirmation", None) is None:
-                    await self._maintain_current_cognition()
+                await self._persist_session(trace)
+                self._enqueue_maintenance(request_id, response, trace)
             except Exception:
                 if trace is not None:
                     trace.response_status = "failed"
                     trace.terminal_status = trace.task_status if trace.actions else "failed"
                     trace.emit("task_" + trace.task_status, "task", trace.task_outcome, "本次操作未完成")
+                    trace.emit("runtime_finished", "runtime", "failed", "运行未完成")
+                    trace.finish()
                     self.agent.last_action_trace = trace.summary()
                 raise
             finally:
@@ -432,9 +454,26 @@ class InterfaceGateway:
         if beat:
             beat.note_assistant(datetime.now(UTC))
         result = self._result(response, request_id=request_id, session_id=session_id, action_trace=trace)
+        trace.emit("runtime_finished", "runtime", "success", "运行已结束")
+        trace.finish()
         self.agent.last_action_trace = trace.summary()
         self._cache(result)
         return result
+
+    async def _bounded_permission(self, operation, trace):
+        from zhaoxi.errors import AgentLoopError
+        try:
+            return await asyncio.wait_for(operation, timeout=getattr(self.agent, "timeout_seconds", 60))
+        except TimeoutError as exc:
+            trace.response_status = "failed"
+            trace.emit("response_generation_failed", "response_generation", "failed", "确认后的处理超时", error_code="agent_timeout")
+            recover = getattr(self.agent, "_return_degraded", None)
+            if recover and trace.actions:
+                response = recover(trace.request_id, trace.current_step or 0,
+                                   "（确认后的处理超时，已执行的操作保留，请核对未完成事项。）")
+                if response:
+                    return response
+            raise AgentLoopError("确认后的处理超时。", code="agent_timeout") from exc
 
     async def _resolve_workflow(self, confirmation_id: str, approve: bool):
         for run in await self.agent.workflow.history():
@@ -451,7 +490,7 @@ class InterfaceGateway:
     def session(self) -> list[dict[str, Any]]:
         visible = [
             item for item in self.agent.conversation.messages
-            if item.role.value in {"user", "assistant"}
+            if is_user_visible_message(item)
         ]
         latest = visible[-1] if visible else None
         result = []
@@ -481,6 +520,8 @@ class InterfaceGateway:
         return result
 
     def clear(self) -> None:
+        if self._maintenance is not None:
+            self._maintenance.invalidate()
         self.agent.conversation.clear()
         state = getattr(self.agent, "proactive_state", None)
         beat = getattr(getattr(state, "interaction", None), "beat_loop", None)
@@ -498,6 +539,82 @@ class InterfaceGateway:
             session.created_at = datetime.now(UTC)
             session.conversation = self.agent.conversation
             store.save_sync(session)
+
+    def maintenance_queue(self):
+        if self._maintenance is None:
+            from zhaoxi.interfaces.maintenance import PostTurnMaintenanceQueue
+            store = getattr(self.agent, "session_store", None)
+            path = getattr(store, "path", None)
+            path = path.with_name("post-turn-maintenance.db") if path else ":memory:"
+            self._maintenance = PostTurnMaintenanceQueue(path, self._run_maintenance_phase,
+                foreground_busy=self._lock.locked,
+                publish=lambda event: self.event_sink(event) if self.event_sink else None)
+        return self._maintenance
+
+    def _enqueue_maintenance(self, request_id, response, trace, *, trigger=None, session_id="local"):
+        if getattr(response, "permission_confirmation", None) is not None or trace.response_status != "succeeded":
+            return
+        auto = getattr(getattr(self.agent, "cognitive", None), "auto_memory", None)
+        maintainer = getattr(self.agent, "current_cognition_maintainer", None)
+        if not maintainer and not (auto and trigger):
+            return
+        base_cursor = maintainer.service.state().last_processed_message_id if maintainer and hasattr(maintainer, "service") else None
+        messages = [item.model_copy(update={"images": []}).model_dump(mode="json") for item in self.agent.conversation.messages
+                    if is_cognition_message(item)]
+        stream = getattr(self.agent, "experience_stream", None)
+        if stream is not None and maintainer is not None:
+            marker = maintainer.service.state().last_processed_message_id
+            events = stream.events_after(marker, limit=200)
+            messages = [Message(message_id=event.event_id, role=Role.USER, content=event.content,
+                        timestamp=event.occurred_at, source=event.source).model_dump(mode="json")
+                        for event in events if event.actor_role == "OWNER" and event.content
+                        and event.event_type in {CognitiveEventType.USER_MESSAGE, CognitiveEventType.EXTERNAL_MESSAGE}
+                        and event.trust_level in {"TRUSTED", "NORMAL"}]
+        started = monotonic()
+        try:
+            self.maintenance_queue().enqueue(request_id, {"request_id": request_id,
+                "trigger": trigger.model_dump(mode="json", exclude={"parts"}) if trigger else None, "session_id": session_id,
+                "reply": response.content, "messages": messages, "base_cursor": base_cursor})
+            trace.record_interval("post_turn_enqueue", started)
+        except Exception as exc:
+            logger.error("maintenance enqueue failed request=%s type=%s", request_id, type(exc).__name__)
+            if self.event_sink:
+                self.event_sink({"type": "maintenance_status", "request_id": request_id,
+                                 "status": "failed", "error": "enqueue_failed"})
+
+    async def _run_maintenance_phase(self, snapshot, phase):
+        from zhaoxi.cognitive_stream.models import CognitiveEvent
+        provider = getattr(self.agent, "provider", None)
+        context = CorrelationContext(trace_id=snapshot["request_id"],
+                                     request_id=snapshot["request_id"] + ":maintenance")
+        with correlation_scope(context), provider_budget_scope(
+                getattr(provider, "max_calls", 12), getattr(provider, "max_total_tokens", 100_000)), action_trace_scope() as trace:
+            stage = "memory" if phase == 0 else "current_cognition"
+            name = "auto_memory" if phase == 0 else "current_cognition"
+            trace.emit(name + "_started", stage, "running", "后台维护开始")
+            try:
+                if phase == 0:
+                    auto = getattr(getattr(self.agent, "cognitive", None), "auto_memory", None)
+                    if auto and snapshot["trigger"]:
+                        await auto.process_event(CognitiveEvent.model_validate(snapshot["trigger"]), snapshot["reply"])
+                else:
+                    maintainer = getattr(self.agent, "current_cognition_maintainer", None)
+                    if maintainer:
+                        if hasattr(maintainer, "service"):
+                            cursor = maintainer.service.state().last_processed_message_id
+                            ids = {item["message_id"] for item in snapshot["messages"]}
+                            if cursor != snapshot.get("base_cursor") and cursor not in ids:
+                                return {"status": "superseded"}
+                        result = await maintainer.maintain([Message.model_validate(item) for item in snapshot["messages"]])
+                        if result in {"FAILED", "REJECTED"}:
+                            raise RuntimeError("current_cognition_maintenance_failed")
+                trace.emit(name + "_finished", stage, "success", "后台维护已完成")
+            except BaseException:
+                trace.emit(name + "_failed", stage, "failed", "后台维护未完成")
+                raise
+            finally:
+                trace.finish()
+            return {key: value for key, value in trace.metrics().items() if key != "timeline"}
 
     async def _maintain_current_cognition(self, *, bootstrap: bool = False,
                                           pending_messages: list[Message] | None = None) -> None:
@@ -519,13 +636,16 @@ class InterfaceGateway:
         except Exception as exc:
             logger.warning("COGNITION_MAINTAIN_FAILED type=%s", type(exc).__name__)
 
-    async def _persist_session(self) -> None:
+    async def _persist_session(self, trace=None) -> None:
         session = getattr(self.agent, "session_record", None)
         store = getattr(self.agent, "session_store", None)
         if session is None or store is None:
             return
         session.conversation = self.agent.conversation
+        started = monotonic()
         await store.save(session)
+        if trace:
+            trace.record_interval("session_persist", started)
 
     def _attach_display_parts(self, message: UnifiedMessage, previous_messages: set[int]) -> None:
         if not message.display_parts:
@@ -548,7 +668,7 @@ class InterfaceGateway:
     def _new_assistant_id(self, previous_messages: set[int]) -> str | None:
         return next(
             (item.message_id for item in reversed(self.agent.conversation.messages)
-             if id(item) not in previous_messages and item.role == Role.ASSISTANT),
+             if id(item) not in previous_messages and item.role == Role.ASSISTANT and is_user_visible_message(item)),
             None,
         )
 
@@ -558,7 +678,7 @@ class InterfaceGateway:
             for item in self.agent.conversation.messages
             if id(item) not in previous_messages
             and item.role == Role.ASSISTANT
-            and (item.images or not item.tool_calls)
+            and is_user_visible_message(item)
         ]
 
     @staticmethod
@@ -568,6 +688,7 @@ class InterfaceGateway:
             "id": item.message_id,
             "message_id": item.message_id,
             "role": item.role.value,
+            "visibility": item.visibility,
             "type": "image" if item.is_image_only else "text",
             "text": item.content or "",
             "content": item.content or "",
@@ -600,6 +721,7 @@ class InterfaceGateway:
         output_messages: list[dict[str, Any]] | None = None,
         action_trace=None,
     ) -> UnifiedResponse:
+        packaging_started = monotonic()
         route = getattr(response, "route", None)
         permission = getattr(response, "permission_confirmation", None)
         activity = {
@@ -611,6 +733,8 @@ class InterfaceGateway:
         }
         trace = action_trace or current_trace()
         if trace is not None:
+            if trace.final_reply_ready_ms is None:
+                trace.final_reply_ready_ms = (monotonic() - trace.started_monotonic) * 1000
             activity["task_status"] = trace.task_status
             activity["response_status"] = trace.response_status
         permission_view = None
@@ -623,7 +747,7 @@ class InterfaceGateway:
                 resource_scope=permission_request.resource_scope,
                 risk=permission.risk_summary,
             )
-        return UnifiedResponse(
+        result = UnifiedResponse(
             request_id=request_id,
             session_id=session_id,
             trace_id=request_id,
@@ -634,3 +758,6 @@ class InterfaceGateway:
             permission=permission_view,
             output_messages=output_messages or [],
         )
+        if trace is not None:
+            trace.record_interval("response_packaging", packaging_started)
+        return result

@@ -176,6 +176,8 @@ class SQLiteSessionStore(SessionStore):
         for message in session.conversation.recent(self.max_messages):
             if message.role not in {Role.USER, Role.EXTERNAL, Role.ASSISTANT} or message.content is None:
                 continue
+            if message.visibility in {"internal", "interim"} or message.tool_calls:
+                continue
             content = message.content
             if message.role == Role.ASSISTANT:
                 violations = assistant_persistence_violations(content)
