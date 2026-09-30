@@ -114,7 +114,7 @@ async def test_explicit_continuation_still_uses_router():
     assert provider.tool_schemas[0][0]["function"]["name"] == "route_cognition"
 
 
-async def test_successful_business_tool_forces_tool_free_finalization():
+async def test_successful_business_tool_keeps_tools_available():
     provider = FakeProvider([
         call("current_time"),
         ModelResponse(content="现在已经查到了。"),
@@ -126,11 +126,10 @@ async def test_successful_business_tool_forces_tool_free_finalization():
     assert response.used_tool_path is True
     assert len(provider.calls) == 2
     assert provider.tool_schemas[0]
-    assert provider.tool_schemas[1] is None
-    assert provider.options[1]["tool_router"]["final_exposed_tools"] == []
+    assert provider.tool_schemas[1]
 
 
-async def test_explicit_single_tool_request_skips_router_and_stops_after_finalization():
+async def test_explicit_single_tool_request_skips_router_and_stops_after_model_reply():
     provider = FakeProvider([
         call("current_time"),
         ModelResponse(content="现在已经查到了。"),
@@ -147,7 +146,7 @@ async def test_explicit_single_tool_request_skips_router_and_stops_after_finaliz
     assert response.route is CognitiveRoute.TOOL
     assert len(provider.calls) == 2
     assert provider.tool_schemas[0]
-    assert provider.tool_schemas[1] is None
+    assert provider.tool_schemas[1]
 
 
 async def test_fast_action_commitment_escalates_only_once():
@@ -169,7 +168,7 @@ async def test_fast_action_commitment_escalates_only_once():
     assert response.route is CognitiveRoute.TOOL
     assert len(provider.calls) == 4
     assert provider.tool_schemas[0] is None
-    assert provider.tool_schemas[-1] is None
+    assert provider.tool_schemas[-1]
 
 async def test_fast_trace_reports_v141_lane_counters():
     inner = FakeProvider([ModelResponse(content="在呢。")])

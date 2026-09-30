@@ -12,7 +12,7 @@
 - 按需触发的 Decision Layer，结合当前事实与少量规则给出 L0/L1/L2 方向；朝汐主回复链负责表达。
 - 统一 Tool Registry、动态能力发现、权限确认和脱敏审计。
 - FAST_CHAT 轻量对话通道：Desktop / Web 与 Owner QQ 私聊的普通聊天跳过 Router、外部 Planner、长期记忆与工具目录，仅做一次前台模型调用；Debug 可临时强制使用。
-- STANDARD 单工具任务在业务工具成功后直接进入无工具 Finalization，避免无意义的能力发现与额外轮次。
+- STANDARD 工具任务在调用成功后可继续执行后续操作，支持先查询、再修改；预算或耗时接近上限时进入无工具收尾。
 - 请求级运行指标、LLM/Tool 归属与耗时、Memory Retrieval Inspector、Planner Trace 桥接和独立的长任务中间回复。
 - 请求级行动轨迹、Tool 最终状态归并与 Token 预算错误归因。
 - 主动心跳、桌面活动感知、语音输入与朗读。

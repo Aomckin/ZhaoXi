@@ -282,3 +282,57 @@ async def test_invalid_tool_json_after_failed_tool_returns_failure_summary(
     response = await make_agent(provider, registry, context_builder, conversation).run("计算")
     assert "工具操作未能完成" in response.content
     assert "后续工具参数格式有误" in response.content
+
+
+@pytest.mark.parametrize("outcome", ["complete", "invalid_arguments"])
+async def test_agenda_lookup_update_and_verify_continue_after_success(
+    registry, context_builder, conversation, tmp_path, outcome
+):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from zhaoxi.agenda.models import AgendaType
+    from zhaoxi.agenda.service import AgendaService
+    from zhaoxi.agenda.sqlite import SQLiteAgendaStore
+    from zhaoxi.agenda.tools import create_agenda_tools
+    from zhaoxi.observability import action_trace_scope
+    from zhaoxi.reliability import CorrelationContext, correlation_scope
+
+    now = datetime(2026, 9, 30, 22, tzinfo=ZoneInfo("Asia/Shanghai"))
+    agenda = AgendaService(SQLiteAgendaStore(tmp_path / "agenda.db"), clock=lambda: now)
+    item, _ = agenda.add(type=AgendaType.FOCUS, title="线上面试", note="唐超科是面试官")
+    for tool in create_agenda_tools(agenda):
+        registry.register(tool)
+
+    class AgendaProvider(FakeProvider):
+        async def generate(self, messages, tools=None, **kwargs):
+            response = await super().generate(messages, tools, **kwargs)
+            if outcome == "invalid_arguments" and len(self.calls) == 2:
+                raise ProviderError("invalid JSON", code="provider_tool_arguments_invalid")
+            return response
+
+    provider = AgendaProvider([
+        ModelResponse(tool_calls=[ToolCall(id="lookup", name="agenda_list", arguments={})]),
+        ModelResponse(tool_calls=[ToolCall(id="update", name="agenda_update", arguments={
+            "item_id": item.id, "note": "唐超科是候选人",
+        })]),
+        ModelResponse(tool_calls=[ToolCall(id="verify", name="agenda_list", arguments={})]),
+        ModelResponse(content="已修改并核对日程。"),
+    ])
+    agent = make_agent(provider, registry, context_builder, conversation)
+    with correlation_scope(CorrelationContext(trace_id="agenda-chain", request_id="agenda-chain")), action_trace_scope() as trace:
+        response = await agent.run("先查日程，把唐超科改为候选人，再查询核对", require_tool_call=True, required_tool="agenda_list")
+        assert "agenda_update" in {tool["function"]["name"] for tool in provider.tool_schemas[1]}
+        if outcome == "invalid_arguments":
+            assert agenda.require(item.id).note == "唐超科是面试官"
+            assert trace.task_status == "partial"
+            assert "本次任务未完成" in response.content
+            assert [action.tool_name for action in trace.actions] == ["agenda_list"]
+        else:
+            assert agenda.require(item.id).note == "唐超科是候选人"
+            assert trace.task_status == "completed"
+            assert response.content == "已修改并核对日程。"
+            assert [action.tool_name for action in trace.actions] == ["agenda_list", "agenda_update", "agenda_list"]
+            assert "agenda_list" in {tool["function"]["name"] for tool in provider.tool_schemas[2]}
+            verified = json.loads(provider.calls[3][-1].content)
+            assert verified["data"][0]["note"] == "唐超科是候选人"

@@ -42,7 +42,7 @@ model_logger = logging.getLogger("MODEL")
 
 TOOL_QUERY_NOT_COMPLETED_NOTICE = "（提醒：这次没有实际调用工具，回复未经工具核验。）"
 PROVIDER_DEGRADED_NOTICE = "（提醒：模型服务暂时不可用，这段回复可能不完整；已完成的工具操作已保留。）"
-TOOL_ARGUMENTS_DEGRADED_NOTICE = "（提醒：模型生成的后续工具参数格式有误；上面的工具结果已保留。）"
+TOOL_ARGUMENTS_DEGRADED_NOTICE = "（提醒：模型生成的后续工具参数格式有误，本次任务未完成；已执行的工具结果已保留。）"
 STEP_LIMIT_NOTICE = "（提醒：工具步骤已达到本轮上限，回复可能不完整；已完成的操作已保留。）"
 
 
@@ -777,7 +777,6 @@ class ZhaoxiAgent:
         required_tool: str | None = None,
         lookup_commitment: str = "",
         discovery: ToolDiscoveryState | None = None,
-        successful_tool_already: bool = False,
         turn_images: tuple[str, ...] = (),
         no_tools: bool = False,
         output_channel: str = "desktop",
@@ -800,7 +799,6 @@ class ZhaoxiAgent:
         capability_retry = False
         resolution_message = ""
         tool_called = discovery.business_tool_called
-        business_tool_succeeded = successful_tool_already
         corrective_retry = bool(lookup_commitment)
         trace = current_trace()
         response_started = False
@@ -814,7 +812,8 @@ class ZhaoxiAgent:
                 trace.emit("model_step_started", "model", "running", "正在思考下一步…", step_id=step)
             try:
                 budget_stage, final_only = self._budget_mode(tool_called, trace, step)
-                final_only = final_only or business_tool_succeeded or discovery.stalled >= 2 or (tool_called and trace is not None
+                # A successful tool can be a prerequisite, such as looking up an ID.
+                final_only = final_only or discovery.stalled >= 2 or (tool_called and trace is not None
                     and time.monotonic() - trace.started_monotonic >= self.timeout_seconds * 0.75)
                 if trace and step > 2 and not trace.extra_round_reason:
                     trace.extra_round_reason = ("tool_repair" if trace.tool_rounds > 1 else "discovery_or_model_retry")
@@ -943,6 +942,10 @@ class ZhaoxiAgent:
                                "最终回复生成失败" if error_code != "token_budget_exhausted" else "回复生成失败：本次请求 Token 预算耗尽",
                                step_id=step, error_code=error_code)
                     trace.response_status = "failed"
+                    if exc.code == "provider_tool_arguments_invalid":
+                        trace.terminal_status = "partial" if any(
+                            action.status == "completed" for action in trace.actions
+                        ) else "failed"
                 log_internal_failure("request=%s provider error", request_id, exc=exc)
                 if tool_called:
                     notice = (
@@ -1054,8 +1057,6 @@ class ZhaoxiAgent:
                         trace.emit_interim(str(call.arguments.get("content", "")), reason="agent")
                     continue
                 if call.name in {"request_tool_group", "inspect_tool_catalog"}:
-                    if business_tool_succeeded:
-                        continue
                     if trace and call.name == "inspect_tool_catalog":
                         trace.catalog_inspections += 1
                     result = self._run_control_tool(call, discovery)
@@ -1113,8 +1114,6 @@ class ZhaoxiAgent:
                 if trace and attempt:
                     self._finish_traced_tool(trace, attempt, execution)
                 tool_logger.info("request=%s tool=%s success=%s", request_id, observable_name, result.success)
-                if result.success:
-                    business_tool_succeeded = True
 
         logger.error("request=%s reached max steps=%d", request_id, self.max_steps)
         if trace:
@@ -1156,7 +1155,6 @@ class ZhaoxiAgent:
         else:
             self.tool_executor.gateway.deny(confirmation_id)
 
-        approved_tool_succeeded = False
         for position, call in enumerate(batch_calls, start=1):
             trace = current_trace()
             invocation_id = pending.invocation_id if position == 1 else uuid4().hex
@@ -1184,7 +1182,6 @@ class ZhaoxiAgent:
                     error="permission_denied",
                 )
             self._record_tool_result(call, result)
-            approved_tool_succeeded = approved_tool_succeeded or result.success
             if trace and attempt:
                 if position in approved_positions:
                     self._finish_traced_tool(trace, attempt, execution)
@@ -1210,7 +1207,6 @@ class ZhaoxiAgent:
             return continued
         return await self._run_loop(pending.request_id, user_intent=pending.user_intent,
                                     discovery=pending.discovery,
-                                    successful_tool_already=approved_tool_succeeded,
                                     turn_images=pending.images)
 
     def _record_tool_result(self, call: ToolCall, result: ToolResult) -> None:
