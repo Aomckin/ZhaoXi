@@ -12,7 +12,7 @@ def test_current_cognition_is_always_injected_alongside_recent_messages(tmp_path
     cognition = CurrentCognitionService(CurrentCognitionStore(tmp_path / "cognition.db"))
     agenda.add(type=AgendaType.FOCUS, title="完成 v1.2.6")
     cognition.apply(CurrentCognitionPatch(decision="UPDATE", reason_code="ongoing_mainline",
-        evidence_message_ids=["u1"], narrative_patch=[{"from": "", "to": "近期持续开发朝汐。"}]),
+        evidence_message_ids=["u1"], overview={"action": "replace", "value": "近期持续开发朝汐。"}),
         source_by_id={"u1": "user"}, evidence_by_id={"u1": "我近期持续开发朝汐"}, last_message_id="u1")
     builder = ContextBuilder("人格", agenda_service=agenda, current_cognition_service=cognition)
     system = builder.build(Conversation())[0].content
@@ -26,6 +26,8 @@ def test_current_cognition_is_always_injected_alongside_recent_messages(tmp_path
 def test_recent_context_failure_is_non_fatal():
     class Broken:
         def snapshot(self, **kwargs):
+            raise RuntimeError("broken")
+        def render_for_fast_chat(self):
             raise RuntimeError("broken")
     builder = ContextBuilder("人格", agenda_service=Broken(), current_cognition_service=Broken())
     messages = builder.build(Conversation())

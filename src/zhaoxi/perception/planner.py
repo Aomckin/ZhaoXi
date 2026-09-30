@@ -4,7 +4,7 @@ import re
 
 from pydantic import BaseModel, Field
 from zhaoxi.core.message import Message, Role
-from zhaoxi.current_cognition.service import CurrentCognitionPatch
+from zhaoxi.current_cognition.service import CurrentCognitionPatch, normalize_key
 from zhaoxi.memory.models import MemoryCandidate
 
 
@@ -91,7 +91,7 @@ class ExternalCognitionPlanner:
             if claim and (claim in evidence or any(word in evidence for word in claim.split() if len(word) >= 4)):
                 try:
                     patch = CurrentCognitionPatch(decision="UPDATE", reason_code="state_change",
-                        evidence_message_ids=[item.observation_id], attention_add=[claim])
+                        evidence_message_ids=[item.observation_id], watch_ops=[{"action": "upsert", "key": normalize_key(claim[:40]), "text": claim}])
                     state = self.agent.current_cognition.apply(patch,
                         source_by_id={item.observation_id: "owner_external"},
                         evidence_by_id={item.observation_id: evidence},

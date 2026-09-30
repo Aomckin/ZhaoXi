@@ -4,8 +4,13 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import re
 from io import BytesIO
 from pathlib import Path
+
+
+def references_image(text: str) -> bool:
+    return bool(re.search(r"图|照片|画面|视觉|看清|看见|影像|截图", text))
 
 
 class ImageThumbnailCache:

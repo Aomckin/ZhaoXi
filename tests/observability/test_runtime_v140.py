@@ -226,3 +226,18 @@ def test_planner_steps_include_description_status_and_duration():
         assert trace.events[0].metadata["steps"][0]["description"] == "读取饮食记录"
         assert "读取饮食记录" in trace.events[-1].display_message
         assert trace.events[-1].metadata["duration_ms"] >= 0
+
+def test_current_cognition_observatory_counters():
+    trace = ActionTrace("trace", "request")
+    trace.emit("current_cognition_gate", "current_cognition", "success", "gate",
+               metadata={"triggered": True, "reason": "state_signal"})
+    trace.emit("current_cognition_triggered", "current_cognition", "success", "trigger")
+    trace.emit("current_cognition_applied", "current_cognition", "success", "applied",
+               metadata={"duration_ms": 12.5, "ops_count": 2, "threads_added": 1,
+                         "threads_updated": 0, "threads_removed": 0})
+    metrics = trace.metrics()
+    assert metrics["current_cognition_gate"]["triggered"] is True
+    assert metrics["current_cognition_triggered"] == 1
+    assert metrics["current_cognition_model_ms"] == 12.5
+    assert metrics["current_cognition_ops_count"] == 2
+    assert metrics["threads_added"] == 1

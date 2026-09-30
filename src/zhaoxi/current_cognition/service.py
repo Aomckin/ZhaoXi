@@ -1,89 +1,76 @@
-"""Validate and apply small, evidence-bound edits to the live journal."""
-
+"""Validate and apply keyed operations to the living journal."""
 from __future__ import annotations
-
 import logging
-import json
 import re
 from datetime import datetime, timedelta
-from difflib import unified_diff
 from typing import Literal
 from zoneinfo import ZoneInfo
-
 from pydantic import BaseModel, Field, model_validator
-
-from .models import CurrentCognitionState, TopicObservation
-from .renderer import render
+from .models import CognitionThread, CurrentCognitionState, EvidenceRef, JournalItem
+from .renderer import render_for_debug, render_for_desk, render_for_fast_chat
 from .store import CurrentCognitionStore
 
 logger = logging.getLogger("CURRENT_COGNITION")
+_FORBIDDEN = re.compile(r"用户|该用户|用户自述|用户倾向|\d{1,2}:\d{2}|\d+(?:\.\d+)?(?:元|千卡|kcal)|[A-Za-z]:\\|早餐|午餐|晚餐|(?:明天|后天|今晚|下周\S{0,4}).{0,20}(?:面试|交|截止|开会|先修|提交|提醒)", re.I)
+_PSYCHOLOGY = re.compile(r"人格障碍|隐藏动机|逃避.{0,12}压力|因为.{0,24}所以")
+_ONE_OFF = re.compile(r"^(?:今天|刚才|刚刚).{0,12}(?:吃|喝|买|坐车|打车)")
+_ALIASES = {"朝汐开发": "zhaoxi_runtime", "zhaoxi开发": "zhaoxi_runtime",
+            "runtime_cleanup": "zhaoxi_runtime", "zhaoxi_runtime_cleanup": "zhaoxi_runtime",
+            "秋招": "job_search", "校招": "job_search"}
+_GENERIC = {"近期", "最近", "正在", "持续", "目前", "暗苟", "已经", "开始", "相关", "主要", "仍在", "仍然"}
 
-_TOPIC_ALIASES = {
-    "动漫": "动漫", "动画": "动漫", "二次元": "动漫", "番剧": "动漫",
-    "朝汐": "Zhaoxi开发", "zhaoxi": "Zhaoxi开发", "朝汐开发": "Zhaoxi开发",
-}
+def normalize_key(key: str) -> str:
+    key = re.sub(r"[^\w\u4e00-\u9fff]+", "_", key.strip().casefold()).strip("_")[:60]
+    return _ALIASES.get(key, key)
 
+def _anchored(claim: str, evidence: str) -> bool:
+    if not claim:
+        return True
+    pairs = {part[i:i+2] for part in re.findall(r"[\u4e00-\u9fff]{2,}", claim)
+             for i in range(len(part)-1) if part[i:i+2] not in _GENERIC}
+    seen = {part[i:i+2] for part in re.findall(r"[\u4e00-\u9fff]{2,}", evidence)
+            for i in range(len(part)-1)}
+    if pairs & seen:
+        return True
+    latin = set(re.findall(r"[a-zA-Z]{4,}", claim.casefold()))
+    return bool(latin & set(re.findall(r"[a-zA-Z]{4,}", evidence.casefold())))
 
-def normalize_topic(key: str) -> str:
-    key = key.strip().casefold()
-    return _TOPIC_ALIASES.get(key, key)
+class OverviewOp(BaseModel):
+    action: Literal["keep", "replace", "clear"] = "keep"
+    value: str = Field(default="", max_length=160)
 
-
-class NarrativeEdit(BaseModel):
-    from_text: str = Field(alias="from", max_length=700)
-    to: str = Field(max_length=700)
-
-
-class ObservationProposal(BaseModel):
+class ThreadOp(BaseModel):
+    action: Literal["upsert", "remove", "resolve"]
     key: str = Field(min_length=2, max_length=60)
-    source_message_id: str
+    title: str = Field(default="", max_length=40)
+    summary: str = Field(default="", max_length=160)
+    salience: float = Field(default=0.6, ge=0, le=1)
+    evidence_message_ids: list[str] = Field(default_factory=list, max_length=8)
 
+class ItemOp(BaseModel):
+    action: Literal["upsert", "remove"]
+    key: str = Field(min_length=2, max_length=60)
+    text: str = Field(default="", max_length=80)
+    evidence_message_ids: list[str] = Field(default_factory=list, max_length=4)
 
 class CurrentCognitionPatch(BaseModel):
-    decision: Literal["NO_CHANGE", "UPDATE"]
-    reason_code: Literal["no_overall_change", "ongoing_mainline", "state_change", "repeated_recent_theme", "cross_context"] = "no_overall_change"
+    decision: Literal["NO_CHANGE", "UPDATE"] = "NO_CHANGE"
+    reason_code: str = "no_overall_change"
     reason: str = Field(default="", max_length=200)
     evidence_message_ids: list[str] = Field(default_factory=list, max_length=8)
-    narrative_patch: list[NarrativeEdit] = Field(default_factory=list, max_length=3)
-    threads_add: list[str] = Field(default_factory=list, max_length=4)
-    threads_remove: list[str] = Field(default_factory=list, max_length=4)
-    attention_add: list[str] = Field(default_factory=list, max_length=3)
-    attention_remove: list[str] = Field(default_factory=list, max_length=3)
-    observations: list[ObservationProposal] = Field(default_factory=list, max_length=6)
+    overview: OverviewOp = Field(default_factory=OverviewOp)
+    thread_ops: list[ThreadOp] = Field(default_factory=list, max_length=8)
+    change_ops: list[ItemOp] = Field(default_factory=list, max_length=6)
+    watch_ops: list[ItemOp] = Field(default_factory=list, max_length=6)
 
     @model_validator(mode="after")
     def validate_decision(self):
-        edits = (self.narrative_patch or self.threads_add or self.threads_remove or
-                 self.attention_add or self.attention_remove)
+        edits = self.overview.action != "keep" or self.thread_ops or self.change_ops or self.watch_ops
         if self.decision == "NO_CHANGE" and edits:
             raise ValueError("NO_CHANGE cannot edit current cognition")
         if self.decision == "UPDATE" and not edits:
-            raise ValueError("UPDATE requires an edit")
+            raise ValueError("UPDATE requires an operation")
         return self
-
-
-_NOISE = re.compile(r"(?:[A-Za-z]:\\|[/\\][\w.-]+\.(?:db|md|py|json|log|html)|\b(?:SQL|Navicat|SQLite|API|Debug)\b|数据库|文件路径|工具调用|具体金额|\d{1,2}:\d{2}|\d+(?:\.\d+)?元|\d+(?:\.\d+)?(?:千卡|kcal)|睡眠.{0,8}\d+(?:\.\d+)?小时)", re.I)
-_PSYCHOLOGY = re.compile(r"逃避|心理诊断|人格障碍|缓解.{0,8}压力|因为.{0,30}所以")
-_ONE_OFF = re.compile(r"(?:吃了|吃饭|早餐|午餐|晚餐|买了|点了外卖|花了|打车|坐车)")
-_GENERIC_ANCHORS = {"近期", "最近", "正在", "持续", "目前", "用户", "暗苟", "已经", "开始", "相关", "主要", "仍在", "仍然"}
-
-
-def _has_evidence_anchor(claim: str, evidence: str) -> bool:
-    """Require at least one concrete lexical anchor; reject an unrelated model invention."""
-    if not claim.strip():
-        return True  # A removal need not introduce a new fact.
-    pairs = {word for phrase in re.findall(r"[\u4e00-\u9fff]{2,}", claim)
-             for word in (phrase[index:index + 2] for index in range(len(phrase) - 1))
-             if word not in _GENERIC_ANCHORS}
-    if pairs.intersection({word for phrase in re.findall(r"[\u4e00-\u9fff]{2,}", evidence)
-                           for word in (phrase[index:index + 2] for index in range(len(phrase) - 1))}):
-        return True
-    if "秋招" in claim and re.search(r"校招|面试|笔试|宣讲|岗位|网申|投递", evidence):
-        return True
-    if "朝汐" in claim and re.search(r"Zhaoxi|朝汐", evidence, re.I):
-        return True
-    return False
-
 
 class CurrentCognitionService:
     def __init__(self, store: CurrentCognitionStore, *, timezone: str = "Asia/Shanghai") -> None:
@@ -95,111 +82,158 @@ class CurrentCognitionService:
         return self.store.load()
 
     def snapshot(self, **_kwargs) -> str:
-        return render(self.state())
+        return render_for_fast_chat(self.state())
+
+    def render_for_fast_chat(self) -> str:
+        return render_for_fast_chat(self.state())
+
+    def render_for_desk(self) -> dict:
+        return render_for_desk(self.state())
 
     def diagnostics(self) -> dict:
         state = self.state()
-        return {"state": state.model_dump(mode="json"), "snapshot": render(state),
-                "updated_at": state.updated_at.isoformat() if state.updated_at else None,
-                "last_processed_message_id": state.last_processed_message_id,
+        now = datetime.now(self.timezone)
+        explanations = [{"key": thread.key,
+                         "why_exists": [ref.model_dump(mode="json") for ref in thread.source_refs],
+                         "retention_reason": "recent_evidence" if thread.status == "active" else "cooling_until_day_7",
+                         "days_since_evidence": round((now - thread.last_evidence_at).total_seconds() / 86400, 1)}
+                        for thread in state.threads]
+        return {"state": render_for_debug(state), "snapshot": render_for_fast_chat(state),
+                "desk": render_for_desk(state), "thread_explanations": explanations,
                 "last_maintenance": state.last_maintenance,
                 "recent_decisions": state.recent_decisions}
 
+    def _decay(self, state: CurrentCognitionState, now: datetime) -> dict:
+        counts = {"threads_removed": 0, "threads_updated": 0}
+        kept = []
+        for thread in state.threads:
+            days = (now - thread.last_evidence_at).total_seconds() / 86400
+            if days >= 7 or thread.status == "resolved":
+                counts["threads_removed"] += 1
+                continue
+            if days >= 3 and thread.status == "active":
+                thread.status = "cooling"
+                thread.salience = min(thread.salience, 0.45)
+                thread.last_updated_at = now
+                counts["threads_updated"] += 1
+            kept.append(thread)
+        state.threads = kept
+        state.recent_changes = [x for x in state.recent_changes if now - x.updated_at < timedelta(days=3)]
+        state.watch_items = [x for x in state.watch_items if now - x.updated_at < timedelta(days=7)]
+        if not state.threads and state.overview and state.updated_at and now - state.updated_at >= timedelta(days=7):
+            state.overview = ""
+        return counts
+
     def apply(self, patch: CurrentCognitionPatch, *, source_by_id: dict[str, str],
               last_message_id: str, evidence_by_id: dict[str, str] | None = None,
-              now: datetime | None = None, allow_empty_cursor: bool = False,
-              advance_cursor: bool = True) -> CurrentCognitionState:
+              timestamp_by_id: dict[str, datetime] | None = None, now: datetime | None = None,
+              allow_empty_cursor: bool = False, advance_cursor: bool = True,
+              model_call: bool = False, duration_ms: float = 0) -> CurrentCognitionState:
         now = now or datetime.now(self.timezone)
-        state = self.state()
         evidence_by_id = evidence_by_id or {}
-        # Observation counters are only a recent trend signal, not durable memory.
-        observations = {normalize_topic(item.key): item for item in state.observations
-                        if now - item.last_seen_at <= timedelta(days=7)}
-        for proposal in patch.observations:
-            if source_by_id.get(proposal.source_message_id) not in {"user", "owner_external"}:
-                continue
-            key = normalize_topic(proposal.key)
-            item = observations.get(key)
-            if item is None:
-                item = TopicObservation(key=key, last_seen_at=now)
-                observations[key] = item
-            if proposal.source_message_id not in item.message_ids:
-                item.count += 1
-                item.message_ids = [*item.message_ids, proposal.source_message_id][-8:]
-                item.last_seen_at = now
-        state.observations = sorted(observations.values(), key=lambda item: item.last_seen_at, reverse=True)[:12]
-
-        before = state.narrative
-        before_threads = state.ongoing_threads.copy()
-        before_attention = state.attention.copy()
-        decision = patch.decision
+        timestamp_by_id = timestamp_by_id or {}
+        state = self.state()
+        before = state.model_dump(mode="json")
+        counts = self._decay(state, now)
+        counts.update({"threads_added": 0, "ops_count": 0})
+        trusted = {key for key, source in source_by_id.items() if source in {"user", "owner_external"}}
+        all_ids = [key for key in patch.evidence_message_ids if key in trusted]
+        evidence = "\n".join(evidence_by_id.get(key, "") for key in all_ids)
         rejection = None
-        if decision == "UPDATE":
-            trusted = [message_id for message_id in patch.evidence_message_ids
-                       if source_by_id.get(message_id) in {"user", "owner_external"}]
-            evidence = "\n".join(evidence_by_id.get(message_id, "") for message_id in trusted)
-            proposed = " ".join([edit.to for edit in patch.narrative_patch] + patch.threads_add + patch.attention_add)
-            if not trusted:
+        claims = ([patch.overview.value] if patch.overview.action == "replace" else [])
+        claims += [part for x in patch.thread_ops if x.action == "upsert" for part in (x.title, x.summary)]
+        claims += [x.text for x in [*patch.change_ops, *patch.watch_ops] if x.action == "upsert"]
+        proposed = " ".join(claims)
+        if patch.decision == "UPDATE":
+            if not all_ids:
                 rejection = "missing_user_evidence"
-            elif _NOISE.search(proposed):
+            elif any(ids and not any(i in trusted for i in ids) for ids in
+                     [*(x.evidence_message_ids for x in patch.thread_ops if x.action == "upsert"),
+                      *(x.evidence_message_ids for x in [*patch.change_ops, *patch.watch_ops] if x.action == "upsert")]):
+                rejection = "untrusted_operation_evidence"
+            elif _FORBIDDEN.search(proposed):
                 rejection = "tool_or_queryable_detail"
-            elif _PSYCHOLOGY.search(proposed) and not all(claim in evidence for claim in _PSYCHOLOGY.findall(proposed)):
+            elif _PSYCHOLOGY.search(proposed):
                 rejection = "unsupported_psychology"
             elif _ONE_OFF.search(proposed):
                 rejection = "one_off_detail"
-            elif any(not _has_evidence_anchor(claim, evidence)
-                     for claim in [edit.to for edit in patch.narrative_patch] + patch.threads_add + patch.attention_add):
+            elif any(not _anchored(claim, evidence) for claim in claims):
                 rejection = "unsupported_claim"
-            elif patch.reason_code == "repeated_recent_theme" and not any(
-                item.count >= 3 and item.key in proposed for item in state.observations):
-                rejection = "insufficient_repetition"
-            else:
-                narrative = before
-                for edit in patch.narrative_patch:
-                    if edit.from_text:
-                        if edit.from_text not in narrative:
-                            rejection = "patch_target_missing"
-                            break
-                        narrative = narrative.replace(edit.from_text, edit.to, 1)
-                    elif not narrative.strip():
-                        narrative = edit.to
+            elif any(x.action == "upsert" and (not x.title.strip() or not x.summary.strip()) for x in patch.thread_ops):
+                rejection = "empty_thread"
+            elif any(x.action == "upsert" and not x.text.strip() for x in [*patch.change_ops, *patch.watch_ops]):
+                rejection = "empty_item"
+        if not rejection and patch.decision == "UPDATE":
+            if patch.overview.action == "replace":
+                state.overview = patch.overview.value.strip()
+                counts["ops_count"] += 1
+            elif patch.overview.action == "clear":
+                state.overview = ""
+                counts["ops_count"] += 1
+            for op in patch.thread_ops:
+                key = normalize_key(op.key)
+                same = next((t for t in state.threads if normalize_key(t.key) == key or
+                             (op.title and normalize_key(t.title) == normalize_key(op.title))), None)
+                if op.action in {"remove", "resolve"}:
+                    if same:
+                        state.threads.remove(same)
+                        counts["threads_removed"] += 1
+                        counts["ops_count"] += 1
+                    continue
+                refs = [EvidenceRef(message_id=i, event_id=i, timestamp=timestamp_by_id.get(i), source=source_by_id[i])
+                        for i in (op.evidence_message_ids or all_ids) if i in trusted]
+                if same:
+                    same.title, same.summary, same.salience = op.title.strip(), op.summary.strip(), op.salience
+                    same.status, same.last_updated_at, same.last_evidence_at = "active", now, now
+                    same.source_refs = (same.source_refs + refs)[-8:]
+                    counts["threads_updated"] += 1
+                else:
+                    state.threads.append(CognitionThread(key=key, title=op.title.strip(), summary=op.summary.strip(),
+                        salience=op.salience, first_seen_at=now, last_updated_at=now, last_evidence_at=now,
+                        source_refs=refs))
+                    counts["threads_added"] += 1
+                counts["ops_count"] += 1
+            for ops, collection in ((patch.change_ops, state.recent_changes),
+                                    (patch.watch_ops, state.watch_items)):
+                for op in ops:
+                    key = normalize_key(op.key)
+                    same = next((x for x in collection if normalize_key(x.key) == key), None)
+                    if op.action == "remove":
+                        if same:
+                            collection.remove(same)
+                            counts["ops_count"] += 1
+                        continue
+                    refs = [EvidenceRef(message_id=i, event_id=i, timestamp=timestamp_by_id.get(i), source=source_by_id[i])
+                            for i in (op.evidence_message_ids or all_ids) if i in trusted]
+                    if same:
+                        same.text, same.updated_at = op.text.strip(), now
+                        same.source_refs = (same.source_refs + refs)[-4:]
                     else:
-                        rejection = "append_without_target"
-                        break
-                threads = [x for x in state.ongoing_threads if x not in patch.threads_remove]
-                attention = [x for x in state.attention if x not in patch.attention_remove]
-                threads = list(dict.fromkeys([*threads, *patch.threads_add]))
-                attention = list(dict.fromkeys([*attention, *patch.attention_add]))
-                if not rejection and (len(narrative) > 700 or len(threads) > 4 or len(attention) > 3):
-                    rejection = "capacity_exceeded"
-                if not rejection:
-                    state.narrative = narrative.strip()
-                    state.ongoing_threads = threads
-                    state.attention = attention
-                    if (state.narrative, threads, attention) != (before, before_threads, before_attention):
-                        state.version += 1
-                        state.updated_at = now
-                    else:
-                        decision = "NO_CHANGE"
-        if rejection:
-            decision = "NO_CHANGE"
-        before_view = json.dumps({"narrative": before, "ongoing_threads": before_threads,
-                                  "attention": before_attention}, ensure_ascii=False, indent=2)
-        after_view = json.dumps({"narrative": state.narrative, "ongoing_threads": state.ongoing_threads,
-                                 "attention": state.attention}, ensure_ascii=False, indent=2)
-        diff = "\n".join(unified_diff(before_view.splitlines(), after_view.splitlines(), lineterm=""))[:1500]
-        record = {"decision": decision, "reason_code": patch.reason_code,
-                  "reason": patch.reason or patch.reason_code, "rejection": rejection, "at": now.isoformat(),
-                  "evidence_message_ids": patch.evidence_message_ids, "before_after_diff": diff,
-                  "patch": patch.model_dump(mode="json", by_alias=True)}
-        # A rejected patch and an empty bootstrap are still pending work.
-        if advance_cursor and not rejection and (state.narrative or allow_empty_cursor):
+                        collection.append(JournalItem(key=key, text=op.text.strip(), created_at=now,
+                                                      updated_at=now, source_refs=refs))
+                    counts["ops_count"] += 1
+        state.threads.sort(key=lambda t: (t.status != "active", -t.salience, -t.last_evidence_at.timestamp()))
+        active = [x for x in state.threads if x.status == "active"][:4]
+        cooling = [x for x in state.threads if x.status == "cooling"][:3]
+        state.threads = active + cooling
+        state.recent_changes = sorted(state.recent_changes, key=lambda x: x.updated_at, reverse=True)[:3]
+        state.watch_items = sorted(state.watch_items, key=lambda x: x.updated_at, reverse=True)[:3]
+        changed = state.model_dump(mode="json") != before
+        if changed:
+            state.version = max(2, state.version + 1)
+            state.updated_at = now
+        decision = "UPDATE" if changed else "NO_CHANGE"
+        if advance_cursor and not rejection and (state.overview or state.threads or state.recent_changes or state.watch_items or allow_empty_cursor):
             state.last_processed_message_id = last_message_id
+        record = {"decision": decision, "reason_code": patch.reason_code, "reason": patch.reason or patch.reason_code,
+                  "rejection": rejection, "at": now.isoformat(), "evidence_message_ids": all_ids,
+                  "model_call": model_call, "duration_ms": round(duration_ms, 2), **counts,
+                  "operations": patch.model_dump(mode="json")}
         state.last_maintenance = record
-        state.recent_decisions = [*state.recent_decisions, {k: v for k, v in record.items() if k != "patch"}][-10:]
+        state.recent_decisions = [*state.recent_decisions, {k: v for k, v in record.items() if k != "operations"}][-10:]
         self.store.save(state)
         self.last_maintenance = record
-        logger.info("COGNITION_%s version=%d rejection=%s", decision, state.version, rejection)
+        logger.info("COGNITION_%s version=%d rejection=%s ops=%d", decision, state.version, rejection, counts["ops_count"])
         return state
 
     def record_failure(self, exc: Exception, *, details: dict | None = None) -> None:

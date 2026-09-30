@@ -134,6 +134,8 @@ async def test_current_message_image_reaches_lifehud_without_entering_tool_argum
     assert paths == ['/api/images', '/api/life/meals', '/api/life/meals/meal-1']
     assert call.arguments['arguments']['images'] == ['<current-message-image>']
     assert agent.conversation.messages[-2].role == Role.TOOL
+    assert [len(message.images) for message in provider.calls[0] if message.role == Role.USER] == [1]
+    assert [len(message.images) for message in provider.calls[1] if message.role == Role.USER] == [1]
 
 
 async def test_lifehud_image_survives_write_confirmation():
@@ -158,3 +160,95 @@ async def test_lifehud_image_survives_write_confirmation():
     result = await agent.approve_permission(waiting.permission_confirmation.confirmation_id)
     assert result.content == '完成'
     assert paths == ['/api/images', '/api/life/meals', '/api/life/meals/meal-1']
+
+def test_live_timeline_keeps_current_image_in_tool_free_finalization(tmp_path):
+    from zhaoxi.cognitive_stream import ExperienceStream, AttentionRetriever
+    from zhaoxi.cognitive_stream.ingress import CognitiveIngress
+    from zhaoxi.cognitive_stream.turn import CognitiveTurnContext, set_current_turn, reset_current_turn
+    stream = ExperienceStream(tmp_path / "experience.db")
+    ingress = CognitiveIngress(stream)
+    conversation = Conversation()
+    old = conversation.add_user("旧图片", images=[PNG])
+    ingress.desktop("旧图片", message_id=old.message_id, images=[PNG], channel="web")
+    current = conversation.add_user("请查看这些图片。", images=[PNG])
+    trigger = ingress.desktop(current.content, message_id=current.message_id,
+                              images=[PNG], channel="web")
+    builder = ContextBuilder("人格")
+    builder.attention_retriever = AttentionRetriever(stream)
+    token = set_current_turn(CognitiveTurnContext(
+        trigger_event=trigger, output_channel="web", images=(PNG,)))
+    try:
+        final = builder.build(conversation, output_channel="web",
+            current_image_message_id=current.message_id,
+            release_images=True, preserve_current_image=True)
+    finally:
+        reset_current_turn(token)
+    assert sum(len(message.images) for message in final) == 1
+    assert final[-1].images == [PNG]
+
+async def test_image_only_request_is_one_vision_call_without_tools():
+    from zhaoxi.cognitive.coordinator import CognitiveCoordinator
+    provider = FakeProvider([ModelResponse(content="看到了这张图片。")])
+    agent = ZhaoxiAgent(provider=provider, registry=ToolRegistry(),
+                        context_builder=ContextBuilder("朝汐"))
+    router = SimpleNamespace(route=AsyncMock())
+    agent.cognitive = CognitiveCoordinator(agent=agent, router=router)
+    reply = await agent.run_natural("请查看这些图片。", images=[PNG])
+    assert "看到了" in reply.content
+    assert len(provider.calls) == 1
+    assert provider.tool_schemas == [None]
+    assert [m.images for m in provider.calls[0] if m.role == Role.USER] == [[PNG]]
+    router.route.assert_not_awaited()
+
+
+async def test_new_image_turn_keeps_earlier_image_as_thumbnail():
+    provider = FakeProvider([ModelResponse(content="看到两张图了。")])
+    conversation = Conversation()
+    conversation.add_user("旧图", images=[PNG])
+    agent = ZhaoxiAgent(provider=provider, registry=ToolRegistry(),
+                        context_builder=ContextBuilder("朝汐"), conversation=conversation)
+    await agent.run("比较这两张图", images=[PNG], no_tools=True)
+    pictured = [message for message in provider.calls[0] if message.role is Role.USER]
+    assert pictured[0].images[0].startswith("data:image/jpeg;base64,")
+    assert pictured[1].images == [PNG]
+
+
+@pytest.mark.parametrize("question", ["现在能看到前面那个如龙里的人物吗", "他的眼镜什么颜色？"])
+async def test_historical_images_survive_tool_finalization_without_image_keywords(tmp_path, question):
+    from zhaoxi.cognitive_stream import ExperienceStream, AttentionRetriever
+    from zhaoxi.cognitive_stream.ingress import CognitiveIngress
+    from zhaoxi.cognitive_stream.turn import CognitiveTurnContext, set_current_turn, reset_current_turn
+    from zhaoxi.tools.builtin import create_builtin_tools
+
+    stream = ExperienceStream(tmp_path / "experience.db")
+    ingress = CognitiveIngress(stream)
+    conversation = Conversation()
+    old = conversation.add_user("这张图呢？", images=[PNG, PNG])
+    ingress.desktop(old.content, message_id=old.message_id, images=old.images, channel="web")
+    conversation.add_assistant("之前的回复误称只能看到文字。")
+    trigger = ingress.desktop(question, channel="web")
+    builder = ContextBuilder("朝汐")
+    builder.attention_retriever = AttentionRetriever(stream)
+    registry = ToolRegistry()
+    for tool in create_builtin_tools():
+        registry.register(tool)
+    provider = FakeProvider([
+        ModelResponse(tool_calls=[ToolCall(id="time-1", name="current_time", arguments={})]),
+        ModelResponse(content="现在仍能看到历史图片。"),
+    ])
+    agent = ZhaoxiAgent(provider=provider, registry=registry, context_builder=builder,
+                        conversation=conversation, tool_router_mode="all")
+    token = set_current_turn(CognitiveTurnContext(trigger_event=trigger, output_channel="web"))
+    try:
+        await agent.run_direct(question)
+    finally:
+        reset_current_turn(token)
+    assert len(provider.calls) == 2
+    assert provider.tool_schemas[1]
+    initial = [image for message in provider.calls[0] for image in message.images]
+    final = [image for message in provider.calls[1] for image in message.images]
+    assert len(initial) == 2
+    assert all(image.startswith("data:image/jpeg;base64,") for image in initial)
+    assert final == initial
+    assert stream.get(trigger.event_id).content == question
+    assert old.images == [PNG, PNG]

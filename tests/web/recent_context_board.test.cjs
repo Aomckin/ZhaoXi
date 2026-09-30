@@ -54,7 +54,7 @@ test('same-time event and matching window share one visual node without losing e
 });
 
 test('current cognition uses one paper, hides absent sections and uses text-only content',async()=>{
-  const s=setup({agenda:[],current_cognition:{overview:'最近持续开发 Zhaoxi',sections:{active_context:['秋招'],recent_change:['<script>alert(1)</script>']},updated_at:'2026-09-24T09:00:00+08:00'},errors:{}});
+  const s=setup({agenda:[],current_cognition:{overview:'最近持续开发 Zhaoxi',sections:{active_thread:['秋招'],recent_change:['<script>alert(1)</script>']},updated_at:'2026-09-24T09:00:00+08:00'},errors:{}});
   await s.context.setupRecentContextBoard();
   assert.equal(s.memory.children.length,1);
   const nodes=flatten(s.memory);

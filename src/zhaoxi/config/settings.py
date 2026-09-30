@@ -4,6 +4,7 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from zhaoxi.errors import ConfigError
+from zhaoxi.config.fast_gate import FastGateConfig
 
 
 class Settings(BaseSettings):
@@ -19,6 +20,7 @@ class Settings(BaseSettings):
     interim_reply_max_count: int = Field(default=1, ge=0, le=3)
     planner_interim_reply_max_count: int = Field(default=2, ge=0, le=4)
     memory_retrieval_debug_enabled: bool = True
+    fast_gate: FastGateConfig = Field(default_factory=FastGateConfig)
     fast_dialogue_enabled: bool = True
     fast_dialogue_recent_limit: int = Field(default=8, ge=1, le=12)
     fast_dialogue_context_max_chars: int = Field(default=3000, ge=500, le=6000)

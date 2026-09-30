@@ -421,6 +421,7 @@ class ZhaoxiAgent:
         require_tool_call: bool = False,
         required_tool: str | None = None,
         images: list[str] | None = None,
+        no_tools: bool = False,
     ) -> AgentResponse:
         """Accept one user turn and return a final natural-language response."""
         if not user_message.strip():
@@ -462,6 +463,7 @@ class ZhaoxiAgent:
                     require_tool_call=require_tool_call,
                     required_tool=required_tool,
                     turn_images=tuple(images or ()),
+                    no_tools=no_tools,
                 ),
                 timeout=self.timeout_seconds,
             )
@@ -844,8 +846,9 @@ class ZhaoxiAgent:
                 context_options = {}
                 if absorbed:
                     context_options["absorbed_tool_call_ids"] = absorbed
-                if final_only:
-                    context_options["release_images"] = True
+                # Finalization still needs the visual evidence from this turn.
+                # ContextBuilder already thumbnails historical images; a tool
+                # result is not a replacement for those image parts.
                 context_options["current_image_message_id"] = current_image_message_id
                 context_started = time.monotonic()
                 messages = self.context_builder.build(
@@ -859,8 +862,9 @@ class ZhaoxiAgent:
                                step_id=step, metadata={"count": compaction["tool_results"],
                                                        "chars_saved": compaction["tool_chars_saved"]})
                 if trace and compaction.get("images_released"):
-                    trace.emit("image_context_released", "context", "success", "收尾阶段已释放原图",
-                               step_id=step, metadata={"image_count": compaction["images_released"]})
+                    trace.emit("image_context_released", "context", "success", "已移除无关图片副本",
+                               step_id=step, metadata={"image_count": compaction["images_released"],
+                                                       "current_image_preserved": bool(turn_images)})
                 if trace and (compaction.get("tool_results") or compaction.get("images_released")):
                     trace.emit("context_compacted", "context", "success", "已整理本轮上下文",
                                step_id=step, metadata=compaction)

@@ -11,6 +11,14 @@
 
 ## v1.4.x
 
+- [v1.4.2 开发记录与验收边界](v1.4.x/Zhaoxi_v1.4.2_开发记录.md)
+- [v1.4.2 Current Cognition 2.0 / Living Journal 任务书](v1.4.x/Zhaoxi_v1.4.2_Current_Cognition_2.0_Living_Journal_Task.md)
+- [v1.4.2 Fast Gate 2.0 轻量补丁任务书](v1.4.x/Zhaoxi_v1.4.2_Fast_Gate_2.0_Lightweight_Patch_Task.md)
+- [v1.4.2 Fast Gate 与单向能力升级开发记录](v1.4.x/Zhaoxi_v1.4.2_Fast_Gate_2.0_开发记录.md)
+- [Fast Gate 25 条真实模型隔离验收](v1.4.x/evidence/fast_gate_v2_real_provider.json)
+- [Tool / Recall / Decision 真实模型隔离验收](v1.4.x/evidence/fast_escalation_real_provider.json)
+- [v1.4.1 开发记录](v1.4.x/Zhaoxi_v1.4.1_开发记录.md)
+
 - [v1.4.0 开发交付说明](v1.4.x/Zhaoxi_v1.4.0_交付说明.md)
 - [v1.4.0 Runtime Observatory & Progressive Response 任务书](v1.4.x/Zhaoxi_v1.4.0_Runtime_Observatory_Progressive_Response_Task.md)
 - [v1.4.0 回复交付、可见性与长任务收口补丁任务书](v1.4.x/Zhaoxi_v1.4.0_Progressive_Response_Visibility_Patch_Task.md)

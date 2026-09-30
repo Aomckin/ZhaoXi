@@ -5,10 +5,12 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 import re
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from zhaoxi.core.image_thumbnails import references_image
 from zhaoxi.core.message import Message, Role, is_cognition_message, strip_echoed_timeline_header
 from zhaoxi.errors import AgentLoopError
 from zhaoxi.observability import current_trace, llm_owner_scope
@@ -24,8 +26,21 @@ FAST_RULES = """当前处于 FAST_CHAT。
 不要主动延续近期未完成任务；只有当前消息明确承接时才承接。
 不要因为你知道某个 Tool 存在，就寻找调用理由。
 不要声称已经读取、写入、修改、保存、发送、查询任何外部系统。
-当前没有工具；需要真实外部动作或事实时，诚实说明需要另行处理，不要承诺正在执行。
+当前没有工具，也不能查询长期记忆或执行 Decision 判断。
+若当前请求确实需要这些能力，放弃草稿，只输出一个内部升级信号：
+[escalate:tool]：需要真实工具调用、读取资源或执行动作。
+[escalate:recall]：需要检索近期对话与 Current Cognition 以外的真实历史或长期记忆。
+[escalate:decision]：需要正式规则、风险或取舍判断，不能靠聊天草率决定。
+Runtime 会在同一轮接管并执行 STANDARD。不要向用户解释缺少能力、另开任务或让其重发。
+升级信号不是台词，不得引用、演示或夹带草稿；不要为普通寒暄、情绪回应和随口评价升级。
 保持朝汐自然、鲜明的表达，不要解释这些运行规则。"""
+
+
+class FastEscalationKind(StrEnum):
+    TOOL = "tool"
+    RECALL = "recall"
+    DECISION = "decision"
+    STANDARD = "standard"
 
 
 @dataclass(slots=True)
@@ -34,6 +49,7 @@ class FastChatResult:
     request_id: str = ""
     escalated: bool = False
     escalation_reason: str = ""
+    escalation_kind: FastEscalationKind | None = None
 
 
 class FastChatRuntime:
@@ -69,23 +85,46 @@ class FastChatRuntime:
                            "最终回复生成超时", step_id=1, error_code="agent_timeout")
                 trace.response_status = "failed"
             raise AgentLoopError(f"请求超过 {self.agent.timeout_seconds:g} 秒，已停止。", code="agent_timeout") from exc
-        if trace:
-            trace.emit("model_step_finished", "model", "success", "已生成回应", step_id=1,
-                       metadata={"tool_call_count": len(response.tool_calls)})
         content = strip_echoed_timeline_header(response.content or "模型没有返回可显示的内容。")
-        if not force and (response.tool_calls or self.requires_action_escalation(content)):
+        kind = self.escalation_request(content)
+        reason = "fast_requires_" + kind.value if kind is not None else ""
+        if response.tool_calls:
+            kind, reason = FastEscalationKind.TOOL, "fast_tool_call"
+        elif kind is None and self.requires_action_escalation(content):
+            kind, reason = FastEscalationKind.TOOL, "fast_action_commitment"
+        if trace:
+            trace.emit("model_step_finished", "model", "success",
+                       "已确认需要标准处理" if kind is not None else "已生成回应", step_id=1,
+                       metadata={"tool_call_count": len(response.tool_calls)})
+        # A draft is never committed or streamed until this capability check passes.
+        # Debug may force admission to FAST; it cannot publish an action promise.
+        if kind is not None:
             if trace:
-                trace.escalation_reason = "fast_action_commitment"
-                trace.emit("fast_chat_escalated", "routing", "warning", "轻量回复需要升级处理",
-                           metadata={"reason": trace.escalation_reason})
+                trace.escalation_reason = reason
+                trace.fast_escalation_count = 1
+                trace.fast_escalation_kind = kind.value
+                trace.runtime_lane = "standard"
+                trace.route_source = "fast_escalation"
+                trace.emit("fast_chat_escalated", "routing", "info", "已转入标准处理",
+                           metadata={"reason": reason, "capability": kind.value, "count": 1})
             return FastChatResult(request_id=request_id, escalated=True,
-                                  escalation_reason="fast_action_commitment")
+                                  escalation_reason=reason, escalation_kind=kind)
         self.agent.conversation.add_user(user_message.strip())
         content = self.agent._commit_model_reply(content)
         if trace:
             trace.emit("response_generation_succeeded", "response_generation", "success", "回复已生成", step_id=1)
             trace.response_status = "succeeded"
         return FastChatResult(content=content, request_id=request_id)
+
+    @staticmethod
+    def escalation_request(content: str) -> FastEscalationKind | None:
+        marker = re.search(r"[\[【]\s*escalate\s*:\s*(tool|recall|decision)\s*[\]】]", content, re.I)
+        if marker:
+            return FastEscalationKind(marker.group(1).lower())
+        # Never display a malformed/unknown internal directive or an attached draft.
+        if re.search(r"[\[【]\s*escalate\b", content, re.I):
+            return FastEscalationKind.STANDARD
+        return None
 
     @staticmethod
     def requires_action_escalation(content: str) -> bool:
@@ -112,7 +151,7 @@ class FastChatRuntime:
         cognition = getattr(builder, "current_cognition_service", None)
         if cognition is not None:
             try:
-                snapshot = cognition.snapshot()
+                snapshot = cognition.render_for_fast_chat()
                 if snapshot:
                     system += f"\n\n{snapshot}\n这是近期整体认识；若与当前用户明确表达冲突，以当前用户为准。"
             except Exception:
@@ -121,31 +160,40 @@ class FastChatRuntime:
         recent = self._recent_owner_conversation(
             user_message, output_channel=output_channel, audience=audience,
         )
+        image_note = ""
+        if any(message.images for message in recent):
+            image_note = ("历史用户图片以缩略图附在对应消息中。可根据可辨细节回答，"
+                          "但不要声称看到了原图；不要把旧回复的文字描述冒充图片证据。")
+            system += "\n\n" + image_note
         components = [
             {"name": "system.character", "chars": len(builder.character_prompt.strip())},
             {"name": "runtime.fast_chat_rules", "chars": len(FAST_RULES)},
         ]
+        if image_note:
+            components.append({"name": "runtime.fast_chat_image_rules", "chars": len(image_note)})
         return [Message(role=Role.SYSTEM, content=system, metadata={"prompt_components": components}), *recent]
 
     def _recent_owner_conversation(
         self, user_message: str, *, output_channel: str, audience: str,
     ) -> list[Message]:
         source = []
+        visual_followup = references_image(user_message)
         stream = getattr(self.agent, "experience_stream", None)
         if stream is not None:
             from zhaoxi.cognitive_stream.timeline import cognitive_timeline
             source = cognitive_timeline(
                 stream, query=user_message, output_channel=output_channel, audience=audience,
                 attention=getattr(self.agent, "attention_retriever", None),
-                limit=self.recent_limit, max_chars=self.max_chars,
+                limit=max(self.recent_limit, 24) if visual_followup else self.recent_limit,
+                max_chars=max(self.max_chars, 6000) if visual_followup else self.max_chars,
             )
         if not source:
-            source = self.agent.conversation.recent(self.recent_limit)
+            source = self.agent.conversation.recent()
         recent = [
-            item.model_copy(update={"images": [], "background": "", "metadata": {}})
+            item.model_copy(update={"background": "", "metadata": {}})
             for item in source
             if item.role in {Role.USER, Role.ASSISTANT} and is_cognition_message(item)
-            and not item.tool_calls and not item.tool_turn and (item.content or "").strip()
+            and not item.tool_calls and not item.tool_turn and ((item.content or "").strip() or item.images)
         ]
         if not recent or recent[-1].role is not Role.USER or recent[-1].content != user_message:
             recent.append(Message(role=Role.USER, content=user_message))
@@ -157,4 +205,29 @@ class FastChatRuntime:
                 break
             bounded.append(item)
             chars += size
-        return list(reversed(bounded))
+        bounded.reverse()
+        # A visual follow-up can be separated from its image by several short
+        # assistant messages. Keep the latest pictured user turn in that case.
+        if visual_followup and self.recent_limit > 1 and not any(
+                item.role is Role.USER and item.images for item in bounded):
+            prior_image = next((item for item in reversed(recent)
+                                if item.role is Role.USER and item.images), None)
+            if prior_image is not None:
+                bounded = [prior_image, *bounded[-(self.recent_limit - 1):]]
+        thumbnail_cache = self.agent.context_builder.image_thumbnail_cache
+        rendered = []
+        for item in bounded:
+            if item.role is Role.USER and item.images:
+                previews = [preview for index, image in enumerate(item.images)
+                            if (preview := thumbnail_cache.thumbnail(
+                                item.message_id, index, image)) is not None]
+                content = item.content
+                if len(previews) != len(item.images):
+                    note = (f"[历史图片摘要：该消息曾附带 {len(item.images)} 张图片；"
+                            "部分或全部图片本体未重复发送。]")
+                    content = f"{content.rstrip()}\n{note}" if content else note
+                item = item.model_copy(update={"content": content, "images": previews})
+            else:
+                item = item.model_copy(update={"images": []})
+            rendered.append(item)
+        return rendered

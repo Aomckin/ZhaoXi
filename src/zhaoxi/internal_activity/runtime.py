@@ -138,13 +138,13 @@ class InternalActivityRuntime:
                 pending = self._pending_turns()
                 self.state[name]["pending_signal_count"] = pending
                 if not forced:
-                    if not cognition.narrative and users >= self.settings.current_cognition_bootstrap_min_turns:
+                    if not cognition.overview and not cognition.threads and users >= self.settings.current_cognition_bootstrap_min_turns:
                         reason = "bootstrap"
-                    elif cognition.narrative and pending >= self.settings.current_cognition_consolidation_min_turns:
+                    elif (cognition.overview or cognition.threads) and pending >= self.settings.current_cognition_consolidation_min_turns:
                         reason = "pending_turns"
                     elif self.state[name]["dirty"] and users:
                         reason = "recovery"
-                    elif cognition.narrative and cognition.observations and self._last(name, "last_success_at") and now - self._last(name, "last_success_at") >= timedelta(hours=self.settings.current_cognition_consolidation_max_hours):
+                    elif (cognition.overview or cognition.threads) and (self._last(name, "last_success_at") or cognition.updated_at) and now - aware_utc(self._last(name, "last_success_at") or cognition.updated_at) >= timedelta(hours=self.settings.current_cognition_consolidation_max_hours):
                         reason = "periodic"
                 priority = 100 if reason == "bootstrap" else 70
                 kind = "llm"

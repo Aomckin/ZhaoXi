@@ -95,6 +95,13 @@ class ActionTrace:
     runtime_lane: str | None = None
     route_source: str | None = None
     fast_gate_reason: str | None = None
+    fast_gate_details: dict[str, object] = field(default_factory=dict)
+    router_required: bool = False
+    router_override: bool = False
+    router_final_lane: str | None = None
+    router_to_fast_count: int = 0
+    fast_escalation_count: int = 0
+    fast_escalation_kind: str | None = None
     escalation_reason: str | None = None
     extra_round_reason: str | None = None
     tool_rounds: int = 0
@@ -306,10 +313,23 @@ class ActionTrace:
                 "memory_hits": self.memory_hits, "memory_search_count": sum(e.event_type == "memory_search_started" for e in self.events),
                 "memory_candidates": self.memory_candidates, "tool_rounds": self.tool_rounds,
                 "catalog_inspections": self.catalog_inspections,
+                "current_cognition_gate": next((e.metadata for e in reversed(self.events) if e.event_type == "current_cognition_gate"), None),
+                "current_cognition_triggered": sum(e.event_type == "current_cognition_triggered" for e in self.events),
+                "current_cognition_skipped": sum(e.event_type == "current_cognition_skipped" for e in self.events),
+                "current_cognition_model_ms": round(sum(float(e.metadata.get("duration_ms") or 0) for e in self.events if e.event_type == "current_cognition_applied"), 2),
+                "current_cognition_ops_count": sum(int(e.metadata.get("ops_count") or 0) for e in self.events if e.event_type == "current_cognition_applied"),
+                "threads_added": sum(int(e.metadata.get("threads_added") or 0) for e in self.events if e.event_type == "current_cognition_applied"),
+                "threads_updated": sum(int(e.metadata.get("threads_updated") or 0) for e in self.events if e.event_type == "current_cognition_applied"),
+                "threads_removed": sum(int(e.metadata.get("threads_removed") or 0) for e in self.events if e.event_type == "current_cognition_applied"),
                 "planner_used": self.planner_used, "decision_used": self.decision_used,
                 "interim_replies": self.interim_replies,
                 "route": self.route, "runtime_lane": self.runtime_lane, "route_source": self.route_source,
                 "fast_gate_reason": self.fast_gate_reason, "escalation_reason": self.escalation_reason,
+                "fast_escalation_count": self.fast_escalation_count,
+                "fast_escalation_kind": self.fast_escalation_kind,
+                **self.fast_gate_details,
+                "router_required": self.router_required, "router_override": self.router_override,
+                "router_final_lane": self.router_final_lane, "router_to_fast_count": self.router_to_fast_count,
                 "extra_round_reason": self.extra_round_reason,
                 "timeline": [event.payload() for event in self.events]}
 

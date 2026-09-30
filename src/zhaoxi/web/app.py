@@ -993,15 +993,7 @@ def create_app(
         cognition = getattr(core, "current_cognition", None)
         if cognition is not None:
             try:
-                state = cognition.state()
-                sections = {category: [] for category in ("active_context", "active_thread", "recent_topic", "recent_change", "unresolved")}
-                sections["active_thread"] = state.ongoing_threads
-                sections["unresolved"] = state.attention
-                result["current_cognition"] = {
-                    "overview": state.narrative,
-                    "sections": sections,
-                    "updated_at": state.updated_at.isoformat() if state.updated_at else None,
-                }
+                result["current_cognition"] = cognition.render_for_desk()
             except Exception as exc:
                 logger.warning("recent context board read failed module=current_cognition type=%s", type(exc).__name__)
                 result["errors"]["current_cognition"] = "暂时无法读取。"

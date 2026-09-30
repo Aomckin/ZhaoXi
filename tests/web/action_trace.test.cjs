@@ -130,3 +130,32 @@ test('live calls show duration and final metrics distinguish ordinary agent exec
   assert.match(s.nodes['#actionRuntimeSummary'].textContent,/2000.00 ms/);
   assert.match(s.nodes['#actionPlannerStatus'].textContent,/普通 Agent/);
 });
+
+
+test('Fast Gate 2 observatory explains votes and router fallback as text',()=>{
+  const s=setup();
+  s.context.renderRuntimeMetrics({fast_gate_version:2,fast_gate_decision:'AMBIGUOUS',
+    fast_score:0.8,heavy_score:0.5,fast_positive_evidence:['recent_context_sufficient'],
+    heavy_evidence:['resource_reference_confidence'],
+    fast_gate_signals:{conversation_likeness:0.8,resource_reference_confidence:0.5,signal_errors:['<script>example</script>']},
+    router_required:true,router_override:true,router_final_lane:'fast_chat',router_to_fast_count:1});
+  const node=s.nodes['#actionRuntimeSummary'];
+  assert.match(node.textContent,/Fast Gate 2 · AMBIGUOUS · FAST 分数 0.8 · HEAVY 分数 0.5/);
+  assert.match(node.textContent,/FAST 依据：recent_context_sufficient/);
+  assert.match(node.textContent,/HEAVY 依据：resource_reference_confidence/);
+  assert.match(node.textContent,/信号 conversation_likeness：0.8/);
+  assert.match(node.textContent,/Router required true · override true · final fast_chat · 回到 FAST 1/);
+  assert.match(node.textContent,/<script>example<\/script>/);
+  assert.equal(node.innerHTML,undefined);
+});
+
+
+test('Debug shows the single capability upgrade without rendering a draft',()=>{
+  const s=setup();
+  s.context.renderRuntimeMetrics({runtime_lane:'standard',route_source:'fast_escalation',
+    escalation_reason:'fast_requires_recall',fast_escalation_count:1,fast_escalation_kind:'recall'});
+  const text=s.nodes['#actionRuntimeSummary'].textContent;
+  assert.match(text,/STANDARD \/ 标准/);
+  assert.match(text,/FAST → STANDARD 1 次 · 能力 recall/);
+  assert.match(text,/升级：fast_requires_recall/);
+});

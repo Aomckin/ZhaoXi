@@ -605,7 +605,7 @@ class InterfaceGateway:
                             ids = {item["message_id"] for item in snapshot["messages"]}
                             if cursor != snapshot.get("base_cursor") and cursor not in ids:
                                 return {"status": "superseded"}
-                        result = await maintainer.maintain([Message.model_validate(item) for item in snapshot["messages"]])
+                        result = await maintainer.maintain([Message.model_validate(item) for item in snapshot["messages"]], final_reply=snapshot.get("reply", ""))
                         if result in {"FAILED", "REJECTED"}:
                             raise RuntimeError("current_cognition_maintenance_failed")
                 trace.emit(name + "_finished", stage, "success", "后台维护已完成")

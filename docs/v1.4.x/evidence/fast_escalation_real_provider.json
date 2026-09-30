@@ -1,0 +1,68 @@
+{
+  "at": "2026-09-30T14:54:18.893826+00:00",
+  "model": "deepseek/deepseek-v4-flash",
+  "mode": "real_provider_isolated_fast_escalation",
+  "cases": [
+    {
+      "capability": "tool",
+      "input": "请读取验收夹具中的计划.md，告诉我它说了什么。",
+      "response": "读到了，计划.md 的内容是：\n\n> 合成验收计划：蓝色方案先实现小范围回归，然后确认工具权限边界。\n\n要点就两条：先按蓝色方案做小范围回归验证，之后再去确认工具权限的边界。文档很短，没有更多细节——需要我顺手把另外那份未来开发计划或面试历史也调出来对照吗？",
+      "metrics": {
+        "runtime_lane": "standard",
+        "route_source": "fast_escalation",
+        "route": "tool",
+        "fast_escalation_count": 1,
+        "fast_escalation_kind": "tool",
+        "escalation_reason": "fast_requires_tool",
+        "foreground_llm_calls": 3,
+        "router_llm_calls": 0,
+        "memory_search_count": 1,
+        "decision_used": false,
+        "tool_rounds": 1
+      },
+      "no_directive_leak": true,
+      "passed": true
+    },
+    {
+      "capability": "recall",
+      "input": "我上次说那辆测试车是什么颜色来着？请核对真实的长期记忆。",
+      "response": "查了长期记忆里唯一一条相关的：**蓝色**。\n\n不过把话说清楚——那条记录的记录时间是 2026-09-30，事件时间一栏是空的，也就是说我能确认「记忆里写的是蓝色」，但没法从这条记录本身推出你具体是哪天说的、当时是不是同一辆车。如果你要更硬的依据，书库那边我也可以顺手核一遍，要我查吗？",
+      "metrics": {
+        "runtime_lane": "standard",
+        "route_source": "fast_escalation",
+        "route": "tool",
+        "fast_escalation_count": 1,
+        "fast_escalation_kind": "recall",
+        "escalation_reason": "fast_requires_recall",
+        "foreground_llm_calls": 2,
+        "router_llm_calls": 0,
+        "memory_search_count": 1,
+        "decision_used": false,
+        "tool_rounds": 0
+      },
+      "no_directive_leak": true,
+      "passed": true
+    },
+    {
+      "capability": "decision",
+      "input": "我有两个正式 Offer，一个高薪高压，一个低薪但方向更喜欢，应该选哪个？",
+      "response": "这一步我陪你理清，但决定得留给你。\n核心冲突：高薪高压 与 低薪但方向更喜欢 的长期价值冲突\n还缺：两份 Offer 的具体薪资差额与压力程度、用户对收入底线与可承受周期的判断、两份方向的长期发展路径与个人优先级排序\n真正要你判断的是：在这两份 Offer 之间，你愿意为\"更喜欢的方向\"长期承担多大程度的收入与压力落差，以及这个落差是否触及你的底线？",
+      "metrics": {
+        "runtime_lane": "standard",
+        "route_source": "fast_escalation",
+        "route": "direct",
+        "fast_escalation_count": 1,
+        "fast_escalation_kind": "decision",
+        "escalation_reason": "fast_requires_decision",
+        "foreground_llm_calls": 3,
+        "router_llm_calls": 0,
+        "memory_search_count": 0,
+        "decision_used": true,
+        "tool_rounds": 0
+      },
+      "no_directive_leak": true,
+      "passed": true
+    }
+  ],
+  "passed": true
+}

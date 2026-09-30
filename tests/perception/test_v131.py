@@ -148,7 +148,7 @@ async def test_qq_sends_each_text_segment_and_emoji(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_owner_candidates_pass_existing_guards(tmp_path):
+async def test_owner_candidates_keep_agenda_out_of_cognition(tmp_path):
     from zhaoxi.current_cognition.service import CurrentCognitionService
     from zhaoxi.current_cognition.store import CurrentCognitionStore
     from zhaoxi.perception.planner import ExternalCognitionDecision
@@ -162,7 +162,8 @@ async def test_owner_candidates_pass_existing_guards(tmp_path):
                   self_id="42", owner_id="8")
     await runtime.planner.apply_candidates(item, ExternalCognitionDecision(
         cognition_candidate="今晚先修朝汐", memory_candidates=["我不喜欢辣椒"]))
-    assert "今晚先修朝汐" in agent.current_cognition.state().attention
+    assert agent.current_cognition.state().watch_items == []
+    assert agent.current_cognition.last_maintenance["rejection"] == "tool_or_queryable_detail"
     assert agent.current_cognition.state().last_processed_message_id is None
     memory.remember.assert_awaited_once()
     candidate = memory.remember.await_args.args[0]
@@ -524,3 +525,43 @@ async def test_debug_force_fast_does_not_apply_to_non_owner_or_group(tmp_path):
     assert len(seen) == 1
     assert "FAST_CHAT" not in seen[0][0][0].content
     assert runtime.last_fast_gate is None
+
+
+async def test_owner_private_gate_uses_current_cognition_as_positive_context(tmp_path):
+    seen = []
+    async def generate(messages, tools):
+        seen.append((messages, tools))
+        return ModelResponse(content="秋招还挂着呢。")
+    runtime, agent = make_runtime(tmp_path, generate)
+    agent.cognitive = CognitiveCoordinator(agent=agent, router=CognitiveRouter(agent.provider),
+                                            fast_gate=FastDialogueGate())
+    agent.context_builder.current_cognition_service = SimpleNamespace(
+        render_for_fast_chat=lambda: "秋招仍是近期主线，暂时缺少实质性结果。")
+    item = decode(qq_event(504, text="秋招"), self_id="42", owner_id="8")
+    assert await runtime.ingest(item) == "秋招还挂着呢。"
+    assert len(seen) == 1 and seen[0][1] is None
+    assert runtime.last_fast_gate["fast_gate_version"] == 2
+    assert runtime.last_fast_gate["fast_gate_decision"] == "FAST_CONFIDENT"
+    assert runtime.last_fast_gate["fast_gate_signals"]["current_cognition_sufficient"]
+
+
+async def test_owner_private_fast_upgrade_discards_draft_and_retains_external_boundary(tmp_path):
+    seen = []
+    async def generate(messages, tools):
+        seen.append((messages, tools))
+        if "当前处于 FAST_CHAT" in messages[0].content:
+            return ModelResponse(content="这段 QQ 草稿不能显示 [escalate:recall]")
+        assert "外部频道输出边界" in messages[0].content
+        assert not tools
+        return ModelResponse(content="标准受限回复。")
+    runtime, agent = make_runtime(tmp_path, generate)
+    agent.cognitive = CognitiveCoordinator(agent=agent, router=CognitiveRouter(agent.provider),
+                                            fast_gate=FastDialogueGate())
+    item = decode(qq_event(505, text="在吗？"), self_id="42", owner_id="8")
+    assert await runtime.ingest(item) == "标准受限回复。"
+    assert len(seen) == 2
+    assert runtime.last_fast_gate["fast_escalation_count"] == 1
+    assert runtime.last_fast_gate["fast_escalation_kind"] == "recall"
+    assert runtime.last_fast_gate["final_lane"] == "standard"
+    assert all("这段 QQ 草稿" not in (m.content or "") for m in seen[1][0])
+    assert all("这段 QQ 草稿" not in (m.content or "") for m in agent.conversation.messages)

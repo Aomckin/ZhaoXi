@@ -48,7 +48,7 @@ ROUTE_SCHEMA: dict[str, Any] = {
     "type": "function",
     "function": {
         "name": "route_cognition",
-        "description": "判断用户消息应该直接回答、使用工具、进入 Planner，还是运行已注册 Workflow。",
+        "description": "判断用户消息应该轻量聊天、直接回答、使用工具、进入 Planner，还是运行已注册 Workflow。",
         "parameters": RouteInput.model_json_schema(),
     },
 }
@@ -59,7 +59,8 @@ class CognitiveRouter:
 
     SYSTEM_PROMPT = (
         "你是 Zhaoxi Core 的轻量认知路由器，只调用 route_cognition。"
-        "DIRECT 用于闲聊、解释和无需真实工具的简单回答；"
+        "FAST_CHAT 用于近期对话或 Current Cognition 足够支撑的普通聊天、情绪表达和评价，无需真实动作、读取资源或具体历史检索；"
+        "DIRECT 用于需要较完整上下文的解释和无需真实工具的回答；"
         "TOOL 用于一个或少量直接工具调用，包括时间、计算、明确记住或遗忘；"
         "PLAN 仅用于确实存在多个步骤、依赖关系、检查后再整理或可能需要重规划的复杂目标。"
         "WORKFLOW 仅用于已经注册并由运行时提供的已知流程；"
@@ -67,6 +68,8 @@ class CognitiveRouter:
         "询问朝汐自身设定、用户长期资料或项目正式文档中的具体事实时选择 TOOL，以便查询潮庭书库；"
         "询问刚才在 Desktop 或 QQ 说过什么、做过什么时，应依据 Recent Experience 直接回答，除非明确要求检索外部资料，不要改查潮庭书库；"
         "请求朝汐发送或使用表情属于普通回复表达，选择 DIRECT；只有保存或收藏会话图片才使用 save_emoji Tool；"
+        "FAST_CHAT 和 DIRECT 都不能代替文件、记录等真实动作；指向文档、版本或私人资源并要求读取时选择 TOOL。"
+        "历史 assistant 回复仅证明说过什么，不能据其声称无能力而忽略当前可用能力。"
         "不要选择 DIRECT 后声称稍后检查。"
         "简单请求禁止选择 PLAN。"
     )
@@ -139,8 +142,6 @@ class CognitiveRouter:
                 continue
             try:
                 value = RouteInput.model_validate(call.arguments)
-                if value.route is CognitiveRoute.FAST_CHAT:
-                    value.route = CognitiveRoute.DIRECT
                 required_tool = value.required_tool if value.required_tool in self.available_tool_names else None
                 return self._guard_simple_request(
                     user_message, RouteDecision(route=value.route, reason=value.reason,
@@ -213,12 +214,12 @@ class CognitiveRouter:
             return contextual_tool
         if decision.route == CognitiveRoute.WORKFLOW:
             return decision
-        if decision.requires_tool_call and decision.route is CognitiveRoute.DIRECT:
+        if decision.requires_tool_call and decision.route in {CognitiveRoute.DIRECT, CognitiveRoute.FAST_CHAT}:
             return decision.model_copy(update={
                 "route": CognitiveRoute.TOOL,
                 "reason": "observable tool effect required",
             })
-        if decision.route is CognitiveRoute.DIRECT:
+        if decision.route in {CognitiveRoute.DIRECT, CognitiveRoute.FAST_CHAT}:
             hinted = self._hint_decision(user_message)
             if hinted is not None:
                 return hinted

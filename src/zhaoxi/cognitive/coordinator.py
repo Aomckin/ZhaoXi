@@ -2,13 +2,13 @@
 from zhaoxi.cognitive_stream.turn import current_turn
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from zhaoxi.cognitive.fast_gate import FastDialogueDecision, FastDialogueGate
+from zhaoxi.cognitive.fast_gate import FastDialogueDecision, FastDialogueGate, FastGateLane
 from zhaoxi.cognitive.memory_decision import AutoMemory, MemoryAction
 from zhaoxi.cognitive.router import CognitiveRoute, CognitiveRouter, RouteDecision
 from zhaoxi.core.agent import ZhaoxiAgent
-from zhaoxi.core.fast_chat import FastChatRuntime
+from zhaoxi.core.fast_chat import FastChatRuntime, FastChatResult, FastEscalationKind
 from zhaoxi.observability import current_trace
 from zhaoxi.permission.models import PendingConfirmation
 from zhaoxi.reliability.retry import budget_stage_scope
@@ -57,35 +57,48 @@ class CognitiveCoordinator:
             return CognitiveResponse(content=reply.content, route=CognitiveRoute.DIRECT)
         decision = None
         result = None
-        if not images and self.fast_gate is not None and self.fast_chat is not None:
+        gate = None
+        fast_escalation_kind = None
+        recent_context = ""
+        if self.fast_gate is not None and self.fast_chat is not None:
+            recent_context = self._recent_routing_context(
+                limit=self.fast_chat.recent_limit, max_chars=self.fast_chat.max_chars)
             pending_permission = bool(self.agent._pending_permissions)
-            gate = (FastDialogueDecision(True, "debug_force_fast")
-                    if self.force_fast_chat and not pending_permission else self.fast_gate.decide(
-                        user_message,
-                        pending_permission=pending_permission,
-                    ))
+            gate = self.fast_gate.decide(user_message, images=images,
+                pending_permission=pending_permission,
+                **self._fast_gate_context(user_message, recent_context))
+            if self.force_fast_chat and not pending_permission and not images:
+                gate = replace(gate, lane=FastGateLane.FAST_CONFIDENT,
+                               reason="debug_force_fast", known_route=None)
             if trace:
                 trace.fast_gate_reason = gate.reason
+                trace.fast_gate_details = gate.diagnostics()
                 trace.emit("fast_gate_decided", "routing", "success", "已完成轻量通道判断",
-                           metadata={"eligible": gate.eligible, "reason": gate.reason,
+                           metadata={**gate.diagnostics(), "eligible": gate.eligible,
                                      "continuation_detected": gate.continuation_detected})
             if gate.eligible:
-                fast_result = await self.fast_chat.run_fast_chat(
-                    user_message, force=self.force_fast_chat,
-                )
+                fast_result = await self.fast_chat.run_fast_chat(user_message, force=self.force_fast_chat)
                 if not fast_result.escalated:
                     result = fast_result
                     decision = RouteDecision(route=CognitiveRoute.FAST_CHAT, reason=gate.reason)
                     if trace:
                         trace.runtime_lane = "fast"
                         trace.route_source = "fast_gate"
-                elif trace:
-                    trace.escalation_reason = fast_result.escalation_reason
-                    trace.route_source = "router_after_fast_escalation"
-            else:
-                decision = self._route_fast_exclusion(gate.reason, decision_service is not None)
+                else:
+                    fast_escalation_kind = fast_result.escalation_kind
+                    decision = self._standard_route_for_fast_escalation(fast_result)
+            elif gate.lane is FastGateLane.HEAVY_CONFIDENT:
+                decision = self._route_fast_exclusion(gate, decision_service is not None)
+                if decision is not None and decision.requires_tool_call and gate.signals.capability_groups:
+                    matches = [item["name"] for item in self.agent.registry.manifest()
+                               if item["group"] in gate.signals.capability_groups and item["enabled"] and item["available"]]
+                    if len(matches) == 1:
+                        decision = decision.model_copy(update={"required_tool": matches[0]})
+                if images and trace:
+                    trace.emit("input_images_received", "input", "success", "已读取图片",
+                               metadata={"image_count": len(images)})
                 if decision is not None and trace:
-                    trace.route_source = "fast_gate_exclusion"
+                    trace.route_source = "fast_gate_confident_heavy"
         if decision is None:
             if images:
                 decision = RouteDecision(route=CognitiveRoute.TOOL, reason="image input")
@@ -96,11 +109,31 @@ class CognitiveCoordinator:
                 if trace:
                     trace.emit("model_step_started", "routing", "running", "正在理解请求…", step_id=0)
                 with budget_stage_scope("understanding"):
-                    decision = await self.router.route(user_message, recent_context=self._recent_routing_context(user_message))
+                    if trace:
+                        trace.router_required = True
+                    decision = await self.router.route(user_message,
+                        recent_context=recent_context or self._recent_routing_context(user_message))
+                    hard_condition = bool(images or self.agent._pending_permissions)
+                    if decision.route is CognitiveRoute.FAST_CHAT and (self.fast_chat is None or hard_condition):
+                        decision = decision.model_copy(update={"route": CognitiveRoute.DIRECT,
+                            "reason": "hard condition requires standard runtime" if hard_condition else decision.reason})
+                    if trace:
+                        trace.router_final_lane = decision.route.value
+                        trace.router_override = decision.route is CognitiveRoute.FAST_CHAT
+                        trace.router_to_fast_count += int(decision.route is CognitiveRoute.FAST_CHAT)
                 if trace:
                     trace.route_source = trace.route_source or "cognitive_router"
                     if not getattr(self.router, "last_provider_failed", False):
                         trace.emit("model_step_finished", "routing", "success", "已确定处理方式", step_id=0)
+        # The Router may admit an ambiguous turn to FAST. Generate that draft here
+        # so any escalation reaches the same STANDARD Decision/Recall/Tool path.
+        if decision.route is CognitiveRoute.FAST_CHAT and result is None:
+            fast_result = await self.fast_chat.run_fast_chat(user_message)
+            if fast_result.escalated:
+                fast_escalation_kind = fast_result.escalation_kind
+                decision = self._standard_route_for_fast_escalation(fast_result)
+            else:
+                result = fast_result
         logger.info(
             "route=%s requires_tool_call=%s required_tool=%s workflow_selected=%s available_tools=%s reason=%s",
             decision.route.value,
@@ -119,7 +152,10 @@ class CognitiveCoordinator:
                                  any(marker in user_message for marker in ("还是", "或者", "选", "方向")))
             if trace:
                 trace.emit("decision_started", "decision", "running", "正在检查是否需要决策…")
-            result = await decision_service.evaluate(user_message, planner_requested=planner_requested)
+            # Explicit capability discovery forces the existing on-demand gate;
+            # it does not run Planner or grant permission to execute an action.
+            result = await decision_service.evaluate(user_message,
+                planner_requested=planner_requested or fast_escalation_kind is FastEscalationKind.DECISION)
             if trace:
                 trace.emit("decision_finished", "decision", "success", "决策检查已完成",
                            metadata={"used": result is not None})
@@ -133,6 +169,8 @@ class CognitiveCoordinator:
                 return CognitiveResponse(content=content, route=CognitiveRoute.DIRECT)
         workflow_run_id = None
         if decision.route == CognitiveRoute.FAST_CHAT:
+            if trace and decision.route is CognitiveRoute.FAST_CHAT:
+                trace.runtime_lane = "fast"
             content = result.content
             goal_id = None
         elif decision.route == CognitiveRoute.WORKFLOW and self.agent.workflow is not None and decision.workflow_id:
@@ -195,7 +233,8 @@ class CognitiveCoordinator:
             result = await self.agent.run(
                 user_message, require_tool_call=decision.requires_tool_call,
                 required_tool=decision.required_tool,
-                **({"images": images} if images else {})
+                **({"images": images} if images else {}),
+                **({"no_tools": True} if images and user_message.strip() == "请查看这些图片。" else {}),
             )
             content = result.content
             goal_id = None
@@ -229,30 +268,83 @@ class CognitiveCoordinator:
         )
 
     @staticmethod
-    def _route_fast_exclusion(reason: str, decision_available: bool) -> RouteDecision | None:
-        if reason == "multi_step_request":
-            return RouteDecision(route=CognitiveRoute.PLAN, reason=reason)
-        if reason == "explicit_decision" and decision_available:
-            return RouteDecision(route=CognitiveRoute.DIRECT, reason=reason)
-        if reason in {
-            "explicit_action", "explicit_recall", "external_or_realtime_query",
-            "calculation_request", "private_or_structured_fact", "personal_fact_recall",
-        }:
-            return RouteDecision(
-                route=CognitiveRoute.TOOL, reason=reason, requires_tool_call=True
-            )
+    def _standard_route_for_fast_escalation(result: FastChatResult) -> RouteDecision:
+        # One-way transfer: neither Router nor FAST is re-entered after a draft
+        # asks for a capability. STANDARD retains its existing permission guards.
+        kind = result.escalation_kind
+        tool_path = kind in {None, FastEscalationKind.TOOL, FastEscalationKind.RECALL}
+        return RouteDecision(route=CognitiveRoute.TOOL if tool_path else CognitiveRoute.DIRECT,
+            reason=result.escalation_reason,
+            requires_tool_call=kind in {None, FastEscalationKind.TOOL})
+
+    @staticmethod
+    def _route_fast_exclusion(gate: FastDialogueDecision, decision_available: bool) -> RouteDecision | None:
+        if gate.known_route is not None:
+            return RouteDecision(route=CognitiveRoute(gate.known_route), reason=gate.reason,
+                requires_tool_call=(gate.known_route == "tool" and not gate.signals.has_image))
+        if gate.signals.decision_complexity and decision_available:
+            return RouteDecision(route=CognitiveRoute.DIRECT, reason=gate.reason)
         return None
+
+    def _fast_gate_context(self, query: str, recent_context: str) -> dict:
+        """Read only local journal/metadata and reuse semantic capability matching."""
+        from zhaoxi.tools.router import safe_resolve_tool_context
+        from zhaoxi.tools.manifest import resolve_capability
+        cognition = getattr(self.agent.context_builder, "current_cognition_service", None)
+        snapshot, topics, errors = "", [], []
+        if cognition is not None:
+            try:
+                snapshot = cognition.render_for_fast_chat()
+                state_reader = getattr(cognition, "state", None)
+                if callable(state_reader):
+                    topics = [thread.title for thread in state_reader().threads if thread.status == "active"]
+            except Exception as exc:
+                errors.append("current_cognition:" + type(exc).__name__)
+        groups = []
+        try:
+            context = safe_resolve_tool_context(query, recent_context, self.agent.registry, mode="dynamic")
+            if context.fallback:
+                errors.append("capability_index_unavailable")
+            groups = list(context.dynamic_groups)
+            action = self.fast_gate.collect(query, recent_context=recent_context).action_side_effect_confidence
+            if action >= self.fast_gate.config.strong_threshold:
+                groups.extend(resolve_capability(query, self.agent.registry.manifest())["groups"])
+        except Exception as exc:
+            errors.append("capability_index:" + type(exc).__name__)
+        turn = current_turn()
+        metadata = turn.trigger_event.metadata if turn else {}
+        refs = []
+        for key in ("resource_refs", "artifact_refs"):
+            values = metadata.get(key, [])
+            if isinstance(values, (str, dict)):
+                values = [values]
+            if not isinstance(values, (list, tuple)):
+                errors.append("resource_metadata_invalid")
+                continue
+            for value in values:
+                if isinstance(value, str):
+                    refs.append(value)
+                elif isinstance(value, dict):
+                    refs.extend(str(value[name]) for name in ("name", "title", "path") if value.get(name))
+        return {"recent_context": recent_context, "current_cognition": snapshot,
+                "current_topics": topics, "capability_groups": list(dict.fromkeys(groups)),
+                "resource_refs": refs, "signal_errors": errors}
+
     def _recent_routing_context(self, query: str = "", limit: int = 6, max_chars: int = 2400) -> str:
-        """Provide bounded dialogue context to the router without Tool observations or metadata."""
+        """Bounded prior dialogue; current trigger and tool observations cannot vote."""
+        from zhaoxi.core.message import Role, is_cognition_message
         stream = getattr(self.agent, "experience_stream", None)
-        if stream is None:
-            return ""
-        from zhaoxi.cognitive_stream.timeline import cognitive_timeline
-        messages = cognitive_timeline(
-            stream, query=query, attention=getattr(self.agent, "attention_retriever", None),
-            limit=limit, max_chars=max_chars,
-        )
-        return "\n".join(
-            f"{message.role.value}: {message.content[:600]}"
-            for message in messages if message.content
-        )[-max_chars:]
+        turn = current_turn()
+        if stream is not None:
+            from zhaoxi.cognitive_stream.timeline import cognitive_timeline
+            messages = cognitive_timeline(stream, query=query,
+                trigger_id=turn.trigger_event.event_id if turn else None,
+                output_channel=turn.output_channel if turn else "desktop",
+                audience=turn.audience if turn else "owner",
+                attention=getattr(self.agent, "attention_retriever", None) if query else None,
+                limit=limit, max_chars=max_chars)
+        else:
+            messages = self.agent.conversation.recent(limit)
+        return "\n".join(f"{message.role.value}: {message.content[:600]}"
+            for message in messages if message.content and message.role in {Role.USER, Role.ASSISTANT}
+            and is_cognition_message(message) and not message.tool_calls)[-max_chars:]

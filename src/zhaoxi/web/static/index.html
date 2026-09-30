@@ -80,7 +80,7 @@
 <script id="characterConfig" type="application/json">{"avatar":"/static/avatar-default.webp","avatars":{"ACTIVE":"/static/avatar-default.webp","SEMI_ACTIVE":"/static/avatar-daydream.png","IDLE":"/static/avatar-nap.png","AWAY":"/static/avatar-nap.png"}}</script>
 <script src="/static/deskboard.js"></script>
 <script>
-const FRONTEND_BUILD_ID='v1.4.1-fast-owner-20260929',FRONTEND_LOADED_AT=new Date().toISOString();
+const FRONTEND_BUILD_ID='v1.4.2-living-journal-20260929',FRONTEND_LOADED_AT=new Date().toISOString();
 const $=s=>document.querySelector(s), messages=$('#messages'), input=$('#input'), send=$('#send'), mic=$('#mic'), activity=$('#activity'), debug=$('#debug'), voiceReview=$('#voiceReview'), voiceText=$('#voiceText');let busy=false,voiceEnabled=false,voiceRecording=false,speechActive=false,normalRegenerationEnabled=false;
 let activeTraceId=null,traceTerminated=false;
 function beginActionTrace(){activeTraceId=crypto.randomUUID();traceTerminated=false;$('#actionTraceSummary').textContent='行动记录 · 进行中';$('#actionTraceEvents').replaceChildren();$('#actionTraceDebug').textContent='';if($('#actionMaintenance'))$('#actionMaintenance').textContent='';if($('#actionRuntimeSummary'))$('#actionRuntimeSummary').textContent='';if($('#actionPlannerStatus'))$('#actionPlannerStatus').textContent='Planner：本轮尚未启用';activity.textContent='理解 · 耳朵竖起来了，先听清你的意思…';return activeTraceId}
@@ -125,6 +125,12 @@ function renderRuntimeMetrics(m){
     `前台模型 ${m.foreground_llm_calls||0} · 后台模型 ${m.background_llm_calls||0} · Router ${m.router_llm_calls||0} · Agent ${m.agent_llm_calls||0} · Planner ${m.planner_llm_calls||0}`,
     `记忆检索 ${m.memory_search_count||0} · 工具轮次 ${m.tool_rounds||0} · 目录检查 ${m.catalog_inspections||0}`,
     ...[m.fast_gate_reason?`Fast Gate：${m.fast_gate_reason}`:null,m.escalation_reason?`升级：${m.escalation_reason}`:null,m.extra_round_reason?`额外轮次：${m.extra_round_reason}`:null].filter(Boolean),
+    ...(m.fast_escalation_count?[`FAST → STANDARD ${m.fast_escalation_count} 次 · 能力 ${m.fast_escalation_kind||'未记录'}`]:[]),
+    ...(m.fast_gate_version?[`Fast Gate ${m.fast_gate_version} · ${m.fast_gate_decision} · FAST 分数 ${m.fast_score} · HEAVY 分数 ${m.heavy_score}`,
+      `FAST 依据：${(m.fast_positive_evidence||[]).join('、')||'无'}`,
+      `HEAVY 依据：${(m.heavy_evidence||[]).join('、')||'无'}`,
+      ...Object.entries(m.fast_gate_signals||{}).map(([key,value])=>`信号 ${key}：${JSON.stringify(value)}`),
+      `Router required ${!!m.router_required} · override ${!!m.router_override} · final ${m.router_final_lane||'—'} · 回到 FAST ${m.router_to_fast_count||0}`]:[]),
     `总耗时 ${ms(m.total_ms)} · 首次回复 ${ms(m.ttfr_ms)}`,
     ...Object.entries(stages).map(([key,label])=>`${label}：${ms(m[key])}`),
     ...(m.llm_calls||[]).map(c=>`模型 #${c.index} · ${c.owner} / ${c.stage}：${ms(c.duration_ms)}`),
@@ -378,7 +384,7 @@ function renderInteractionBadge(presence){
 let setupNoticeShown=false;
 async function setupDiagnostics(){try{const data=await request('/api/diagnostics');debug.textContent=JSON.stringify(data,null,2);renderInteractionBadge(data.presence);renderDebugPresenceControls(data.presence);if(data.startup&&data.startup.status!=='ready'){const model=data.startup.checks?.model||{};$('#connection').textContent='需要完成首次配置';input.placeholder='完成配置后即可和朝汐对话';if(!setupNoticeShown){addMessage('assistant',`朝汐尚未完成启动配置。${model.action||'请运行 python main.py --doctor 查看具体问题。'}`);setupNoticeShown=true}}}catch(e){renderInteractionBadge(null);$('#connection').textContent='启动诊断不可用'}await refreshRuntimeDebug()}
 const agendaTypeNames={event:'约定',window:'时间窗口',deadline:'截止',focus:'主线',expectation:'期待'};
-const cognitionSectionNames={active_context:'当前持续',active_thread:'正在推进',recent_topic:'最近常聊',recent_change:'最近变化',unresolved:'还挂着'};
+const cognitionSectionNames={active_thread:'还挂着',recent_change:'刚变化',unresolved:'需要留意'};
 function deskText(tag,value,className=''){const node=document.createElement(tag);node.textContent=value;if(className)node.className=className;return node}
 function deskDateParts(value){const parts=new Intl.DateTimeFormat('en-GB',{timeZone:displayTimezone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(value));return Object.fromEntries(parts.map(part=>[part.type,part.value]))}
 function deskDateKey(value){const part=deskDateParts(value);return `${part.year}-${part.month}-${part.day}`}

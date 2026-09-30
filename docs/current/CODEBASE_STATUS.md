@@ -1,6 +1,16 @@
 # 朝汐 ZhaoXi 代码现状与交接说明
 
-## v1.4.1 开发状态
+## v1.4.2 开发状态
+
+代码版本为 1.4.2。Current Cognition 改为结构化近期小本子，维护模型返回按 key 的操作，运行时验证 Owner 证据并执行合并、容量限制与时间淡出。普通无变化消息跳过模型维护，FAST 读取默认 350 字快照；小桌边、Debug、Observatory 及旧状态迁移备份已接入。
+
+Fast Gate 2.0 使用本地多信号作三态判定；高置信聊天跳过 Router，模糊输入经 Router 且可回到 FAST。Fast Chat 在交付前发现 Tool / Recall / Decision 需求时丢弃草稿，每轮单向接管 STANDARD 一次，不再进入 Router 或 FAST。STANDARD 保留正常检索、Decision Guard、工具与权限流程，支持成功查询后的依赖工具调用；QQ 接管继续遵守外部渠道边界。Debug 可查看 Gate 解释与升级次数。
+
+历史图片在 FAST 中以缩略图输入，Agent 工具收尾保留视觉证据。自动回归和真实事件离线重放通过，修复后桌面真实模型复测待完成。
+
+最终验证：Python 849 项通过、1 项跳过，Node 52 项通过；25 条 Fast Gate 与三类能力升级真实模型隔离验收通过。Current Cognition 的真实长期行为、3–7 天 dogfooding 及桌面自然会话观察仍待完成。详见 [v1.4.2 开发记录](../v1.4.x/Zhaoxi_v1.4.2_开发记录.md)和 [Fast Gate 与能力升级记录](../v1.4.x/Zhaoxi_v1.4.2_Fast_Gate_2.0_开发记录.md)。
+
+## v1.4.1 历史开发状态
 
 代码版本为 1.4.1。普通 Owner 桌面/Web 对话与 QQ 私聊文本默认先经过 Fast Dialogue Gate；FAST_CHAT 单次无工具生成，Debug 可持久化强制 FAST 且不覆盖群聊、第三方、图片或待授权边界，明确非聊天请求直接进入 STANDARD / DEEP，单业务工具成功后强制无工具 Finalization。Runtime Observatory 已补充 lane、route source、前后台 LLM、Memory Search、Tool Round、Catalog Inspection 和升级原因。v1.4.0 的请求级 Runtime Metrics 记录阶段、LLM/Tool 调用、TTFR 与时间线；Web 通过独立 SSE 展示 Agent / Planner 的真实中间回复。补丁已统一工具内部消息可见性，将 AutoMemory / Current Cognition 后置到持久化队列，移除定时气泡，Final 分段延迟仅服从用户设置并覆盖整次图文回复，同时加入工具发现收口、Planner 细节、阶段耗时、浏览器渲染回执及本轮真实 Memory 候选展示。维护抽屉已完成简体中文化。自动回归通过；真实模型的自然措辞、端到端延迟与桌面交互仍待重启实机验收。详见 [v1.4.0 开发记录](../v1.4.x/Zhaoxi_v1.4.0_开发记录.md)及[补丁任务书](../v1.4.x/Zhaoxi_v1.4.0_Progressive_Response_Visibility_Patch_Task.md)。
 
@@ -10,7 +20,7 @@
 
 > 当前配置、界面行为与最新限制见 [当前状态](CURRENT_STATUS.md)。下文保留分阶段实现与验收记录；其中旧预算和测试数量不代表当前值。
 
-> **默认分支：`main`，代码版本 `1.4.1`**。v1.3.0 已正式发布；以下旧版本章节是历史切片，其“当前”指当时状态。旧测试数字只作为当时记录；当前行为以本页顶部、CURRENT_STATUS 和代码为准。
+> **默认分支：`main`，代码版本 `1.4.2`**。v1.3.0 已正式发布；以下旧版本章节是历史切片，其“当前”指当时状态。旧测试数字只作为当时记录；当前行为以本页顶部、CURRENT_STATUS 和代码为准。
 
 ## v1.3.0 当前稳定版本
 

@@ -27,7 +27,7 @@ def runtime(tmp_path):
             Message(role=Role.USER, content="朝汐开发", message_id="u1"),
             Message(role=Role.USER, content="继续开发", message_id="u2"),
         ]),
-        current_cognition=SimpleNamespace(state=lambda: SimpleNamespace(narrative="", observations=[], last_processed_message_id=None)),
+        current_cognition=SimpleNamespace(state=lambda: SimpleNamespace(overview="", threads=[], last_processed_message_id=None)),
     )
     stream = ExperienceStream(tmp_path / "experience.db")
     for content in ("朝汐开发", "继续开发"):

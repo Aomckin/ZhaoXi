@@ -4,6 +4,8 @@ import json
 import logging
 import re
 from datetime import UTC, datetime, timedelta
+from dataclasses import replace
+from zhaoxi.cognitive.fast_gate import FastGateLane
 from pydantic import ValidationError
 
 from zhaoxi.core.message import Message, Role
@@ -176,11 +178,18 @@ class PerceptionRuntime:
                 if (not gate_reason and owner_private_text and not pending_permission
                         and fast_gate is not None and fast_runtime is not None):
                     force_fast = bool(getattr(cognitive, "force_fast_chat", False))
+                    recent_context = cognitive._recent_routing_context(
+                        limit=fast_runtime.recent_limit, max_chars=fast_runtime.max_chars)
                     fast_decision = fast_gate.decide(
                         item.content or "", pending_permission=pending_permission,
+                        **cognitive._fast_gate_context(item.content or "", recent_context),
                     )
-                    fast_owner_reply = force_fast or fast_decision.eligible
+                    if force_fast:
+                        fast_decision = replace(fast_decision, lane=FastGateLane.FAST_CONFIDENT,
+                                                reason="debug_force_fast", known_route=None)
+                    fast_owner_reply = fast_decision.eligible
                     self.last_fast_gate = {
+                        **fast_decision.diagnostics(),
                         "observation_id": item.observation_id,
                         "eligible": fast_owner_reply,
                         "reason": "debug_force_fast" if force_fast else fast_decision.reason,
@@ -236,6 +245,10 @@ class PerceptionRuntime:
                             expression_policy=safe_expression_policy, force=force_fast,
                         )
                         if response.escalated:
+                            self.last_fast_gate.update({"fast_escalation_count": 1,
+                                "fast_escalation_kind": response.escalation_kind.value if response.escalation_kind else "tool",
+                                "escalation_reason": response.escalation_reason,
+                                "final_lane": "standard"})
                             response = await self.agent.run_channel_reply(
                                 item.content or "请查看图片。", trigger_event=trigger,
                                 images=images, audience=audience,

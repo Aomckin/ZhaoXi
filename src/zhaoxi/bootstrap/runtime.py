@@ -168,7 +168,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
                 tool_catalog=registry.manifest(),
                 archive_enabled=archive_service is not None,
             ),
-            fast_gate=(FastDialogueGate() if settings.fast_dialogue_enabled else None),
+            fast_gate=(FastDialogueGate(settings.fast_gate) if settings.fast_dialogue_enabled else None),
             fast_chat=(FastChatRuntime(
                 agent, recent_limit=settings.fast_dialogue_recent_limit,
                 max_chars=settings.fast_dialogue_context_max_chars,

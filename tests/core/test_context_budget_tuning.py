@@ -37,6 +37,21 @@ def test_visual_input_is_released_only_for_explicit_finalization_copy():
     assert conversation.messages[0].images
 
 
+def test_current_image_survives_finalization_while_old_images_are_released():
+    conversation = Conversation()
+    old = conversation.add_user("旧图", images=["data:image/png;base64,AAAA"])
+    current = conversation.add_user("新图", images=["data:image/png;base64,BBBB"])
+    builder = ContextBuilder("人格")
+    initial = builder.build(conversation,
+                            current_image_message_id=current.message_id)
+    assert [len(message.images) for message in initial[1:]] == [0, 1]
+    final = builder.build(conversation, release_images=True, preserve_current_image=True,
+                          current_image_message_id=current.message_id)
+    assert [len(message.images) for message in final[1:]] == [0, 1]
+    assert final[-1].images[0].endswith("BBBB")
+    assert builder.last_compaction["images_released"] == 1
+    assert old.images and current.images
+
 def test_context_report_has_categories_and_separates_unknown_image_cost():
     messages = [Message(role=Role.SYSTEM, content="人格", metadata={"prompt_components": [
         {"name": "system.persona", "chars": 2},

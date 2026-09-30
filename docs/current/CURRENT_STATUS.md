@@ -1,4 +1,14 @@
-# 当前开发版本：v1.4.1（Fast Dialogue Lane 与单工具强制收口已实现）
+# 当前开发版本：v1.4.2
+
+2026-09-30：Current Cognition 2.0、图片链路修复、Fast Gate 2.0 与 Fast Chat 单向能力升级已实现。
+
+- Current Cognition 使用 Overview、Threads、Recent Changes、Watch Items；后台结构化维护，可信证据校验，旧主线降温与退出，旧 SQLite 状态迁移备份。FAST 读取默认 350 字的近期快照，小桌边、Debug 与 Observatory 展示相应状态。
+- Fast Gate 综合近期对话、近期认知、能力索引、资源与动作 / 历史需求。高置信聊天跳过 Router；弱证据交给 Router 且可判回 FAST；图片与待授权条件禁止 FAST。
+- Fast Chat 发现 Tool / Recall / Decision 需求后，在交付前丢弃草稿，每轮单向升级 STANDARD 最多一次，不再次进入 Router 或 FAST。草稿和内部标记不进入用户输出、持久化与记忆整理；Debug 记录升级能力和次数。
+- FAST 历史输入保留图片缩略图，Agent 工具收尾不再自动清图。真实事件离线重放确认图片数保持 2 → 2；修复后桌面真实模型复测仍待完成。
+- 最终自动回归：Python 849 项通过、1 项跳过，Node 52 项通过。Fast Gate 25 条和能力升级三类真实模型隔离验收通过。Current Cognition 的 3–7 天持续使用验收及桌面自然会话观察尚未完成。
+
+加载改动需重启 Core / 桌面进程并刷新前端。范围、证据和剩余验收见 [v1.4.2 开发记录](../v1.4.x/Zhaoxi_v1.4.2_开发记录.md)及 [Fast Gate 与能力升级记录](../v1.4.x/Zhaoxi_v1.4.2_Fast_Gate_2.0_开发记录.md)。下方按日期保留历史状态，旧路径和测试数字仅代表当时版本；当前 STANDARD 已允许成功查询后的依赖工具调用。
 
 2026-09-29：v1.4.1 已加入 Router 前置的本地 Fast Dialogue Gate 与独立 `run_fast_chat` 通道。普通聊天只携带人格、Current Cognition、当前时间和有限 Owner 对话，跳过 Router LLM、长期 Memory、Tool Schema、Decision 与 Planner；Owner QQ 私聊文本现已复用同一 FAST 通道并保留外部隐私边界，Debug 可持久化强制 FAST，群聊、第三方、图片与待授权流程不受影响；明确动作、回忆、实时查询和多步任务由本地规则直接升级 STANDARD / DEEP，只有歧义承接进入 Router。FAST 动作承诺最多升级一次。STANDARD 业务 Tool 成功后下一轮强制关闭 Tool 与 Discovery 并进入 Finalization。Runtime Metrics 增加 lane、route source、前后台模型、Memory 搜索、Tool round、目录检查及升级/额外轮次原因。全量 Python 自动回归 798 项通过、1 项跳过；真实模型桌面端延迟与措辞仍需重启实机验收。见 [v1.4.1 开发记录](../v1.4.x/Zhaoxi_v1.4.1_开发记录.md)。
 
