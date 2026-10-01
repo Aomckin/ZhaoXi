@@ -10,6 +10,7 @@ import math
 from pathlib import Path
 import re
 import sqlite3
+from zhaoxi.reliability.sqlite import connect
 from typing import Iterable
 
 from zhaoxi.archive.models import (
@@ -59,7 +60,7 @@ class ArchiveService:
         self._ensure_schema()
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.db_path)
+        connection = connect(self.db_path)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys=ON")
         return connection
@@ -119,6 +120,34 @@ class ArchiveService:
                 "INSERT OR REPLACE INTO metadata(key, value) VALUES('fts_tokenizer', ?)",
                 (tokenizer,),
             )
+
+    def artifact_reference_match(self, query: str, limit: int = 5) -> list[dict]:
+        """Resolve titles/paths/tags only; never read or copy Archive chunks."""
+        from zhaoxi.memory.candidate_index import lexical_tokens
+        ignored = {"朝汐", "之前", "一下", "帮我", "看看", "什么", "如何", "读取", "文档", "资料", "手册"}
+        tokens = [token for token in lexical_tokens(query) if len(token) >= 2 and token not in ignored][:32]
+        if not tokens:
+            return []
+        clauses, args = [], []
+        for token in tokens:
+            clauses.append("(lower(title) LIKE ? ESCAPE '\\' OR lower(source_path) LIKE ? ESCAPE '\\' OR lower(tags_json) LIKE ? ESCAPE '\\')")
+            escaped = token.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+            args.extend(['%' + escaped + '%'] * 3)
+        with self._connect() as db:
+            rows = db.execute("SELECT title,source_path,updated_at,tags_json FROM documents WHERE " + ' OR '.join(clauses) +
+                " ORDER BY updated_at DESC LIMIT 50", args).fetchall()
+        matches = []
+        for row in rows:
+            metadata = f"{row['title']} {row['source_path']} {row['tags_json']}".casefold()
+            terms = [token for token in tokens if token in metadata]
+            score = sum(len(token) for token in terms)
+            if score < 4:
+                continue
+            matches.append((score, {'title': row['title'], 'source_path': row['source_path'],
+                'updated_at': row['updated_at'], 'tags': json.loads(row['tags_json']),
+                'matched_reference': max(terms, key=len)}))
+        matches.sort(key=lambda item: item[0], reverse=True)
+        return [item for _, item in matches[:max(1, min(limit, 20))]]
 
     def _delete_document(self, connection: sqlite3.Connection, document_id: str) -> None:
         chunk_ids = [

@@ -50,7 +50,7 @@ def build_storage_runtime(settings: Settings, registry, emoji_manager):
         ),
     )
     session_store = SQLiteSessionStore(
-        settings.session_db_path, max_messages=settings.max_context_messages
+        settings.session_db_path, max_messages=settings.max_context_messages, media_directory=settings.media_directory
     )
     session_record = session_store.get_sync("local")
     if session_record is None:
@@ -92,4 +92,5 @@ def build_data_store_specs(settings: Settings, *, archive_enabled: bool) -> list
     specs.append(DataStoreSpec("permission_audit", Path(settings.permission_audit_path), kind="file"))
     if archive_enabled:
         specs.append(DataStoreSpec("archive", Path(settings.archive_db_path)))
+    specs.append(DataStoreSpec("media",Path(settings.media_directory),kind="directory"))
     return specs

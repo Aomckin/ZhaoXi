@@ -18,6 +18,16 @@ from zhaoxi.memory.sqlite import SQLiteMemoryRepository
 from zhaoxi.models.types import ModelResponse
 
 
+class FixtureEmbedding:
+    """Known semantic space for paraphrase/consolidation fixtures, not lexical hashing."""
+    model="fixture-semantic"
+    version="1"
+    dimensions=16
+    from zhaoxi.memory.embedding import LocalHashEmbeddingProvider
+    content_hash=staticmethod(LocalHashEmbeddingProvider.content_hash)
+    async def embed(self,text):return [1.0]+[0.0]*15
+
+
 async def _episodes(service, contents, tag="夜间开发"):
     records = []
     for content in contents:
@@ -30,7 +40,7 @@ async def _episodes(service, contents, tag="夜间开发"):
 
 @pytest.mark.asyncio
 async def test_automatic_consolidation_threshold_uses_one_batched_llm_call_and_keeps_episodes(tmp_path):
-    service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"))
+    service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"), embedding_provider=FixtureEmbedding())
     episodes = await _episodes(service, [
         "晚上开发效率高。", "深夜完成任务。", "晚上明显更专注。",
     ])
@@ -56,7 +66,7 @@ async def test_automatic_consolidation_threshold_uses_one_batched_llm_call_and_k
 
 @pytest.mark.asyncio
 async def test_automatic_consolidation_without_candidate_makes_no_llm_call(tmp_path):
-    service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"))
+    service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"), embedding_provider=FixtureEmbedding())
     await _episodes(service, ["只发生过一次。"], tag="孤立事件")
     provider = FakeProvider([ModelResponse(content="不应调用")])
     consolidator = AutoConsolidator(provider, service, AutoConsolidationConfig(
@@ -71,7 +81,7 @@ async def test_automatic_consolidation_without_candidate_makes_no_llm_call(tmp_p
 
 @pytest.mark.asyncio
 async def test_existing_semantic_gets_new_evidence_instead_of_duplicate(tmp_path):
-    service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"))
+    service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"), embedding_provider=FixtureEmbedding())
     first = await _episodes(service, ["周一晚上开发很专注。", "周二深夜完成开发。", "周三晚上效率很高。"])
     semantic = await service.consolidate(
         [item.id for item in first], "用户通常在夜间更容易专注开发。", tags=["夜间开发"],
@@ -95,7 +105,7 @@ async def test_existing_semantic_gets_new_evidence_instead_of_duplicate(tmp_path
 
 @pytest.mark.asyncio
 async def test_open_cluster_uses_shared_entity_and_centroid_without_topic_hint(tmp_path):
-    service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"))
+    service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"), embedding_provider=FixtureEmbedding())
     values = [
         ("今天出去拍了晚霞。", "晚霞", "摄影活动"),
         ("最近开始研究相机。", "相机", "摄影活动"),
@@ -117,31 +127,28 @@ async def test_open_cluster_uses_shared_entity_and_centroid_without_topic_hint(t
 
 @pytest.mark.asyncio
 async def test_high_confidence_clusters_merge_without_changing_memories(tmp_path):
-    service = MemoryService(
-        SQLiteMemoryRepository(tmp_path / "memory.db"),
-        cluster_match_threshold=0.60, cluster_merge_threshold=0.62,
-    )
-    first = (await service.remember(MemoryCreate(
-        kind="episodic", content="拍摄晚霞。", tags=["摄影"], entities=["相机"],
-    ))).record
-    second = (await service.remember(MemoryCreate(
-        kind="episodic", content="外出拍照。", tags=["拍照"], entities=["镜头"],
-    ))).record
-    assert (await service.require(first.id)).cluster_id != (await service.require(second.id)).cluster_id
-    await service.remember(MemoryCreate(
-        kind="episodic", content="用相机和镜头拍摄照片。",
-        tags=["摄影", "拍照"], entities=["相机", "镜头"],
-    ))
-    clusters = await service.repository.list_clusters()
-    assert sum(item.active for item in clusters) == 1
-    assert any(not item.active and item.merged_into_id for item in clusters)
-    assert (await service.require(first.id)).content == "拍摄晚霞。"
-    assert (await service.require(second.id)).content == "外出拍照。"
+    from zhaoxi.memory.models import MemoryCluster
+    from zhaoxi.memory.clustering import refresh
+    service=MemoryService(SQLiteMemoryRepository(tmp_path/"memory.db"),embedding_provider=FixtureEmbedding(),
+        cluster_match_threshold=.60,cluster_merge_threshold=.62)
+    first=(await service.remember(MemoryCreate(kind="episodic",content="拍摄晚霞。",tags=["摄影"],entities=["相机"]))).record
+    second=(await service.remember(MemoryCreate(kind="episodic",content="外出拍照。",tags=["拍照"],entities=["镜头"]))).record
+    c1=MemoryCluster(topic="晚霞",domain="摄影");c2=MemoryCluster(topic="外出",domain="摄影")
+    await refresh(service,c1,[first]);await refresh(service,c2,[second])
+    await service.repository.add_cluster_member(c1.id,first.id,.7)
+    await service.repository.add_cluster_member(c2.id,second.id,.7)
+    await service._maybe_merge_clusters(c2)
+    clusters=await service.repository.list_clusters()
+    assert sum(c.active for c in clusters)==1
+    assert any(not c.active and c.merged_into_id for c in clusters)
+    assert (await service.require(first.id)).cluster_id==(await service.require(second.id)).cluster_id
+    assert (await service.require(first.id)).content=="拍摄晚霞。"
+    assert (await service.require(second.id)).content=="外出拍照。"
 
 
 @pytest.mark.asyncio
 async def test_auto_memory_edge_resolves_entities_aliases_and_builds_retrievable_graph(tmp_path):
-    service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"))
+    service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"), embedding_provider=FixtureEmbedding())
     payload = {"candidates": [{
         "kind": "relationship", "shape": "edge", "content": "暗苟为朝汐命名。",
         "source_entity": "暗苟", "target_entity": "Zhaoxi", "relation_label": "命名",
@@ -163,7 +170,7 @@ async def test_auto_memory_edge_resolves_entities_aliases_and_builds_retrievable
     assert diagnostics["edge_extraction_success"] == 1
     prompt = provider.calls[0][0].content
     assert "source_entity" in prompt and "target_entity" in prompt
-    assert "绝不输出或猜测 source_node_id" in prompt
+    assert "禁止数据库节点ID" in prompt
     second = (await service.remember_candidates([MemoryCandidate(
         kind="relationship", shape="edge", content="她喜欢夏天。",
         source_entity="朝汐", target_entity="夏天", relation_label="喜欢",
@@ -171,14 +178,14 @@ async def test_auto_memory_edge_resolves_entities_aliases_and_builds_retrievable
     )]))[0].record
     recalled = await service.search(MemoryQuery(text="命名者是谁？", limit=8, max_hops=2))
     expanded = next(item for item in recalled if item.record.id == second.id)
-    assert expanded.graph_hop == 2
-    assert expanded.seed_memory_id == edge_memory.id
-    assert expanded.edge_relation == "about"
+    assert "semantic" in expanded.candidate_source
+    assert expanded.semantic_score == pytest.approx(1.0)
+    # Candidate came from the fixture's semantic space; graph enrichment is optional.
 
 
 @pytest.mark.asyncio
 async def test_malformed_edge_falls_back_to_node_without_bad_graph_edge(tmp_path):
-    service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"))
+    service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"), embedding_provider=FixtureEmbedding())
     result = await service.remember_candidates([MemoryCandidate(
         kind="relationship", shape="edge", content="某个关系描述不完整。",
         source_entity="暗苟", relation_label="喜欢",

@@ -775,13 +775,15 @@ def test_runtime_debug_and_memory_inspector_expose_scores():
     agent = FakeAgent()
     agent.last_action_trace = {"runtime_metrics": {"request_id": "run-1", "total_ms": 42}}
     class MemoryInspector:
+        last_retrieval={"retrieval_mode":"ASSOCIATIVE","status_filter":["active","cold"],"cluster_candidates":[]}
         async def inspect_retrieval(self, query):
-            return [{"record": {"content": "interview record", "status": "active",
+            return [{"record": {"id":"interview-1","content": "interview record", "status": "active",
                                 "importance": 0.7, "activation": 0.8},
                      "score": 0.91, "contextual_relevance": 0.9, "text_score": 0.8,
                      "semantic_score": 0.7, "graph_score": 0.1, "time_score": 0.4,
                      "activation_score": 0.8, "importance_score": 0.7,
-                     "why_selected": ["text match"]}]
+                     "why_selected": ["text match"], "cluster":None,"cluster_score":0,"cluster_rank":None,
+                     "candidate_source":["fts","escape"],"retrieval_mode":"ASSOCIATIVE"}]
     agent.memory_service = MemoryInspector()
     with TestClient(create_app(agent=agent)) as client:
         assert client.get("/api/debug/runtime").json()["runtime_metrics"]["total_ms"] == 42
@@ -808,3 +810,41 @@ def test_force_fast_chat_setting_updates_runtime_and_restores(tmp_path):
     restored_agent.cognitive = SimpleNamespace(force_fast_chat=False)
     with TestClient(create_app(agent=restored_agent, settings=settings)):
         assert restored_agent.cognitive.force_fast_chat is True
+
+
+def test_v143_inspector_explains_forbidden_memory_without_heating_or_writing(tmp_path):
+    from zhaoxi.memory.models import MemoryCreate
+    from zhaoxi.memory.service import MemoryService
+    from zhaoxi.memory.sqlite import SQLiteMemoryRepository
+    service = MemoryService(SQLiteMemoryRepository(tmp_path/'memory.db'))
+    async def seed():
+        first = (await service.remember(MemoryCreate(kind='episodic',content='丘脑智能面试时间',source_event_id='event-1',metadata={'decision':'atomic_extract','reason':'trusted Owner statement'}))).record
+        second = (await service.remember(MemoryCreate(kind='episodic',content='丘脑智能面试隐藏记录'))).record
+        await service.forget(second.id)
+        return first, second
+    first, second = asyncio.run(seed())
+    agent = FakeAgent()
+    agent.memory_service = service
+    settings = Settings(_env_file=None,perception_enabled=False,
+        memory_db_path=str(tmp_path/'memory.db'),session_db_path=str(tmp_path/'session.db'),
+        perception_db_path=str(tmp_path/'perception.db'),archive_db_path=str(tmp_path/'archive.db'),
+        media_directory=str(tmp_path/'media'))
+    with TestClient(create_app(agent=agent,settings=settings)) as client:
+        response = client.get('/api/debug/memory-retrieval', params={'query':'丘脑智能面试',
+            'retrieval_mode':'EXPLICIT_RECALL','memory_id':second.id})
+        assert response.status_code == 200
+        data = response.json()
+        assert data['retrieval_mode'] == 'EXPLICIT_RECALL'
+        chosen=next(item for item in data['candidates'] if item['memory_id']==first.id)
+        assert chosen['source_event_id']=='event-1' and chosen['reason']=='trusted Owner statement'
+        assert chosen['decision']=='atomic_extract'
+        assert second.id not in {item['memory_id'] for item in data['candidates']}
+        assert data['requested_memory']['why']['why_excluded'] == 'status filter'
+        assert client.get('/api/debug/memory-clusters').status_code == 200
+        maintenance = client.get('/api/debug/database-maintenance').json()
+        assert maintenance['databases']['memory']['exists'] is True
+        assert maintenance['databases']['session']['exists'] is False
+        assert maintenance['media']['media_blobs'] == 0
+        assert client.get('/api/debug/memory-retrieval',params={'query':'x','retrieval_mode':'INVALID'}).status_code == 422
+    assert asyncio.run(service.require(first.id)).activation == first.activation
+    assert asyncio.run(service.require(first.id)).access_count == 0

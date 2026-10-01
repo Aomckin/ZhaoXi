@@ -104,8 +104,25 @@ class OpenAICompatibleProvider(ModelProvider):
             for original, outgoing in zip(messages, payload['messages']):
                 if original.tool_calls and original.metadata.get('reasoning_content') is not None:
                     outgoing['reasoning_content'] = original.metadata['reasoning_content']
+        if "deepseek" in self.model.casefold() and kwargs.get("thinking") is not None:
+            payload['thinking'] = kwargs['thinking']
+            if kwargs['thinking'].get('type') == 'disabled':
+                # Compatible gateways can ignore the native thinking toggle.
+                payload['reasoning'] = {'enabled': False}
+                from urllib.parse import urlsplit
+                if urlsplit(self.base_url).hostname == 'api.commandcode.ai':
+                    # This gateway validates effort against low..max and ignores
+                    # the native off toggle. Use its lowest supported effort.
+                    payload['reasoning_effort'] = 'low'
         max_tokens = kwargs.get("max_tokens", self.max_tokens)
         if max_tokens is not None:
+            from urllib.parse import urlsplit
+            reserve = kwargs.get('reasoning_budget_tokens', 0)
+            if (reserve and "deepseek" in self.model.casefold()
+                    and urlsplit(self.base_url).hostname == 'api.commandcode.ai'):
+                # This endpoint counts hidden reasoning in max_tokens and does
+                # not honor non-thinking mode. Keep a finite, separate reserve.
+                max_tokens += min(max(int(reserve), 0), 6000)
             payload["max_tokens"] = max_tokens
         if tools:
             payload["tools"] = tools
@@ -117,7 +134,12 @@ class OpenAICompatibleProvider(ModelProvider):
             payload["tool_choice"] = tool_choice
         response_format = kwargs.get("response_format")
         if response_format is not None:
-            payload["response_format"] = response_format
+            # DeepSeek Chat Completions supports JSON mode; field bounds are
+            # validated by the caller. Normalize here so fallback providers each
+            # use their own contract through ResilientProvider.
+            payload["response_format"] = ({"type": "json_object"}
+                if "deepseek" in self.model.casefold() and response_format.get("type") == "json_schema"
+                else response_format)
 
         record_context_diagnostics(collect_prompt_diagnostics(
             messages, tools, model=self.model, tool_router=kwargs.get("tool_router"), payload=payload

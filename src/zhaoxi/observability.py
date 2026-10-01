@@ -217,6 +217,9 @@ class ActionTrace:
                 "activation_score": item.activation_score,
                 "importance_score": item.importance_score,
                 "why_selected": list(item.why_selected),
+                "candidate_source":list(getattr(item,"candidate_source",[])),
+                "retrieval_mode":str(getattr(item,"retrieval_mode","ASSOCIATIVE")),
+                "cluster_score":getattr(item,"cluster_score",0),"cluster_rank":getattr(item,"cluster_rank",None),
             })
         self.memory_candidates = candidates
 

@@ -326,6 +326,12 @@ class CognitiveCoordinator:
                     refs.append(value)
                 elif isinstance(value, dict):
                     refs.extend(str(value[name]) for name in ("name", "title", "path") if value.get(name))
+        archive=getattr(self.agent,'archive',None)
+        if archive is not None and hasattr(archive,'artifact_reference_match'):
+            try:
+                for artifact in archive.artifact_reference_match(query):
+                    refs.extend(x for x in (artifact['title'],artifact['source_path'],artifact.get('matched_reference','')) if x and x.casefold() in query.casefold())
+            except Exception as exc:errors.append('artifact_resolver:'+type(exc).__name__)
         return {"recent_context": recent_context, "current_cognition": snapshot,
                 "current_topics": topics, "capability_groups": list(dict.fromkeys(groups)),
                 "resource_refs": refs, "signal_errors": errors}

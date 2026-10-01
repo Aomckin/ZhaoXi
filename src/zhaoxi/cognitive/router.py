@@ -81,6 +81,7 @@ class CognitiveRouter:
         routing_hints: list[dict[str, object]] | None = None,
         tool_catalog: list[dict[str, object]] | None = None,
         archive_enabled: bool = False,
+        artifact_resolver=None,
     ) -> None:
         self.provider = provider
         self.routing_hints = list(routing_hints or [])
@@ -95,6 +96,7 @@ class CognitiveRouter:
             if item.get("enabled", True) and item.get("available", True)
         ]
         self.archive_enabled = archive_enabled
+        self.artifact_resolver = artifact_resolver
 
     @property
     def available_tool_names(self) -> list[str]:
@@ -316,7 +318,13 @@ class CognitiveRouter:
             "为什么", "是谁", "谁送", "哪天", "哪一天", "什么时候", "是什么", "有哪些",
             "怎么", "多少", "设定", "身世", "资料", "文档", "记载", "写过",
         )
-        if any(item in text for item in domains) and any(item in text for item in fact_markers):
+        matched_artifact = False
+        if self.artifact_resolver and any(item in text for item in (*fact_markers, "读取", "打开", "看看", "写了", "里面")):
+            try:
+                matched_artifact = bool(self.artifact_resolver(text))
+            except (OSError, ValueError):
+                pass
+        if matched_artifact or (any(item in text for item in domains) and any(item in text for item in fact_markers)):
             return RouteDecision(
                 route=CognitiveRoute.TOOL,
                 reason="archive factual query",

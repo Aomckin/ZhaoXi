@@ -3,6 +3,7 @@
 import asyncio
 import json
 import sqlite3
+from zhaoxi.reliability.sqlite import connect
 from pathlib import Path
 from typing import Any
 
@@ -18,9 +19,10 @@ from zhaoxi.memory.models import (
     MemoryStatus,
 )
 from zhaoxi.memory.repository import MemoryRepository
+from zhaoxi.memory.candidate_index import CandidateIndex, fts_text, sync_features, lexical_tokens
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS memories (
@@ -83,7 +85,7 @@ CREATE TABLE IF NOT EXISTS memory_entities (
 """
 
 
-class SQLiteMemoryRepository(MemoryRepository):
+class SQLiteMemoryRepository(CandidateIndex, MemoryRepository):
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -91,7 +93,7 @@ class SQLiteMemoryRepository(MemoryRepository):
         self.fts5_available = self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path, timeout=10)
+        connection = connect(self.path, timeout=10)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA foreign_keys=ON")
@@ -104,16 +106,30 @@ class SQLiteMemoryRepository(MemoryRepository):
                 row = connection.execute("SELECT version FROM schema_version LIMIT 1").fetchone()
                 if row is None:
                     connection.execute("INSERT INTO schema_version(version) VALUES (?)", (SCHEMA_VERSION,))
+                if row is not None and row["version"]>SCHEMA_VERSION:
+                    raise MemoryError("Memory schema is newer than this runtime")
                 self._migrate_v4(connection)
+                connection.executescript("""
+                    CREATE INDEX IF NOT EXISTS idx_memories_normalized ON memories(normalized_content);
+                    CREATE INDEX IF NOT EXISTS idx_memories_heat ON memories(status, activation DESC);
+                    CREATE TABLE IF NOT EXISTS embedding_features (
+                        owner TEXT, owner_id TEXT, model TEXT, version TEXT, dim INTEGER,
+                        dimension INTEGER, sign INTEGER, weight REAL,
+                        PRIMARY KEY(owner,owner_id,dimension));
+                    CREATE INDEX IF NOT EXISTS idx_embedding_features_lookup ON embedding_features(owner,model,version,dim,dimension,sign);
+                    CREATE INDEX IF NOT EXISTS idx_embedding_features_covering ON embedding_features(owner,model,version,dim,dimension,sign,owner_id,weight);
+                    CREATE INDEX IF NOT EXISTS idx_memories_candidate_filter ON memories(id,status,kind,source_type);
+                    CREATE TABLE IF NOT EXISTS memory_entity_terms (term TEXT, memory_id TEXT, PRIMARY KEY(term,memory_id));
+                """)
                 connection.execute("CREATE INDEX IF NOT EXISTS idx_memories_cluster ON memories(cluster_id)")
                 try:
                     connection.execute(
                         "CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(memory_id UNINDEXED, content, summary)"
                     )
-                    connection.execute("DELETE FROM memories_fts")
-                    connection.execute(
-                        "INSERT INTO memories_fts SELECT id, content, COALESCE(summary, '') FROM memories WHERE status='active'"
-                    )
+                    connection.execute("CREATE VIRTUAL TABLE IF NOT EXISTS clusters_fts USING fts5(cluster_id UNINDEXED, content)")
+                    if not connection.execute("SELECT 1 FROM memories LIMIT 1").fetchone():
+                        connection.execute("INSERT OR IGNORE INTO memory_runtime VALUES ('fts_format','3')")
+                    # Existing data is reindexed offline, never during foreground startup.
                     return True
                 except sqlite3.OperationalError:
                     return False
@@ -185,7 +201,7 @@ class SQLiteMemoryRepository(MemoryRepository):
             clauses.append("tags_json LIKE ?")
             parameters.append(f'%\"{tag.strip().lower()}\"%')
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
-        candidate_limit = max(query.limit * 200, 10_000) if query.text else query.limit
+        candidate_limit = query.limit
         parameters.extend((candidate_limit, query.offset))
         with self._connect() as connection:
             rows = connection.execute(
@@ -194,7 +210,8 @@ class SQLiteMemoryRepository(MemoryRepository):
         return [self._from_row(row) for row in rows]
 
     async def search(self, query: MemoryQuery) -> list[MemorySearchResult]:
-        records = await self.list_records(query)
+        records = ([record for record, _ in await self.candidate_records(query, [], ("", "", 0))]
+                   if query.text else await self.list_records(query))
         ranked = [self._rank(record, query.text) for record in records]
         if query.text:
             ranked = [item for item in ranked if item.text_score > 0]
@@ -236,6 +253,13 @@ class SQLiteMemoryRepository(MemoryRepository):
         sql = f"INSERT INTO memory_clusters ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)}) ON CONFLICT(id) DO UPDATE SET " + ",".join(f"{x}=excluded.{x}" for x in columns if x != "id")
         with self._connect() as connection:
             connection.execute(sql, tuple(data.values()))
+            if self.fts5_available:
+                connection.execute("DELETE FROM clusters_fts WHERE cluster_id=?", (cluster.id,))
+                if cluster.active:
+                    connection.execute("INSERT INTO clusters_fts VALUES (?,?)", (cluster.id, fts_text(
+                        f"{cluster.topic} {cluster.summary} {' '.join(cluster.tags)} {' '.join(cluster.entities)}")))
+            sync_features(connection, "cluster", cluster.id, cluster.centroid_embedding,
+                (cluster.embedding_model, cluster.embedding_version, cluster.embedding_dim))
         return cluster
 
     async def list_clusters(self) -> list[MemoryCluster]:
@@ -251,6 +275,7 @@ class SQLiteMemoryRepository(MemoryRepository):
 
     def _add_cluster_member_sync(self, cluster_id: str, memory_id: str, score: float) -> None:
         with self._connect() as connection:
+            connection.execute("DELETE FROM memory_cluster_members WHERE memory_id=?", (memory_id,))
             connection.execute(
                 "INSERT OR REPLACE INTO memory_cluster_members(cluster_id,memory_id,membership_score) VALUES (?,?,?)",
                 (cluster_id, memory_id, score),
@@ -306,7 +331,7 @@ class SQLiteMemoryRepository(MemoryRepository):
         marks = ",".join("?" for _ in node_ids)
         with self._connect() as connection:
             rows = connection.execute(
-                f"SELECT * FROM memory_edges WHERE (source_id IN ({marks}) OR target_id IN ({marks})) AND weight>=?",
+                f"SELECT * FROM memory_edges WHERE (source_id IN ({marks}) OR target_id IN ({marks})) AND weight>=? ORDER BY weight DESC LIMIT 500",
                 [*node_ids, *node_ids, min_weight],
             ).fetchall()
         return [self._edge_from_row(row) for row in rows]
@@ -317,10 +342,11 @@ class SQLiteMemoryRepository(MemoryRepository):
     def _save_embedding_sync(self, embedding: MemoryEmbedding) -> MemoryEmbedding:
         with self._connect() as connection:
             connection.execute(
-                "INSERT INTO memory_embeddings(memory_id,embedding_model,embedding_hash,vector_json,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(memory_id) DO UPDATE SET embedding_model=excluded.embedding_model,embedding_hash=excluded.embedding_hash,vector_json=excluded.vector_json,updated_at=excluded.updated_at",
-                (embedding.memory_id, embedding.embedding_model, embedding.embedding_hash,
-                 json.dumps(embedding.vector), embedding.updated_at.isoformat()),
-            )
+                "INSERT INTO memory_embeddings(memory_id,embedding_model,embedding_version,embedding_dim,embedding_hash,vector_json,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(memory_id) DO UPDATE SET embedding_model=excluded.embedding_model,embedding_version=excluded.embedding_version,embedding_dim=excluded.embedding_dim,embedding_hash=excluded.embedding_hash,vector_json=excluded.vector_json,updated_at=excluded.updated_at",
+                (embedding.memory_id, embedding.embedding_model, embedding.embedding_version, embedding.embedding_dim,
+                 embedding.embedding_hash, json.dumps(embedding.vector), embedding.updated_at.isoformat()))
+            sync_features(connection, "memory", embedding.memory_id, embedding.vector,
+                (embedding.embedding_model, embedding.embedding_version, embedding.embedding_dim))
         return embedding
 
     async def list_embeddings(self) -> list[MemoryEmbedding]:
@@ -330,7 +356,7 @@ class SQLiteMemoryRepository(MemoryRepository):
         with self._connect() as connection:
             rows = connection.execute("SELECT * FROM memory_embeddings").fetchall()
         return [MemoryEmbedding(memory_id=row["memory_id"], embedding_model=row["embedding_model"],
-                                embedding_hash=row["embedding_hash"], vector=json.loads(row["vector_json"]),
+                                embedding_hash=row["embedding_hash"], embedding_version=row["embedding_version"], embedding_dim=row["embedding_dim"], vector=json.loads(row["vector_json"]),
                                 updated_at=row["updated_at"]) for row in rows]
 
     async def diagnostics(self) -> dict[str, object]:
@@ -348,9 +374,11 @@ class SQLiteMemoryRepository(MemoryRepository):
             model_row = connection.execute("SELECT embedding_model FROM memory_embeddings LIMIT 1").fetchone()
             consolidated = connection.execute("SELECT value FROM memory_runtime WHERE key='last_consolidation_at'").fetchone()
             runtime = dict(connection.execute("SELECT key,value FROM memory_runtime").fetchall())
+            indexed = connection.execute("SELECT count(DISTINCT owner_id) FROM embedding_features WHERE owner='memory'").fetchone()[0]
             edge_memories = connection.execute("SELECT COUNT(*) FROM memories WHERE shape='edge'").fetchone()[0]
             entity_nodes = connection.execute("SELECT COUNT(*) FROM memory_entities").fetchone()[0]
-        return {"total": total, "by_kind": by_kind, "by_status": by_status, "clusters": clusters,
+        return {"fts_index_ready":runtime.get("fts_format")=="3", "embedding_indexed_count":indexed,
+                "total": total, "by_kind": by_kind, "by_status": by_status, "clusters": clusters,
                 "edges": edges, "unclustered": unclustered, "embedding_model": model_row[0] if model_row else None,
                 "embedding_count": embeddings, "last_consolidation_at": consolidated[0] if consolidated else None,
                 "auto_consolidation_enabled": runtime.get("auto_consolidation_enabled") == "true",
@@ -408,12 +436,21 @@ class SQLiteMemoryRepository(MemoryRepository):
                              updated_at=row["updated_at"]) for row in rows]
 
     def _sync_fts(self, connection: sqlite3.Connection, record: MemoryRecord) -> None:
-        if not self.fts5_available:
-            return
-        connection.execute("DELETE FROM memories_fts WHERE memory_id=?", (record.id,))
-        if record.status == MemoryStatus.ACTIVE:
-            connection.execute("INSERT INTO memories_fts(memory_id,content,summary) VALUES (?,?,?)",
-                               (record.id, record.content, record.summary or ""))
+        if self.fts5_available:
+            ready=connection.execute("SELECT value FROM memory_runtime WHERE key='fts_format'").fetchone()
+            if ready and ready[0]=='3':
+                connection.execute("DELETE FROM memories_fts WHERE rowid=(SELECT rowid FROM memories WHERE id=?)",(record.id,))
+            else:
+                connection.execute("DELETE FROM memories_fts WHERE memory_id=?",(record.id,))
+        if self.fts5_available and record.status not in {MemoryStatus.FORGOTTEN, MemoryStatus.SUPERSEDED}:
+            values=(record.id,fts_text(f"{record.content} {' '.join(record.tags)} {' '.join(record.entities)}"),fts_text(record.summary or ""))
+            if ready and ready[0]=='3':
+                connection.execute("INSERT INTO memories_fts(rowid,memory_id,content,summary) VALUES ((SELECT rowid FROM memories WHERE id=?),?,?,?)",(record.id,*values))
+            else:
+                connection.execute("INSERT INTO memories_fts(memory_id,content,summary) VALUES (?,?,?)",values)
+        connection.execute("DELETE FROM memory_entity_terms WHERE memory_id=?", (record.id,))
+        connection.executemany("INSERT OR IGNORE INTO memory_entity_terms VALUES (?,?)",
+            [(term, record.id) for name in record.entities for term in lexical_tokens(name)])
 
     @staticmethod
     def _record_values(record: MemoryRecord) -> dict[str, Any]:
@@ -443,6 +480,7 @@ class SQLiteMemoryRepository(MemoryRepository):
             last_confirmed_at=row["last_confirmed_at"] if "last_confirmed_at" in keys else None,
             derived_at=row["derived_at"] if "derived_at" in keys else None, accessed_at=row["accessed_at"],
             access_count=row["access_count"], source_message_id=row["source_message_id"],
+            source_event_id=row["source_event_id"],
             source_message_ids=json.loads(row["source_message_ids_json"]) if "source_message_ids_json" in keys else [],
             source_name=row["source_name"], evidence_reference=row["evidence_reference"],
             evidence_memory_ids=json.loads(row["evidence_memory_ids_json"]) if "evidence_memory_ids_json" in keys else [],
@@ -451,7 +489,8 @@ class SQLiteMemoryRepository(MemoryRepository):
 
     @staticmethod
     def _cluster_from_row(row: sqlite3.Row) -> MemoryCluster:
-        return MemoryCluster(id=row["id"], topic=row["topic"], summary=row["summary"], importance=row["importance"],
+        return MemoryCluster(id=row["id"], topic=row["topic"], domain=row["domain"],
+            embedding_model=row["embedding_model"], embedding_version=row["embedding_version"], embedding_dim=row["embedding_dim"], summary=row["summary"], importance=row["importance"],
             activation=row["activation"], time_start=row["time_start"], time_end=row["time_end"], member_count=row["member_count"],
             representative_memory_ids=json.loads(row["representative_memory_ids_json"]), tags=json.loads(row["tags_json"]),
             entities=json.loads(row["entities_json"]), metadata=json.loads(row["metadata_json"]),
@@ -477,6 +516,7 @@ class SQLiteMemoryRepository(MemoryRepository):
             "source_message_id": "TEXT", "source_message_ids_json": "TEXT NOT NULL DEFAULT '[]'",
             "source_name": "TEXT", "evidence_reference": "TEXT", "evidence_memory_ids_json": "TEXT NOT NULL DEFAULT '[]'",
             "source_requeryable": "INTEGER NOT NULL DEFAULT 0", "entities_json": "TEXT NOT NULL DEFAULT '[]'",
+            "source_event_id": "TEXT",
             "participants_json": "TEXT NOT NULL DEFAULT '[]'", "cluster_id": "TEXT", "event_at": "TEXT",
             "recorded_at": "TEXT", "known_at": "TEXT", "source": "TEXT",
             "valid_from": "TEXT", "valid_until": "TEXT", "last_confirmed_at": "TEXT", "derived_at": "TEXT",
@@ -484,17 +524,24 @@ class SQLiteMemoryRepository(MemoryRepository):
         for name, definition in additions.items():
             if name not in columns:
                 connection.execute(f"ALTER TABLE memories ADD COLUMN {name} {definition}")
-        if "relevance" in columns:
+        if "activation" not in columns and "relevance" in columns:
             connection.execute("UPDATE memories SET activation=relevance WHERE activation=0.7 AND relevance<>0.7")
         connection.execute("UPDATE memories SET recorded_at=created_at WHERE recorded_at IS NULL")
         connection.execute("UPDATE memories SET known_at=created_at WHERE known_at IS NULL")
         connection.execute("UPDATE memories SET source=COALESCE(source_name, source_type) WHERE source IS NULL")
         cluster_columns = {row["name"] for row in connection.execute("PRAGMA table_info(memory_clusters)")}
         for name, definition in {
+            "domain": "TEXT", "embedding_model": "TEXT NOT NULL DEFAULT 'local-hash-v1'",
+            "embedding_version": "TEXT NOT NULL DEFAULT '1'", "embedding_dim": "INTEGER NOT NULL DEFAULT 256",
             "centroid_embedding_json": "TEXT NOT NULL DEFAULT '[]'",
             "active": "INTEGER NOT NULL DEFAULT 1",
             "merged_into_id": "TEXT",
         }.items():
             if name not in cluster_columns:
                 connection.execute(f"ALTER TABLE memory_clusters ADD COLUMN {name} {definition}")
+        embedding_columns = {row["name"] for row in connection.execute("PRAGMA table_info(memory_embeddings)")}
+        for name, definition in {"embedding_version": "TEXT NOT NULL DEFAULT '1'", "embedding_dim": "INTEGER NOT NULL DEFAULT 256"}.items():
+            if name not in embedding_columns:
+                connection.execute(f"ALTER TABLE memory_embeddings ADD COLUMN {name} {definition}")
+                if name=="embedding_dim":connection.execute("UPDATE memory_embeddings SET embedding_dim=json_array_length(vector_json)")
         connection.execute("UPDATE schema_version SET version=?", (SCHEMA_VERSION,))

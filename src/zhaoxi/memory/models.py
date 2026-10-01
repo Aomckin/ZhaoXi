@@ -53,6 +53,12 @@ class MemoryStatus(StrEnum):
     FORGOTTEN = "forgotten"
 
 
+class RetrievalMode(StrEnum):
+    ASSOCIATIVE = "ASSOCIATIVE"
+    EXPLICIT_RECALL = "EXPLICIT_RECALL"
+    BROAD_SEARCH = "BROAD_SEARCH"
+
+
 class MemoryRelation(StrEnum):
     RELATED_TO = "related_to"
     PART_OF = "part_of"
@@ -94,10 +100,10 @@ class MemoryCreate(MemoryTimeModel):
     confidence: float = Field(default=1.0, ge=0, le=1)
     importance: float = Field(default=0.6, ge=0, le=1)
     activation: float | None = Field(default=None, ge=0, le=1)
-    relevance: float | None = Field(default=0.7, ge=0, le=1, exclude=True)
     pinned: bool = False
     metadata: dict[str, Any] = Field(default_factory=dict)
     supersedes_id: str | None = None
+    source_event_id: str | None = Field(default=None, max_length=500)
     source_message_id: str | None = Field(default=None, max_length=500)
     source_message_ids: list[str] = Field(default_factory=list, max_length=100)
     source_name: str | None = Field(default=None, max_length=100)
@@ -115,7 +121,12 @@ class MemoryCreate(MemoryTimeModel):
     @model_validator(mode="after")
     def initialize_activation(self) -> "MemoryCreate":
         if self.activation is None:
-            self.activation = self.relevance if self.relevance is not None else 0.7
+            if self.source_ref in {"historical_import", "history_import"}:
+                self.activation=0.30
+            elif self.source_ref in {"archive_derived", "memory_consolidation"}:
+                self.activation=0.40
+            else:
+                self.activation = 0.9 if self.pinned else (0.75 if self.kind in {MemoryKind.STATE, MemoryKind.INTENT} else 0.65)
         return self
 
     @field_validator("content")
@@ -135,10 +146,10 @@ class MemoryCreate(MemoryTimeModel):
 class MemoryCandidate(MemoryCreate):
     """One atomic fact extracted from a completed turn."""
 
+    evidence_refs: list[str] = Field(default_factory=list, max_length=4)
     confidence: float = Field(default=0.85, ge=0, le=1)
     importance: float = Field(default=0.45, ge=0, le=1)
     activation: float | None = Field(default=0.75, ge=0, le=1)
-    relevance: float | None = Field(default=None, exclude=True)
     relation: str | None = Field(default=None, max_length=100)
     relation_label: str | None = Field(default=None, max_length=100)
     source_entity: str | None = Field(default=None, max_length=200)
@@ -149,7 +160,7 @@ class MemoryCandidate(MemoryCreate):
 
 
 class MemoryCandidateBatch(MemoryTimeModel):
-    candidates: list[MemoryCandidate] = Field(default_factory=list, max_length=20)
+    candidates: list[MemoryCandidate] = Field(default_factory=list, max_length=5)
     reason: str = ""
 
 
@@ -165,9 +176,9 @@ class MemoryUpdate(MemoryTimeModel):
     confidence: float | None = Field(default=None, ge=0, le=1)
     importance: float | None = Field(default=None, ge=0, le=1)
     activation: float | None = Field(default=None, ge=0, le=1)
-    relevance: float | None = Field(default=None, ge=0, le=1, exclude=True)
     pinned: bool | None = None
     metadata: dict[str, Any] | None = None
+    source_event_id: str | None = Field(default=None, max_length=500)
     source_message_id: str | None = Field(default=None, max_length=500)
     source_message_ids: list[str] | None = Field(default=None, max_length=100)
     source_name: str | None = Field(default=None, max_length=100)
@@ -181,13 +192,6 @@ class MemoryUpdate(MemoryTimeModel):
     valid_until: datetime | None = None
     last_confirmed_at: datetime | None = None
 
-    @model_validator(mode="after")
-    def migrate_relevance(self) -> "MemoryUpdate":
-        if self.activation is None and self.relevance is not None:
-            self.activation = self.relevance
-        return self
-
-
 class MemoryQuery(MemoryTimeModel):
     text: str = ""
     kind: MemoryKind | None = None
@@ -200,6 +204,7 @@ class MemoryQuery(MemoryTimeModel):
     max_hops: int = Field(default=2, ge=0, le=2)
     min_edge_weight: float = Field(default=0.25, ge=0, le=1)
     explicit_recall: bool = False
+    retrieval_mode: RetrievalMode = RetrievalMode.ASSOCIATIVE
     now: datetime | None = None
 
 
@@ -234,6 +239,7 @@ class MemoryRecord(MemoryTimeModel):
     derived_at: datetime | None = None
     accessed_at: datetime | None = None
     access_count: int = Field(default=0, ge=0)
+    source_event_id: str | None = None
     source_message_id: str | None = None
     source_message_ids: list[str] = Field(default_factory=list)
     source_name: str | None = None
@@ -242,19 +248,13 @@ class MemoryRecord(MemoryTimeModel):
     source_requeryable: bool = False
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    @property
-    def relevance(self) -> float:
-        """Deprecated compatibility alias; contextual relevance is query-scoped."""
-        return self.activation
-
-    @relevance.setter
-    def relevance(self, value: float) -> None:
-        self.activation = value
-
-
 class MemoryCluster(MemoryTimeModel):
     id: str = Field(default_factory=lambda: uuid4().hex)
     topic: str
+    domain: str | None = None
+    embedding_model: str = "local-hash-v1"
+    embedding_version: str = "1"
+    embedding_dim: int = 256
     summary: str = ""
     importance: float = Field(default=0.5, ge=0, le=1)
     activation: float = Field(default=0.7, ge=0, le=1)
@@ -292,9 +292,20 @@ class MemoryEdge(MemoryTimeModel):
 class MemoryEmbedding(MemoryTimeModel):
     memory_id: str
     embedding_model: str
+    embedding_version: str = "1"
+    embedding_dim: int = 256
     embedding_hash: str
     vector: list[float]
     updated_at: datetime = Field(default_factory=utc_now)
+
+
+    @model_validator(mode="after")
+    def infer_dimension(self):
+        if "embedding_dim" not in self.model_fields_set:
+            self.embedding_dim=len(self.vector)
+        if self.embedding_dim!=len(self.vector):
+            raise ValueError("embedding dimension does not match vector")
+        return self
 
 
 class MemoryEntity(MemoryTimeModel):
@@ -316,6 +327,10 @@ class MemorySearchResult(MemoryTimeModel):
     time_score: float = 0
     activation_score: float = 0
     importance_score: float = 0
+    cluster_score: float = 0
+    cluster_rank: int | None = None
+    candidate_source: list[str] = Field(default_factory=list)
+    retrieval_mode: RetrievalMode = RetrievalMode.ASSOCIATIVE
     cluster: MemoryCluster | None = None
     match_reason: str = ""
     why_selected: list[str] = Field(default_factory=list)

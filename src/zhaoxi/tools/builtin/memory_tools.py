@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from zhaoxi.memory.models import MemoryCreate, MemoryKind, MemoryQuery, MemoryStatus, MemoryUpdate
+from zhaoxi.memory.models import MemoryCreate, MemoryKind, MemoryQuery, MemoryStatus, MemoryUpdate, RetrievalMode
 from zhaoxi.memory.service import MemoryService
 from zhaoxi.permission.models import PermissionLevel, SideEffect
 from zhaoxi.tools.base import Tool, ToolResult
@@ -17,11 +17,12 @@ class RememberInput(BaseModel):
     confidence: float = Field(default=1.0, ge=0, le=1)
     supersedes_id: str | None = None
     importance: float = Field(default=0.9, ge=0, le=1)
-    activation: float = Field(default=0.7, ge=0, le=1)
+    activation: float = Field(default=0.9, ge=0, le=1)
     pinned: bool = False
 
 
 class SearchMemoryInput(BaseModel):
+    retrieval_mode: RetrievalMode = RetrievalMode.EXPLICIT_RECALL
     query: str = ""
     kind: MemoryKind | None = None
     tags: list[str] = Field(default_factory=list)
@@ -114,6 +115,7 @@ class SearchMemoriesTool(Tool):
                 tags=arguments.tags,
                 limit=arguments.limit,
                 statuses=arguments.statuses,
+                retrieval_mode=arguments.retrieval_mode,
             )
         )
         return ToolResult(

@@ -339,11 +339,49 @@ def main() -> None:
     modes.add_argument("--doctor", action="store_true", help="检查首次启动配置与可选能力，不启动 Agent")
     modes.add_argument("--archive-status", action="store_true", help="查看潮庭书库索引状态，不启动 Agent")
     modes.add_argument("--reindex-archive", action="store_true", help="重建潮庭书库索引，不启动 Agent")
+    from zhaoxi.memory.migration import ACTIONS
+    modes.add_argument("--memory-maintenance", choices=("audit",*ACTIONS), help="离线记忆体检/迁移，默认dry-run")
+    modes.add_argument("--rollback-memory", metavar="BACKUP", help="从记忆快照回滚（须停机）")
+    modes.add_argument("--media-migrate", choices=("experience","perception","session"), help="离线图片迁移，默认dry-run")
+    modes.add_argument("--vacuum-session", action="store_true", help="离线释放Session freelist")
+    parser.add_argument("--apply", action="store_true", help="实际写入；默认只读dry-run")
+    parser.add_argument("--offline", action="store_true", help="确认运行时已停止，允许离线写入")
+    parser.add_argument("--output-dir", help="迁移报告/备份目录")
+    parser.add_argument("--embedding-snapshot", help="Reuse compatible content-hash-matching vectors from a local snapshot")
+    parser.add_argument("--cancel-file", help="出现此文件时取消迁移，保留原库")
     parser.add_argument("--background", action="store_true", help="Desktop 初始隐藏窗口")
     for action in ("install", "remove"):
         modes.add_argument(f"--{action}-autostart", action="store_true")
     modes.add_argument("--autostart-status", action="store_true")
     args = parser.parse_args()
+    if args.apply and not (args.memory_maintenance or args.media_migrate or args.vacuum_session or args.rollback_memory):
+        parser.error("--apply requires a maintenance action")
+    if (args.apply or args.rollback_memory) and not args.offline:
+        parser.error("writes require --offline with the runtime stopped")
+    if args.memory_maintenance or args.media_migrate or args.vacuum_session or args.rollback_memory:
+        import json
+        from zhaoxi.memory.migration import audit, migrate, restore
+        from zhaoxi.memory.embedding import provider_from_settings
+        from zhaoxi.reliability.media import migrate_inline_media, database_metrics, vacuum_database
+        configured=Settings()
+        cancel=lambda: bool(args.cancel_file and Path(args.cancel_file).exists())
+        progress=lambda value: print(json.dumps({"progress":value},ensure_ascii=False),file=__import__('sys').stderr)
+        if args.rollback_memory:
+            payload=restore(args.rollback_memory,configured.memory_db_path)
+        elif args.memory_maintenance == "audit":
+            payload=audit(configured.memory_db_path)
+        elif args.memory_maintenance:
+            provider=provider_from_settings(configured)
+            payload=asyncio.run(migrate(configured.memory_db_path,action=args.memory_maintenance,
+                dry_run=not args.apply,output_dir=args.output_dir,embedding_provider=provider,
+                cluster_max_members=configured.memory_cluster_max_members,cancel=cancel,progress=progress,embedding_snapshot=args.embedding_snapshot))
+        elif args.media_migrate:
+            db_path=str(Path(configured.memory_db_path).parent/'experience.db') if args.media_migrate=='experience' else getattr(configured,args.media_migrate+'_db_path')
+            payload=migrate_inline_media(db_path,dry_run=not args.apply,output_dir=args.output_dir,cancel=cancel,progress=progress,media_directory=configured.media_directory)
+        else:
+            payload=vacuum_database(configured.session_db_path) if args.apply else database_metrics(configured.session_db_path)
+        print(json.dumps(payload,ensure_ascii=False,indent=2))
+        return
     if args.background and not args.desktop:
         parser.error("--background 必须与 --desktop 一起使用")
     if args.install_autostart or args.remove_autostart or args.autostart_status:

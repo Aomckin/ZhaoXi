@@ -16,7 +16,7 @@ ROOT = Path(__file__).parents[2]
 
 def test_release_version_is_consistent():
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert metadata["project"]["version"] == zhaoxi.__version__ == "1.4.2"
+    assert metadata["project"]["version"] == zhaoxi.__version__ == "1.4.3"
 
 
 def test_datastore_registry_covers_active_and_legacy_sources(tmp_path):

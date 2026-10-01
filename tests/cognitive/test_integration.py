@@ -339,7 +339,7 @@ async def test_auto_memory_uses_one_plain_json_request_without_tool_choice(tmp_p
         payload = __import__("json").loads(request.content)
         assert "tool_choice" not in payload
         assert "tools" not in payload
-        assert "response_format" not in payload
+        assert payload["response_format"]["type"] == "json_schema"
         message = {"content": '{"action":"create","content":"用户喜欢晚上开发","tags":["偏好"],"confidence":0.9,"reason":"稳定偏好"}'}
         return httpx.Response(200, json={
             "choices": [{"message": message, "finish_reason": "stop"}],

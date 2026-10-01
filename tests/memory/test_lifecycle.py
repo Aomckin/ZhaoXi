@@ -18,21 +18,21 @@ from zhaoxi.memory.sqlite import SQLiteMemoryRepository
 from zhaoxi.models.types import ModelResponse
 
 
-async def create_memory(service, content, *, importance, relevance, pinned=False):
+async def create_memory(service, content, *, importance, activation, pinned=False):
     return (await service.remember(MemoryCreate(
         content=content,
         importance=importance,
-        relevance=relevance,
+        activation=activation,
         pinned=pinned,
     ))).record
 
 
 @pytest.mark.asyncio
 async def test_high_importance_memory_becomes_cold_but_is_not_forgotten(tmp_path):
-    policy = MemoryLifecyclePolicy(relevance_decay_per_day=0.02)
+    policy = MemoryLifecyclePolicy(activation_decay_per_day=0.02)
     service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"), policy)
     record = await create_memory(
-        service, "项目名拼音必须写 Zhaoxi", importance=0.95, relevance=0.8
+        service, "项目名拼音必须写 Zhaoxi", importance=0.95, activation=0.8
     )
     record.created_at = utc_now() - timedelta(days=100)
     record.updated_at = record.created_at
@@ -40,49 +40,55 @@ async def test_high_importance_memory_becomes_cold_but_is_not_forgotten(tmp_path
     await service.maintain()
     maintained = await service.require(record.id)
     assert maintained.importance == 0.95
-    assert maintained.relevance == 0
-    assert maintained.status == MemoryStatus.COLD
+    assert maintained.activation == 0
+    assert maintained.status == MemoryStatus.ARCHIVED
 
 
 @pytest.mark.asyncio
 async def test_low_importance_memory_moves_from_active_to_cold_then_archived(tmp_path):
-    policy = MemoryLifecyclePolicy(relevance_decay_per_day=0.02)
+    policy = MemoryLifecyclePolicy(activation_decay_per_day=0.02)
     service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"), policy)
     record = await create_memory(
-        service, "最近正在调整一个按钮布局", importance=0.2, relevance=0.8
+        service, "最近正在调整一个按钮布局", importance=0.2, activation=0.8
     )
-    record.created_at = utc_now() - timedelta(days=100)
+    record.created_at = utc_now() - timedelta(days=20)
     record.updated_at = record.created_at
     await service.repository.save(record)
     await service.maintain()
     assert (await service.require(record.id)).status == MemoryStatus.COLD
     record = await service.require(record.id)
-    record.updated_at = utc_now() - timedelta(days=31)
+    record.created_at=utc_now()-timedelta(days=45)
+    record.activation=0.10
+    await service.repository.save(record)
+    await service.maintain()
+    assert (await service.require(record.id)).status == MemoryStatus.DORMANT
+    record = await service.require(record.id)
+    record.created_at=utc_now()-timedelta(days=100)
     await service.repository.save(record)
     await service.maintain()
     assert (await service.require(record.id)).status == MemoryStatus.ARCHIVED
 
 
 @pytest.mark.asyncio
-async def test_cold_memory_search_reactivates_and_boosts_relevance(tmp_path):
+async def test_cold_memory_search_reactivates_and_boosts_activation(tmp_path):
     service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"))
     record = await create_memory(
-        service, "用户晚上更喜欢开发项目", importance=0.8, relevance=0.1
+        service, "用户晚上更喜欢开发项目", importance=0.8, activation=0.1
     )
     record.status = MemoryStatus.COLD
     await service.repository.save(record)
     results = await service.search(MemoryQuery(text="晚上开发", limit=5))
     activated = await service.require(record.id)
     assert [item.record.id for item in results] == [record.id]
-    assert activated.status == MemoryStatus.ACTIVE
-    assert activated.relevance > 0.1
+    assert activated.status == MemoryStatus.COLD
+    assert activated.activation > 0.1
     assert activated.access_count == 1
 
 
 @pytest.mark.asyncio
 async def test_explicit_history_search_returns_cold_without_reactivating(tmp_path):
     service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"))
-    record = await create_memory(service, "旧项目的命名讨论", importance=0.5, relevance=0.1)
+    record = await create_memory(service, "旧项目的命名讨论", importance=0.5, activation=0.1)
     record.status = MemoryStatus.COLD
     await service.repository.save(record)
     results = await service.search(MemoryQuery(
@@ -98,7 +104,7 @@ async def test_explicit_history_search_returns_cold_without_reactivating(tmp_pat
 async def test_pinned_memory_is_never_archived_but_user_can_forget_it(tmp_path):
     service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"))
     record = await create_memory(
-        service, "朝汐的拼音统一写 Zhaoxi", importance=0.1, relevance=0.0, pinned=True
+        service, "朝汐的拼音统一写 Zhaoxi", importance=0.1, activation=0.0, pinned=True
     )
     await service.maintain()
     await service.maintain()
@@ -110,9 +116,9 @@ async def test_pinned_memory_is_never_archived_but_user_can_forget_it(tmp_path):
 @pytest.mark.asyncio
 async def test_consolidation_creates_semantic_memory_and_archives_details(tmp_path):
     service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"))
-    first = await create_memory(service, "今晚不想刷算法", importance=0.4, relevance=0.8)
-    second = await create_memory(service, "晚上还是开发舒服", importance=0.5, relevance=0.9)
-    third = await create_memory(service, "今晚又选择开发", importance=0.3, relevance=0.8)
+    first = await create_memory(service, "今晚不想刷算法", importance=0.4, activation=0.8)
+    second = await create_memory(service, "晚上还是开发舒服", importance=0.5, activation=0.9)
+    third = await create_memory(service, "今晚又选择开发", importance=0.3, activation=0.8)
     consolidated = await service.consolidate(
         [first.id, second.id, third.id],
         "用户通常更喜欢在晚上开发项目，而不是练习算法。",
@@ -147,8 +153,8 @@ async def test_requeryable_tool_fact_is_not_copied_by_auto_memory(tmp_path):
 async def test_memory_decision_lifecycle_actions_are_applied(tmp_path):
     service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"))
     auto = AutoMemory(FakeProvider([ModelResponse(content="unused")]), service)
-    first = await create_memory(service, "晚上不想刷算法", importance=0.4, relevance=0.7)
-    second = await create_memory(service, "晚上更想开发", importance=0.5, relevance=0.8)
+    first = await create_memory(service, "晚上不想刷算法", importance=0.4, activation=0.7)
+    second = await create_memory(service, "晚上更想开发", importance=0.5, activation=0.8)
 
     action = await auto.apply(MemoryDecision(action="archive", target_memory_id=first.id))
     assert action == MemoryAction.ARCHIVE
@@ -199,7 +205,7 @@ def test_v1_database_is_migrated_to_associative_schema_without_losing_records(tm
     record = __import__("asyncio").run(repository.get("legacy"))
     assert record.content == "旧记忆"
     assert record.importance == 0.6
-    assert record.relevance == 0.7
+    assert record.activation == 0.7
     assert record.access_count == 0
     with sqlite3.connect(path) as connection:
-        assert connection.execute("SELECT version FROM schema_version").fetchone()[0] == 5
+        assert connection.execute("SELECT version FROM schema_version").fetchone()[0] == 6

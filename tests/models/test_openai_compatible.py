@@ -311,3 +311,47 @@ async def test_provider_classifies_http_status_retryability(status, retryable):
 
     assert caught.value.code == f"provider_http_{status}"
     assert caught.value.retryable is retryable
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('model,expected_type', [('deepseek/deepseek-v4-flash', 'json_object'), ('schema-model', 'json_schema')])
+async def test_structured_format_is_normalized_per_leaf_provider(model, expected_type):
+    import json
+    from zhaoxi.models.resilient import ResilientProvider
+    def handler(request):
+        payload = json.loads(request.content)
+        assert payload['response_format']['type'] == expected_type
+        return httpx.Response(200, json={'choices': [{'message': {'content': '{"candidates":[]}'}, 'finish_reason': 'stop'}]})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        leaf = OpenAICompatibleProvider(base_url='https://example.test/v1', api_key='test', model=model, client=client)
+        provider = ResilientProvider([leaf])
+        result = await provider.generate([Message(role=Role.USER, content='Return JSON')],
+            response_format={'type': 'json_schema', 'json_schema': {'name': 'memory', 'strict': False, 'schema': {'type': 'object'}}})
+    assert result.finish_reason == 'stop'
+
+
+@pytest.mark.asyncio
+async def test_background_extraction_can_disable_thinking_without_changing_global_setting():
+    import json
+    def handler(request):
+        payload = json.loads(request.content)
+        assert payload['thinking'] == {'type': 'disabled'}
+        assert 'reasoning_effort' not in payload and payload['reasoning'] == {'enabled': False}
+        return httpx.Response(200, json={'choices': [{'message': {'content': '{}'}}]})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = OpenAICompatibleProvider(base_url='https://example.test/v1', api_key='test', model='deepseek-v4', client=client)
+        provider.thinking_enabled = True
+        await provider.generate([Message(role=Role.USER, content='JSON')], thinking={'type': 'disabled'})
+        assert provider.thinking_enabled is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('base_url,effective_tokens', [('https://api.commandcode.ai/provider/v1',7000),('https://api.deepseek.com/v1',1000)])
+async def test_extraction_reasoning_reserve_is_bounded_and_gateway_specific(base_url,effective_tokens):
+    import json
+    def handler(request):
+        assert json.loads(request.content)['max_tokens'] == effective_tokens
+        return httpx.Response(200,json={'choices':[{'message':{'content':'{}'}}]})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = OpenAICompatibleProvider(base_url=base_url, api_key='test',model='deepseek-v4-flash',client=client)
+        await provider.generate([Message(role=Role.USER,content='JSON')],max_tokens=1000,reasoning_budget_tokens=99999,thinking={'type':'disabled'})

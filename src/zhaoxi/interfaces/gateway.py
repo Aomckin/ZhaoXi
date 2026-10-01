@@ -53,6 +53,7 @@ class InterfaceGateway:
         self._response_cache_size = response_cache_size
         self.event_sink = None
         self._maintenance = None
+        agent.maintenance_gateway = self
         self.render_receipts = OrderedDict()
 
     def _configure_trace(self, trace) -> None:
@@ -574,13 +575,31 @@ class InterfaceGateway:
         try:
             self.maintenance_queue().enqueue(request_id, {"request_id": request_id,
                 "trigger": trigger.model_dump(mode="json", exclude={"parts"}) if trigger else None, "session_id": session_id,
-                "reply": response.content, "messages": messages, "base_cursor": base_cursor})
+                "reply": response.content, "messages": messages, "base_cursor": base_cursor},
+                priority=20 if trigger and auto and auto._is_explicit_remember(trigger.content or "") else 10)
             trace.record_interval("post_turn_enqueue", started)
         except Exception as exc:
             logger.error("maintenance enqueue failed request=%s type=%s", request_id, type(exc).__name__)
             if self.event_sink:
                 self.event_sink({"type": "maintenance_status", "request_id": request_id,
                                  "status": "failed", "error": "enqueue_failed"})
+
+    def enqueue_external_maintenance(self, event, reply):
+        """External Owner bursts share the foreground maintenance scheduler."""
+        maintainer = getattr(self.agent, "current_cognition_maintainer", None)
+        stream = getattr(self.agent, "experience_stream", None)
+        marker = maintainer.service.state().last_processed_message_id if maintainer and hasattr(maintainer,"service") else None
+        events = stream.events_after(marker, limit=200) if stream else [event]
+        messages = [Message(message_id=e.event_id,role=Role.USER,content=e.content,timestamp=e.occurred_at,source=e.source).model_dump(mode="json")
+            for e in events if e.actor_role=='OWNER' and e.trust_level in {'TRUSTED','NORMAL'} and e.content
+            and e.event_type in {CognitiveEventType.USER_MESSAGE,CognitiveEventType.EXTERNAL_MESSAGE}]
+        auto = getattr(getattr(self.agent,"cognitive",None),"auto_memory",None)
+        forced = bool(auto and auto._is_explicit_remember(event.content or ""))
+        key = f"external:{event.event_id}"
+        self.maintenance_queue().enqueue(key, {"request_id":key,
+            "trigger":event.model_dump(mode='json',exclude={'parts'}),"reply":reply,"messages":messages,"base_cursor":marker},
+            priority=20 if forced else 5,
+            batch_key=None if forced else f"{event.source}:{event.session_id or event.conversation_id}:{event.actor_id}")
 
     async def _run_maintenance_phase(self, snapshot, phase):
         from zhaoxi.cognitive_stream.models import CognitiveEvent
@@ -589,15 +608,18 @@ class InterfaceGateway:
                                      request_id=snapshot["request_id"] + ":maintenance")
         with correlation_scope(context), provider_budget_scope(
                 getattr(provider, "max_calls", 12), getattr(provider, "max_total_tokens", 100_000)), action_trace_scope() as trace:
-            stage = "memory" if phase == 0 else "current_cognition"
-            name = "auto_memory" if phase == 0 else "current_cognition"
+            stage = "memory" if phase == "auto_memory" else "current_cognition"
+            name = phase
             trace.emit(name + "_started", stage, "running", "后台维护开始")
             try:
-                if phase == 0:
+                if phase == "auto_memory":
                     auto = getattr(getattr(self.agent, "cognitive", None), "auto_memory", None)
-                    if auto and snapshot["trigger"]:
-                        await auto.process_event(CognitiveEvent.model_validate(snapshot["trigger"]), snapshot["reply"])
-                else:
+                    if auto and snapshot.get("trigger"):
+                        events = [CognitiveEvent.model_validate(item) for item in snapshot.get("triggers",[snapshot["trigger"]])]
+                        decision = await auto.process_events(events, snapshot["reply"])
+                        if getattr(decision,"extraction_status",None) == "failed":
+                            raise RuntimeError("auto_memory_extraction_failed")
+                elif phase == "current_cognition":
                     maintainer = getattr(self.agent, "current_cognition_maintainer", None)
                     if maintainer:
                         if hasattr(maintainer, "service"):
@@ -608,6 +630,8 @@ class InterfaceGateway:
                         result = await maintainer.maintain([Message.model_validate(item) for item in snapshot["messages"]], final_reply=snapshot.get("reply", ""))
                         if result in {"FAILED", "REJECTED"}:
                             raise RuntimeError("current_cognition_maintenance_failed")
+                else:
+                    raise ValueError(f"Unknown maintenance phase: {phase}")
                 trace.emit(name + "_finished", stage, "success", "后台维护已完成")
             except BaseException:
                 trace.emit(name + "_failed", stage, "failed", "后台维护未完成")

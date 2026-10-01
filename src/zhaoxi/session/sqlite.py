@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
+from zhaoxi.reliability.sqlite import connect
 import hashlib
 import logging
 from datetime import UTC, datetime
@@ -37,11 +38,15 @@ CREATE TABLE IF NOT EXISTS sessions (
 """
 
 
+from zhaoxi.reliability.media import MediaBlobStore, database_metrics, vacuum_database
+
+
 class SQLiteSessionStore(SessionStore):
     """Persist user/assistant text and image attachments; Tool payloads and metadata are excluded."""
 
-    def __init__(self, path: str | Path, *, max_messages: int = 40) -> None:
+    def __init__(self, path: str | Path, *, max_messages: int = 40, media_directory=None) -> None:
         self.path = Path(path)
+        self.media=MediaBlobStore(media_directory or self.path.parent / "media")
         self.max_messages = max_messages
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
@@ -53,7 +58,7 @@ class SQLiteSessionStore(SessionStore):
         return ImageThumbnailCache(directory)
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path, timeout=10)
+        connection = connect(self.path, timeout=10)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA journal_mode=WAL")
         return connection
@@ -140,7 +145,7 @@ class SQLiteSessionStore(SessionStore):
                     "UPDATE sessions SET messages_json=? WHERE session_id=?",
                     (serialized, session_id),
                 )
-        messages = [Message.model_validate(item) for item in json.loads(serialized)]
+        messages = [Message.model_validate(item) for item in self.media.loads(serialized)]
         for message in messages:
             # v1.1.1 stored activation context inside the assistant body.
             prefix = "[朝汐主动消息 · "
@@ -207,7 +212,7 @@ class SQLiteSessionStore(SessionStore):
                     session.created_at.isoformat(),
                     session.updated_at.isoformat(),
                     self.max_messages,
-                    json.dumps(safe_messages, ensure_ascii=False, separators=(",", ":")),
+                    self.media.dumps(safe_messages),
                     json.dumps(session.channel_metadata, ensure_ascii=False),
                     json.dumps(session.recent_message_refs[-40:], ensure_ascii=False),
                 ),
@@ -237,3 +242,9 @@ class SQLiteSessionStore(SessionStore):
             ).fetchall()]
         sessions = [await self.get(session_id) for session_id in ids]
         return [session for session in sessions if session is not None]
+
+    def database_metrics(self):
+        return database_metrics(self.path)
+
+    async def vacuum(self, incremental=False):
+        return await asyncio.to_thread(vacuum_database,self.path,incremental)

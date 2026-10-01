@@ -4,6 +4,7 @@ import logging
 from zhaoxi.config.settings import Settings
 from zhaoxi.archive.service import ArchiveService
 from zhaoxi.agenda import AgendaService, SQLiteAgendaStore
+from zhaoxi.memory.embedding import provider_from_settings
 from zhaoxi.memory.lifecycle import MemoryLifecyclePolicy
 from zhaoxi.memory.retrieval import MemoryRetriever
 from zhaoxi.memory.service import MemoryService
@@ -44,7 +45,6 @@ def build_knowledge_runtime(settings: Settings):
         SQLiteMemoryRepository(settings.memory_db_path),
         MemoryLifecyclePolicy(
             importance_keep_threshold=settings.memory_importance_keep_threshold,
-            importance_forget_threshold=settings.memory_importance_forget_threshold,
             activation_active_threshold=settings.memory_activation_active_threshold,
             activation_dormant_threshold=settings.memory_activation_dormant_threshold,
             activation_decay_per_day=settings.memory_activation_decay_per_day,
@@ -52,11 +52,14 @@ def build_knowledge_runtime(settings: Settings):
             cold_dormant_after_days=settings.memory_cold_dormant_after_days,
             dormant_archive_after_days=settings.memory_dormant_archive_after_days,
         ),
+        embedding_provider=provider_from_settings(settings),
+        cluster_max_members=settings.memory_cluster_max_members,
         cluster_embedding_enabled=settings.memory_cluster_embedding_enabled,
         cluster_match_threshold=settings.memory_cluster_match_threshold,
         cluster_merge_threshold=settings.memory_cluster_merge_threshold,
         edge_extraction_enabled=settings.memory_edge_extraction_enabled,
     )
+    archive_service = build_archive(settings)
     memory_retriever = MemoryRetriever(
         memory_service,
         limit=settings.memory_retrieval_limit,
@@ -64,6 +67,7 @@ def build_knowledge_runtime(settings: Settings):
         per_cluster_limit=settings.memory_per_cluster_limit,
         max_hops=settings.memory_graph_max_hops,
         min_edge_weight=settings.memory_graph_min_edge_weight,
+        archive=archive_service,
     )
     agenda_service = AgendaService(
         SQLiteAgendaStore(settings.agenda_db_path),
@@ -75,7 +79,6 @@ def build_knowledge_runtime(settings: Settings):
                               legacy_stm_path=settings.short_term_memory_db_path),
         timezone=settings.proactive_timezone,
     )
-    archive_service = build_archive(settings)
     return memory_service, memory_retriever, agenda_service, current_cognition_service, archive_service
 
 

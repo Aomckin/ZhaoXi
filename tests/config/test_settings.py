@@ -26,11 +26,11 @@ def test_retry_delay_bounds_are_cross_validated():
 
 
 def test_memory_lifecycle_thresholds_are_ordered():
-    with pytest.raises(ValidationError, match="importance"):
+    with pytest.raises(ValidationError, match="activation"):
         Settings(
             _env_file=None,
-            memory_importance_forget_threshold=0.8,
-            memory_importance_keep_threshold=0.7,
+            memory_activation_dormant_threshold=0.8,
+            memory_activation_active_threshold=0.7,
         )
 
 
@@ -41,11 +41,11 @@ def test_proactive_night_window_must_have_duration():
             proactive_night_start_hour=8,
             proactive_night_end_hour=8,
         )
-    with pytest.raises(ValidationError, match="relevance"):
+    with pytest.raises(ValidationError, match="activation"):
         Settings(
             _env_file=None,
-            memory_relevance_forget_threshold=0.7,
-            memory_relevance_active_threshold=0.6,
+            memory_activation_dormant_threshold=0.7,
+            memory_activation_active_threshold=0.6,
         )
 
 

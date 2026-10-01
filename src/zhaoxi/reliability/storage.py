@@ -70,6 +70,16 @@ class BackupManager:
                 source = store.path.resolve()
                 if not source.exists():
                     continue
+                if store.kind == "directory":
+                    for media_path in sorted(source.rglob("*")):
+                        if not media_path.is_file():continue
+                        relative=media_path.relative_to(source)
+                        destination=target/store.name/relative
+                        destination.parent.mkdir(parents=True,exist_ok=True)
+                        shutil.copy2(media_path,destination)
+                        files.append({"name":store.name,"kind":"directory","file":destination.relative_to(target).as_posix(),
+                            "relative":relative.as_posix(),"size":destination.stat().st_size,"sha256":self._sha256(destination)})
+                    continue
                 destination = target / f"{store.name}.db" if store.kind == "sqlite" else target / store.name
                 if store.kind == "sqlite":
                     self._backup_sqlite(source, destination)
@@ -116,7 +126,8 @@ class BackupManager:
         for item in manifest.get("files", []):
             if item.get("name") not in known_names:
                 raise BackupError("备份包含未知数据项。")
-            path = directory / item["file"]
+            path = (directory / item["file"]).resolve()
+            if not path.is_relative_to(directory):raise BackupError("备份文件越界。")
             if not path.is_file() or path.stat().st_size != item["size"]:
                 raise BackupError(f"备份文件缺失或大小不符：{item.get('name')}")
             if self._sha256(path) != item["sha256"]:
@@ -132,8 +143,11 @@ class BackupManager:
         stores = {store.name: store for store in self.stores}
         staged: list[tuple[Path, Path, str]] = []
         try:
-            for item in manifest["files"]:
+            for item in sorted(manifest["files"],key=lambda item:item["kind"]!="directory"):
                 target = stores[item["name"]].path.resolve()
+                if item["kind"]=="directory":
+                    root=target;target=(root/item["relative"]).resolve()
+                    if not target.is_relative_to(root):raise BackupError("恢复文件越界。")
                 target.parent.mkdir(parents=True, exist_ok=True)
                 temporary = target.with_name(f".{target.name}.{uuid4().hex}.restore")
                 shutil.copy2(directory / item["file"], temporary)

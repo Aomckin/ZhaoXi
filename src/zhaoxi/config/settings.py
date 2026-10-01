@@ -93,6 +93,7 @@ class Settings(BaseSettings):
     max_context_messages: int = Field(default=40, ge=1)
     temperature: float = Field(default=0.7, ge=0, le=2)
     max_tokens: int | None = Field(default=None, ge=1)
+    media_directory: str = ".zhaoxi/media"
     memory_db_path: str = ".zhaoxi/memory.db"
     memory_retrieval_limit: int = Field(default=6, ge=1, le=50)
     memory_context_max_chars: int = Field(default=4000, ge=200, le=50_000)
@@ -107,6 +108,12 @@ class Settings(BaseSettings):
     memory_cluster_match_threshold: float = Field(default=0.38, ge=0, le=1)
     memory_cluster_merge_threshold: float = Field(default=0.84, ge=0, le=1)
     memory_edge_extraction_enabled: bool = True
+    memory_cluster_max_members: int = Field(default=80, ge=4, le=500)
+    memory_embedding_base_url: str | None = None
+    memory_embedding_api_key: str = ""
+    memory_embedding_model: str = "local-hash-v1"
+    memory_embedding_version: str = "1"
+    memory_embedding_dim: int = Field(default=256, ge=16, le=8192)
     agenda_context_enabled: bool = True
     agenda_db_path: str = ".zhaoxi/agenda.db"
     agenda_max_context_items: int = Field(default=8, ge=1, le=30)
@@ -144,15 +151,9 @@ class Settings(BaseSettings):
     cognitive_router_enabled: bool = True
     auto_memory_enabled: bool = True
     memory_importance_keep_threshold: float = Field(default=0.75, ge=0, le=1)
-    memory_relevance_active_threshold: float = Field(default=0.60, ge=0, le=1)
-    memory_importance_forget_threshold: float = Field(default=0.30, ge=0, le=1)
-    memory_relevance_forget_threshold: float = Field(default=0.20, ge=0, le=1)
-    memory_relevance_decay_per_day: float = Field(default=0.01, ge=0, le=1)
-    memory_relevance_access_boost: float = Field(default=0.15, ge=0, le=1)
-    memory_cold_archive_after_days: float = Field(default=30, ge=0)
     memory_activation_active_threshold: float = Field(default=0.60, ge=0, le=1)
     memory_activation_dormant_threshold: float = Field(default=0.20, ge=0, le=1)
-    memory_activation_decay_per_day: float = Field(default=0.01, ge=0, le=1)
+    memory_activation_decay_per_day: float = Field(default=0.025, ge=0, le=1)
     memory_activation_access_boost: float = Field(default=0.12, ge=0, le=1)
     memory_cold_dormant_after_days: float = Field(default=30, ge=0)
     memory_dormant_archive_after_days: float = Field(default=90, ge=0)
@@ -249,16 +250,6 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_planner_limits(self) -> "Settings":
         from zoneinfo import ZoneInfo
-        legacy_memory_settings = {
-            "memory_relevance_active_threshold": "memory_activation_active_threshold",
-            "memory_relevance_forget_threshold": "memory_activation_dormant_threshold",
-            "memory_relevance_decay_per_day": "memory_activation_decay_per_day",
-            "memory_relevance_access_boost": "memory_activation_access_boost",
-            "memory_cold_archive_after_days": "memory_cold_dormant_after_days",
-        }
-        for legacy, current in legacy_memory_settings.items():
-            if legacy in self.model_fields_set and current not in self.model_fields_set:
-                setattr(self, current, getattr(self, legacy))
         ZoneInfo(self.proactive_timezone)
         if ("request_finalization_reserve_tokens" in self.model_fields_set
                 and self.request_finalization_reserve_tokens >= self.request_max_total_tokens):
@@ -290,10 +281,6 @@ class Settings(BaseSettings):
             raise ValueError("fallback Provider 的 URL、API Key 和 Model 必须同时配置")
         if self.planner_max_attempts_per_step > self.planner_max_steps:
             raise ValueError("planner 每步尝试次数不能大于总执行步数")
-        if self.memory_importance_forget_threshold >= self.memory_importance_keep_threshold:
-            raise ValueError("memory importance 遗忘阈值必须低于保留阈值")
-        if self.memory_relevance_forget_threshold >= self.memory_relevance_active_threshold:
-            raise ValueError("memory relevance 遗忘阈值必须低于活跃阈值")
         if self.memory_activation_dormant_threshold >= self.memory_activation_active_threshold:
             raise ValueError("memory activation dormant 阈值必须低于 active 阈值")
         if self.memory_cold_dormant_after_days > self.memory_dormant_archive_after_days:

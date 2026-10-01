@@ -1,13 +1,16 @@
 """SQLite append-only event store with stable ordering and source deduplication."""
 import sqlite3
+from zhaoxi.reliability.sqlite import connect
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zhaoxi.reliability.media import MediaBlobStore
 from .models import CognitiveEvent, CognitiveEventType
 
 class ExperienceStream:
-    def __init__(self, path: str | Path = ".zhaoxi/experience.db") -> None:
+    def __init__(self, path: str | Path = ".zhaoxi/experience.db", *, media_directory=None) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.media=MediaBlobStore(media_directory or self.path.parent / "media")
         with self._connect() as db:
             db.execute("""CREATE TABLE IF NOT EXISTS events (
                 event_id TEXT PRIMARY KEY, event_type TEXT NOT NULL, source TEXT NOT NULL,
@@ -27,14 +30,13 @@ class ExperienceStream:
             for field in ("session_id", "channel", "actor_id", "occurred_at", "turn_id", "reply_to_event_id", "caused_by_event_id"):
                 db.execute(f"CREATE INDEX IF NOT EXISTS events_{field} ON events({field})")
 
-    @staticmethod
-    def _backfill_causality(db) -> None:
+    def _backfill_causality(self, db) -> None:
         """Infer causal columns for pre-v1.3.2 payloads once during schema migration."""
         rows = db.execute("SELECT event_id,payload FROM events ORDER BY rowid ASC").fetchall()
         known_turns: dict[str, str] = {}
         known_ids = {row[0] for row in rows}
         for event_id, payload in rows:
-            event = CognitiveEvent.model_validate_json(payload)
+            event = CognitiveEvent.model_validate(self.media.loads(payload))
             parent = next((ref for ref in event.parent_refs if ref in known_ids), None)
             turn_id = event.turn_id or (known_turns.get(parent, parent) if parent else event_id)
             reply_to = event.reply_to_event_id or (
@@ -45,11 +47,11 @@ class ExperienceStream:
                 "reply_to_event_id": reply_to, "caused_by_event_id": cause})
             db.execute("""UPDATE events SET payload=?, turn_id=?, reply_to_event_id=?,
                         caused_by_event_id=? WHERE event_id=?""",
-                       (enriched.model_dump_json(), turn_id, reply_to, cause, event_id))
+                       (self.media.dumps(enriched.model_dump(mode="json")), turn_id, reply_to, cause, event_id))
             known_turns[event_id] = turn_id
 
     def _connect(self):
-        return sqlite3.connect(self.path, timeout=10)
+        return connect(self.path, timeout=10)
 
     def append(self, event: CognitiveEvent) -> CognitiveEvent:
         with self._connect() as db:
@@ -65,7 +67,7 @@ class ExperienceStream:
                        (event.event_id, event.event_type.value, event.source, event.channel,
                         event.session_id, event.actor_id, event.actor_role,
                         event.occurred_at.isoformat(), event.received_at.isoformat(),
-                        event.model_dump_json(), event.turn_id, event.reply_to_event_id,
+                        self.media.dumps(event.model_dump(mode="json")), event.turn_id, event.reply_to_event_id,
                         event.caused_by_event_id))
             db.executemany("INSERT OR IGNORE INTO event_refs VALUES (?,?,?)",
                            [(event.source, ref, event.event_id) for ref in event.source_refs])
@@ -74,14 +76,14 @@ class ExperienceStream:
     def get(self, event_id: str) -> CognitiveEvent | None:
         with self._connect() as db:
             row = db.execute("SELECT payload FROM events WHERE event_id=?", (event_id,)).fetchone()
-        return CognitiveEvent.model_validate_json(row[0]) if row else None
+        return CognitiveEvent.model_validate(self.media.loads(row[0])) if row else None
 
     def _query(self, where: str = "1=1", args: tuple = (), limit: int = 50) -> list[CognitiveEvent]:
         with self._connect() as db:
             rows = db.execute("SELECT payload FROM events WHERE " + where +
                               " ORDER BY occurred_at DESC, received_at DESC, event_id DESC LIMIT ?",
                               (*args, limit)).fetchall()
-        return [CognitiveEvent.model_validate_json(row[0]) for row in rows]
+        return [CognitiveEvent.model_validate(self.media.loads(row[0])) for row in rows]
 
     def recent(self, limit: int = 50) -> list[CognitiveEvent]:
         return self._query(limit=limit)
@@ -104,7 +106,7 @@ class ExperienceStream:
             marker = db.execute("SELECT rowid FROM events WHERE event_id=?", (event_id,)).fetchone() if event_id else None
             rows = db.execute("SELECT payload FROM events WHERE rowid>? ORDER BY rowid ASC LIMIT ?",
                               (marker[0] if marker else 0, limit)).fetchall()
-        return [CognitiveEvent.model_validate_json(row[0]) for row in rows]
+        return [CognitiveEvent.model_validate(self.media.loads(row[0])) for row in rows]
 
     def query_refs(self, source_refs: list[str], limit: int = 50) -> list[CognitiveEvent]:
         if not source_refs:
@@ -152,10 +154,14 @@ class ExperienceStream:
         now = now or datetime.now(UTC)
         removed = 0
         with self._connect() as db:
-            for event_id, payload in db.execute("SELECT event_id,payload FROM events").fetchall():
-                event = CognitiveEvent.model_validate_json(payload)
-                days = 7 if event.event_type.value.startswith("TOOL_") else (30 if event.actor_role != "OWNER" else 90)
-                if event.received_at < now - timedelta(days=days):
+            # Expiry needs indexed metadata only; do not hydrate image blobs.
+            for event_id, event_type, actor_role, received_at in db.execute(
+                    "SELECT event_id,event_type,actor_role,received_at FROM events").fetchall():
+                received = datetime.fromisoformat(received_at)
+                if received.tzinfo is None:
+                    received = received.replace(tzinfo=UTC)
+                days = 7 if event_type.startswith("TOOL_") else (30 if actor_role != "OWNER" else 90)
+                if received < now - timedelta(days=days):
                     db.execute("DELETE FROM event_refs WHERE event_id=?", (event_id,))
                     db.execute("DELETE FROM events WHERE event_id=?", (event_id,))
                     removed += 1

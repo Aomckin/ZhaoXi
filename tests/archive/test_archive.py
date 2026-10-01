@@ -174,3 +174,17 @@ async def test_archive_tools_are_read_only_and_return_source_metadata(tmp_path):
     assert result.success
     assert result.metadata["source_kind"] == "tidecourt_archive"
     assert result.data[0]["source_path"] == "zhaoxi/lore.md"
+
+
+def test_artifact_resolver_matches_partial_reference_without_reading_chunks(tmp_path):
+    from conftest import FakeProvider
+    from zhaoxi.cognitive.router import CognitiveRouter, CognitiveRoute
+    archive = service(tmp_path)
+    write(tmp_path/'archive'/'deep-sea.md', '# 深海项目笔记\n\n绝不可抄进记忆的正文内容。')
+    archive.reindex()
+    references = archive.artifact_reference_match('深海项目笔记里面写了什么？')
+    assert references and references[0]['title'] == '深海项目笔记'
+    assert '绝不可' not in str(references)
+    router = CognitiveRouter(FakeProvider([]), archive_enabled=True,artifact_resolver=archive.artifact_reference_match)
+    assert router._archive_decision('深海项目笔记里面写了什么？').route == CognitiveRoute.TOOL
+    assert archive.artifact_reference_match('朝汐帮我看看资料') == []

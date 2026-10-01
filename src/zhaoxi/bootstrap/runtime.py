@@ -48,7 +48,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         tool_router_mode=settings.tool_router_mode,
     )
     agent.settings = settings
-    agent.experience_stream = ExperienceStream(Path(".zhaoxi") / "experience.db")
+    agent.experience_stream = ExperienceStream(Path(".zhaoxi") / "experience.db",media_directory=settings.media_directory)
     agent.experience_stream.clear_expired()
     agent.cognitive_ingress = CognitiveIngress(agent.experience_stream)
     if planner is not None:
@@ -167,6 +167,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
                 routing_hints=routing_hints,
                 tool_catalog=registry.manifest(),
                 archive_enabled=archive_service is not None,
+                artifact_resolver=archive_service.artifact_reference_match if archive_service else None,
             ),
             fast_gate=(FastDialogueGate(settings.fast_gate) if settings.fast_dialogue_enabled else None),
             fast_chat=(FastChatRuntime(

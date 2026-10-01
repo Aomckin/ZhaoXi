@@ -27,7 +27,7 @@ logger = logging.getLogger("PERCEPTION")
 class PerceptionRuntime:
     def __init__(self, settings, agent, store: PerceptionStore | None = None):
         self.settings, self.agent = settings, agent
-        self.store = store or PerceptionStore(settings.perception_db_path)
+        self.store = store or PerceptionStore(settings.perception_db_path,media_directory=settings.media_directory)
         self.store.fail_inflight()
         self.ledger = InteractionLedger(settings.perception_db_path,
                                         settings.interaction_ledger_ttl_hours)
@@ -313,18 +313,11 @@ class PerceptionRuntime:
     async def _organize_owner_event(self, event, response: str) -> None:
         if event is None or event.actor_role != "OWNER" or event.privacy_level != "OWNER_PRIVATE":
             return
-        auto = getattr(getattr(self.agent, "cognitive", None), "auto_memory", None)
-        if auto is not None:
-            try:
-                await auto.process_event(event, response)
-            except Exception as exc:
-                logger.warning("owner event memory failed type=%s", type(exc).__name__)
-        maintainer = getattr(self.agent, "current_cognition_maintainer", None)
-        if maintainer is not None:
-            try:
-                await maintainer.maintain_events(self.agent.experience_stream)
-            except Exception as exc:
-                logger.warning("owner event cognition failed type=%s", type(exc).__name__)
+        gateway = getattr(self.agent, "maintenance_gateway", None)
+        if gateway is None:
+            from zhaoxi.interfaces.gateway import InterfaceGateway
+            gateway = InterfaceGateway(self.agent)
+        gateway.enqueue_external_maintenance(event, response)
 
     async def process_pending_snapshot(self) -> int:
         if not self.settings.external_cognition_ambient_enabled:

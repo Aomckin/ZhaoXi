@@ -31,7 +31,7 @@ async def test_queue_is_frozen_fifo_nonblocking_and_failure_isolated(tmp_path):
     entered, release = asyncio.Event(), asyncio.Event()
     seen = []
     async def handle(payload, phase):
-        if payload["request_id"] == "one" and phase == 0:
+        if payload["request_id"] == "one" and phase == "auto_memory":
             entered.set()
             await release.wait()
         seen.append((payload["request_id"], phase, payload["text"]))
@@ -48,10 +48,11 @@ async def test_queue_is_frozen_fifo_nonblocking_and_failure_isolated(tmp_path):
     assert seen == []
     release.set()
     await q.worker
-    assert seen[:4] == [("one", 0, "original"), ("one", 1, "original"), ("two", 0, "second"), ("two", 1, "second")]
+    assert seen[:4] == [("one", "auto_memory", "original"), ("one", "current_cognition", "original"), ("two", "auto_memory", "second"), ("two", "current_cognition", "second")]
     assert {x["id"]: x["status"] for x in q.diagnostics()} == {"one":"completed", "two":"completed", "bad":"failed", "four":"completed"}
     q.enqueue("one", snapshot)
-    assert len(seen) == 7
+    assert len(seen) == 8
+    assert any(key == "bad" and phase == "current_cognition" for key,phase,_ in seen)
 
 
 async def test_restart_recovers_queued_but_not_uncertain_writes(tmp_path):
@@ -69,7 +70,7 @@ async def test_restart_recovers_queued_but_not_uncertain_writes(tmp_path):
     restored = PostTurnMaintenanceQueue(path, handle)
     restored.start()
     await restored.worker
-    assert seen == [("b", 0), ("b", 1)]
+    assert seen == [("b", "auto_memory"), ("b", "current_cognition")]
     assert {x["id"]:x["status"] for x in restored.diagnostics()}["a"] == "uncertain"
 
 

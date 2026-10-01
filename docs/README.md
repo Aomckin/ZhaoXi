@@ -11,6 +11,12 @@
 
 ## v1.4.x
 
+- [v1.4.3 版本说明](v1.4.x/Zhaoxi_v1.4.3_Release_Notes.md)
+- [v1.4.3 Memory 3.0 任务书](v1.4.x/Zhaoxi_v1.4.3_Memory_3.0_Broad_Memory_Careful_Recall_Task.md)
+- [v1.4.3 开发记录、迁移与验收](v1.4.x/Zhaoxi_v1.4.3_开发记录.md)
+- [v1.4.3 逐项核对与验收边界](v1.4.x/Zhaoxi_v1.4.3_任务书核对.md)
+- [v1.4.3 早期阶段记录](v1.4.x/Zhaoxi_v1.4.3_阶段记录.md)
+
 - [v1.4.2 开发记录与验收边界](v1.4.x/Zhaoxi_v1.4.2_开发记录.md)
 - [v1.4.2 Current Cognition 2.0 / Living Journal 任务书](v1.4.x/Zhaoxi_v1.4.2_Current_Cognition_2.0_Living_Journal_Task.md)
 - [v1.4.2 Fast Gate 2.0 轻量补丁任务书](v1.4.x/Zhaoxi_v1.4.2_Fast_Gate_2.0_Lightweight_Patch_Task.md)
