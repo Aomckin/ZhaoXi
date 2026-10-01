@@ -52,4 +52,6 @@ node --test tests/web/*.test.cjs
 python scripts/accept_memory_v143.py
 ```
 
+测试临时目录默认使用 `.zhaoxi/test-tmp`，pytest 缓存使用 `.zhaoxi/test-cache`；单独指定 `--basetemp` 时也应放在 `.zhaoxi/` 下。本轮根目录遗留的 41 个测试目录及缓存已归档至 `.zhaoxi/test-artifacts/root-cleanup-20261001/`，保留数据以便追溯。
+
 最后一条依赖本机冻结旧报告、快照、查询缓存和复核标签；缺少文件时须先准备对应输入，不会请求外部接口。迁移/回滚命令见根 README。
