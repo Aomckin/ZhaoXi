@@ -18,6 +18,7 @@ from zhaoxi.errors import (
     PlannerLimitError,
     PlannerTaskCancelledError,
     PlannerTimeoutError,
+    ProviderError,
 )
 from zhaoxi.models.base import ModelProvider
 from zhaoxi.observability import current_trace, llm_owner_scope
@@ -36,7 +37,7 @@ from zhaoxi.planner.store import InMemoryPlanStore, PlanStore
 from zhaoxi.planner.trace import TraceRecorder
 from zhaoxi.permission.executor import ToolExecutor
 from zhaoxi.permission.models import InvocationOrigin, PendingConfirmation
-from zhaoxi.reliability.retry import BudgetExtensionRequest, budget_stage_scope, current_budget
+from zhaoxi.reliability.retry import BudgetExtensionRequest, budget_stage_scope, current_budget, BudgetState
 from zhaoxi.tools.base import ToolResult
 from zhaoxi.tools.registry import ToolRegistry
 
@@ -292,7 +293,7 @@ class PlannerRuntime:
             goal.transition(GoalStatus.PLANNING)
             await self.store.save(goal)
         memories = []
-        if self.context_builder.memory_retriever:
+        if self.context_builder.memory_retriever and not (current_budget() and current_budget().state is not BudgetState.NORMAL):
             try:
                 memories = await self.context_builder.memory_retriever.retrieve(goal.description)
             except Exception:
@@ -305,21 +306,18 @@ class PlannerRuntime:
             finalizing = bool(plan and not remaining)
             stage = "finalization" if finalizing else "tool_execution" if plan else "planning"
             budget = current_budget()
-            if budget and budget.policy and budget.extension_count < 2 and completed:
-                threshold = (budget.max_total_tokens - budget.finalization_reserve) * budget.policy.warning_ratio
-                if budget.total_tokens >= threshold and (not finalizing or budget.total_tokens >= budget.max_total_tokens):
-                    limit = budget.policy.extension_1_limit if budget.extension_count == 0 else budget.policy.extension_2_limit
-                    if limit > 0 and (budget.extension_count == 0 or finalizing or len(remaining) <= 1):
-                        budget.request_extension(BudgetExtensionRequest(
-                            reason="计划仍有明确步骤或需要收尾", remaining_actions=len(remaining),
-                            estimated_extra_tokens=limit, stage=stage,
-                            progress_evidence={"completed_actions": len(completed),
-                                               "last_success_step": action_index - 1,
-                                               "corrective_retry": bool(goal.observations and not goal.observations[-1].success
-                                                                        and goal.observations[-1].retryable),
-                                               "stalled_rounds": max(0, action_index - len(goal.observations) - 1),
-                                               "remaining_actions_verified": True},
-                        ))
+            danger = bool(budget and budget.state in {BudgetState.DANGER, BudgetState.EXHAUSTED})
+            if budget and budget.policy and budget.extension_requests == 0 and completed and len(remaining)==1 and budget.state is BudgetState.WARNING:
+                if goal.observations and goal.observations[-1].success:
+                    budget.request_extension(BudgetExtensionRequest(
+                        reason="计划已有成功结果且只剩一个步骤", remaining_actions=1,
+                        estimated_extra_tokens=budget.policy.extension_1_limit, stage="tool_execution",
+                        progress_evidence={"completed_actions":len(completed), "new_result":True,
+                                           "remaining_actions_verified":True}))
+            if danger:
+                finalizing, stage = True, "finalization"
+                if budget.state is BudgetState.EXHAUSTED:
+                    return await self._emergency_final(goal, action_index, "budget_exhausted")
             schemas = [*control_schemas(), *(tool.schema() for tool in self.registry.list())]
             action_trace = current_trace()
             if not (action_trace and action_trace.interim_enabled
@@ -334,8 +332,19 @@ class PlannerRuntime:
             )
             if finalizing:
                 messages[0].content = (messages[0].content or "") + "\n计划步骤已完成，只生成最终自然语言回复，不再调用工具。"
-            with budget_stage_scope(stage), llm_owner_scope("workflow_finalization" if finalizing else "planner", stage):
-                response = await self.provider.generate(messages, None if finalizing else schemas)
+            if finalizing:
+                messages[0].content += "\n预算收尾只报告已完成、失败、未完成和未知，不执行任何新步骤；剩余计划未完成。" if danger else ""
+            try:
+                with budget_stage_scope(stage), llm_owner_scope("workflow_finalization" if finalizing else "planner", stage):
+                    response = await self.provider.generate(messages, None if finalizing else schemas)
+            except ProviderError as exc:
+                if exc.code in {"provider_token_budget_exhausted", "provider_soft_budget_exhausted", "provider_call_budget_exhausted"}:
+                    return await self._emergency_final(goal, action_index, "budget_exhausted")
+                raise
+            if finalizing and response.tool_calls and (danger or any(c.name!="finish_task" for c in response.tool_calls)):
+                return await self._emergency_final(goal, action_index, "final_only_tool_call")
+            if danger and remaining:
+                return await self._emergency_final(goal, action_index, "budget_danger")
             self._check_cancelled(goal)
             if not response.tool_calls:
                 if goal.current_plan and all(
@@ -363,6 +372,8 @@ class PlannerRuntime:
                         trace.emit_interim(str(call.arguments.get("content", "")), reason="planner",
                                           progress=str(call.arguments.get("progress", "")))
                     continue
+                if current_budget() and current_budget().state in {BudgetState.DANGER, BudgetState.EXHAUSTED}:
+                    return await self._emergency_final(goal, action_index, "budget_danger")
                 result = await self._handle_call(goal, call)
                 if goal.status == GoalStatus.WAITING_FOR_USER:
                     self.conversation.add_tool(
@@ -391,6 +402,33 @@ class PlannerRuntime:
             await self.store.save(goal)
             self.trace.record(goal, "task_failed", metadata={"reason": "max_steps"})
         raise PlannerLimitError(f"已达到规划任务最大执行步数（{self.max_steps}）。")
+
+    async def _emergency_final(self, goal, step, reason):
+        from zhaoxi.core.loop_safety import LoopSafety
+        state = LoopSafety()
+        for observation in goal.observations:
+            state.outcomes.append((observation.tool_name, ToolResult(success=observation.success,
+                content=observation.content, error=observation.error, metadata={"unknown_outcome":observation.unknown_outcome})))
+        content = state.fallback() + "\n\n剩余计划已停止，未执行的步骤没有算作完成。"
+        if reason=="budget_exhausted":
+            content += "\n本轮 Token 或模型调用预算已耗尽。"
+        _, _ = commit_reply(self.conversation, content, getattr(self.context_builder, "emoji_service", None))
+        if goal.status not in TERMINAL_GOAL_STATUSES:
+            goal.transition(GoalStatus.FAILED)
+        goal.final_content = content
+        await self.store.save(goal)
+        trace = current_trace()
+        if trace:
+            budget = current_budget()
+            if budget:
+                trace.budget_state, trace.budget_remaining_ratio = budget.state.value, budget.remaining_ratio
+            trace.deterministic_fallback_used=True
+            trace.partial_success=any(o.success for o in goal.observations)
+            trace.forced_finalization_reason=reason
+            trace.result_status="budget_exhausted" if reason=="budget_exhausted" else "partial_success" if trace.partial_success else "failed"
+            trace.response_status="succeeded"
+            trace.emit("deterministic_fallback", "response_generation", "success", "已整理计划已完成与未完成部分", metadata={"reason":reason})
+        return self._response(goal, content, step)
 
     async def _execute_with_timeout(self, goal: Goal) -> PlannerResponse:
         try:
@@ -506,6 +544,7 @@ class PlannerRuntime:
                 data=last_result.data,
                 error=last_result.error,
                 retryable=retryable,
+                unknown_outcome=bool(last_result.metadata.get("unknown_outcome")),
             )
             goal.observations.append(observation)
             self.trace.record(

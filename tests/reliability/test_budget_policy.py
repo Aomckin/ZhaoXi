@@ -21,31 +21,30 @@ def request(stage="tool_execution", remaining=1, extra=300, **evidence):
     )
 
 
-def test_two_runtime_approved_extensions_never_cross_hard_limit():
+def test_only_one_extension_request_is_allowed_and_never_crosses_hard_limit():
     with provider_budget_scope(8, policy=policy()) as budget:
         record_provider_tokens(790)
-        first = budget.request_extension(request(completed_actions=1, last_success_step=2))
-        assert first["approved_extra"] == 300
-        assert budget.max_total_tokens == 1300
+        first=budget.request_extension(request(completed_actions=1,remaining_actions_verified=True))
+        assert first["approved_extra"]==300 and budget.max_total_tokens==1300
         record_provider_tokens(170)
-        second = budget.request_extension(request("finalization", 0, 200, completed_actions=2))
-        assert second["approved_extra"] == 200
-        assert budget.max_total_tokens == 1500
-        third = budget.request_extension(request("finalization", 0, 100, completed_actions=2))
-        assert third["reason_code"] == "extension_limit"
-        assert budget.extension_count == 2
+        second=budget.request_extension(request(completed_actions=2))
+        assert second["reason_code"]=="extension_limit" and budget.extension_count==1
         with budget_stage_scope("finalization"):
-            with pytest.raises(ProviderError, match="Token"):
+            with pytest.raises(ProviderError,match="Token"):
                 record_provider_tokens(641)
 
 
-def test_repeated_failure_and_unverified_remaining_actions_are_rejected():
-    with provider_budget_scope(8, policy=policy()) as budget:
+@pytest.mark.parametrize("evidence,reason",[
+    ({"new_result":True,"repeated_error_count":2},"repeated_failure"),
+    ({"completed_actions":1,"remaining_actions_verified":False},"remaining_actions_mismatch"),
+    ({},"no_progress"),
+])
+def test_failed_or_unverified_extension_is_rejected(evidence,reason):
+    with provider_budget_scope(8,policy=policy()) as budget:
         record_provider_tokens(790)
-        assert budget.request_extension(request(new_result=True, repeated_error_count=2))["reason_code"] == "repeated_failure"
-        assert budget.request_extension(request(completed_actions=1, remaining_actions_verified=False))["reason_code"] == "remaining_actions_mismatch"
-        assert budget.request_extension(request())["reason_code"] == "no_progress"
-        assert budget.extension_count == 0
+        assert budget.request_extension(request(**evidence))["reason_code"]==reason
+        assert budget.extension_count==0 and budget.extension_requests==1
+        assert budget.request_extension(request(completed_actions=1))["reason_code"]=="extension_limit"
 
 
 def test_finalization_can_spend_reserved_tokens_without_opening_tool_budget():
@@ -66,7 +65,7 @@ def test_second_extension_cannot_resume_broad_planning():
         assert budget.request_extension(request(completed_actions=1))["approved_extra"] == 300
         record_provider_tokens(160)
         result = budget.request_extension(request("planning", 2, 150, completed_actions=2))
-        assert result["reason_code"] == "second_extension_restricted"
+        assert result["reason_code"] == "extension_limit"
 
 
 def test_ordinary_request_does_not_receive_unneeded_extension():

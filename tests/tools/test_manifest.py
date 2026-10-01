@@ -135,6 +135,8 @@ async def test_resolve_load_execute_when_router_misses(monkeypatch):
         ModelResponse(content="找到了"),
     ])
     agent = ZhaoxiAgent(provider=provider, registry=registry, context_builder=ContextBuilder("朝汐"))
+    from types import SimpleNamespace
+    agent.settings=SimpleNamespace(standard_model_round_limit=5,standard_tool_round_limit=3,standard_repair_round_limit=1)
     result = await agent.run("帮我找桌面上的面试复盘", require_tool_call=True)
     assert result.content == "找到了"
     assert not any(m.role.value == "tool" for m in provider.calls[1])

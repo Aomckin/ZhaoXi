@@ -1,0 +1,71 @@
+{
+  "version": "1.4.3",
+  "date": "2026-10-01",
+  "scope": "isolated InterfaceGateway DESKTOP with real configured provider and in-memory synthetic ledger; no native desktop restart, no production data writes or external sends",
+  "desktop_fixture": {
+    "max_tokens": 2400,
+    "synthetic_tool_persistent": true,
+    "case_B_force_fast": true
+  },
+  "desktop_cases": [
+    {
+      "case": "A_desktop_gateway",
+      "synthetic": true,
+      "elapsed_ms": 8671,
+      "reply": "小金毛？叫我呢，还是说你家那位毛孩子。",
+      "synthetic_tool_calls": 0,
+      "metrics": {
+        "runtime_lane": "fast",
+        "fast_escalation_count": 0,
+        "fast_escalation_requested": false,
+        "fast_escalation_validated": false,
+        "standard_model_round": 0,
+        "standard_tool_round": 0,
+        "repair_round": 0,
+        "budget_state": "NORMAL",
+        "deterministic_fallback_used": false,
+        "result_status": "completed"
+      }
+    },
+    {
+      "case": "B_desktop_gateway",
+      "synthetic": true,
+      "elapsed_ms": 28403,
+      "reply": "补过了，调用的是 test_ledger，STANDARD 档位，只走了一次。\n\n结果得说清楚：返回 success，内容是「合成验收记录已处理，真实台账未修改」，数据里明确标了 synthetic。也就是说这轮是合成验收通道，正式台账那边一个字段都没动——不是漏记，是工具本身就不碰真账。\n\n你要是想真正落账，得给我一个能写正式台账的入口；现在手上这个只能验流程。",
+      "synthetic_tool_calls": 1,
+      "metrics": {
+        "runtime_lane": "standard",
+        "fast_escalation_count": 1,
+        "fast_escalation_requested": true,
+        "fast_escalation_validated": true,
+        "standard_model_round": 2,
+        "standard_tool_round": 1,
+        "repair_round": 0,
+        "budget_state": "NORMAL",
+        "deterministic_fallback_used": false,
+        "result_status": "completed"
+      }
+    }
+  ],
+  "rejected_request_case": {
+    "case": "A_forced_history_request",
+    "elapsed_ms": 11285,
+    "reply": "小金毛？这是在叫我，还是你家养了只狗？🐕\n\n要是叫我——行吧，这名我认了，毛色是挺亮的。\n\n要是说你自己的，那可得说说，多大、叫什么、拆不拆家。",
+    "synthetic_tool_calls": 0,
+    "metrics": {
+      "fast_escalation_count": 0,
+      "fast_escalation_requested": true,
+      "fast_escalation_validated": false,
+      "fast_escalation_rejected_reason": "trigger_span_not_current",
+      "fast_escalation_trigger_span": "",
+      "standard_model_round": 0,
+      "standard_tool_round": 0,
+      "repair_round": 0,
+      "budget_state": "NORMAL",
+      "deterministic_fallback_used": false,
+      "result_status": "completed"
+    }
+  },
+  "rejected_request_fixture": "first bad escalation response injected deterministically; rejected-response retry uses real provider",
+  "earlier_attempts": "Earlier Desktop fixture attempts encountered an assertion failure, a provider timeout and an empty response; final persistent synthetic tool / 2400 output token fixture passed. These are not native UI or real ledger acceptance."
+}

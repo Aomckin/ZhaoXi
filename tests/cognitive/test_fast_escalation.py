@@ -43,6 +43,7 @@ def make_agent(responses):
     agent = ZhaoxiAgent(provider=provider, registry=registry, context_builder=ContextBuilder("朝汐"))
     agent.cognitive = CognitiveCoordinator(agent=agent, router=CognitiveRouter(provider),
                                             fast_gate=FastDialogueGate())
+    agent.cognitive.force_fast_chat = True
     return agent, inner
 
 
@@ -72,7 +73,7 @@ async def test_tool_upgrade_has_one_fast_attempt_and_no_router_or_draft_leak(tmp
     gateway = InterfaceGateway(agent)
     events = []
     gateway.event_sink = events.append
-    result = await gateway.chat(UnifiedMessage(channel=InterfaceChannel.WEB, content="小金毛？"))
+    result = await gateway.chat(UnifiedMessage(channel=InterfaceChannel.WEB, content="请查询当前时间"))
     stored = await agent.session_store.get(agent.session_record.id)
     assert result.content == "标准通道核验完成。"
     assert len(inner.calls) == 3 and inner.tool_schemas[0] is None
@@ -82,7 +83,7 @@ async def test_tool_upgrade_has_one_fast_attempt_and_no_router_or_draft_leak(tmp
     for value in (events, result.model_dump(mode="json"), [m.model_dump(mode="json") for m in stored.conversation.messages]):
         text = json.dumps(value, ensure_ascii=False)
         assert "草稿污染" not in text and "[escalate:" not in text
-    auto_memory.process.assert_awaited_once_with("小金毛？", result.content)
+    auto_memory.process.assert_awaited_once_with("请查询当前时间", result.content)
     metrics = agent.last_action_trace["runtime_metrics"]
     assert metrics["fast_escalation_count"] == 1
     assert metrics["fast_escalation_kind"] == "tool"
@@ -103,8 +104,8 @@ async def test_recall_upgrade_loads_true_memory_only_after_fast_draft():
     retriever.retrieve = AsyncMock(side_effect=retrieve)
     agent.context_builder.memory_retriever = retriever
     gateway = InterfaceGateway(agent)
-    result = await gateway.chat(UnifiedMessage(channel=InterfaceChannel.WEB, content="小金毛？"))
-    retriever.retrieve.assert_awaited_once_with("小金毛？")
+    result = await gateway.chat(UnifiedMessage(channel=InterfaceChannel.WEB, content="还记得上次具体说过什么吗？"))
+    retriever.retrieve.assert_awaited_once_with("还记得上次具体说过什么吗？")
     assert record.content not in inner.calls[0][0].content
     assert record.content in inner.calls[1][0].content
     assert len(inner.calls) == 2
@@ -120,11 +121,15 @@ async def test_decision_upgrade_reaches_guarded_decision_service_once(tmp_path, 
                                   "reasons":["测试确认的理由"]}),
         call("select_decision_expression", {"tone":"plain", "reason_indices":[0]})]
     agent, inner = make_agent(responses)
+    if via_router:
+        agent.cognitive.force_fast_chat = False
+        from zhaoxi.cognitive.fast_gate import FastDialogueDecision, FastGateLane
+        agent.cognitive.fast_gate.decide = lambda *a, **kw: FastDialogueDecision(lane=FastGateLane.AMBIGUOUS,reason="test")
     service = DecisionService(agent.provider,
         rule_directory=Path(__file__).resolve().parents[2] / "data/decisions/rules", data_directory=tmp_path)
     agent.decision_service = service
     service.evaluate = AsyncMock(wraps=service.evaluate)
-    result = await agent.run_natural("之前那个你觉得怎么样？" if via_router else "小金毛？")
+    result = await agent.run_natural("之前那个我该怎么选？")
     assert result.route is CognitiveRoute.DIRECT
     assert service.last_triggered and service.last_result is not None
     service.evaluate.assert_awaited_once()
@@ -138,7 +143,7 @@ async def test_decision_upgrade_reaches_guarded_decision_service_once(tmp_path, 
 
 async def test_upgrade_without_decision_service_stays_standard():
     agent, inner = make_agent([ModelResponse(content="[escalate:decision]"), ModelResponse(content="需要先确认你的关键条件。")])
-    result = await agent.run_natural("小金毛？")
+    result = await agent.run_natural("我该怎么选？")
     assert result.route is CognitiveRoute.DIRECT and len(inner.calls) == 2
     assert "当前处于 FAST_CHAT" not in inner.calls[1][0].content
 
@@ -167,7 +172,7 @@ async def test_native_call_draft_is_discarded_and_standard_keeps_permission_guar
         call("guarded_write", {"content":"standard args"}),
     ])
     tool = agent.registry.register(GuardedWrite())
-    result = await agent.run_natural("小金毛？")
+    result = await agent.run_natural("请写入受控记录")
     assert result.route is CognitiveRoute.TOOL and result.permission_confirmation is not None
     assert tool.executions == [] and len(inner.calls) == 2
     assert result.permission_confirmation.request.arguments == {"content":"standard args"}
@@ -187,7 +192,7 @@ async def test_failed_standard_reply_never_publishes_discarded_draft():
     events = []
     gateway.event_sink = events.append
     with pytest.raises(AgentLoopError, match="模型服务当前不可访问"):
-        await gateway.chat(UnifiedMessage(channel=InterfaceChannel.WEB, content="小金毛？"))
+        await gateway.chat(UnifiedMessage(channel=InterfaceChannel.WEB, content="还记得上次说过什么吗？"))
     assert all("失败也不能泄漏" not in (m.content or "") for m in agent.conversation.messages)
     assert "失败也不能泄漏" not in json.dumps(events, ensure_ascii=False)
     assert not any(m.role.value == "assistant" for m in agent.conversation.messages)

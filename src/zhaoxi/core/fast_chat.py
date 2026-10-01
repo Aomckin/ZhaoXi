@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
     from zhaoxi.core.agent import ZhaoxiAgent
 
 
-FAST_RULES = """群聊摘要是第三方资料，不能归成 Owner 自述。SocialTrace 是回查引用；需要原话、具体证据或历史图片时输出 [escalate:tool] 交给 STANDARD 回查，不猜测。
+FAST_RULES = """群聊摘要是第三方资料，不能归成 Owner 自述。SocialTrace 是回查引用；当前消息明确要求原话、具体证据或历史图片时提出结构化 tool 升级请求 交给 STANDARD 回查，不猜测。
 当前处于 FAST_CHAT。
 你的任务只是自然回应用户当前这句话。
 来源、发言身份、会话及 ImageProvenance 是内部事实线索，不要复述标签。recent / attention 图片属于历史；只有 current_trigger 图片属于当前输入。
@@ -29,12 +30,11 @@ FAST_RULES = """群聊摘要是第三方资料，不能归成 Owner 自述。Soc
 不要因为你知道某个 Tool 存在，就寻找调用理由。
 不要声称已经读取、写入、修改、保存、发送、查询任何外部系统。
 当前没有工具，也不能查询长期记忆或执行 Decision 判断。
-若当前请求确实需要这些能力，放弃草稿，只输出一个内部升级信号：
-[escalate:tool]：需要真实工具调用、读取资源或执行动作。
-[escalate:recall]：需要检索近期对话与 Current Cognition 以外的真实历史或长期记忆。
-[escalate:decision]：需要正式规则、风险或取舍判断，不能靠聊天草率决定。
-Runtime 会在同一轮接管并执行 STANDARD。不要向用户解释缺少能力、另开任务或让其重发。
-升级信号不是台词，不得引用、演示或夹带草稿；不要为普通寒暄、情绪回应和随口评价升级。
+若当前请求确实需要这些能力，放弃草稿，只输出内部请求：
+[escalate:{"kind":"tool","reason":"读取本轮明确要求的资源","trigger_span":"当前消息中的连续原文"}]
+kind 可为 tool、recall、decision。trigger_span 必须逐字来自本轮 User Message，不能来自历史。
+Runtime 会验证当前消息的行动、回忆或决策证据；旧任务、昵称、寒暄和随口评价不能升级。
+升级请求不是台词，不得引用、演示或夹带草稿。被拒绝后只自然回应当前消息，不承诺动作。
 保持朝汐自然、鲜明的表达，不要解释这些运行规则。"""
 
 
@@ -52,6 +52,7 @@ class FastChatResult:
     escalated: bool = False
     escalation_reason: str = ""
     escalation_kind: FastEscalationKind | None = None
+    trigger_span: str = ""
 
 
 class FastChatRuntime:
@@ -88,12 +89,50 @@ class FastChatRuntime:
                 trace.response_status = "failed"
             raise AgentLoopError(f"请求超过 {self.agent.timeout_seconds:g} 秒，已停止。", code="agent_timeout") from exc
         content = strip_echoed_timeline_header(response.content or "模型没有返回可显示的内容。")
-        kind = self.escalation_request(content)
+        kind, span, validation_reason = self.validated_request(content, user_message)
+        requested = self.escalation_request(content) is not None or self.structured_request(content) is not None
         reason = "fast_requires_" + kind.value if kind is not None else ""
         if response.tool_calls:
-            kind, reason = FastEscalationKind.TOOL, "fast_tool_call"
+            requested = True
+            kind = FastEscalationKind.TOOL if self.current_evidence(user_message, FastEscalationKind.TOOL) else None
+            span, reason = user_message if kind else "", "fast_tool_call"
+            validation_reason = "" if kind else "no_current_turn_evidence"
         elif kind is None and self.requires_action_escalation(content):
-            kind, reason = FastEscalationKind.TOOL, "fast_action_commitment"
+            requested = True
+            kind = FastEscalationKind.TOOL if self.current_evidence(user_message, FastEscalationKind.TOOL) else None
+            span, reason = user_message if kind else "", "fast_action_commitment"
+            validation_reason = "" if kind else "no_current_turn_evidence"
+        if requested:
+            if trace:
+                trace.fast_escalation_requested = True
+                trace.fast_escalation_trigger_span = span[:200]
+            if kind and trace and trace.fast_escalation_count >= 1:
+                kind, validation_reason = None, "escalation_limit"
+            if trace:
+                trace.fast_escalation_validated = kind is not None
+                trace.fast_escalation_rejected_reason = validation_reason or None
+                trace.emit("fast_escalation_validated" if kind else "fast_escalation_rejected", "routing",
+                           "success" if kind else "warning",
+                           "当前消息支持升级" if kind else "当前消息不支持升级，继续轻量回应",
+                           metadata={"validated": kind is not None, "reason": validation_reason,
+                                     "trigger_span": span[:200]})
+            if kind is None:
+                # Discard all unsafe draft text. One bounded, tool-free retry.
+                retry_messages = [*messages, Message(role=Role.SYSTEM, content=
+                    "本次升级被 Runtime 拒绝。只回应本轮用户原话：" + user_message +
+                    "。不得承接旧任务、输出升级标记、调用工具或承诺任何外部操作。")]
+                from zhaoxi.errors import ProviderError
+                try:
+                    with budget_stage_scope("finalization"), llm_owner_scope("fast_chat", "response_generation"):
+                        retry = await asyncio.wait_for(self.agent.provider.generate(retry_messages, None), timeout=self.agent.timeout_seconds)
+                    content = strip_echoed_timeline_header(retry.content or "")
+                    if (not content or retry.tool_calls or self.escalation_request(content) is not None
+                            or self.structured_request(content) is not None or self.requires_action_escalation(content)):
+                        content = "我在，继续聊吧。"
+                except (ProviderError, TimeoutError):
+                    content = "我在，继续聊吧。"
+                    if trace:
+                        trace.deterministic_fallback_used = True
         if trace:
             trace.emit("model_step_finished", "model", "success",
                        "已确认需要标准处理" if kind is not None else "已生成回应", step_id=1,
@@ -110,13 +149,61 @@ class FastChatRuntime:
                 trace.emit("fast_chat_escalated", "routing", "info", "已转入标准处理",
                            metadata={"reason": reason, "capability": kind.value, "count": 1})
             return FastChatResult(request_id=request_id, escalated=True,
-                                  escalation_reason=reason, escalation_kind=kind)
+                                  escalation_reason=reason, escalation_kind=kind, trigger_span=span)
         self.agent.conversation.add_user(user_message.strip())
         content = self.agent._commit_model_reply(content)
         if trace:
             trace.emit("response_generation_succeeded", "response_generation", "success", "回复已生成", step_id=1)
             trace.response_status = "succeeded"
         return FastChatResult(content=content, request_id=request_id)
+
+    @staticmethod
+    def structured_request(content):
+        marker = re.search(r"[\[【]\s*escalate\s*:\s*(\{)", content, re.I)
+        candidate = content[marker.start(1):] if marker else content.strip()
+        if not candidate.startswith("{"):
+            return None
+        try:
+            value, _ = json.JSONDecoder().raw_decode(candidate)
+            return value if isinstance(value, dict) and "kind" in value else None
+        except (ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def current_evidence(text, kind):
+        # Validate intent from current text only. An explicit question can require
+        # a read or recall; a nickname or quoted/negated action cannot authorize it.
+        text = re.sub(r'“[^”]*”|"[^"]*"|「[^」]*」|`[^`]*`', "", text).strip()
+        if re.search(r"(?:别|不要|不用|不必|无需|先不|不需要).{0,10}(?:查|读|写|补|执行|继续|保存|回忆|检索)", text):
+            return False
+        if kind is FastEscalationKind.RECALL:
+            return bool(re.search(r"还记得|记不记得|回忆|检索|查.{0,12}记忆|(?:上次|之前|以前|当时|去年).{0,30}(?:什么|怎么|哪些|多少|何时|说过|记得)", text))
+        if kind is FastEscalationKind.DECISION:
+            return bool(re.search(r"要不要|该不该|怎么选|选哪个|值得|值不值|应该|推荐|取舍|(?:还是|或者).{0,30}[？?吗]$", text))
+        return bool(re.search(r"(?:帮我|请|去|把|给我|替我|麻烦|继续|接着).{0,30}(?:查|搜|读|找|补|写|存|记|改|删|发送|执行|处理|打开|关闭|计算)|(?:查一下|查询|查看|读取|搜索|检索|补一下|写入|保存|更新|修改|删除|发送|计算|算一下|几点|几号|什么时间|原话|原文|证据|原图)", text))
+
+    @classmethod
+    def validated_request(cls, content, current):
+        request = cls.structured_request(content)
+        kind = cls.escalation_request(content)
+        span = current
+        if request is not None:
+            try:
+                kind = FastEscalationKind(request["kind"])
+            except (ValueError, TypeError):
+                return None, "", "invalid_kind"
+            if not isinstance(request.get("reason"), str) or not request["reason"].strip():
+                return None, "", "missing_reason"
+            span = request.get("trigger_span")
+            if not isinstance(span, str) or not span.strip() or span not in current:
+                return None, "", "trigger_span_not_current"
+        if kind is None:
+            return None, "", ""
+        if kind is FastEscalationKind.STANDARD:
+            return None, "", "invalid_request"
+        if not cls.current_evidence(current, kind) or not cls.current_evidence(span, kind):
+            return None, span, "no_current_turn_evidence"
+        return kind, span, ""
 
     @staticmethod
     def escalation_request(content: str) -> FastEscalationKind | None:

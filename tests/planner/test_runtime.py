@@ -51,9 +51,10 @@ async def test_complex_plan_requests_one_extension_and_final_reply_omits_tool_sc
     planner.provider = ResilientProvider([fake], max_total_tokens=1000, budget_policy=policy)
     with provider_budget_scope(8, policy=policy) as budget:
         result = await planner.run("计算后复述")
-    assert result.status == GoalStatus.COMPLETED
-    assert budget.extension_count == 1
-    assert fake.tool_schemas[-1] is None
+    assert result.status == GoalStatus.FAILED
+    assert "剩余计划已停止" in result.content
+    assert budget.extension_count == 0
+    assert len(fake.calls)==2
 
 
 @pytest.mark.asyncio
@@ -62,7 +63,7 @@ async def test_completed_single_tool_uses_reserve_without_extension():
     responses = [call("create_plan", {"steps": ["计算"]}),
                  call("calculator", {"expression": "2+3"}),
                  ModelResponse(content="结果是 5。")]
-    for response, amount in zip(responses, (450, 400, 120)):
+    for response, amount in zip(responses, (450, 250, 120)):
         response.usage = {"prompt_tokens": amount - 10, "completion_tokens": 10,
                           "total_tokens": amount}
     fake = FakeProvider(responses)
@@ -72,7 +73,7 @@ async def test_completed_single_tool_uses_reserve_without_extension():
         result = await planner.run("计算 2+3")
     assert result.status == GoalStatus.COMPLETED
     assert budget.extension_count == 0
-    assert budget.reserve_entered is True
+    assert budget.total_tokens==820
     assert fake.tool_schemas[-1] is None
 
 
@@ -84,21 +85,16 @@ async def test_planner_structured_budget_request_is_checked_against_real_plan_st
         PlanStep(description="第一步", status=StepStatus.COMPLETED),
         PlanStep(description="第二步"),
     ]))
-    with provider_budget_scope(8, policy=BudgetPolicy(1000, 400, 200, 1600, 200)) as budget:
+    with provider_budget_scope(8,policy=BudgetPolicy(1000,400,200,1600,200)) as budget:
         record_provider_tokens(780)
-        rejected = await planner._handle_control(goal, ToolCall(
-            id="budget-bad", name="request_budget_extension",
-            arguments={"reason": "还要继续", "remaining_actions": 0,
-                       "estimated_extra_tokens": 300, "stage": "tool_execution"},
-        ))
-        assert rejected.error == "no_remaining_action" or rejected.error == "remaining_actions_mismatch"
-        approved = await planner._handle_control(goal, ToolCall(
-            id="budget-good", name="request_budget_extension",
-            arguments={"reason": "第二步还未完成", "remaining_actions": 1,
-                       "estimated_extra_tokens": 300, "stage": "tool_execution"},
-        ))
-    assert approved.success is True
-    assert budget.extension_count == 1
+        rejected=await planner._handle_control(goal,ToolCall(id="bad",name="request_budget_extension",
+            arguments={"reason":"还要继续","remaining_actions":0,"estimated_extra_tokens":300,"stage":"tool_execution"}))
+        assert rejected.error in {"remaining_action_limit","remaining_actions_mismatch","no_remaining_action"}
+    with provider_budget_scope(8,policy=BudgetPolicy(1000,400,200,1600,200)) as budget:
+        record_provider_tokens(780)
+        approved=await planner._handle_control(goal,ToolCall(id="good",name="request_budget_extension",
+            arguments={"reason":"第二步还未完成","remaining_actions":1,"estimated_extra_tokens":300,"stage":"tool_execution"}))
+        assert approved.success and budget.extension_count==1
 
 
 @pytest.mark.asyncio

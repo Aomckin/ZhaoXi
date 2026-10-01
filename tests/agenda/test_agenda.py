@@ -109,6 +109,8 @@ async def test_text_control_calls_do_not_corrupt_agenda_tool_transcript(tmp_path
             base_url="https://example.test/v1", api_key="test", model="deepseek-v4-flash", client=client,
         )
         agent = ZhaoxiAgent(provider=provider, registry=registry, context_builder=ContextBuilder("朝汐"))
+        from types import SimpleNamespace
+        agent.settings=SimpleNamespace(standard_model_round_limit=5,standard_tool_round_limit=3,standard_repair_round_limit=1)
         result = await agent.run("请处理图片里的安排", require_tool_call=True)
 
     assert result.content == "两条链路已经完整执行。"

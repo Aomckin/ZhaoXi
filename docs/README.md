@@ -11,6 +11,9 @@
 
 ## v1.4.x
 
+- [v1.4.3 Runtime Safety 补丁记录](v1.4.x/Zhaoxi_v1.4.3_Runtime_Safety_补丁记录.md)
+- [v1.4.3 Fast Escalation / Tool Repair / Budget Safety 任务书](v1.4.x/Zhaoxi_v1.4.3_Fast_Escalation_and_Tool_Repair_Safety_Patch.md)
+
 - [v1.4.3 群聊证据回查补丁](v1.4.x/Zhaoxi_v1.4.3_群聊证据回查_补丁记录.md)
 - [v1.4.3 版本说明](v1.4.x/Zhaoxi_v1.4.3_Release_Notes.md)
 - [v1.4.3 外部来源补丁任务书](v1.4.x/Zhaoxi_v1.4.3_External_Provenance_Integrity_Patch_Task.md)

@@ -763,6 +763,9 @@ class InterfaceGateway:
                 trace.final_reply_ready_ms = (monotonic() - trace.started_monotonic) * 1000
             activity["task_status"] = trace.task_status
             activity["response_status"] = trace.response_status
+            activity["result_status"] = trace.result_status
+            activity["partial_success"] = trace.partial_success
+            activity["deterministic_fallback_used"] = trace.deterministic_fallback_used
         permission_view = None
         if permission is not None:
             permission_request = permission.request

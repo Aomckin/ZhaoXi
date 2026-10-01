@@ -222,7 +222,7 @@ class CognitiveCoordinator:
             goal_id = result.goal_id
         elif decision.route == CognitiveRoute.DIRECT:
             result = await self.agent.run_direct(
-                user_message)
+                user_message, **({"fast_escalated":True} if fast_escalation_kind is not None else {}))
             if result.used_tool_path:
                 decision.route = CognitiveRoute.TOOL
             content = result.content
@@ -233,6 +233,7 @@ class CognitiveCoordinator:
             result = await self.agent.run(
                 user_message, require_tool_call=decision.requires_tool_call,
                 required_tool=decision.required_tool,
+                **({"fast_escalated":True} if fast_escalation_kind is not None else {}),
                 **({"images": images} if images else {}),
                 **({"no_tools": True} if images and user_message.strip() == "请查看这些图片。" else {}),
             )

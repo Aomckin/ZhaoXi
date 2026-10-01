@@ -63,7 +63,7 @@ async def test_discovery_continues_business_call_retains_schema_and_resets_next_
     assert result.used_tool_path
     assert names(provider.tool_schemas[0]) == {"remember_memory", "update_memory", "search_memories", "request_tool_group", "inspect_tool_catalog"}
     assert "archive_search" in names(provider.tool_schemas[1])
-    assert "archive_search" in names(provider.tool_schemas[2])
+    assert provider.tool_schemas[2] is None
     tool_results = [json.loads(m.content) for m in provider.calls[2] if m.role.value == "tool"]
     assert len(tool_results) == 1 and tool_results[0]["success"]
     assert not any(m.role.value == "tool" for m in provider.calls[1])
@@ -114,6 +114,8 @@ async def test_expansion_survives_permission_and_remaining_discovery_calls():
         ModelResponse(content="完成"),
     ])
     agent = ZhaoxiAgent(provider=provider, registry=registry, context_builder=ContextBuilder("朝汐"))
+    from types import SimpleNamespace
+    agent.settings=SimpleNamespace(standard_model_round_limit=5,standard_tool_round_limit=3,standard_repair_round_limit=1)
     pending = await agent.run("今天有点变化")
     assert pending.permission_confirmation
     result = await agent.approve_permission(pending.permission_confirmation.confirmation_id)

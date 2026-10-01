@@ -102,6 +102,22 @@ class ActionTrace:
     router_to_fast_count: int = 0
     fast_escalation_count: int = 0
     fast_escalation_kind: str | None = None
+    fast_escalation_requested: bool = False
+    fast_escalation_validated: bool = False
+    fast_escalation_rejected_reason: str | None = None
+    fast_escalation_trigger_span: str = ""
+    tool_failure_fingerprint: str | None = None
+    tool_retry_count: int = 0
+    tool_locked: list = field(default_factory=list)
+    standard_model_round: int = 0
+    standard_tool_round: int = 0
+    repair_round: int = 0
+    budget_state: str = "NORMAL"
+    budget_remaining_ratio: float = 1.0
+    forced_finalization_reason: str | None = None
+    partial_success: bool = False
+    deterministic_fallback_used: bool = False
+    result_status: str = "completed"
     escalation_reason: str | None = None
     extra_round_reason: str | None = None
     tool_rounds: int = 0
@@ -330,6 +346,12 @@ class ActionTrace:
                 "fast_gate_reason": self.fast_gate_reason, "escalation_reason": self.escalation_reason,
                 "fast_escalation_count": self.fast_escalation_count,
                 "fast_escalation_kind": self.fast_escalation_kind,
+                **{name: getattr(self, name) for name in (
+                    "fast_escalation_requested", "fast_escalation_validated", "fast_escalation_rejected_reason",
+                    "fast_escalation_trigger_span", "tool_failure_fingerprint", "tool_retry_count", "tool_locked",
+                    "standard_model_round", "standard_tool_round", "repair_round", "budget_state",
+                    "budget_remaining_ratio", "forced_finalization_reason", "partial_success",
+                    "deterministic_fallback_used", "result_status")},
                 **self.fast_gate_details,
                 "router_required": self.router_required, "router_override": self.router_override,
                 "router_final_lane": self.router_final_lane, "router_to_fast_count": self.router_to_fast_count,

@@ -149,7 +149,9 @@ async def test_router_fast_commitment_escalates_without_second_router():
         ModelResponse(tool_calls=[ToolCall(id="time", name="current_time", arguments={})]),
         ModelResponse(content="查好了。")])
     agent = agent_for(provider)
-    response = await agent.run_natural("之前那个你觉得怎么样？")
+    from zhaoxi.cognitive.fast_gate import FastDialogueDecision
+    agent.cognitive.fast_gate.decide=lambda *a,**kw: FastDialogueDecision(lane=FastGateLane.AMBIGUOUS,reason="test")
+    response = await agent.run_natural("请查询当前时间")
     assert response.route is CognitiveRoute.TOOL
     assert len(provider.calls) == 4
     assert sum(bool(schemas and schemas[0]["function"]["name"] == "route_cognition") for schemas in provider.tool_schemas) == 1

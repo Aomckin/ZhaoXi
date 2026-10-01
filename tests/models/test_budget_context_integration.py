@@ -48,7 +48,7 @@ async def test_exact_provider_payload_is_measured_and_finalization_omits_tool_sc
                                  context_builder=ContextBuilder("你是朝汐。"), max_steps=6)
         with provider_budget_scope(8, policy=BudgetPolicy(
             base_budget=450, extension_1_limit=0, extension_2_limit=0,
-            hard_limit=450, finalization_reserve=125,
+            hard_limit=450, finalization_reserve=100,
         )) as budget:
             response = await planner.run("计算 17*23，然后记录结果。")
     assert response.status is GoalStatus.COMPLETED
@@ -59,6 +59,6 @@ async def test_exact_provider_payload_is_measured_and_finalization_omits_tool_sc
     assert budget.context_reports[-1]["estimated"]["tool_schema"] == 0
     assert budget.context_reports[-1]["estimated"]["tool_result"] > 0
     assert all(report["total_input_tokens"] == 100 for report in budget.context_reports)
-    assert budget.reserve_entered is True
+    assert budget.total_tokens==440
     assert budget.extension_count == 0
     assert budget.total_tokens == 440

@@ -557,7 +557,8 @@ async def test_owner_private_fast_upgrade_discards_draft_and_retains_external_bo
     runtime, agent = make_runtime(tmp_path, generate)
     agent.cognitive = CognitiveCoordinator(agent=agent, router=CognitiveRouter(agent.provider),
                                             fast_gate=FastDialogueGate())
-    item = decode(qq_event(505, text="在吗？"), self_id="42", owner_id="8")
+    agent.cognitive.force_fast_chat=True
+    item = decode(qq_event(505, text="还记得上次说过什么吗？"), self_id="42", owner_id="8")
     assert await runtime.ingest(item) == "标准受限回复。"
     assert len(seen) == 2
     assert runtime.last_fast_gate["fast_escalation_count"] == 1

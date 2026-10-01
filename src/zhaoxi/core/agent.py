@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from zhaoxi.core.loop_safety import LoopSafety, CONTROLS
 from zhaoxi.core.context import ContextBuilder
 from zhaoxi.cognitive_stream.models import CognitiveEventType
 from zhaoxi.core.conversation import Conversation
@@ -24,7 +25,7 @@ from zhaoxi.memory.models import MemorySearchResult
 from zhaoxi.permission.executor import ToolExecutor
 from zhaoxi.permission.models import InvocationOrigin, PendingConfirmation
 from zhaoxi.reliability import current_correlation
-from zhaoxi.reliability.retry import BudgetExtensionRequest, budget_stage_scope, current_budget
+from zhaoxi.reliability.retry import budget_stage_scope, current_budget, BudgetState
 from zhaoxi.tools.base import ToolResult
 from zhaoxi.tools.registry import ToolRegistry
 from zhaoxi.tools.discovery import RequestToolGroupTool, InspectToolCatalogTool, ToolDiscoveryState
@@ -63,6 +64,7 @@ class AgentResponse:
     steps: int
     permission_confirmation: PendingConfirmation | None = None
     used_tool_path: bool = False
+    result_status: str = "completed"
 
     def __post_init__(self) -> None:
         self.content = strip_echoed_timeline_header(self.content)
@@ -422,6 +424,7 @@ class ZhaoxiAgent:
         required_tool: str | None = None,
         images: list[str] | None = None,
         no_tools: bool = False,
+        fast_escalated: bool = False,
     ) -> AgentResponse:
         """Accept one user turn and return a final natural-language response."""
         if not user_message.strip():
@@ -436,7 +439,7 @@ class ZhaoxiAgent:
                        metadata={"image_count": len(images)})
         logger.info("request=%s received user input", request_id)
         memories = []
-        if self.context_builder.memory_retriever:
+        if self.context_builder.memory_retriever and not (current_budget() and current_budget().state is not BudgetState.NORMAL):
             trace = current_trace()
             if trace:
                 trace.emit("memory_search_started", "memory_search", "running", "正在检索相关记忆…")
@@ -463,7 +466,7 @@ class ZhaoxiAgent:
                     require_tool_call=require_tool_call,
                     required_tool=required_tool,
                     turn_images=tuple(images or ()),
-                    no_tools=no_tools,
+                    no_tools=no_tools, fast_escalated=fast_escalated,
                 ),
                 timeout=self.timeout_seconds,
             )
@@ -496,7 +499,7 @@ class ZhaoxiAgent:
                 return True
         return False
 
-    async def run_direct(self, user_message: str, *, no_tools: bool = False) -> AgentResponse:
+    async def run_direct(self, user_message: str, *, no_tools: bool = False, fast_escalated: bool = False) -> AgentResponse:
         """Answer a direct turn while preserving the always-on memory tools."""
         if not user_message.strip():
             raise ValueError("消息不能为空。")
@@ -505,7 +508,7 @@ class ZhaoxiAgent:
         clean_message = user_message.strip()
         self.conversation.add_user(clean_message)
         memories = []
-        if self.context_builder.memory_retriever:
+        if self.context_builder.memory_retriever and not (current_budget() and current_budget().state is not BudgetState.NORMAL):
             trace = current_trace()
             if trace:
                 trace.emit("memory_search_started", "memory_search", "running", "正在检索相关记忆…")
@@ -524,7 +527,7 @@ class ZhaoxiAgent:
                 )
         try:
             return await asyncio.wait_for(
-                self._run_loop(request_id, memories, clean_message, no_tools=no_tools),
+                self._run_loop(request_id, memories, clean_message, no_tools=no_tools,fast_escalated=fast_escalated),
                 timeout=self.timeout_seconds,
             )
         except TimeoutError as exc:
@@ -542,7 +545,7 @@ class ZhaoxiAgent:
 
     async def run_channel_reply(
         self, user_message: str, *, trigger_event, images: list[str] | None = None,
-        audience: str = "owner", expression_policy: str = "",
+        audience: str = "owner", expression_policy: str = "", fast_escalated: bool = False,
     ) -> AgentResponse:
         """Use the same final reply loop with a channel-scoped transient view."""
         if not user_message.strip() and not images:
@@ -563,14 +566,14 @@ class ZhaoxiAgent:
             request_id = correlation.request_id if correlation and correlation.request_id else uuid4().hex
             memories = []
             retriever = self.context_builder.memory_retriever
-            if audience == "owner" and retriever and user_message.strip():
+            if audience == "owner" and retriever and user_message.strip() and not (current_budget() and current_budget().state is not BudgetState.NORMAL):
                 try:
                     memories = await retriever.retrieve(user_message)
                 except Exception as exc:
                     log_internal_failure("request=%s memory retrieval failed", request_id, exc=exc)
             return await asyncio.wait_for(
                 self._run_loop(
-                    request_id, memories, user_message, no_tools=True,
+                    request_id, memories, user_message, no_tools=True, fast_escalated=fast_escalated,
                     allowed_read_tools=frozenset({"read_social_context"}),
                     output_channel=trigger_event.channel or trigger_event.source, audience=audience,
                     expression_policy=expression_policy,
@@ -617,7 +620,7 @@ class ZhaoxiAgent:
         correlation = current_correlation()
         request_id = correlation.request_id if correlation and correlation.request_id else uuid4().hex
         memories = []
-        if self.context_builder.memory_retriever:
+        if self.context_builder.memory_retriever and not (current_budget() and current_budget().state is not BudgetState.NORMAL):
             try:
                 memories = await self.context_builder.memory_retriever.retrieve(user_message)
             except Exception as exc:
@@ -712,11 +715,15 @@ class ZhaoxiAgent:
         if trace:
             trace.emit("recovery_finished", "recovery", "success", "已整理操作结果", step_id=step,
                        metadata={"task_status": trace.task_status})
+        result_status = "partial_success" if trace and trace.task_status=="partial" else "failed" if trace and trace.task_status=="failed" else "completed"
+        if trace:
+            trace.result_status=result_status
+            trace.partial_success=result_status=="partial_success"
         return AgentResponse(
             content=content,
             request_id=request_id,
             steps=step,
-            used_tool_path=True,
+            used_tool_path=True, result_status=result_status,
         )
 
     def _tool_context(self, user_intent: str) -> ToolContext:
@@ -735,42 +742,52 @@ class ZhaoxiAgent:
         """Spend normal budget on actions; switch to a tool-free closing call when needed."""
         budget = current_budget()
         stage = "tool_execution" if tool_called else "planning"
-        if budget is None or budget.policy is None:
+        if budget is None:
             return stage, False
-        threshold = (budget.max_total_tokens - budget.finalization_reserve) * budget.policy.warning_ratio
-        if budget.total_tokens < threshold:
-            return stage, False
-        actions = [item for item in (trace.actions if trace else []) if item.status != "superseded"]
-        completed = [item for item in actions if item.status == "completed"]
-        failures = [item for item in actions if item.status == "failed"]
-        last = actions[-1] if actions else None
-        repeated = (sum(item.tool_name == last.tool_name and item.failure_kind == last.failure_kind
-                        for item in failures[-3:]) if last and last.status == "failed" else 0)
-        evidence = {"completed_actions": len(completed),
-                    "last_success_step": completed[-1].step_id if completed else None,
-                    "new_result": bool(last and last.failure_kind == "validation" and repeated < 2),
-                    "repeated_error_count": repeated,
-                    "stalled_rounds": step - (completed[-1].step_id or step) if completed else 0}
-        if completed and budget.extension_count == 0 and budget.total_tokens >= budget.max_total_tokens and budget.policy.extension_1_limit > 0:
-            budget.request_extension(BudgetExtensionRequest(
-                reason="已完成业务操作，需为最终回复补足预算", remaining_actions=0,
-                estimated_extra_tokens=budget.policy.extension_1_limit,
-                stage="finalization", progress_evidence=evidence))
-            return "finalization", True
-        if budget.extension_count == 0 and budget.policy.extension_1_limit > 0 and (len(completed) >= 2 or evidence["new_result"]):
-            budget.request_extension(BudgetExtensionRequest(
-                reason="仍有明确操作或一次可修正的工具调用", remaining_actions=1,
-                estimated_extra_tokens=budget.policy.extension_1_limit,
-                stage="tool_execution", progress_evidence=evidence))
-        elif budget.extension_count == 1 and completed and budget.policy.extension_2_limit > 0:
-            budget.request_extension(BudgetExtensionRequest(
-                reason="已完成业务操作，需要整理最终状态", remaining_actions=0,
-                estimated_extra_tokens=budget.policy.extension_2_limit,
-                stage="finalization", progress_evidence=evidence))
-            return "finalization", True
-        if completed and budget.total_tokens >= budget.max_total_tokens - budget.finalization_reserve:
-            return "finalization", True
-        return stage, False
+        if trace:
+            trace.budget_state = budget.state.value
+            trace.budget_remaining_ratio = budget.remaining_ratio
+        return ("finalization", True) if budget.state in {BudgetState.DANGER, BudgetState.EXHAUSTED} else (stage, False)
+
+    def _safety_state(self, discovery, fast_escalated=False):
+        if discovery.safety is None:
+            settings = getattr(self, "settings", None)
+            trace = current_trace()
+            escalated = fast_escalated or bool(trace and trace.fast_escalation_count)
+            discovery.safety = LoopSafety(
+                model_limit=min(self.max_steps, 2 if escalated else getattr(settings, "standard_model_round_limit", 3)),
+                tool_limit=1 if escalated else getattr(settings, "standard_tool_round_limit", 2),
+                repair_limit=getattr(settings, "standard_repair_round_limit", 1))
+        return discovery.safety
+
+    @staticmethod
+    def _sync_safety(safety):
+        trace = current_trace()
+        if trace:
+            for key, value in safety.metrics().items():
+                setattr(trace, key, value)
+            budget = current_budget()
+            if budget:
+                trace.budget_state, trace.budget_remaining_ratio = budget.state.value, budget.remaining_ratio
+
+    def _deterministic_final(self, request_id, step, safety, reason):
+        safety.force(reason)
+        self._sync_safety(safety)
+        status = "budget_exhausted" if reason in {"budget_exhausted", "model_call_budget_exhausted"} else "partial_success" if any(r.success for _, r in safety.outcomes) else "failed"
+        content = safety.fallback()
+        if status == "budget_exhausted":
+            content += "\n\n本轮 Token 或模型调用预算已耗尽，已停止继续请求模型。"
+        content = self._commit_model_reply(content)
+        trace = current_trace()
+        if trace:
+            trace.deterministic_fallback_used = True
+            trace.partial_success = any(r.success for _,r in safety.outcomes)
+            trace.result_status = status
+            trace.response_status = "succeeded"
+            trace.emit("deterministic_fallback", "response_generation", "success", "已生成确定性操作说明",
+                       metadata={"reason": reason, "partial_success": trace.partial_success})
+        return AgentResponse(content=content, request_id=request_id, steps=step,
+                             used_tool_path=bool(safety.outcomes), result_status=status)
 
     async def _run_loop(
         self,
@@ -784,6 +801,7 @@ class ZhaoxiAgent:
         turn_images: tuple[str, ...] = (),
         no_tools: bool = False,
         allowed_read_tools: frozenset[str] = frozenset(),
+        fast_escalated: bool = False,
         output_channel: str = "desktop",
         audience: str = "owner",
         expression_policy: str = "",
@@ -809,7 +827,15 @@ class ZhaoxiAgent:
         corrective_retry = bool(lookup_commitment)
         trace = current_trace()
         response_started = False
+        safety = self._safety_state(discovery,fast_escalated)
         for step in range(1, self.max_steps + 1):
+            if safety.model_round >= safety.model_limit:
+                return self._deterministic_final(request_id, step-1, safety, "model_round_limit")
+            budget = current_budget()
+            if budget and budget.state is BudgetState.EXHAUSTED:
+                return self._deterministic_final(request_id, step-1, safety, "budget_exhausted")
+            safety.begin_round()
+            self._sync_safety(safety)
             model_logger.info("request=%s step=%d calling model", request_id, step)
             if trace:
                 trace.current_step = step
@@ -819,6 +845,15 @@ class ZhaoxiAgent:
                 trace.emit("model_step_started", "model", "running", "正在思考下一步…", step_id=step)
             try:
                 budget_stage, final_only = self._budget_mode(tool_called, trace, step)
+                final_only = final_only or bool(safety.forced_reason) or safety.model_round >= safety.model_limit or safety.tool_round >= safety.tool_limit
+                if final_only and not safety.forced_reason:
+                    safety.force("budget_danger" if budget and budget.state is BudgetState.DANGER else "round_limit")
+                if final_only:
+                    budget_stage = "finalization"
+                    self._sync_safety(safety)
+                    if trace:
+                        trace.emit("forced_finalization", "response_generation", "info", "本轮停止新操作，整理已有结果",
+                                   metadata={"reason": safety.forced_reason})
                 # A successful tool can be a prerequisite, such as looking up an ID.
                 final_only = final_only or discovery.stalled >= 2 or (tool_called and trace is not None
                     and time.monotonic() - trace.started_monotonic >= self.timeout_seconds * 0.75)
@@ -827,7 +862,15 @@ class ZhaoxiAgent:
                 schemas = [] if final_only or no_tools else discovery.schemas(self.registry)
                 if no_tools and not final_only:
                     schemas = [self.registry.get(name).schema() for name in allowed_read_tools if any(t.name==name for t in self.registry.list()) and self.registry.usable(name)]
-                interim_available = bool(trace and schemas and trace.interim_enabled
+                warning_tools = {name for name,_ in safety.outcomes}
+                if required_tool:
+                    warning_tools.add(required_tool)
+                warning_tools.update(item["name"] for item in self.registry.manifest()
+                                     if item["group"] in discovery.initial.dynamic_groups)
+                if budget and budget.state is BudgetState.WARNING:
+                    schemas = [schema for schema in schemas if schema["function"]["name"] in warning_tools
+                               and schema["function"]["name"] not in {"request_tool_group", "inspect_tool_catalog", "search_memories"}]
+                interim_available = bool(trace and schemas and (not budget or budget.state is BudgetState.NORMAL) and trace.interim_enabled
                     and trace.interim_replies < trace.interim_max_count
                     and (tool_called or step > 1)
                     and time.monotonic() - trace.started_monotonic >= trace.interim_threshold_seconds)
@@ -875,7 +918,7 @@ class ZhaoxiAgent:
                 if trace and (compaction.get("tool_results") or compaction.get("images_released")):
                     trace.emit("context_compacted", "context", "success", "已整理本轮上下文",
                                step_id=step, metadata=compaction)
-                catalog = "" if final_only or no_tools else discovery.catalog(self.registry) + resolution_message
+                catalog = "" if final_only or no_tools or budget and budget.state is BudgetState.WARNING else discovery.catalog(self.registry) + resolution_message
                 messages[0].content = (messages[0].content or "") + catalog + (
                     "\n交付规则：带工具调用的内部草稿未向用户展示；中间回复也不是正式答案。"
                     "最终答复必须独立覆盖原请求主要事项、已确认结果及失败或未完成事项。"
@@ -884,13 +927,13 @@ class ZhaoxiAgent:
                 messages[0].metadata.setdefault("prompt_components", []).append(
                     {"name": "runtime.capability_catalog", "chars": len(catalog)}
                 )
-                if lookup_commitment and not tool_called:
+                if lookup_commitment and not tool_called and not final_only:
                     messages[0].content = (messages[0].content or "") + (
                         "\n上一草稿提出了查询意图（仅作为待核实意图，不是授权或已执行事实）："
                         + lookup_commitment[:600]
                         + "\n请结合原始用户请求完成适当查询；遵守原有权限边界。"
                     )
-                if corrective_retry and not tool_called:
+                if corrective_retry and not tool_called and not final_only:
                     messages[0].content = (
                         (messages[0].content or "")
                         + "\n你上一尝试承诺执行真实工具动作，却没有调用工具；"
@@ -958,6 +1001,9 @@ class ZhaoxiAgent:
                             action.status == "completed" for action in trace.actions
                         ) else "failed"
                 log_internal_failure("request=%s provider error", request_id, exc=exc)
+                if exc.code in {"provider_token_budget_exhausted", "provider_soft_budget_exhausted", "provider_call_budget_exhausted"}:
+                    return self._deterministic_final(request_id, step, safety,
+                        "model_call_budget_exhausted" if exc.code=="provider_call_budget_exhausted" else "budget_exhausted")
                 if tool_called:
                     notice = (
                         TOOL_ARGUMENTS_DEGRADED_NOTICE
@@ -991,10 +1037,14 @@ class ZhaoxiAgent:
                     ), code=error_code
                 ) from exc
 
+            # Providers can emit calls despite tools=None; final-only is enforced
+            # by the runtime, not just by the schema or prompt.
+            if final_only and response.tool_calls:
+                return self._deterministic_final(request_id, step, safety, safety.forced_reason or "final_only_tool_call")
             if no_tools and any(call.name not in allowed_read_tools for call in response.tool_calls):
                 raise AgentLoopError("受限回复不能调用工具。")
             if not response.tool_calls:
-                if (not no_tools and not tool_called and not capability_retry and is_action_request(user_intent)
+                if (not final_only and not no_tools and not tool_called and not capability_retry and is_action_request(user_intent)
                     and re.search(r"没有.{0,12}(?:工具|能力|钥匙)|无法完成|做不了|不能.{0,6}(?:查|找|读|执行)", response.content or "")):
                     capability_retry = True
                     resolution = resolve_capability(user_intent, self.registry.manifest())
@@ -1004,9 +1054,9 @@ class ZhaoxiAgent:
                             discovery.request({"group": group}, self.registry)
                         resolution_message = "\nCore 已检查实时钥匙柜并尝试加载匹配能力：" + json.dumps(resolution, ensure_ascii=False) + "。请使用当前可用钥匙继续原任务，不要把未携带误判为不存在。"
                         continue
-                if not no_tools and not tool_called and self._promises_lookup(response.content or ""):
+                if not final_only and not no_tools and not tool_called and self._promises_lookup(response.content or ""):
                     require_tool_call = True
-                if require_tool_call and not tool_called and not corrective_retry:
+                if not final_only and require_tool_call and not tool_called and not corrective_retry:
                     corrective_retry = True
                     logger.warning("request=%s required tool call missing; retrying once", request_id)
                     continue
@@ -1032,13 +1082,27 @@ class ZhaoxiAgent:
                     trace.emit("response_generation_succeeded", "response_generation", "success", "回复已生成", step_id=step)
                     trace.response_status = "succeeded"
                 logger.info("request=%s final response step=%d", request_id, step)
+                self._sync_safety(safety)
+                result_status = "partial_success" if any(r.success for _, r in safety.outcomes) and any(not r.success and not r.metadata.get("resolved_by_retry") for _, r in safety.outcomes) else "failed" if safety.outcomes and not any(r.success for _, r in safety.outcomes) else "completed"
+                if trace:
+                    trace.result_status = result_status
                 return AgentResponse(
-                    content=content, request_id=request_id, steps=step,
+                    content=content, request_id=request_id, steps=step, result_status=result_status,
                     used_tool_path=tool_called,
                 )
 
             control_names = {"request_tool_group", "inspect_tool_catalog", "emit_interim_reply"}
             business_calls = [call for call in response.tool_calls if call.name not in control_names]
+            if business_calls:
+                safety.tool_round += 1
+                repairs = any(call.name in safety.failed_tools for call in business_calls)
+                if repairs:
+                    if safety.repair_round >= safety.repair_limit:
+                        safety.locked.update(call.name for call in business_calls if call.name in safety.failed_tools)
+                        safety.force("repair_round_limit")
+                    else:
+                        safety.repair_round += 1
+                self._sync_safety(safety)
             if trace and business_calls:
                 trace.tool_rounds += 1
             # Discovery controls mutate only this turn's schema selection. Replaying
@@ -1063,6 +1127,32 @@ class ZhaoxiAgent:
                     sorted(str(key) for key in call.arguments if key in self.registry.get(call.name).input_model.model_fields)
                     if observable_name != "unknown_tool" else [],
                 )
+                budget = current_budget()
+                blocked = (bool(safety.forced_reason) or call.name in safety.locked or
+                    bool(budget and budget.state in {BudgetState.DANGER, BudgetState.EXHAUSTED}))
+                if budget and budget.state is BudgetState.WARNING and (call.name not in warning_tools or
+                        call.name in {"request_tool_group", "inspect_tool_catalog", "search_memories"}):
+                    blocked = True
+                if call.name in {"request_tool_group", "inspect_tool_catalog"} and safety.failed_tools:
+                    # Only an actual absent/unavailable capability justifies discovery;
+                    # a validation error on an already invoked tool does not.
+                    absent = any((result.metadata.get("error_code") or result.error) in {"tool_not_found", "tool_unavailable", "capability_missing"}
+                                 for _, result in safety.outcomes[-2:])
+                    blocked = blocked or not absent
+                cached = safety.cached_search(call) if not blocked else None
+                if blocked or cached is not None:
+                    result = cached or ToolResult(success=False, content="本轮已停止此调用，已有结果保留。", error="runtime_call_blocked", metadata={"not_executed":True})
+                    if call.name not in CONTROLS:
+                        if cached is None:
+                            safety.outcomes.append((call.name,result.model_copy(deep=True)))
+                        self._record_tool_result(call, result)
+                    else:
+                        discovery.record_observation(call.name, result)
+                    if trace:
+                        trace.emit("tool_call_reused" if cached else "tool_call_blocked", "tool_execution", "info",
+                                   "复用本轮已有查询" if cached else "已停止重复或超预算调用",
+                                   tool_name=observable_name, metadata={"reason": safety.forced_reason or "known_capability_or_budget"})
+                    continue
                 if call.name == "emit_interim_reply":
                     if trace:
                         trace.emit_interim(str(call.arguments.get("content", "")), reason="agent")
@@ -1070,7 +1160,10 @@ class ZhaoxiAgent:
                 if call.name in {"request_tool_group", "inspect_tool_catalog"}:
                     if trace and call.name == "inspect_tool_catalog":
                         trace.catalog_inspections += 1
+                    before = set(discovery.expanded)
                     result = self._run_control_tool(call, discovery)
+                    safety.progress = safety.progress or set(discovery.expanded) != before
+                    safety.observe_control(call,result)
                     discovery.record_observation(call.name, result)
                     if (call.name == "inspect_tool_catalog" and result.success
                         and call.arguments.get("action", "summary") != "resolve"
@@ -1121,6 +1214,14 @@ class ZhaoxiAgent:
                         permission_confirmation=confirmation,
                     )
                 result = execution.result
+                tool = self.registry.get(call.name) if observable_name != "unknown_tool" else None
+                failure_metrics = safety.observe(call, result, mutation=bool(tool and tool.mutates_state))
+                self._sync_safety(safety)
+                if trace and not result.success:
+                    trace.tool_failure_fingerprint = failure_metrics["tool_failure_fingerprint"]
+                    trace.tool_retry_count = failure_metrics["tool_retry_count"]
+                    trace.emit("tool_repair_limit", "tool_execution", "warning", "工具失败，修复次数受限",
+                               tool_name=observable_name, metadata=failure_metrics)
                 self._record_tool_result(call, result)
                 if call.name=="read_social_context" and result.success and result.metadata.get("include_social_images"):
                     from zhaoxi.cognitive_stream.turn import current_turn
@@ -1131,16 +1232,9 @@ class ZhaoxiAgent:
                     self._finish_traced_tool(trace, attempt, execution)
                 tool_logger.info("request=%s tool=%s success=%s", request_id, observable_name, result.success)
 
-        logger.error("request=%s reached max steps=%d", request_id, self.max_steps)
-        if trace:
-            trace.emit("response_generation_failed", "response_generation", "failed",
-                       "回复未能在步骤上限内完成", step_id=self.max_steps,
-                       error_code="agent_loop_error")
-            trace.response_status = "failed"
-        degraded = self._return_degraded(request_id, self.max_steps, STEP_LIMIT_NOTICE)
-        if degraded is not None:
-            return degraded
-        raise AgentLoopError(f"已达到最大执行步数（{self.max_steps}），为避免无限循环已停止。")
+            safety.finish_round()
+            self._sync_safety(safety)
+        return self._deterministic_final(request_id, self.max_steps, safety, "model_round_limit")
 
     def _run_control_tool(self, call: ToolCall, discovery: ToolDiscoveryState) -> ToolResult:
         if not self.registry.usable(call.name):
@@ -1171,11 +1265,18 @@ class ZhaoxiAgent:
         else:
             self.tool_executor.gateway.deny(confirmation_id)
 
+        safety = self._safety_state(pending.discovery) if pending.discovery else LoopSafety()
         for position, call in enumerate(batch_calls, start=1):
             trace = current_trace()
             invocation_id = pending.invocation_id if position == 1 else uuid4().hex
             attempt = trace.start_tool(self._observable_tool_name(call.name), call.id, invocation_id, None) if trace else None
-            if position in approved_positions:
+            budget = current_budget()
+            stop = bool(safety.forced_reason or call.name in safety.locked or budget and budget.state in {BudgetState.DANGER, BudgetState.EXHAUSTED})
+            if position not in approved_positions:
+                result = ToolResult(success=False,content="用户选择保留该项，工具没有执行。",error="permission_denied")
+            elif stop:
+                result = ToolResult(success=False, content="运行时限制已停止后续调用。", error="runtime_call_blocked",metadata={"not_executed":True})
+            elif position in approved_positions:
                 execution = await self.tool_executor.execute(
                     call.name,
                     call.arguments,
@@ -1197,12 +1298,20 @@ class ZhaoxiAgent:
                     content="用户选择保留该项，工具没有执行。",
                     error="permission_denied",
                 )
+            if position not in approved_positions or stop:
+                safety.outcomes.append((call.name,result.model_copy(deep=True)))
+            elif not stop:
+                safety.observe(call, result, mutation=self.registry.get(call.name).mutates_state)
+            self._sync_safety(safety)
             self._record_tool_result(call, result)
             if trace and attempt:
-                if position in approved_positions:
+                if position in approved_positions and not stop:
                     self._finish_traced_tool(trace, attempt, execution)
                 else:
-                    trace.finish_tool(attempt, success=False, failure_kind="permission")
+                    trace.finish_tool(attempt, success=False, failure_kind="runtime_guard" if stop and position in approved_positions else "permission")
+        if approved_positions != valid_positions:
+            safety.force("permission_declined")
+            self._sync_safety(safety)
         del self._pending_permissions[confirmation_id]
         tail_pending = PendingAgentInvocation(
             request_id=pending.request_id,
@@ -1278,10 +1387,37 @@ class ZhaoxiAgent:
         pending: PendingAgentInvocation,
     ) -> AgentResponse | None:
         """Finish the untouched tail of a multi-call model response after approval."""
+        safety = self._safety_state(pending.discovery) if pending.discovery else LoopSafety()
         for index, call in enumerate(pending.remaining_calls):
+            budget = current_budget()
+            blocked = bool(safety.forced_reason or call.name in safety.locked or
+                budget and budget.state in {BudgetState.DANGER, BudgetState.EXHAUSTED})
+            if budget and budget.state is BudgetState.WARNING and call.name in {
+                    "request_tool_group", "inspect_tool_catalog", "search_memories"}:
+                blocked = True
+            if call.name in {"request_tool_group", "inspect_tool_catalog"} and safety.failed_tools:
+                absent = any((result.metadata.get("error_code") or result.error) in {"tool_not_found", "tool_unavailable", "capability_missing"}
+                             for _, result in safety.outcomes[-2:])
+                blocked = blocked or not absent
+            if blocked:
+                result = ToolResult(success=False, content="运行时限制已停止后续调用。",
+                                    error="runtime_call_blocked", metadata={"not_executed":True})
+                if call.name not in CONTROLS:
+                    safety.outcomes.append((call.name,result.model_copy(deep=True)))
+                    self._record_tool_result(call, result)
+                elif pending.discovery is not None:
+                    pending.discovery.record_observation(call.name, result)
+                self._sync_safety(safety)
+                continue
+            cached = safety.cached_search(call)
+            if cached:
+                self._record_tool_result(call, cached)
+                continue
             if call.name in {"request_tool_group", "inspect_tool_catalog"} and pending.discovery is not None:
                 result = self._run_control_tool(call, pending.discovery)
                 pending.discovery.record_observation(call.name, result)
+                safety.observe_control(call, result)
+                self._sync_safety(safety)
                 continue
             if pending.discovery is not None:
                 pending.discovery.business_tool_called = True
@@ -1327,6 +1463,9 @@ class ZhaoxiAgent:
                     steps=0,
                     permission_confirmation=confirmation,
                 )
+            tool = self.registry.get(call.name) if self._observable_tool_name(call.name) != "unknown_tool" else None
+            safety.observe(call, execution.result, mutation=bool(tool and tool.mutates_state))
+            self._sync_safety(safety)
             self._record_tool_result(call, execution.result)
             if trace and attempt:
                 self._finish_traced_tool(trace, attempt, execution)

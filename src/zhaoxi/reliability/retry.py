@@ -58,6 +58,13 @@ async def retry_async(
     raise AssertionError("unreachable")
 
 
+class BudgetState(StrEnum):
+    NORMAL = "NORMAL"
+    WARNING = "WARNING"
+    DANGER = "DANGER"
+    EXHAUSTED = "EXHAUSTED"
+
+
 @dataclass(frozen=True, slots=True)
 class BudgetPolicy:
     base_budget: int
@@ -107,6 +114,7 @@ class CallBudget:
     context_reports: list[dict[str, object]] = field(default_factory=list)
     extension_history: list[dict[str, object]] = field(default_factory=list)
     reserve_entered: bool = False
+    extension_requests: int = 0
 
     @property
     def hard_limit(self) -> int:
@@ -116,18 +124,35 @@ class CallBudget:
     def finalization_reserve(self) -> int:
         return self.policy.finalization_reserve if self.policy else 0
 
+    @property
+    def remaining_ratio(self):
+        return max(0.0, (self.max_total_tokens - self.total_tokens) / self.max_total_tokens)
+
+    @property
+    def state(self):
+        if self.calls >= self.max_calls or self.total_tokens >= min(self.max_total_tokens, self.hard_limit):
+            return BudgetState.EXHAUSTED
+        if self.total_tokens >= self.max_total_tokens - self.finalization_reserve or self.remaining_ratio <= .1:
+            return BudgetState.DANGER
+        warning = self.policy.warning_ratio if self.policy else .85
+        threshold = (self.max_total_tokens - self.finalization_reserve) * warning
+        return BudgetState.WARNING if self.total_tokens >= threshold else BudgetState.NORMAL
+
     def snapshot(self) -> dict[str, object]:
         return {
             "base_budget": self.policy.base_budget if self.policy else self.max_total_tokens,
             "used": self.total_tokens, "soft_limit": self.max_total_tokens,
             "hard_limit": self.hard_limit, "finalization_reserve": self.finalization_reserve,
-            "extension_count": self.extension_count, "extensions": list(self.extension_history),
+            "extension_count": self.extension_count, "extension_requests": self.extension_requests,
+            "budget_state": self.state.value, "budget_remaining_ratio": self.remaining_ratio,
+            "extensions": list(self.extension_history),
             "stage_usage": dict(self.stage_usage), "model_calls": self.calls,
             "context_reports": list(self.context_reports),
         }
 
     def request_extension(self, request: BudgetExtensionRequest) -> dict[str, object]:
-        index = self.extension_count + 1
+        self.extension_requests += 1
+        index = self.extension_requests
         self._emit("budget_extension_requested", "info", "已申请额外预算",
                    {"extension_index": index, "stage": request.stage,
                     "reason_code": "requested", "used_before": self.total_tokens,
@@ -139,12 +164,16 @@ class CallBudget:
         progress = bool(evidence.get("completed_actions") or evidence.get("last_success_step")
                         or evidence.get("state_changed") or evidence.get("new_result"))
         reason_code = "approved"
-        if self.policy is None or index > 2 or limit <= 0:
+        if self.policy is None or index > 1 or limit <= 0:
             reason_code = "extension_limit"
+        elif self.state in {BudgetState.DANGER, BudgetState.EXHAUSTED}:
+            reason_code = "budget_danger"
         elif self.total_tokens < (self.max_total_tokens - self.finalization_reserve) * self.policy.warning_ratio:
             reason_code = "not_needed"
         elif self.total_tokens >= self.hard_limit or self.max_total_tokens >= self.hard_limit:
             reason_code = "hard_limit"
+        elif request.remaining_actions != 1:
+            reason_code = "remaining_action_limit"
         elif request.remaining_actions == 0 and request.stage not in {"recovery", "finalization"}:
             reason_code = "no_remaining_action"
         elif evidence.get("remaining_actions_verified") is False:
@@ -155,11 +184,6 @@ class CallBudget:
             reason_code = "no_progress"
         elif int(evidence.get("repeated_error_count") or 0) >= 2 or int(evidence.get("stalled_rounds") or 0) >= 2:
             reason_code = "repeated_failure"
-        elif index == 2 and (request.stage not in {"recovery", "finalization", "tool_execution"}
-                             or request.remaining_actions > 1):
-            reason_code = "second_extension_restricted"
-        elif index == 2 and request.stage == "tool_execution" and not evidence.get("corrective_retry"):
-            reason_code = "second_extension_restricted"
         elif request.estimated_extra_tokens > limit * 2:
             reason_code = "excessive_request"
         approved = min(request.estimated_extra_tokens, limit, self.hard_limit - self.max_total_tokens) if reason_code == "approved" else 0
@@ -227,6 +251,9 @@ class CallBudget:
             self.context_reports[-1]["total_input_tokens"] = input_tokens
         from zhaoxi.observability import current_trace
         trace = current_trace()
+        if trace:
+            trace.budget_state = self.state.value
+            trace.budget_remaining_ratio = self.remaining_ratio
         fields = {
             "used_before": used_before, "call_input_tokens": input_tokens,
             "call_output_tokens": output_tokens, "call_total": tokens,

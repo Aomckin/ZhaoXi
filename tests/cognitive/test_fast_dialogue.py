@@ -156,12 +156,13 @@ async def test_fast_action_commitment_escalates_only_once():
         fast_gate=FastDialogueGate(),
     )
 
-    response = await agent.run_natural("小金毛？")
+    agent.cognitive.force_fast_chat=True
+    response = await agent.run_natural("请查一下当前时间")
 
     assert response.route is CognitiveRoute.TOOL
     assert len(provider.calls) == 3
     assert provider.tool_schemas[0] is None
-    assert provider.tool_schemas[-1]
+    assert provider.tool_schemas[-1] is None
 
 async def test_fast_trace_reports_v141_lane_counters():
     inner = FakeProvider([ModelResponse(content="在呢。")])

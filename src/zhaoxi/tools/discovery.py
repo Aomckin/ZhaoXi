@@ -52,6 +52,7 @@ class ToolDiscoveryState:
     resolution_checked: bool = False
     observations: list[str] = field(default_factory=list)
 
+    safety: object = None
     cache: dict = field(default_factory=dict)
     seen_results: set = field(default_factory=set)
     stalled: int = 0

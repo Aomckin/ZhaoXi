@@ -137,11 +137,13 @@ async def test_budget_failure_after_write_preserves_completed_task():
     result = await send(gateway)
     assert "Token" in result.content
     assert agent.last_action_trace["task_status"] == "completed"
-    assert agent.last_action_trace["response_status"] == "failed"
+    assert agent.last_action_trace["response_status"] == "succeeded"
+    assert agent.last_action_trace["runtime_metrics"]["result_status"]=="budget_exhausted"
+    assert agent.last_action_trace["runtime_metrics"]["deterministic_fallback_used"]
     assert any(item["event"]["error_code"] == "token_budget_exhausted" for item in emitted)
     terminal = [item["event"] for item in emitted if item["event"]["event_type"] == "task_completed"][-1]
-    assert terminal["display_message"] == "已完成的操作均已保留"
-    assert terminal["metadata"]["response_status"] == "failed"
+    assert "保留" in result.content
+    assert terminal["metadata"]["response_status"] == "succeeded"
 
 
 async def test_timeout_after_write_returns_tool_status_instead_of_losing_result():

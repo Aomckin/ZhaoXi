@@ -263,6 +263,7 @@ class PerceptionRuntime:
                                 "final_lane": "standard"})
                             response = await self.agent.run_channel_reply(
                                 item.content or "请查看图片。", trigger_event=trigger,
+                                fast_escalated=True,
                                 images=images, audience=audience,
                                 expression_policy=safe_expression_policy,
                             )

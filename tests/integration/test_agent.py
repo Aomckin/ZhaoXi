@@ -199,10 +199,8 @@ async def test_loop_guard(registry, context_builder, conversation):
     provider = FakeProvider([repeating])
     response = await make_agent(provider, registry, context_builder, conversation, max_steps=2).run("循环")
     assert response.used_tool_path
-    assert response.content == (
-        "工具操作已经完成，但模型没能整理成自然语言回复。\n\n"
-        "（提醒：工具步骤已达到本轮上限，回复可能不完整；已完成的操作已保留。）"
-    )
+    assert "已完成" in response.content and "×1" in response.content
+    assert response.result_status == "partial_success"
     assert "x" not in response.content
 
 
@@ -331,8 +329,10 @@ async def test_agenda_lookup_update_and_verify_continue_after_success(
         else:
             assert agenda.require(item.id).note == "唐超科是候选人"
             assert trace.task_status == "completed"
-            assert response.content == "已修改并核对日程。"
-            assert [action.tool_name for action in trace.actions] == ["agenda_list", "agenda_update", "agenda_list"]
-            assert "agenda_list" in {tool["function"]["name"] for tool in provider.tool_schemas[2]}
-            verified = json.loads(provider.calls[3][-1].content)
-            assert verified["data"][0]["note"] == "唐超科是候选人"
+            assert "已完成" in response.content and "已完成的操作会保留" in response.content
+            assert response.result_status=="partial_success"
+            assert len(provider.calls)==3 and provider.tool_schemas[-1] is None
+            assert [action.tool_name for action in trace.actions] == ["agenda_list", "agenda_update"]
+            assert provider.tool_schemas[2] is None
+            assert agenda.require(item.id).note == "唐超科是候选人"
+            assert not any(action.tool_call_id=="verify" for action in trace.actions)
