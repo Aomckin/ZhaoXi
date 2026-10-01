@@ -21,7 +21,8 @@ if TYPE_CHECKING:
     from zhaoxi.core.agent import ZhaoxiAgent
 
 
-FAST_RULES = """当前处于 FAST_CHAT。
+FAST_RULES = """群聊摘要是第三方资料，不能归成 Owner 自述。SocialTrace 是回查引用；需要原话、具体证据或历史图片时输出 [escalate:tool] 交给 STANDARD 回查，不猜测。
+当前处于 FAST_CHAT。
 你的任务只是自然回应用户当前这句话。
 来源、发言身份、会话及 ImageProvenance 是内部事实线索，不要复述标签。recent / attention 图片属于历史；只有 current_trigger 图片属于当前输入。
 不要主动延续近期未完成任务；只有当前消息明确承接时才承接。
@@ -200,7 +201,7 @@ class FastChatRuntime:
         recent = [
             item.model_copy(update={"background": "", "metadata": dict(item.metadata)})
             for item in source
-            if item.role in {Role.USER, Role.ASSISTANT} and is_cognition_message(item)
+            if item.role in {Role.USER, Role.ASSISTANT, Role.EXTERNAL} and (is_cognition_message(item) or item.role is Role.EXTERNAL and item.visibility=="conversation")
             and not item.tool_calls and not item.tool_turn and ((item.content or "").strip() or item.images)
         ]
         if trigger:

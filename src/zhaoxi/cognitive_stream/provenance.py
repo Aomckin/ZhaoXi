@@ -141,6 +141,12 @@ def render_for_context(message: Message, current: Provenance, stream=None) -> Me
     content = message.content or ("请查看图片。" if message.images else "")
     if previous and content.startswith(previous + "\n"):
         content = content[len(previous) + 1:]
+    if origin.conversation_kind=="group" and message.metadata.get("event_type") in {"EXTERNAL_MESSAGE","SOCIAL_SNAPSHOT"}:
+        import json
+        ref=message.metadata.get("timeline_unit_id") or message.metadata.get("event_id") or origin.event_id
+        if ref and "[SocialTrace " not in content:
+            trace={"ref":ref,"granularity":"statement" if message.metadata.get("social_statements") else "batch" if message.metadata.get("event_type")=="SOCIAL_SNAPSHOT" else "message"}
+            content="[SocialTrace "+json.dumps(trace,ensure_ascii=False,separators=(",",":"))+"]\n"+content
     if message.images:
         import json
         image_id = message.metadata.get("image_origin_event_id") or origin.event_id
@@ -177,7 +183,8 @@ def inspector(messages) -> list[dict]:
         "rendered_source_label":m.metadata.get("rendered_source_label", ""),
         "image_timeline_scope":m.metadata.get("image_timeline_scope") or m.metadata.get("timeline_scope") if m.images else None,
         "image_origin_event_id":m.metadata.get("image_origin_event_id") if m.images else None,
-        "image_count":len(m.images)}
+        "image_count":len(m.images), "social_trace_ref":m.metadata.get("timeline_unit_id") or m.metadata.get("event_id") or m.metadata.get("origin_event_id"),
+        "social_statements":m.metadata.get("social_statements",[])}
         for m in messages if m.role not in {Role.SYSTEM, Role.TOOL}]
 
 

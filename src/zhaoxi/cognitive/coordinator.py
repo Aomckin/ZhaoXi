@@ -355,5 +355,5 @@ class CognitiveCoordinator:
         current = from_event(turn.trigger_event) if turn else Provenance(channel="desktop", session_id="local")
         messages = render_messages(messages, current, stream)
         return "\n".join(f"{message.role.value}: {message.content[:600]}"
-            for message in messages if message.content and message.role in {Role.USER, Role.ASSISTANT}
-            and is_cognition_message(message) and not message.tool_calls)[-max_chars:]
+            for message in messages if message.content and message.role in {Role.USER, Role.ASSISTANT, Role.EXTERNAL}
+            and (is_cognition_message(message) or message.role is Role.EXTERNAL and message.visibility=="conversation") and not message.tool_calls)[-max_chars:]

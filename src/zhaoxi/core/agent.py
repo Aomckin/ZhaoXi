@@ -571,6 +571,7 @@ class ZhaoxiAgent:
             return await asyncio.wait_for(
                 self._run_loop(
                     request_id, memories, user_message, no_tools=True,
+                    allowed_read_tools=frozenset({"read_social_context"}),
                     output_channel=trigger_event.channel or trigger_event.source, audience=audience,
                     expression_policy=expression_policy,
                 ),
@@ -782,10 +783,13 @@ class ZhaoxiAgent:
         discovery: ToolDiscoveryState | None = None,
         turn_images: tuple[str, ...] = (),
         no_tools: bool = False,
+        allowed_read_tools: frozenset[str] = frozenset(),
         output_channel: str = "desktop",
         audience: str = "owner",
         expression_policy: str = "",
     ) -> AgentResponse:
+        allowed_read_tools=frozenset(item["name"] for item in self.registry.manifest()
+            if item["name"] in allowed_read_tools and item["read_only"] and item["enabled"] and item["available"])
         if discovery is None:
             routing_intent = f"{user_intent}\n{lookup_commitment}" if lookup_commitment else user_intent
             discovery = ToolDiscoveryState(self._tool_context(routing_intent))
@@ -821,6 +825,8 @@ class ZhaoxiAgent:
                 if trace and step > 2 and not trace.extra_round_reason:
                     trace.extra_round_reason = ("tool_repair" if trace.tool_rounds > 1 else "discovery_or_model_retry")
                 schemas = [] if final_only or no_tools else discovery.schemas(self.registry)
+                if no_tools and not final_only:
+                    schemas = [self.registry.get(name).schema() for name in allowed_read_tools if any(t.name==name for t in self.registry.list()) and self.registry.usable(name)]
                 interim_available = bool(trace and schemas and trace.interim_enabled
                     and trace.interim_replies < trace.interim_max_count
                     and (tool_called or step > 1)
@@ -985,7 +991,7 @@ class ZhaoxiAgent:
                     ), code=error_code
                 ) from exc
 
-            if no_tools and response.tool_calls:
+            if no_tools and any(call.name not in allowed_read_tools for call in response.tool_calls):
                 raise AgentLoopError("受限回复不能调用工具。")
             if not response.tool_calls:
                 if (not no_tools and not tool_called and not capability_retry and is_action_request(user_intent)
@@ -1116,6 +1122,11 @@ class ZhaoxiAgent:
                     )
                 result = execution.result
                 self._record_tool_result(call, result)
+                if call.name=="read_social_context" and result.success and result.metadata.get("include_social_images"):
+                    from zhaoxi.cognitive_stream.turn import current_turn
+                    reader=self.registry.get(call.name).reader
+                    for image in reader.image_messages(result.data,self.context_builder.image_thumbnail_cache,current_turn()):
+                        self.conversation.add(image)
                 if trace and attempt:
                     self._finish_traced_tool(trace, attempt, execution)
                 tool_logger.info("request=%s tool=%s success=%s", request_id, observable_name, result.success)

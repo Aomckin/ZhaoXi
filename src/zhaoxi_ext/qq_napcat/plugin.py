@@ -53,7 +53,8 @@ class QQNapCatPlugin:
             "attachments": [attachment for item in items for attachment in item.attachments],
             "raw_ref": last.raw_ref,
             "received_at": last.received_at,
-            "metadata": {**last.metadata, "merged_refs": refs},
+            "metadata": {**last.metadata, "merged_refs": refs,
+                         "raw_observations":[item.model_dump(mode="json") for item in items]},
         })
 
     async def _debounce_direct(self, item):
@@ -112,11 +113,17 @@ class QQNapCatPlugin:
         item = await self._debounce_direct(item)
         if item is None:
             return
+        cached_images = {}
         for part in item.parts:
             if part.type == "image":
                 resolved = await self.images.resolve({"url": part.url, "file": part.file})
                 if resolved:
+                    cached_images[part.url or part.file] = resolved
                     part.url, part.file = resolved, None
+        for original in item.metadata.get("raw_observations", []):
+            for part in original.get("parts", []):
+                if part.get("type") == "image" and (part.get("url") or part.get("file")) in cached_images:
+                    part["url"], part["file"] = cached_images[part.get("url") or part.get("file")], None
         self.received_count += 1
         await self.sink.emit(item)
 

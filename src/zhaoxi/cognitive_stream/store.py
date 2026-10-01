@@ -132,15 +132,21 @@ class ExperienceStream:
             db.execute("INSERT OR REPLACE INTO timeline_units VALUES (?,?,?)",
                        (unit_id, payload, datetime.now(UTC).isoformat()))
 
-    def resolve_timeline_unit(self, unit_id: str) -> dict | None:
+    def load_timeline_unit(self, unit_id):
         import json
         with self._connect() as db:
-            row = db.execute("SELECT payload FROM timeline_units WHERE unit_id=?", (unit_id,)).fetchone()
-        if not row:
+            row = db.execute("SELECT payload FROM timeline_units WHERE unit_id=?",(unit_id,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def resolve_timeline_unit(self, unit_id: str) -> dict | None:
+        unit = self.load_timeline_unit(unit_id)
+        if unit is None:
             return None
-        unit = json.loads(row[0])
         unit["events"] = [event.model_dump(mode="json") for event_id in unit.get("source_event_ids", [])
                           if (event := self.get(event_id)) is not None]
+        from .social_trace import SocialTraceReader
+        unit["social_trace"] = SocialTraceReader(self).read(unit_id)
+        unit["missing_event_ids"] = [ref for ref in unit.get("source_event_ids",[]) if self.get(ref) is None]
         return unit
 
     def stats(self) -> dict:
@@ -150,19 +156,45 @@ class ExperienceStream:
             by_type = dict(db.execute("SELECT event_type, COUNT(*) FROM events GROUP BY event_type"))
         return {"total_events": total, "by_source": by_source, "by_type": by_type}
 
+    def retained_social_refs(self):
+        import json
+        with self._connect() as db:
+            rows=db.execute("SELECT payload FROM events WHERE event_type=?",(CognitiveEventType.SOCIAL_SNAPSHOT.value,)).fetchall()
+        return {ref for row in rows for ref in [*json.loads(row[0]).get("parent_refs",[]),*json.loads(row[0]).get("source_refs",[])]}
+
     def clear_expired(self, now: datetime | None = None) -> int:
+        import json
         now = now or datetime.now(UTC)
         removed = 0
         with self._connect() as db:
-            # Expiry needs indexed metadata only; do not hydrate image blobs.
-            for event_id, event_type, actor_role, received_at in db.execute(
-                    "SELECT event_id,event_type,actor_role,received_at FROM events").fetchall():
-                received = datetime.fromisoformat(received_at)
-                if received.tzinfo is None:
-                    received = received.replace(tzinfo=UTC)
-                days = 7 if event_type.startswith("TOOL_") else (30 if actor_role != "OWNER" else 90)
-                if received < now - timedelta(days=days):
-                    db.execute("DELETE FROM event_refs WHERE event_id=?", (event_id,))
-                    db.execute("DELETE FROM events WHERE event_id=?", (event_id,))
-                    removed += 1
+            rows=db.execute("SELECT event_id,event_type,actor_role,received_at,payload,source FROM events").fetchall()
+            expired=set()
+            summaries={}
+            for event_id,event_type,actor_role,received_at,payload,source in rows:
+                received=datetime.fromisoformat(received_at)
+                if received.tzinfo is None:received=received.replace(tzinfo=UTC)
+                days=7 if event_type.startswith("TOOL_") else (30 if actor_role!="OWNER" else 90)
+                if received < now-timedelta(days=days):expired.add(event_id)
+                if event_type==CognitiveEventType.SOCIAL_SNAPSHOT.value:
+                    summaries[event_id]=(source,json.loads(payload).get("parent_refs",[]))
+            # A live summary or cached unit owns its evidence lifetime. Cache units
+            # expire after 30 days; repeated reads do not refresh their timestamp.
+            db.execute("DELETE FROM timeline_units WHERE updated_at<?",((now-timedelta(days=30)).isoformat(),))
+            protected={ref for payload, in db.execute("SELECT payload FROM timeline_units") for ref in json.loads(payload).get("source_event_ids",[])}
+            pending=list(set(summaries)-expired | (protected & set(summaries)))
+            visited=set()
+            while pending:
+                summary=pending.pop()
+                if summary in visited:continue
+                visited.add(summary)
+                source,refs=summaries[summary]
+                for ref in refs:
+                    row=db.execute("SELECT event_id FROM event_refs WHERE source=? AND source_ref=?",(source,ref)).fetchone()
+                    child=row[0] if row else ref
+                    protected.add(child)
+                    if child in summaries:pending.append(child)
+            for event_id in expired-protected:
+                db.execute("DELETE FROM event_refs WHERE event_id=?",(event_id,))
+                db.execute("DELETE FROM events WHERE event_id=?",(event_id,))
+                removed+=1
         return removed

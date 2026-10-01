@@ -204,7 +204,7 @@ def test_truth_actor_and_historical_picture_time_win(tmp_path):
 def test_grouped_golden_prompt():
     first=event(event_id="first",occurred_at=datetime(2026,10,1,1,tzinfo=UTC),kind="group",conversation="A",content="第一条")
     second=event(event_id="second",occurred_at=first.occurred_at+timedelta(seconds=1),kind="group",conversation="A",content="第二条")
-    expected="[来源: QQ 群聊 · 会话 A · session qq/group/A · 暗苟 · Owner 本人 · plugin napcat · 2026-10-01T01:00:00+00:00 · 历史上下文]\n第一条\n第二条"
+    expected="[来源: QQ 群聊 · 会话 A · session qq/group/A · 暗苟 · Owner 本人 · plugin napcat · 2026-10-01T01:00:00+00:00 · 历史上下文]\n[SocialTrace {\"ref\":\"first\",\"granularity\":\"message\"}]\n第一条\n[SocialTrace {\"ref\":\"second\",\"granularity\":\"message\"}]\n第二条"
     rows=render_messages([project_history(first),project_history(second)],Provenance(channel="desktop"))
     assert "\n".join(m.to_provider_dict()["content"] for m in rows)==expected
 

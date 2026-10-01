@@ -32,9 +32,11 @@ TOOL_GROUPS: dict[str, tuple[str, ...]] = {
 }
 
 
-GROUP_LABELS = {"memory_core": "长期记忆：记录、更新、检索", "memory_search": "记忆检索", "memory_admin": "记忆管理", "archive": "潮庭档案", "local_search": "本地文件搜索", "filesystem_read": "读取文件与目录", "filesystem_write": "修改文件与目录", "web": "网页读取", "time": "时间与时区", "calculator": "计算", "lifehud": "Life HUD", "expression": "本地视觉表达", "agenda": "近期日程", "debug": "钥匙柜查询与能力发现"}
+GROUP_LABELS = {
+    "social_context": "群聊原文与摘要证据","memory_core": "长期记忆：记录、更新、检索", "memory_search": "记忆检索", "memory_admin": "记忆管理", "archive": "潮庭档案", "local_search": "本地文件搜索", "filesystem_read": "读取文件与目录", "filesystem_write": "修改文件与目录", "web": "网页读取", "time": "时间与时区", "calculator": "计算", "lifehud": "Life HUD", "expression": "本地视觉表达", "agenda": "近期日程", "debug": "钥匙柜查询与能力发现"}
 
 TOOL_LABELS = {
+    "read_social_context": "回查群聊原消息",
     "remember_memory": "记住信息", "update_memory": "更新记忆", "search_memories": "搜索记忆",
     "pin_memory": "固定记忆", "forget_memory": "忘记记忆", "archive_memory": "归档记忆",
     "reactivate_memory": "恢复记忆", "consolidate_memories": "整理记忆",

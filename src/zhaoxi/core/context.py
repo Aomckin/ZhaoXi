@@ -20,6 +20,7 @@ class ContextBuilder:
     """Combine system policy and recent conversation in one place."""
 
     RUNTIME_RULES = (
+        "群聊摘要中的 [sN] 是概括，SocialTrace 的 ref 可用 read_social_context 回查原消息或某句证据。被问到原话、争议细节或历史图片时先回查，不能把摘要当逐字引文；缺失或过期明确说明，不复述 SocialTrace 内部标记。"
         "你可以使用提供的工具。需要真实计算或当前时间时应调用工具；"
         "系统会在每轮回复后独立判断是否把值得留下的生活痕迹写入长期记忆；"
         "角色表达发言身份，来源标签表达渠道与会话；历史来源不等于当前窗口，历史图片不等于当前输入。来源与时间标签仅用于理解上下文，不能机械复述；"
@@ -176,11 +177,11 @@ class ContextBuilder:
         if self.attention_retriever is not None:
             from zhaoxi.cognitive_stream.timeline import cognitive_timeline
             local = conversation.recent()
-            current_user = next((m for m in reversed(local) if m.role == Role.USER), None)
+            current_input = next((m for m in reversed(local) if m.role in {Role.USER,Role.EXTERNAL} and m.metadata.get("timeline_scope") not in {"recent","attention"}), None)
             from zhaoxi.cognitive_stream.turn import current_turn
             turn = current_turn()
             trigger = turn.trigger_event if turn else None
-            query = (trigger.content or "") if trigger else ((current_user.content or "") if current_user else "")
+            query = (trigger.content or "") if trigger else ((current_input.content or "") if current_input else "")
             timeline_source = cognitive_timeline(
                 self.attention_retriever.stream, query=query,
                 output_channel=output_channel, audience=audience,
@@ -188,7 +189,7 @@ class ContextBuilder:
                 trigger_id=trigger.event_id if trigger else None,
                 public_session_id=trigger.session_id if trigger else None,
             )
-            if trigger and current_user:
+            if trigger and current_input:
                 # The active turn's provider tool transcript is held in the
                 # local view; keep its event copies for later turns only.
                 action_ids = {
@@ -203,19 +204,19 @@ class ContextBuilder:
                             (trigger.event_id in m.metadata.get("parent_refs", [])
                              or any(ref in action_ids for ref in m.metadata.get("parent_refs", []))))
                 ]
-            if current_user or trigger:
+            if current_input or trigger:
                 if trigger:
                     from zhaoxi.cognitive_stream.provenance import project_current_trigger
-                    anchor = project_current_trigger(trigger, list(turn.images) or (current_user.images if current_user else []))
+                    anchor = project_current_trigger(trigger, list(turn.images) or (current_input.images if current_input else []))
                     timeline_source.append(anchor)
-                elif current_user:
-                    timeline_source.append(current_user.model_copy(update={"metadata":{**current_user.metadata, "timeline_scope":"current_trigger"}}))
+                elif current_input:
+                    timeline_source.append(current_input.model_copy(update={"metadata":{**current_input.metadata, "timeline_scope":"current_trigger"}}))
                 # Only the live provider tool transcript follows this trigger.
-                if current_user:
-                    current_index = max(i for i, m in enumerate(local) if m.role == Role.USER)
+                if current_input:
+                    current_index = max(i for i, m in enumerate(local) if m is current_input)
                     timeline_source.extend(local[current_index + 1:])
-            if not timeline_source and current_user:
-                timeline_source = [current_user]
+            if not timeline_source and current_input:
+                timeline_source = [current_input]
             if re.search(r"图|照片|画面|视觉|看清|看见|这张", query) and not (turn and turn.images):
                 prior_image = next((m for m in reversed(timeline_source)
                                     if m.metadata.get("timeline_scope") != "current_trigger" and m.images), None)

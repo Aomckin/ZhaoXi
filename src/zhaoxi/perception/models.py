@@ -94,6 +94,11 @@ class ObservationBatch(BaseModel):
     raw_refs: list[str]
 
 
+class SocialStatement(BaseModel):
+    text: str = Field(min_length=1, max_length=300)
+    evidence_observation_ids: list[str] = Field(min_length=1, max_length=20)
+
+
 class SocialSnapshot(BaseModel):
     snapshot_id: str = Field(default_factory=lambda: uuid4().hex)
     batch_id: str
@@ -105,6 +110,7 @@ class SocialSnapshot(BaseModel):
     participants: list[str] = Field(default_factory=list)
     topics: list[str] = Field(default_factory=list)
     summary: str
+    statements: list[SocialStatement] = Field(default_factory=list, max_length=20)
     mentions_of_user: list[str] = Field(default_factory=list)
     mentions_of_zhaoxi: list[str] = Field(default_factory=list)
     possible_tasks: list[str] = Field(default_factory=list)

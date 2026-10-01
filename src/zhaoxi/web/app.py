@@ -932,6 +932,20 @@ def create_app(
             raise HTTPException(status_code=404, detail="Timeline Unit 不存在。")
         return unit
 
+    @app.get("/api/debug/cognitive-stream/social-trace")
+    async def debug_social_trace(reference: str, statement_id: str | None = None, offset: int = 0,
+                                 text_offset: int = 0, limit: int = 8, max_chars: int = 6000):
+        from zhaoxi.tools.builtin.social_context import ReadSocialContextInput
+        from zhaoxi.cognitive_stream.social_trace import SocialTraceReader
+        from pydantic import ValidationError
+        stream=getattr(core,"experience_stream",None)
+        if stream is None:raise HTTPException(status_code=409,detail="ExperienceStream 尚未就绪。")
+        try:
+            args=ReadSocialContextInput(reference=reference,statement_id=statement_id,offset=offset,text_offset=text_offset,limit=limit,max_chars=max_chars)
+        except ValidationError:
+            raise HTTPException(status_code=422,detail="回查参数无效。")
+        return SocialTraceReader(stream).read(**args.model_dump(exclude={"include_images"}))
+
     @app.get("/api/debug/provenance")
     async def debug_provenance():
         builder = getattr(core, "context_builder", None)

@@ -50,6 +50,8 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     agent.settings = settings
     agent.experience_stream = ExperienceStream(Path(".zhaoxi") / "experience.db",media_directory=settings.media_directory)
     agent.experience_stream.clear_expired()
+    from zhaoxi.tools.builtin.social_context import ReadSocialContextTool
+    registry.register(ReadSocialContextTool(agent.experience_stream,max_output_chars=min(8000,settings.permission_max_tool_output_chars)))
     agent.cognitive_ingress = CognitiveIngress(agent.experience_stream)
     if planner is not None:
         planner.cognitive_ingress = agent.cognitive_ingress

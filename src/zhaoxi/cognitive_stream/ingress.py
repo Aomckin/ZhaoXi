@@ -31,7 +31,8 @@ class CognitiveIngress:
                     images: list[str] | None = None) -> CognitiveEvent:
         refs = item.metadata.get("merged_refs") or ([item.raw_ref] if item.raw_ref else ["observation:" + item.observation_id])
         parts = [EventPart.model_validate(part.model_dump()) for part in item.effective_parts]
-        parts.extend(EventPart(type="image", url=image) for image in (images or []))
+        existing_images = {part.url for part in parts if part.type == "image"}
+        parts.extend(EventPart(type="image", url=image) for image in (images or []) if image not in existing_images)
         return self._append(CognitiveEvent(
             event_type=CognitiveEventType.EXTERNAL_MESSAGE, source=item.source, channel=item.source,
             turn_id=item.observation_id,
@@ -41,7 +42,8 @@ class CognitiveIngress:
             privacy_level="OWNER_PRIVATE" if item.actor_role == "OWNER" and item.conversation_kind == "private" else "SOCIAL",
             occurred_at=item.occurred_at, received_at=item.received_at,
             source_refs=refs, importance=0.7 if item.actor_role == "OWNER" else 0.3,
-            metadata={"conversation_kind": item.conversation_kind, "source_kind": item.source_kind,
+            metadata={**{key:item.metadata[key] for key in ("raw_message","raw_observations") if key in item.metadata},
+                      "conversation_kind": item.conversation_kind, "source_kind": item.source_kind,
                       "source_plugin": item.source_plugin,
                       "directed_to_zhaoxi": item.directed_to_zhaoxi,
                       "sender_is_bot": bool(item.metadata.get("sender_is_bot"))}))

@@ -78,6 +78,8 @@ def project_event(event: CognitiveEvent) -> Message:
         metadata={
             "provenance_snapshot":from_event(event).metadata(),
             "event_id": event.event_id,
+            "social_statements":event.metadata.get("social_statements",[]),
+            "trace_granularity":event.metadata.get("trace_granularity"),
             "event_type": event.event_type.value,
             "channel": event.channel,
             "session_id": event.session_id,
@@ -138,6 +140,10 @@ def _causal_units(events: list[CognitiveEvent]) -> list[list[CognitiveEvent]]:
 
 def _unit_payload(events: list[CognitiveEvent]) -> dict:
     root = _ambient_key(events[0]) or events[0].turn_id or events[0].event_id
+    statements = events[0].metadata.get("social_statements", [])
+    if _ambient_key(events[0]) and not statements:
+        statements = [{"statement_id": f"s{i+1}", "text": (event.content or "[图片]")[:100],
+                       "source_event_ids": [event.event_id]} for i, event in enumerate(events[:3])]
     return {
         "unit_id": root if root.startswith("ambient:") else "turn:" + root,
         "turn_id": None if _ambient_key(events[0]) else events[0].turn_id,
@@ -146,6 +152,7 @@ def _unit_payload(events: list[CognitiveEvent]) -> dict:
         "raw_refs": list(dict.fromkeys(ref for event in events for ref in event.source_refs)),
         "occurred_at": min(event.occurred_at for event in events).isoformat(),
         "level": "L1",
+        "social_statements": statements,
     }
 
 
@@ -158,8 +165,8 @@ def summarize_episode(events: list[CognitiveEvent]) -> EpisodeSummary:
     return EpisodeSummary(
         episode_id="episode:" + digest,
         content=f"{len(ordered)} 条较早经历：" + "；".join(
-            f"{event.actor_name or event.actor_role or '事件'}：{(event.content or '[图片]')[:80]}"
-            for event in ordered[:3]),
+            f"[s{i+1}] {event.actor_name or event.actor_role or '事件'}：{(event.content or '[图片]')[:80]}"
+            for i,event in enumerate(ordered[:3])),
         source_event_ids=[event.event_id for event in ordered],
         parent_refs=list(dict.fromkeys(ref for event in ordered for ref in event.parent_refs)),
         source_refs=list(dict.fromkeys(ref for event in ordered for ref in event.source_refs)),
@@ -202,8 +209,8 @@ def cognitive_timeline(
         payload = _unit_payload(events)
         projected = []
         if len(events) > 1 and _ambient_key(events[0]):
-            excerpts = [f"{e.actor_name or e.actor_id or '群友'}：{(e.content or '[图片]')[:100]}"
-                        for e in events[:3]]
+            excerpts = [f"[s{i+1}] {e.actor_name or e.actor_id or '群友'}：{(e.content or '[图片]')[:100]}"
+                        for i,e in enumerate(events[:3])]
             summary = f"[{events[0].occurred_at.isoformat()} · 群聊记录 · {events[0].channel}] "
             summary += f"这段时间有 {len(events)} 条发言；" + "；".join(excerpts)
             if len(events) > 3:
@@ -213,7 +220,7 @@ def cognitive_timeline(
                               source=events[0].source,
                               metadata={"provenance_snapshot":from_event(events[0]).metadata(), "event_type":"SOCIAL_SNAPSHOT",
                                         "timeline_scope": "recent", "timeline_unit_id": payload["unit_id"],
-                                        "source_event_ids": payload["source_event_ids"],
+                                        "source_event_ids": payload["source_event_ids"], "social_statements":payload["social_statements"],
                                         "privacy_level": events[0].privacy_level})
             projected.append(message)
         else:
@@ -255,13 +262,14 @@ def cognitive_timeline(
             payload = {"unit_id": episode.episode_id, "level": "L2",
                        "source_event_ids": episode.source_event_ids,
                        "parent_refs": episode.parent_refs, "raw_refs": episode.source_refs,
-                       "occurred_at": episode.occurred_at.isoformat()}
+                       "occurred_at": episode.occurred_at.isoformat(),
+                       "social_statements":[{"statement_id":f"s{i+1}","text":(event.content or "[图片]")[:80],"source_event_ids":[event.event_id]} for i,event in enumerate(group[:3])]}
             stream.save_timeline_unit(episode.episode_id, json.dumps(payload, ensure_ascii=False))
             recent.insert(0, Message(message_id=episode.episode_id, role=Role.EXTERNAL,
                 content=episode.content, timestamp=episode.occurred_at,
                 metadata={"provenance_snapshot":from_event(group[0]).metadata(), "event_type":"SOCIAL_SNAPSHOT",
                           "timeline_scope": "attention", "timeline_unit_id": episode.episode_id,
-                          "source_event_ids": episode.source_event_ids}))
+                          "source_event_ids": episode.source_event_ids, "social_statements":payload["social_statements"]}))
             compressed_ids.update(episode.source_event_ids)
             chars += len(episode.content)
         for event in focused.events:

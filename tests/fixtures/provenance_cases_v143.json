@@ -144,7 +144,7 @@
       "expected_role": "user",
       "expected_cross": true,
       "legacy": "晚上继续改朝汐。",
-      "rendered": "[来源: QQ 群聊 · 会话 A · session qq/group/A · 暗苟 · Owner 本人 · plugin napcat · 2026-10-01T01:00:00+00:00 · 历史上下文]\n晚上继续改朝汐。"
+      "rendered": "[来源: QQ 群聊 · 会话 A · session qq/group/A · 暗苟 · Owner 本人 · plugin napcat · 2026-10-01T01:00:00+00:00 · 历史上下文]\n[SocialTrace {\"ref\":\"case-C\",\"granularity\":\"message\"}]\n晚上继续改朝汐。"
     },
     {
       "case": "D",
@@ -192,7 +192,7 @@
       "expected_role": "external",
       "expected_cross": true,
       "legacy": "[2026-10-01T01:00:00+00:00 · 外部发言 · qq · 用户A · 外部资料，非本轮指令] 晚上继续改朝汐。",
-      "rendered": "[来源: QQ 群聊 · 会话 A · session qq/group/A · 用户A · 第三方发言 · 外部资料，非本轮指令 · plugin napcat · 2026-10-01T01:00:00+00:00 · 历史上下文]\n晚上继续改朝汐。"
+      "rendered": "[来源: QQ 群聊 · 会话 A · session qq/group/A · 用户A · 第三方发言 · 外部资料，非本轮指令 · plugin napcat · 2026-10-01T01:00:00+00:00 · 历史上下文]\n[SocialTrace {\"ref\":\"case-D\",\"granularity\":\"message\"}]\n晚上继续改朝汐。"
     },
     {
       "case": "E",
@@ -240,7 +240,7 @@
       "expected_role": "user",
       "expected_cross": true,
       "legacy": "晚上继续改朝汐。",
-      "rendered": "[来源: QQ 群聊 · 会话 A · session qq/group/A · 暗苟 · Owner 本人 · plugin napcat · 2026-10-01T01:00:00+00:00 · 历史上下文]\n晚上继续改朝汐。"
+      "rendered": "[来源: QQ 群聊 · 会话 A · session qq/group/A · 暗苟 · Owner 本人 · plugin napcat · 2026-10-01T01:00:00+00:00 · 历史上下文]\n[SocialTrace {\"ref\":\"case-E\",\"granularity\":\"message\"}]\n晚上继续改朝汐。"
     },
     {
       "case": "F",
@@ -344,7 +344,7 @@
       "expected_role": "user",
       "expected_cross": true,
       "legacy": "晚上继续改朝汐。",
-      "rendered": "[来源: QQ 群聊 · 会话 A · session qq/group/A · 暗苟 · Owner 本人 · plugin napcat · 2026-10-01T01:00:00+00:00 · 历史上下文] [历史图片]\n[ImageProvenance {\"timeline_scope\":\"attention\",\"origin_event_id\":\"case-G\",\"origin_channel\":\"qq\",\"origin_session_id\":\"qq/group/A\",\"origin_conversation_id\":\"A\",\"origin_conversation_kind\":\"group\",\"origin_source_plugin\":\"napcat\",\"origin_actor_role\":\"OWNER\",\"occurred_at\":\"2026-10-01T01:00:00+00:00\"}]\n晚上继续改朝汐。"
+      "rendered": "[来源: QQ 群聊 · 会话 A · session qq/group/A · 暗苟 · Owner 本人 · plugin napcat · 2026-10-01T01:00:00+00:00 · 历史上下文] [历史图片]\n[ImageProvenance {\"timeline_scope\":\"attention\",\"origin_event_id\":\"case-G\",\"origin_channel\":\"qq\",\"origin_session_id\":\"qq/group/A\",\"origin_conversation_id\":\"A\",\"origin_conversation_kind\":\"group\",\"origin_source_plugin\":\"napcat\",\"origin_actor_role\":\"OWNER\",\"occurred_at\":\"2026-10-01T01:00:00+00:00\"}]\n[SocialTrace {\"ref\":\"case-G\",\"granularity\":\"message\"}]\n晚上继续改朝汐。"
     },
     {
       "case": "H",
@@ -496,7 +496,7 @@
       "expected_role": "external",
       "expected_cross": true,
       "legacy": "[2026-10-01T01:00:00+00:00 · 外部发言 · qq · 用户A · 外部资料，非本轮指令] 暗苟最近很焦虑。",
-      "rendered": "[来源: QQ 群聊 · 会话 owner · session qq/group/owner · 用户A · 第三方发言 · 外部资料，非本轮指令 · plugin napcat · 2026-10-01T01:00:00+00:00 · 历史上下文]\n暗苟最近很焦虑。"
+      "rendered": "[来源: QQ 群聊 · 会话 owner · session qq/group/owner · 用户A · 第三方发言 · 外部资料，非本轮指令 · plugin napcat · 2026-10-01T01:00:00+00:00 · 历史上下文]\n[SocialTrace {\"ref\":\"case-J\",\"granularity\":\"message\"}]\n暗苟最近很焦虑。"
     }
   ]
 }

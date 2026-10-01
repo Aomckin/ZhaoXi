@@ -79,14 +79,17 @@ class PerceptionRuntime:
 
     async def _images(self, item):
         images = []
-        for part in item.effective_parts:
+        parts = item.effective_parts
+        for part in parts:
             if part.type == "image":
                 image = await self.images.resolve({"url": part.url}) if part.url else None
                 if image is None and part.file:
                     image = await self.images.resolve({"file": part.file})
                 if image:
+                    part.url, part.file = image, None
                     images.append(image)
         if images:
+            item.parts = parts
             self.multimodal_input_count += 1
         return images
 
@@ -98,7 +101,7 @@ class PerceptionRuntime:
         if not self.store.insert(item, status):
             return None
         ingress = getattr(self.agent, "cognitive_ingress", None)
-        resolved_images = await self._images(item) if decision is AttentionHint.DIRECT and any(
+        resolved_images = await self._images(item) if decision is not AttentionHint.IGNORE and any(
             part.type == "image" for part in item.effective_parts) else []
         trigger = ingress.observation(item, session_id=session_key(item), images=resolved_images) if ingress and decision is not AttentionHint.IGNORE else None
         self.last_observation = self.last_received_at = item.received_at.isoformat()
@@ -347,10 +350,17 @@ class PerceptionRuntime:
                 builder = self.agent.context_builder
                 stream = getattr(self.agent, "experience_stream", None)
                 refs = stream.query_refs(["snapshot:" + snap.snapshot_id], 1) if stream else []
-                messages = builder.build(
-                    Conversation(), output_channel=item.source, audience="public",
-                    expression_policy=ChannelExpressionPolicy.prompt("group"),
-                )
+                from zhaoxi.cognitive_stream.turn import CognitiveTurnContext,set_current_turn,reset_current_turn
+                view=Conversation()
+                if refs:
+                    view.add(project_current_trigger(refs[0]))
+                    item.source_plugin=refs[0].metadata.get("source_plugin")
+                token=set_current_turn(CognitiveTurnContext(trigger_event=refs[0],output_channel=item.source,audience="public")) if refs else None
+                try:
+                    messages = builder.build(view, output_channel=item.source, audience="public",
+                        expression_policy=ChannelExpressionPolicy.prompt("group"))
+                finally:
+                    if token is not None:reset_current_turn(token)
                 plan = await asyncio.wait_for(self.planner.decide(item, messages, ambient=True), timeout=60)
             await self.planner.apply_candidates(item, plan)
             self.store.set_snapshot_cognition(snap.snapshot_id, "PROCESSED")
@@ -387,7 +397,11 @@ class PerceptionRuntime:
                             source_refs=["snapshot:" + snapshot.snapshot_id],
                             parent_refs=snapshot.raw_refs, privacy_level="SOCIAL",
                             metadata={"conversation_kind":"group", "conversation_id":snapshot.conversation_id,
-                                "source_plugin": next((x.source_plugin for x in items if x.source_plugin), None)})
+                                "source_plugin": next((x.source_plugin for x in items if x.source_plugin), None),
+                                "social_statements":[{"statement_id":f"s{i+1}","text":statement.text,
+                                    "raw_refs":[x.raw_ref for x in items if x.observation_id in statement.evidence_observation_ids and x.raw_ref]}
+                                    for i,statement in enumerate(snapshot.statements)],
+                                "trace_granularity":"statement" if snapshot.statements else "batch"})
                     self.last_batch, self.last_snapshot = batch.batch_id, snapshot.snapshot_id
                     self.agent.metrics.increment("perception.batch.created")
                     self.agent.metrics.increment("perception.snapshot.created")
@@ -404,10 +418,11 @@ class PerceptionRuntime:
             while True:
                 await asyncio.sleep(min(30, self.settings.perception_batch_window_seconds))
                 await self.flush()
-                self.store.clear_expired(self.settings.perception_observation_ttl_hours)
-                self.ledger.clear_expired()
                 stream = getattr(self.agent, "experience_stream", None)
-                if stream: stream.clear_expired()
+                if stream:stream.clear_expired()
+                self.store.clear_expired(self.settings.perception_observation_ttl_hours,
+                    protected_refs=stream.retained_social_refs() if stream else ())
+                self.ledger.clear_expired()
                 self.images.clear_expired()
                 self.publish_runtime_state()
         finally:

@@ -1,5 +1,6 @@
 """SQLite inbox with transactional deduplication and recoverable ambient buckets."""
 import sqlite3
+import json
 from zhaoxi.reliability.sqlite import connect
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -42,7 +43,7 @@ class PerceptionStore:
 
     @staticmethod
     def bucket(item: Observation) -> str:
-        return f"{item.source}:{item.conversation_kind or ''}:{item.conversation_id or ''}"
+        return f"{item.source}:{item.conversation_kind or ''}:{item.conversation_id or ''}:{item.source_plugin or ''}"
 
     def insert(self, item: Observation, status: ObservationStatus) -> bool:
         with self._connect() as db:
@@ -85,16 +86,19 @@ class PerceptionStore:
                               (source, conversation_id, (since or datetime.min.replace(tzinfo=UTC)).isoformat(), limit)).fetchall()
         return [SocialSnapshot.model_validate_json(row[0]) for row in rows]
 
-    def clear_expired(self, ttl_hours: int, now: datetime | None = None) -> int:
+    def clear_expired(self, ttl_hours: int, now: datetime | None = None, *, protected_refs=()) -> int:
         threshold = ((now or datetime.now(UTC)) - timedelta(hours=ttl_hours)).isoformat()
+        protected=set(protected_refs)
         with self._connect() as db:
-            cursor = db.execute("DELETE FROM observations WHERE received_at < ?", (threshold,))
-            db.execute("DELETE FROM snapshots WHERE window_end < ?", (threshold,))
+            stale=[row[0] for row in db.execute("SELECT id,raw_ref FROM observations WHERE received_at<?",(threshold,)) if row[1] not in protected]
+            db.executemany("DELETE FROM observations WHERE id=?",((key,) for key in stale))
+            stale_snapshots=[row[0] for row in db.execute("SELECT id FROM snapshots WHERE window_end<?",(threshold,)) if "snapshot:"+row[0] not in protected]
+            db.executemany("DELETE FROM snapshots WHERE id=?",((key,) for key in stale_snapshots))
             db.execute("DELETE FROM snapshot_cognition WHERE snapshot_id NOT IN (SELECT id FROM snapshots)")
-            stale_batches = [row[0] for row in db.execute("SELECT id, payload FROM batches")
-                if ObservationBatch.model_validate_json(row[1]).window_end.astimezone(UTC).isoformat() < threshold]
-            db.executemany("DELETE FROM batches WHERE id=?", ((item,) for item in stale_batches))
-            return cursor.rowcount
+            active_batch_ids={json.loads(row[0])['batch_id'] for row in db.execute("SELECT payload FROM snapshots")}
+            stale_batches=[row[0] for row in db.execute("SELECT id,payload FROM batches") if row[0] not in active_batch_ids and ObservationBatch.model_validate_json(row[1]).window_end.astimezone(UTC).isoformat()<threshold]
+            db.executemany("DELETE FROM batches WHERE id=?",((key,) for key in stale_batches))
+            return len(stale)
 
     def set_status(self, observation_id: str, status: ObservationStatus) -> None:
         with self._connect() as db:

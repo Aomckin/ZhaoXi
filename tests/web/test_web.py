@@ -860,3 +860,22 @@ def test_provenance_inspector_returns_rendered_and_legacy_comparison(tmp_path):
         response=client.get("/api/debug/provenance",headers={"X-Zhaoxi-Token":"test-provenance"})
     assert response.status_code==200 and response.json()["items"][0]["context_relation"]=="unknown"
     assert response.json()["legacy_shadow"][0]["text"]=="old" and response.json()["rendered"][0]["text"]=="new"
+
+
+def test_social_trace_api_expands_raw_and_validates_parameters(tmp_path):
+    from zhaoxi.cognitive_stream import ExperienceStream
+    from zhaoxi.cognitive_stream.models import CognitiveEvent,CognitiveEventType
+    stream=ExperienceStream(tmp_path/"events.db")
+    raw=CognitiveEvent(event_type=CognitiveEventType.EXTERNAL_MESSAGE,source="qq",channel="qq",session_id="qq/group/A",actor_role="EXTERNAL",privacy_level="SOCIAL",content="原话",source_refs=["qq:group:A:1"],metadata={"conversation_kind":"group"})
+    stream.append(raw)
+    summary=CognitiveEvent(event_type=CognitiveEventType.SOCIAL_SNAPSHOT,source="qq",channel="qq",session_id="qq/group/A",actor_role="SELF",privacy_level="SOCIAL",content="概括",parent_refs=raw.source_refs,metadata={"conversation_kind":"group"})
+    stream.append(summary)
+    agent=FakeAgent();agent.experience_stream=stream
+    app=create_app(settings=Settings(_env_file=None,perception_enabled=False),agent=agent,api_token="trace-test")
+    with TestClient(app) as client:
+        headers={"X-Zhaoxi-Token":"trace-test"}
+        result=client.get("/api/debug/cognitive-stream/social-trace",params={"reference":summary.event_id},headers=headers)
+        assert result.status_code==200 and result.json()["records"][0]["content"]=="原话"
+        bad=client.get("/api/debug/cognitive-stream/social-trace",params={"reference":summary.event_id,"limit":999},headers=headers)
+        assert bad.status_code==422
+        assert client.get("/api/debug/cognitive-stream/social-trace",params={"reference":summary.event_id}).status_code==401
