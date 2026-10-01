@@ -34,7 +34,7 @@ _INTERNAL_ASSISTANT_MARKERS = (
     "active_conversation_beat",
 )
 _SOURCE_MARKER = re.compile(
-    r"(?im)\[(?:来源\s*[:：]|source\s*=|channel\s*=|Owner QQ Message|External Social Snapshot|Recent Self Activity|Recent Timeline|External Observation)[^\]\n]*\]\s*"
+    r"(?im)\[(?:ImageProvenance\s+|历史图片|发言者\s*[:：]|来源\s*[:：]|source\s*=|channel\s*=|Owner QQ Message|External Social Snapshot|Recent Self Activity|Recent Timeline|External Observation)[^\]\n]*\]\s*"
 )
 _ROLE_TRANSCRIPT_LINE = re.compile(r"(?im)^\s*(?:user|assistant|system)\s*[:：]")
 

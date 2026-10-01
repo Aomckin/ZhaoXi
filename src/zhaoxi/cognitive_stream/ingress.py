@@ -55,11 +55,14 @@ class CognitiveIngress:
         turn = current_turn()
         parent = (parent_refs or [turn.trigger_event.event_id] if turn else parent_refs or [])
         trigger_id = turn.trigger_event.event_id if turn else (parent[0] if parent else None)
+        trigger = turn.trigger_event if turn else (self.stream.get(trigger_id) if trigger_id else None)
+        source_metadata = {key:trigger.metadata[key] for key in ("conversation_kind", "source_plugin") if key in trigger.metadata} if trigger else {}
         return self._append(CognitiveEvent(
             event_type=event_type, source=source, channel=channel, session_id=session_id,
+            conversation_id=trigger.conversation_id if trigger else (metadata or {}).get("conversation_id"),
             turn_id=turn_id or (turn.turn_id if turn else None),
             reply_to_event_id=reply_to_event_id or (trigger_id if event_type == CognitiveEventType.ASSISTANT_REPLY else None),
             caused_by_event_id=caused_by_event_id or (trigger_id if event_type != CognitiveEventType.ASSISTANT_REPLY else None),
             actor_role="SELF", trust_level="TRUSTED", privacy_level=privacy_level,
             content=content, parent_refs=parent, source_refs=source_refs or [],
-            metadata=metadata or {}))
+            metadata={**source_metadata, **(metadata or {})}))

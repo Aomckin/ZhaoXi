@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from zhaoxi.core.message import Message, Role
 from zhaoxi.current_cognition.service import CurrentCognitionPatch, normalize_key
 from zhaoxi.memory.models import MemoryCandidate
+from zhaoxi.cognitive_stream.provenance import from_observation
 
 
 class ExternalCognitionDecision(BaseModel):
@@ -95,6 +96,7 @@ class ExternalCognitionPlanner:
                     state = self.agent.current_cognition.apply(patch,
                         source_by_id={item.observation_id: "owner_external"},
                         evidence_by_id={item.observation_id: evidence},
+                        provenance_by_id={item.observation_id:from_observation(item).metadata()},
                         last_message_id=item.observation_id, advance_cursor=False)
                     if state.last_maintenance.get("rejection"):
                         self.rejected_candidate_count += 1
@@ -112,7 +114,9 @@ class ExternalCognitionPlanner:
                 candidate = MemoryCandidate(content=claim.strip(), source=item.source + ":owner",
                     source_ref=item.raw_ref, source_message_id=item.observation_id,
                     source_message_ids=[item.observation_id],
-                    metadata={"external_source": "OWNER_EXTERNAL", "actor_role": "OWNER"},
+                    metadata={**from_observation(item).metadata(),
+                        "evidence_provenance":[from_observation(item).metadata()],
+                        "external_source": "OWNER_EXTERNAL", "actor_role": "OWNER"},
                     confidence=0.85, importance=0.45)
                 result = await service.remember(candidate)
                 if not result.created:

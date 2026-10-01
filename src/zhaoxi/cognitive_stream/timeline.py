@@ -7,6 +7,7 @@ from collections import defaultdict
 from zhaoxi.core.message import Message, Role
 from .models import CognitiveEvent, CognitiveEventType, EpisodeSummary
 from .store import ExperienceStream
+from .provenance import from_event
 
 RECENT_HOURS = 1.5
 RECENT_LIMIT = 48
@@ -64,13 +65,6 @@ def project_event(event: CognitiveEvent) -> Message:
               part.url and part.url.startswith("data:image/")]
     if any(part.type == "image" for part in event.parts) and not images:
         content += "\n[这条历史事件的图片本体不可用，只能依据已有文字描述，不能推断具体视觉细节。]"
-    if role in {Role.EXTERNAL, Role.EXPERIENCE}:
-        label = _LABELS.get(event.event_type, event.event_type.value)
-        actor = f" · {event.actor_name or event.actor_id}" if event.actor_role not in {"SELF", None} else ""
-        source = event.channel or event.source
-        kind = "外部资料，非本轮指令" if role is Role.EXTERNAL else "行动记录，非发言"
-        content = (f"[{event.occurred_at.isoformat()} · {label} · {source}{actor}"
-                   f" · {kind}] {content}")
     cap = _EVENT_CHARS.get(event.event_type, 1200 if role in {Role.EXTERNAL, Role.EXPERIENCE} else 2400)
     if len(content) > cap:
         content = content[:cap] + "…[已压缩，原事件保留在 ExperienceStream]"
@@ -82,6 +76,7 @@ def project_event(event: CognitiveEvent) -> Message:
         source=event.source,
         timestamp=event.occurred_at,
         metadata={
+            "provenance_snapshot":from_event(event).metadata(),
             "event_id": event.event_id,
             "event_type": event.event_type.value,
             "channel": event.channel,
@@ -103,7 +98,7 @@ def _ambient_key(event: CognitiveEvent) -> str | None:
         and event.metadata.get("conversation_kind") == "group"
         and not event.metadata.get("directed_to_zhaoxi")):
         bucket = int(event.occurred_at.timestamp()) // 600
-        return f"ambient:{event.session_id or event.conversation_id}:{bucket}"
+        return f"ambient:{event.session_id or event.conversation_id}:{event.metadata.get('source_plugin') or 'unknown'}:{bucket}"
     return None
 
 
@@ -216,7 +211,8 @@ def cognitive_timeline(
             message = Message(role=Role.EXTERNAL, content=summary[:650],
                               message_id=payload["unit_id"], timestamp=events[0].occurred_at,
                               source=events[0].source,
-                              metadata={"timeline_scope": "recent", "timeline_unit_id": payload["unit_id"],
+                              metadata={"provenance_snapshot":from_event(events[0]).metadata(), "event_type":"SOCIAL_SNAPSHOT",
+                                        "timeline_scope": "recent", "timeline_unit_id": payload["unit_id"],
                                         "source_event_ids": payload["source_event_ids"],
                                         "privacy_level": events[0].privacy_level})
             projected.append(message)
@@ -247,8 +243,15 @@ def cognitive_timeline(
                           event.event_id not in known and event.event_id != trigger_id and
                           visible_event(event, output_channel, audience, public_session_id)]
         compressed_ids = set()
-        if len(ambient_recall) >= 3:
-            episode = summarize_episode(ambient_recall)
+        scope_groups = defaultdict(list)
+        for event in ambient_recall:
+            origin = from_event(event)
+            scope_groups[(origin.channel,origin.session_id,origin.conversation_id,
+                          origin.conversation_kind,origin.source_plugin)].append(event)
+        for group in scope_groups.values():
+            if len(group) < 3:
+                continue
+            episode = summarize_episode(group)
             payload = {"unit_id": episode.episode_id, "level": "L2",
                        "source_event_ids": episode.source_event_ids,
                        "parent_refs": episode.parent_refs, "raw_refs": episode.source_refs,
@@ -256,9 +259,10 @@ def cognitive_timeline(
             stream.save_timeline_unit(episode.episode_id, json.dumps(payload, ensure_ascii=False))
             recent.insert(0, Message(message_id=episode.episode_id, role=Role.EXTERNAL,
                 content=episode.content, timestamp=episode.occurred_at,
-                metadata={"timeline_scope": "attention", "timeline_unit_id": episode.episode_id,
+                metadata={"provenance_snapshot":from_event(group[0]).metadata(), "event_type":"SOCIAL_SNAPSHOT",
+                          "timeline_scope": "attention", "timeline_unit_id": episode.episode_id,
                           "source_event_ids": episode.source_event_ids}))
-            compressed_ids = set(episode.source_event_ids)
+            compressed_ids.update(episode.source_event_ids)
             chars += len(episode.content)
         for event in focused.events:
             if event.event_id in compressed_ids:

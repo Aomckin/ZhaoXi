@@ -39,6 +39,7 @@ class CurrentCognitionMaintainer:
 
     async def maintain_events(self, stream, *, background: bool = False) -> str:
         from zhaoxi.cognitive_stream.models import CognitiveEventType
+        from zhaoxi.cognitive_stream.provenance import from_event
         marker = self.service.state().last_processed_message_id
         events = stream.events_after(marker, limit=200)
         trusted = [event for event in events if event.actor_role == "OWNER" and
@@ -47,7 +48,7 @@ class CurrentCognitionMaintainer:
                    event.content and event.trust_level in {"TRUSTED", "NORMAL"}]
         messages = [Message(message_id=event.event_id, role=Role.USER,
                             content=event.content, timestamp=event.occurred_at,
-                            source=event.source) for event in trusted[:40]]
+                            source=event.source, metadata=from_event(event).metadata()) for event in trusted[:40]]
         return await self.maintain(messages, pending_override=messages, background=background)
 
     async def maintain(self, messages: list[Message], *, pending_override: list[Message] | None = None,
@@ -70,6 +71,8 @@ class CurrentCognitionMaintainer:
         source_by_id = {m.message_id: m.role.value for m in pending if is_cognition_message(m)}
         evidence_by_id = {m.message_id: (m.content or "")[:1000] for m in pending if is_cognition_message(m)}
         timestamp_by_id = {m.message_id: m.timestamp for m in pending if m.timestamp}
+        from zhaoxi.cognitive_stream.provenance import from_message
+        provenance_by_id = {m.message_id:from_message(m).metadata() for m in pending if is_cognition_message(m)}
         owner = [m for m in pending if m.role == Role.USER and (m.content or "").strip()]
         signals = [m for m in owner if _SIGNAL.search(m.content or "") and
                    not _SMALL.fullmatch((m.content or "").strip())]
@@ -96,7 +99,7 @@ class CurrentCognitionMaintainer:
             trace.emit("current_cognition_triggered", "current_cognition", "success", "需要模型维护",
                        metadata={"reason": "state_signal"})
         evidence = [{"id": m.message_id, "source": m.role.value, "timestamp": m.timestamp.isoformat() if m.timestamp else None,
-                     "text": (m.content or "")[:1000]} for m in recent]
+                     "provenance":provenance_by_id.get(m.message_id, {}), "text": (m.content or "")[:1000]} for m in recent]
         payload = {"current_state": state.model_dump(mode="json", include={"overview", "threads", "recent_changes", "watch_items", "updated_at"}),
                    "new_messages": evidence, "final_reply": final_reply[:350],
                    "now": datetime.now(self.timezone).isoformat(),
@@ -139,7 +142,7 @@ class CurrentCognitionMaintainer:
                     if attempt == 2:
                         raise
             self.service.apply(patch, source_by_id=source_by_id, evidence_by_id=evidence_by_id,
-                               timestamp_by_id=timestamp_by_id, last_message_id=last_id,
+                               timestamp_by_id=timestamp_by_id, provenance_by_id=provenance_by_id, last_message_id=last_id,
                                model_call=True, duration_ms=(monotonic() - started) * 1000,
                                allow_empty_cursor=True)
             if trace:

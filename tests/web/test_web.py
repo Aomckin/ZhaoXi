@@ -848,3 +848,15 @@ def test_v143_inspector_explains_forbidden_memory_without_heating_or_writing(tmp
         assert client.get('/api/debug/memory-retrieval',params={'query':'x','retrieval_mode':'INVALID'}).status_code == 422
     assert asyncio.run(service.require(first.id)).activation == first.activation
     assert asyncio.run(service.require(first.id)).access_count == 0
+
+
+def test_provenance_inspector_returns_rendered_and_legacy_comparison(tmp_path):
+    agent=FakeAgent()
+    agent.context_builder=SimpleNamespace(last_cognitive_context={
+        "provenance_items":[{"event_id":"event","role":"user","channel":"qq","timeline_scope":"attention","context_relation":"unknown"}],
+        "legacy_shadow":[{"event_id":"event","text":"old"}], "provenance_rendered":[{"event_id":"event","text":"new"}]})
+    settings=Settings(_env_file=None,web_api_token="test-provenance",perception_enabled=False)
+    with TestClient(create_app(agent=agent,settings=settings)) as client:
+        response=client.get("/api/debug/provenance",headers={"X-Zhaoxi-Token":"test-provenance"})
+    assert response.status_code==200 and response.json()["items"][0]["context_relation"]=="unknown"
+    assert response.json()["legacy_shadow"][0]["text"]=="old" and response.json()["rendered"][0]["text"]=="new"

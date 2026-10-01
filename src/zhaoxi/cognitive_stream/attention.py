@@ -20,7 +20,10 @@ class AttentionContext:
             if not event.content:
                 continue
             label = "Owner" if event.actor_role == "OWNER" else ("第三方发言" if event.actor_role not in {"SELF", "OWNER"} else "朝汐")
-            prefix = f"[{event.occurred_at.isoformat()} {label}] "
+            from .provenance import from_event, render_source_label
+            from .timeline import project_event
+            prefix = render_source_label(from_event(event), role=project_event(event).role, scope="attention",
+                snapshot=event.event_type == CognitiveEventType.SOCIAL_SNAPSHOT) + " "
             remaining = max_chars - used - len(prefix) - 1
             if remaining <= 0:
                 break

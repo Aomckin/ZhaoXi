@@ -9,6 +9,7 @@ class EvidenceRef(BaseModel):
     event_id: str = ""
     timestamp: datetime | None = None
     source: str = "owner"
+    provenance: dict = Field(default_factory=dict)
 
 class CognitionThread(BaseModel):
     key: str
@@ -31,6 +32,7 @@ class JournalItem(BaseModel):
 class CurrentCognitionState(BaseModel):
     version: int = 2
     overview: str = Field(default="", max_length=160)
+    overview_source_refs: list[EvidenceRef] = Field(default_factory=list, max_length=8)
     threads: list[CognitionThread] = Field(default_factory=list)
     recent_changes: list[JournalItem] = Field(default_factory=list)
     watch_items: list[JournalItem] = Field(default_factory=list)

@@ -3,6 +3,7 @@
 from collections import defaultdict
 from datetime import datetime
 import re
+import json
 
 from zhaoxi.errors import MemoryNotFoundError
 from zhaoxi.memory.embedding import LocalHashEmbeddingProvider, cosine, compatible, embedding_space
@@ -77,6 +78,7 @@ class MemoryService:
         if duplicate and duplicate.status not in {MemoryStatus.FORGOTTEN, MemoryStatus.SUPERSEDED}:
             refs = list(dict.fromkeys([*duplicate.metadata.get("evidence_refs",[]), *[x for x in (duplicate.source_event_id,duplicate.evidence_reference,value.source_event_id,value.evidence_reference) if x]]))
             duplicate.metadata["evidence_refs"] = refs[-100:]
+            duplicate.metadata["evidence_provenance"] = list({json.dumps(ref,sort_keys=True):ref for ref in [*duplicate.metadata.get("evidence_provenance",[]), *value.metadata.get("evidence_provenance",[])]}.values())[-100:]
             duplicate.source_message_ids = list(dict.fromkeys([*duplicate.source_message_ids,*value.source_message_ids,*[x for x in (value.source_message_id,) if x]]))[:100]
             await self.repository.save(duplicate)
             await self._increment_runtime("memory_dedup_exact")
@@ -98,6 +100,7 @@ class MemoryService:
                 if item.semantic_score>=.96 and (same_event or (same_entity and item.text_score>=.70)):
                     refs=[x for x in (value.source_event_id,value.evidence_reference) if x]
                     item.record.metadata["evidence_refs"]=list(dict.fromkeys([*item.record.metadata.get("evidence_refs",[]),*refs]))[-100:]
+                    item.record.metadata["evidence_provenance"] = list({json.dumps(ref,sort_keys=True):ref for ref in [*item.record.metadata.get("evidence_provenance",[]), *value.metadata.get("evidence_provenance",[])]}.values())[-100:]
                     await self.repository.save(item.record)
                     await self._increment_runtime("memory_dedup_near")
                     return MemoryWriteResult(record=item.record,created=False,duplicate=True)
@@ -228,7 +231,7 @@ class MemoryService:
         for item in results:
             value = item.model_dump(mode="json", exclude={"record": {"normalized_content", "metadata"}})
             value["record"]["metadata"] = {key:item.record.metadata[key] for key in
-                ("decision","reason","evidence_refs","evidence_scope","activation_history","lifecycle_reason","cluster_reason")
+                ("decision","reason","evidence_refs","evidence_scope","evidence_provenance","activation_history","lifecycle_reason","cluster_reason")
                 if key in item.record.metadata}
             inspected.append(value)
         return inspected

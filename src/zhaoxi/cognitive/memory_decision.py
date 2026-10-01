@@ -22,6 +22,7 @@ from zhaoxi.memory.consolidation import AutoConsolidationConfig, AutoConsolidato
 from zhaoxi.models.base import ModelProvider
 from zhaoxi.observability import llm_owner_scope
 from zhaoxi.errors import ProviderError
+from zhaoxi.cognitive_stream.provenance import from_event
 
 
 class MemoryAction(StrEnum):
@@ -108,7 +109,8 @@ class AutoMemory:
                                   source_name=f"{event.source}:owner",
                                   evidence_reference=event.source_refs[0] if event.source_refs else event.event_id,
                                   source_event_id=event.event_id,
-                                  source_message_id=event.source_refs[0] if event.source_refs else None)
+                                  source_message_id=event.source_refs[0] if event.source_refs else None,
+                                  evidence_events=[event])
 
     async def process_events(self, events, assistant_response=""):
         events = [e for e in events if e.actor_role == 'OWNER' and e.trust_level in {'TRUSTED','NORMAL'}
@@ -172,6 +174,7 @@ class AutoMemory:
                 "candidate_limit": 5 if len(user_message)>2000 else 3,
                 "evidence_refs": ([e.event_id for e in evidence_events] if evidence_events else
                                   [x for x in (source_event_id,source_message_id,evidence_reference) if x]),
+                "evidence_provenance": [from_event(e).metadata() for e in (evidence_events or [])],
                 "existing_candidates": candidate_data,
                 "explicit_remember": forced,
             },
@@ -232,10 +235,13 @@ class AutoMemory:
                     "source_name": source_name,
                     "source_requeryable": source_requeryable,
                     "evidence_reference": event_ids[0] if event_ids else evidence_reference,
-                    "metadata": {**candidate.metadata, "decision": "atomic_extract",
+                    "metadata": {**candidate.metadata,
+                        **(from_event(evidence[0]).metadata() if len(evidence)==1 else {}),
+                        "evidence_provenance":[from_event(e).metadata() for e in evidence],
+                        "decision": "atomic_extract",
                         "reason": "explicit Owner remember" if forced else "atomic fact from trusted Owner statement",
                         "evidence_refs": event_ids or [x for x in (source_event_id,evidence_reference) if x],
-                        "evidence_scope": "selected_events" if refs else "batch_context" if evidence_events else "single_event"},
+                        "evidence_scope": "selected_events" if refs else "batch_context" if len(evidence_events or [])>1 else "single_event"},
                 }))
             results = await self.service.remember_candidates(prepared)
             decision.applied_count = sum(item.created for item in results)
@@ -261,6 +267,7 @@ class AutoMemory:
             evidence_reference=evidence_reference,
             source_event_id=source_event_id, source_message_id=source_message_id,
             initial_activation=.90 if forced else (.75 if decision.kind in {MemoryKind.STATE,MemoryKind.INTENT} else .65),
+            evidence_provenance=[from_event(e).metadata() for e in (evidence_events or [])],
         )
         self.last_metrics["generated"] = int(bool(decision.content))
         self.last_metrics["accepted"] = int(decision.action in {MemoryAction.CREATE,MemoryAction.UPDATE,MemoryAction.MERGE})
@@ -298,7 +305,10 @@ class AutoMemory:
         evidence_reference: str | None = None,
         source_event_id: str | None = None, source_message_id: str | None = None,
         initial_activation: float | None = None,
+        evidence_provenance: list[dict] | None = None,
     ) -> MemoryAction:
+        provenance_metadata = {"evidence_provenance":evidence_provenance or [],
+            **(evidence_provenance[0] if len(evidence_provenance or [])==1 else {})}
         if decision.action == MemoryAction.IGNORE:
             return MemoryAction.IGNORE
         if decision.action == MemoryAction.CONSOLIDATE:
@@ -337,7 +347,7 @@ class AutoMemory:
                     source_requeryable=source_requeryable,
                     evidence_reference=evidence_reference,
                     source_event_id=source_event_id, source_message_id=source_message_id,
-                    metadata={"decision": decision.action.value, "reason": decision.reason},
+                    metadata={**provenance_metadata, "decision": decision.action.value, "reason": decision.reason},
                 )
             )
             if result.created:
@@ -352,6 +362,8 @@ class AutoMemory:
         if decision.action in {MemoryAction.UPDATE, MemoryAction.MERGE}:
             current = await self.service.require(decision.target_memory_id)
             tags = list(dict.fromkeys([*current.tags, *decision.tags]))
+            combined = [*current.metadata.get("evidence_provenance", []), *(evidence_provenance or [])]
+            provenance_metadata["evidence_provenance"] = list({json.dumps(ref, sort_keys=True):ref for ref in combined}.values())[-100:]
             await self.service.update(
                 decision.target_memory_id,
                 MemoryUpdate(
@@ -361,7 +373,7 @@ class AutoMemory:
                     importance=max(current.importance, decision.importance),
                     activation=current.activation,
                     pinned=current.pinned or decision.pinned,
-                    metadata={**current.metadata, "auto_memory_action": decision.action.value},
+                    metadata={**current.metadata, **provenance_metadata, "auto_memory_action": decision.action.value},
                 ),
             )
             return decision.action
@@ -378,7 +390,8 @@ class AutoMemory:
                 source_type=MemorySourceType.CONVERSATION,
                 source_ref="auto_memory",
                 supersedes_id=decision.target_memory_id,
-                metadata={"decision": "conflict", "reason": decision.reason},
+                source_event_id=source_event_id, source_message_id=source_message_id,
+                metadata={**provenance_metadata, "decision": "conflict", "reason": decision.reason},
             )
         )
         return MemoryAction.CONFLICT

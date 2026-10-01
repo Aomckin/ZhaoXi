@@ -12,6 +12,8 @@
 ## v1.4.x
 
 - [v1.4.3 版本说明](v1.4.x/Zhaoxi_v1.4.3_Release_Notes.md)
+- [v1.4.3 外部来源补丁任务书](v1.4.x/Zhaoxi_v1.4.3_External_Provenance_Integrity_Patch_Task.md)
+- [v1.4.3 外部来源补丁与八条复核](v1.4.x/Zhaoxi_v1.4.3_External_Provenance_补丁记录.md)
 - [v1.4.3 Memory 3.0 任务书](v1.4.x/Zhaoxi_v1.4.3_Memory_3.0_Broad_Memory_Careful_Recall_Task.md)
 - [v1.4.3 开发记录、迁移与验收](v1.4.x/Zhaoxi_v1.4.3_开发记录.md)
 - [v1.4.3 逐项核对与验收边界](v1.4.x/Zhaoxi_v1.4.3_任务书核对.md)

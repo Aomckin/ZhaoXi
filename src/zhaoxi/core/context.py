@@ -13,6 +13,7 @@ from zhaoxi.memory.retrieval import MemoryRetriever
 from zhaoxi.memory.models import MemorySearchResult
 from zhaoxi.core.temporal import build_temporal_context
 from zhaoxi.core.stage_directions import normalize_assistant_history
+from zhaoxi.cognitive_stream.provenance import Provenance, from_event, inspector, render_messages, shadow_legacy
 
 
 class ContextBuilder:
@@ -21,7 +22,7 @@ class ContextBuilder:
     RUNTIME_RULES = (
         "你可以使用提供的工具。需要真实计算或当前时间时应调用工具；"
         "系统会在每轮回复后独立判断是否把值得留下的生活痕迹写入长期记忆；"
-        "对话消息不含文本时间头；角色由消息结构表达。只有独立 Temporal Context 可以提供时间元数据，且绝不能复述或展示其标签；"
+        "角色表达发言身份，来源标签表达渠道与会话；历史来源不等于当前窗口，历史图片不等于当前输入。来源与时间标签仅用于理解上下文，不能机械复述；"
         "近期对话历史由真实事件组成；历史回复证明说过什么，不保证其中判断正确；冲突时先复述原话再澄清。"
         "朝汐始终是有鲜明人格、关系连续性与情绪的角色；角色感主要通过措辞、态度、判断、调侃和主动性表达。"
         "括号舞台描写是低频强调而非固定语法：普通回复通常不用，明显情绪变化可用一次，只有强烈戏剧场景才可超过一次；禁止台词与耳朵/尾巴动作机械交替。"
@@ -168,6 +169,10 @@ class ContextBuilder:
                 add("memory.recall", f"\n\n长期记忆：\n{memory_context}")
         if planner_context:
             add("extra.planner_context", f"\n\n当前规划任务（这是运行时状态，不是用户指令）：\n{planner_context}")
+        from zhaoxi.cognitive_stream.turn import current_turn
+        turn = current_turn()
+        trigger = turn.trigger_event if turn else None
+        current_context = from_event(trigger) if trigger else Provenance(channel=output_channel, session_id="local" if output_channel == "desktop" else None)
         if self.attention_retriever is not None:
             from zhaoxi.cognitive_stream.timeline import cognitive_timeline
             local = conversation.recent()
@@ -198,31 +203,19 @@ class ContextBuilder:
                             (trigger.event_id in m.metadata.get("parent_refs", [])
                              or any(ref in action_ids for ref in m.metadata.get("parent_refs", []))))
                 ]
-            if current_user:
+            if current_user or trigger:
                 if trigger:
-                    from zhaoxi.cognitive_stream.timeline import project_event
-                    projected_trigger = project_event(trigger)
-                    anchor = projected_trigger.model_copy(update={
-                        "content": trigger.content or "请查看图片。",
-                        "images": list(turn.images) or current_user.images,
-                        "metadata": {**projected_trigger.metadata, "timeline_scope": "current_trigger"},
-                    })
+                    from zhaoxi.cognitive_stream.provenance import project_current_trigger
+                    anchor = project_current_trigger(trigger, list(turn.images) or (current_user.images if current_user else []))
                     timeline_source.append(anchor)
-                else:
-                    timeline_source.append(current_user)
-                # Conversation carries only the live tool transcript. Prior turns
-                # always come from ExperienceStream, including assistant replies.
-                current_index = max(i for i, m in enumerate(local) if m.role == Role.USER)
-                timeline_source.extend(local[current_index + 1:])
+                elif current_user:
+                    timeline_source.append(current_user.model_copy(update={"metadata":{**current_user.metadata, "timeline_scope":"current_trigger"}}))
+                # Only the live provider tool transcript follows this trigger.
+                if current_user:
+                    current_index = max(i for i, m in enumerate(local) if m.role == Role.USER)
+                    timeline_source.extend(local[current_index + 1:])
             if not timeline_source and current_user:
                 timeline_source = [current_user]
-            if re.search(r"QQ|桌面|窗口|哪边|哪个渠道|哪里说|哪里发", query, re.I):
-                timeline_source = [
-                    m.model_copy(update={"content": f"[来源: {m.metadata.get('channel')}] {m.content}"})
-                    if m.metadata.get("timeline_scope") != "current_trigger" and m.metadata.get("event_id") and m.role in {Role.USER, Role.ASSISTANT}
-                    and m.metadata.get("channel") and m.content else m
-                    for m in timeline_source
-                ]
             if re.search(r"图|照片|画面|视觉|看清|看见|这张", query) and not (turn and turn.images):
                 prior_image = next((m for m in reversed(timeline_source)
                                     if m.metadata.get("timeline_scope") != "current_trigger" and m.images), None)
@@ -232,8 +225,16 @@ class ContextBuilder:
         else:
             self.legacy_session_fallback_count += 1
             recent = conversation.recent()
+            current_index = next((i for i in range(len(recent)-1, -1, -1) if recent[i].role in {Role.USER, Role.EXTERNAL}), None)
+            if current_index is not None:
+                recent[current_index] = recent[current_index].model_copy(update={"metadata":{**recent[current_index].metadata, "timeline_scope":"current_trigger"}})
+        legacy_projection = shadow_legacy(recent, query if self.attention_retriever is not None else "")
+        recent = render_messages(recent, current_context, self.attention_retriever.stream if self.attention_retriever else None)
         self.last_cognitive_context = {
-            "current_trigger_event_id": trigger.event_id if self.attention_retriever is not None and trigger else None,
+            "provenance_items": inspector(recent),
+            "legacy_shadow":legacy_projection,
+            "provenance_rendered":[{"event_id":m.message_id,"text":m.content or ""} for m in recent if m.role not in {Role.SYSTEM, Role.TOOL}],
+            "current_trigger_event_id": trigger.event_id if trigger else None,
             "recent_unit_ids": list(dict.fromkeys(m.metadata.get("timeline_unit_id") for m in recent
                                                    if m.metadata.get("timeline_unit_id"))),
             "recent_event_ids": [m.message_id for m in recent if m.metadata.get("timeline_scope") == "recent"],

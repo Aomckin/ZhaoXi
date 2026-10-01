@@ -559,6 +559,7 @@ class InterfaceGateway:
         maintainer = getattr(self.agent, "current_cognition_maintainer", None)
         if not maintainer and not (auto and trigger):
             return
+        from zhaoxi.cognitive_stream.provenance import from_event
         base_cursor = maintainer.service.state().last_processed_message_id if maintainer and hasattr(maintainer, "service") else None
         messages = [item.model_copy(update={"images": []}).model_dump(mode="json") for item in self.agent.conversation.messages
                     if is_cognition_message(item)]
@@ -567,7 +568,7 @@ class InterfaceGateway:
             marker = maintainer.service.state().last_processed_message_id
             events = stream.events_after(marker, limit=200)
             messages = [Message(message_id=event.event_id, role=Role.USER, content=event.content,
-                        timestamp=event.occurred_at, source=event.source).model_dump(mode="json")
+                        timestamp=event.occurred_at, source=event.source, metadata=from_event(event).metadata()).model_dump(mode="json")
                         for event in events if event.actor_role == "OWNER" and event.content
                         and event.event_type in {CognitiveEventType.USER_MESSAGE, CognitiveEventType.EXTERNAL_MESSAGE}
                         and event.trust_level in {"TRUSTED", "NORMAL"}]
@@ -586,11 +587,12 @@ class InterfaceGateway:
 
     def enqueue_external_maintenance(self, event, reply):
         """External Owner bursts share the foreground maintenance scheduler."""
+        from zhaoxi.cognitive_stream.provenance import from_event
         maintainer = getattr(self.agent, "current_cognition_maintainer", None)
         stream = getattr(self.agent, "experience_stream", None)
         marker = maintainer.service.state().last_processed_message_id if maintainer and hasattr(maintainer,"service") else None
         events = stream.events_after(marker, limit=200) if stream else [event]
-        messages = [Message(message_id=e.event_id,role=Role.USER,content=e.content,timestamp=e.occurred_at,source=e.source).model_dump(mode="json")
+        messages = [Message(message_id=e.event_id,role=Role.USER,content=e.content,timestamp=e.occurred_at,source=e.source,metadata=from_event(e).metadata()).model_dump(mode="json")
             for e in events if e.actor_role=='OWNER' and e.trust_level in {'TRUSTED','NORMAL'} and e.content
             and e.event_type in {CognitiveEventType.USER_MESSAGE,CognitiveEventType.EXTERNAL_MESSAGE}]
         auto = getattr(getattr(self.agent,"cognitive",None),"auto_memory",None)
@@ -599,7 +601,7 @@ class InterfaceGateway:
         self.maintenance_queue().enqueue(key, {"request_id":key,
             "trigger":event.model_dump(mode='json',exclude={'parts'}),"reply":reply,"messages":messages,"base_cursor":marker},
             priority=20 if forced else 5,
-            batch_key=None if forced else f"{event.source}:{event.session_id or event.conversation_id}:{event.actor_id}")
+            batch_key=None if forced else f"{event.source}:{event.session_id or event.conversation_id}:{event.actor_id}:{event.metadata.get('source_plugin') or ''}")
 
     async def _run_maintenance_phase(self, snapshot, phase):
         from zhaoxi.cognitive_stream.models import CognitiveEvent

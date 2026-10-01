@@ -9,6 +9,7 @@ from zhaoxi.cognitive.fast_gate import FastGateLane
 from pydantic import ValidationError
 
 from zhaoxi.core.message import Message, Role
+from zhaoxi.cognitive_stream.provenance import from_observation, project_current_trigger
 from zhaoxi.core.conversation import Conversation
 from zhaoxi.cognitive_stream.models import CognitiveEventType
 from zhaoxi.perception.context import ChannelExpressionPolicy, session_key
@@ -47,7 +48,7 @@ class PerceptionRuntime:
         self.known_bot_ids: set[str] = set()
         self._lock = asyncio.Lock()
         self._direct_lock = asyncio.Lock()
-        self._recent_owner_image: dict[str, tuple[datetime, list[str], str]] = {}
+        self._recent_owner_image: dict[tuple[str, str | None], tuple[datetime, list[str], str, str | None]] = {}
         self._last_runtime_key = None
         agent.context_builder.self_activity_provider = self.shared_context
         self.publish_runtime_state()
@@ -130,14 +131,17 @@ class PerceptionRuntime:
                 session = await self._session(item)
                 images = resolved_images
                 if item.actor_role == "OWNER" and item.conversation_kind == "private":
-                    key = session_key(item)
+                    key = (session_key(item), item.source_plugin)
                     recent = self._recent_owner_image.get(key)
                     if images:
-                        self._recent_owner_image[key] = (datetime.now(UTC), images, item.raw_ref or "")
+                        self._recent_owner_image[key] = (datetime.now(UTC), images, item.raw_ref or "", trigger.event_id if trigger else None)
                     elif (recent and item.content and
                           datetime.now(UTC) - recent[0] <= timedelta(seconds=30) and
                           re.search(r"图|照片|表情|这张|刚才", item.content)):
                         images = recent[1]
+                        if trigger is not None:
+                            trigger = trigger.model_copy(update={"metadata":{**trigger.metadata,
+                                "image_timeline_scope":"recent", "image_origin_event_id":recent[3]}})
                         self._recent_owner_image.pop(key, None)
                 audience = "owner" if item.actor_role == "OWNER" and item.conversation_kind == "private" else "public"
                 expression_policy = ChannelExpressionPolicy.prompt(item.conversation_kind)
@@ -147,7 +151,12 @@ class PerceptionRuntime:
                         expression_policy=expression_policy, reply_target=session_key(item),
                         images=tuple(images)))
                 planner_view = Conversation()
-                planner_view.add_user(item.content or "请查看图片。", images=images)
+                if trigger is not None:
+                    planner_view.add(project_current_trigger(trigger, images))
+                else:
+                    planner_view.add(Message(role=Role.USER if item.actor_role=="OWNER" else Role.EXTERNAL,
+                        content=item.content or "请查看图片。", images=images, source=item.source,
+                        metadata={**from_observation(item).metadata(), "timeline_scope":"current_trigger"}))
                 async with self.agent.conversation_lock:
                     builder = self.agent.context_builder
                     messages = builder.build(
@@ -225,7 +234,7 @@ class PerceptionRuntime:
                 if session is not None:
                     session.conversation.add(Message(role=Role.USER if item.actor_role == "OWNER" else Role.EXTERNAL,
                         content=item.content or "[图片]", source=item.source,
-                        metadata={"raw_ref": item.raw_ref, "actor_role": item.actor_role}))
+                        metadata={**from_observation(item).metadata(), "raw_ref": item.raw_ref, "actor_role": item.actor_role}))
                     refs = item.metadata.get("merged_refs") or ([item.raw_ref] if item.raw_ref else [])
                     session.recent_message_refs = [*session.recent_message_refs,
                         *(ref for ref in refs if ref not in session.recent_message_refs)][-40:]
@@ -288,7 +297,8 @@ class PerceptionRuntime:
                 turn_id=parents[0].turn_id if parents else None,
                 reply_to_event_id=parents[0].event_id if parents else None,
                 privacy_level="OWNER_PRIVATE" if item.actor_role == "OWNER" and item.conversation_kind == "private" else "SOCIAL",
-                metadata={"external_reply": item.actor_role != "OWNER",
+                metadata={"conversation_kind": item.conversation_kind, "conversation_id":item.conversation_id,
+                          "external_reply": item.actor_role != "OWNER",
                           "source_plugin": item.source_plugin,
                           "external_actor_id": item.actor_id if item.actor_role != "OWNER" else None})
         self.last_sent_at = datetime.now(UTC).isoformat()
@@ -307,7 +317,9 @@ class PerceptionRuntime:
                 private=is_owner_private)
         session = await self._session(item)
         if session is not None:
-            session.conversation.add_assistant(content, source=item.source)
+            session.conversation.add_assistant(content, source=item.source,
+                metadata={**from_observation(item).metadata(), "origin_actor_role":"SELF",
+                          "origin_actor_id":None, "origin_actor_name":"朝汐"})
             await self.agent.session_store.save(session)
 
     async def _organize_owner_event(self, event, response: str) -> None:
@@ -373,7 +385,9 @@ class PerceptionRuntime:
                             source=snapshot.source, channel=snapshot.source,
                             session_id=snapshot.source + "/group/" + snapshot.conversation_id,
                             source_refs=["snapshot:" + snapshot.snapshot_id],
-                            parent_refs=snapshot.raw_refs, privacy_level="SOCIAL")
+                            parent_refs=snapshot.raw_refs, privacy_level="SOCIAL",
+                            metadata={"conversation_kind":"group", "conversation_id":snapshot.conversation_id,
+                                "source_plugin": next((x.source_plugin for x in items if x.source_plugin), None)})
                     self.last_batch, self.last_snapshot = batch.batch_id, snapshot.snapshot_id
                     self.agent.metrics.increment("perception.batch.created")
                     self.agent.metrics.increment("perception.snapshot.created")

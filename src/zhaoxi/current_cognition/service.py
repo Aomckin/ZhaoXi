@@ -126,12 +126,14 @@ class CurrentCognitionService:
 
     def apply(self, patch: CurrentCognitionPatch, *, source_by_id: dict[str, str],
               last_message_id: str, evidence_by_id: dict[str, str] | None = None,
-              timestamp_by_id: dict[str, datetime] | None = None, now: datetime | None = None,
+              timestamp_by_id: dict[str, datetime] | None = None, provenance_by_id: dict[str, dict] | None = None,
+              now: datetime | None = None,
               allow_empty_cursor: bool = False, advance_cursor: bool = True,
               model_call: bool = False, duration_ms: float = 0) -> CurrentCognitionState:
         now = now or datetime.now(self.timezone)
         evidence_by_id = evidence_by_id or {}
         timestamp_by_id = timestamp_by_id or {}
+        provenance_by_id = provenance_by_id or {}
         state = self.state()
         before = state.model_dump(mode="json")
         counts = self._decay(state, now)
@@ -151,6 +153,8 @@ class CurrentCognitionService:
                      [*(x.evidence_message_ids for x in patch.thread_ops if x.action == "upsert"),
                       *(x.evidence_message_ids for x in [*patch.change_ops, *patch.watch_ops] if x.action == "upsert")]):
                 rejection = "untrusted_operation_evidence"
+            elif re.search(r"桌面.{0,8}(?:说|提到|发)|(?:说|提到|发).{0,8}桌面", proposed) and provenance_by_id and not any(provenance_by_id.get(i, {}).get("origin_channel")=="desktop" for i in all_ids):
+                rejection = "unsupported_origin_claim"
             elif _FORBIDDEN.search(proposed):
                 rejection = "tool_or_queryable_detail"
             elif _PSYCHOLOGY.search(proposed):
@@ -166,9 +170,11 @@ class CurrentCognitionService:
         if not rejection and patch.decision == "UPDATE":
             if patch.overview.action == "replace":
                 state.overview = patch.overview.value.strip()
+                state.overview_source_refs = [EvidenceRef(message_id=i, event_id=i, timestamp=timestamp_by_id.get(i), source=source_by_id[i], provenance=provenance_by_id.get(i, {})) for i in all_ids]
                 counts["ops_count"] += 1
             elif patch.overview.action == "clear":
                 state.overview = ""
+                state.overview_source_refs = []
                 counts["ops_count"] += 1
             for op in patch.thread_ops:
                 key = normalize_key(op.key)
@@ -180,7 +186,8 @@ class CurrentCognitionService:
                         counts["threads_removed"] += 1
                         counts["ops_count"] += 1
                     continue
-                refs = [EvidenceRef(message_id=i, event_id=i, timestamp=timestamp_by_id.get(i), source=source_by_id[i])
+                refs = [EvidenceRef(message_id=i, event_id=i, timestamp=timestamp_by_id.get(i), source=source_by_id[i],
+                                    provenance=provenance_by_id.get(i, {}))
                         for i in (op.evidence_message_ids or all_ids) if i in trusted]
                 if same:
                     same.title, same.summary, same.salience = op.title.strip(), op.summary.strip(), op.salience
@@ -203,7 +210,8 @@ class CurrentCognitionService:
                             collection.remove(same)
                             counts["ops_count"] += 1
                         continue
-                    refs = [EvidenceRef(message_id=i, event_id=i, timestamp=timestamp_by_id.get(i), source=source_by_id[i])
+                    refs = [EvidenceRef(message_id=i, event_id=i, timestamp=timestamp_by_id.get(i), source=source_by_id[i],
+                                    provenance=provenance_by_id.get(i, {}))
                             for i in (op.evidence_message_ids or all_ids) if i in trusted]
                     if same:
                         same.text, same.updated_at = op.text.strip(), now

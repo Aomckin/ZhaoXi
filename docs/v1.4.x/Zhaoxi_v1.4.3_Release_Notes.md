@@ -2,6 +2,10 @@
 
 2026-10-01：Memory 3.0 已完成代码开发、自动回归、原库离线迁移及本机启用，本轮形成带版本说明的本地 Git 提交。运行时与包版本均为 `1.4.3`，未推送或外部发布。Dogfooding、独立人工相关性标注和实机视觉验收仍未完成。
 
+## External Provenance Integrity 补丁
+
+2026-10-01：按轻量补丁任务书及八条复核完善来源投影。Owner 外部发言保留 USER 身份，跨上下文强制来源；未知字段不猜来源，已知插件差异属于边界。渲染优先回查 ExperienceStream，缺失才降级快照。当前与历史图片保留结构化 Prompt scope，连续同源消息共用来源头。Current Cognition / AutoMemory / 后台维护保留证据来源；Debug 支持新旧文字双轨对比。本段是源码补丁说明，真实 NapCat 黑盒和加载补丁后的桌面验收仍待完成。详见[补丁记录](Zhaoxi_v1.4.3_External_Provenance_补丁记录.md)。
+
 ## 版本变化
 
 旧检索将重要性、热度和相关性混在一起，并依赖宽泛 topic bucket。现在 importance、activation、contextual_relevance 分别管理；自然联想、明确回忆和广泛搜索采用不同状态与簇限制，冷记忆需满足更高关联门槛，已遗忘或被替代的记录不进入正常召回。

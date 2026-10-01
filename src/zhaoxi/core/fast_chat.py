@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 FAST_RULES = """当前处于 FAST_CHAT。
 你的任务只是自然回应用户当前这句话。
+来源、发言身份、会话及 ImageProvenance 是内部事实线索，不要复述标签。recent / attention 图片属于历史；只有 current_trigger 图片属于当前输入。
 不要主动延续近期未完成任务；只有当前消息明确承接时才承接。
 不要因为你知道某个 Tool 存在，就寻找调用理由。
 不要声称已经读取、写入、修改、保存、发送、查询任何外部系统。
@@ -176,6 +177,11 @@ class FastChatRuntime:
     def _recent_owner_conversation(
         self, user_message: str, *, output_channel: str, audience: str,
     ) -> list[Message]:
+        from zhaoxi.cognitive_stream.turn import current_turn
+        from zhaoxi.cognitive_stream.provenance import Provenance, from_event, inspector, project_current_trigger, render_messages, shadow_legacy
+        turn = current_turn()
+        trigger = turn.trigger_event if turn else None
+        current_context = from_event(trigger) if trigger else Provenance(channel=output_channel, session_id="local" if output_channel == "desktop" else None)
         source = []
         visual_followup = references_image(user_message)
         stream = getattr(self.agent, "experience_stream", None)
@@ -183,6 +189,8 @@ class FastChatRuntime:
             from zhaoxi.cognitive_stream.timeline import cognitive_timeline
             source = cognitive_timeline(
                 stream, query=user_message, output_channel=output_channel, audience=audience,
+                trigger_id=trigger.event_id if trigger else None,
+                public_session_id=trigger.session_id if trigger else None,
                 attention=getattr(self.agent, "attention_retriever", None),
                 limit=max(self.recent_limit, 24) if visual_followup else self.recent_limit,
                 max_chars=max(self.max_chars, 6000) if visual_followup else self.max_chars,
@@ -190,13 +198,18 @@ class FastChatRuntime:
         if not source:
             source = self.agent.conversation.recent()
         recent = [
-            item.model_copy(update={"background": "", "metadata": {}})
+            item.model_copy(update={"background": "", "metadata": dict(item.metadata)})
             for item in source
             if item.role in {Role.USER, Role.ASSISTANT} and is_cognition_message(item)
             and not item.tool_calls and not item.tool_turn and ((item.content or "").strip() or item.images)
         ]
-        if not recent or recent[-1].role is not Role.USER or recent[-1].content != user_message:
-            recent.append(Message(role=Role.USER, content=user_message))
+        if trigger:
+            recent = [m for m in recent if m.message_id != trigger.event_id]
+            recent.append(project_current_trigger(trigger, turn.images))
+        elif not recent or recent[-1].role is not Role.USER or recent[-1].content != user_message:
+            recent.append(Message(role=Role.USER, content=user_message, metadata={"timeline_scope":"current_trigger"}))
+        else:
+            recent[-1] = recent[-1].model_copy(update={"metadata":{**recent[-1].metadata, "timeline_scope":"current_trigger"}})
         bounded: list[Message] = []
         chars = 0
         for item in reversed(recent[-self.recent_limit:]):
@@ -230,4 +243,10 @@ class FastChatRuntime:
             else:
                 item = item.model_copy(update={"images": []})
             rendered.append(item)
+        legacy_projection = shadow_legacy(rendered, user_message)
+        rendered = render_messages(rendered, current_context, stream)
+        self.agent.context_builder.last_cognitive_context = {"provenance_items":inspector(rendered),
+            "legacy_shadow":legacy_projection, "provenance_rendered":[{"event_id":m.message_id,"text":m.content or ""} for m in rendered],
+            "current_trigger_event_id":trigger.event_id if trigger else None,
+            "current_rendered":[m.content for m in rendered if m.metadata.get("timeline_scope")=="current_trigger"]}
         return rendered

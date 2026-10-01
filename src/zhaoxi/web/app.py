@@ -795,7 +795,7 @@ def create_app(
                     'activation_history':record.metadata.get('activation_history',[]),'lifecycle_reason':record.metadata.get('lifecycle_reason'),
                     'cluster_reason':record.metadata.get('cluster_reason'),
                     'write_decision':record.metadata.get('decision'),'write_reason':record.metadata.get('reason'),
-                    'evidence_refs':record.metadata.get('evidence_refs',[]),'evidence_scope':record.metadata.get('evidence_scope'),'why':selected or excluded or
+                    'evidence_refs':record.metadata.get('evidence_refs',[]),'evidence_scope':record.metadata.get('evidence_scope'),'evidence_provenance':record.metadata.get('evidence_provenance',[]),'why':selected or excluded or
                     {'why_excluded':'status filter' if record.status.value not in observation.get('status_filter',[]) else 'outside bounded candidate sources'}}
             else:observation['requested_memory']={'id':memory_id,'why_excluded':'memory does not exist'}
         return {"query": query[:1000], **observation, "candidates": [{
@@ -810,7 +810,7 @@ def create_app(
             "source_message_id":item["record"].get("source_message_id"),
             "evidence_reference":item["record"].get("evidence_reference"),
             **{key:item["record"].get("metadata",{}).get(key) for key in
-               ("decision","reason","evidence_refs","evidence_scope","activation_history","lifecycle_reason","cluster_reason")},
+               ("decision","reason","evidence_refs","evidence_scope","evidence_provenance","activation_history","lifecycle_reason","cluster_reason")},
             "memory_id":item["record"]["id"],"cluster":item["cluster"],"cluster_score":item["cluster_score"],
             "cluster_rank":item["cluster_rank"],"candidate_source":item["candidate_source"],"retrieval_mode":item["retrieval_mode"],
         } for item in items]}
@@ -931,6 +931,14 @@ def create_app(
         if unit is None:
             raise HTTPException(status_code=404, detail="Timeline Unit 不存在。")
         return unit
+
+    @app.get("/api/debug/provenance")
+    async def debug_provenance():
+        builder = getattr(core, "context_builder", None)
+        data = getattr(builder, "last_cognitive_context", {})
+        return {"items":data.get("provenance_items", []),
+                "legacy_shadow":data.get("legacy_shadow", []),
+                "rendered":data.get("provenance_rendered", [])}
 
     @app.get("/api/debug/cognitive-stream/context")
     async def debug_cognitive_context():

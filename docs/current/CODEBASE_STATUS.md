@@ -1,5 +1,7 @@
 # 朝汐 ZhaoXi 代码现状与交接说明
 
+2026-10-01：External Provenance Integrity 源码补丁已接入，按截图八条复核补齐三态来源、插件边界、真相层回查、图片 Prompt scope、同源组头和认知/记忆证据。新旧渲染双轨只在 Debug 比对，模型使用新渲染；真实 NapCat 与 Desktop 黑盒验收待完成，本轮尚未执行桌面重启验收。详见 [补丁记录](../v1.4.x/Zhaoxi_v1.4.3_External_Provenance_补丁记录.md)。
+
 ## v1.4.3 本机启用状态
 
 代码与实际桌面版本 1.4.3。Memory 3.0 的三轴、索引/FTS/语义有界候选、分簇与孤立记忆、来源证据和 lifecycle 已接入；簇合并 summary、置信度多样性、命名阶段、外部可信 Owner 合批/优先级及 Inspector 解释缺口已补齐。长输入的网关有限思考预算实测通过。

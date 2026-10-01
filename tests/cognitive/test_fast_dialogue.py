@@ -268,7 +268,8 @@ async def test_fast_visual_followup_replays_latest_historical_thumbnail_from_str
     assert provider.tool_schemas == [None]
     pictured = [message for message in provider.calls[0] if message.images]
     assert len(pictured) == 1
-    assert pictured[0].content == "这张图呢？"
+    assert pictured[0].content.endswith("这张图呢？")
+    assert "历史图片" in pictured[0].content and '"timeline_scope":"recent"' in pictured[0].content
     assert pictured[0].images[0].startswith("data:image/jpeg;base64,")
     assert pictured[0].images[0] != original
     with Image.open(BytesIO(base64.b64decode(pictured[0].images[0].partition(",")[2]))) as image:

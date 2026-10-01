@@ -351,6 +351,9 @@ class CognitiveCoordinator:
                 limit=limit, max_chars=max_chars)
         else:
             messages = self.agent.conversation.recent(limit)
+        from zhaoxi.cognitive_stream.provenance import Provenance, from_event, render_messages
+        current = from_event(turn.trigger_event) if turn else Provenance(channel="desktop", session_id="local")
+        messages = render_messages(messages, current, stream)
         return "\n".join(f"{message.role.value}: {message.content[:600]}"
             for message in messages if message.content and message.role in {Role.USER, Role.ASSISTANT}
             and is_cognition_message(message) and not message.tool_calls)[-max_chars:]

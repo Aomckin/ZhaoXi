@@ -49,8 +49,8 @@ def test_recent_timeline_contains_all_experience_kinds_in_time_order(tmp_path):
     assert timeline[0].content == "本地输入"
     assert timeline[1].content == "QQ 输入"
     assert timeline[-1].content == "朝汐回复"
-    assert "群聊摘要 · qq" in timeline[2].content
-    assert "工具结果 · desktop" in timeline[4].content
+    assert timeline[2].metadata["event_type"] == "SOCIAL_SNAPSHOT"
+    assert timeline[4].metadata["event_type"] == "TOOL_OBSERVATION"
     assert timeline[4].to_provider_dict()["role"] == "assistant"
     assert len(timeline[4].content) < 550
     assert all(message.metadata["timeline_scope"] == "recent" for message in timeline)
@@ -95,9 +95,9 @@ def test_context_uses_stream_and_not_old_session_history(tmp_path):
         messages = builder.build(session)
     finally:
         reset_current_turn(token)
-    assert [message.content for message in messages[1:]] == [
-        "QQ 对话前文", "我刚才的回复", "现在继续",
-    ]
+    assert messages[1].content.endswith("QQ 对话前文") and "QQ 私聊" in messages[1].content
+    assert messages[2].content.endswith("我刚才的回复")
+    assert messages[3].content == "现在继续"
     assert [message.role for message in messages[1:]] == [
         Role.USER, Role.ASSISTANT, Role.USER,
     ]
@@ -120,7 +120,7 @@ def test_public_timeline_stays_inside_its_social_session(tmp_path):
     assert [message.message_id for message in timeline] == [allowed.event_id]
 
 
-def test_source_tags_appear_only_for_source_questions(tmp_path):
+def test_source_tags_do_not_require_source_questions(tmp_path):
     stream = ExperienceStream(tmp_path / "experience.db")
     now = datetime.now(UTC)
     add(stream, CognitiveEventType.EXTERNAL_MESSAGE, "那句话", now - timedelta(minutes=1),
@@ -137,5 +137,5 @@ def test_source_tags_appear_only_for_source_questions(tmp_path):
     finally:
         reset_current_turn(token)
     assert messages[1].role is Role.USER
-    assert messages[1].content == "[来源: qq] 那句话"
+    assert "[来源: QQ 私聊" in messages[1].content and messages[1].content.endswith("那句话")
     assert "QQ Owner" not in str(messages)

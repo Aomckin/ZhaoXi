@@ -552,10 +552,11 @@ class ZhaoxiAgent:
         token = None
         if scoped is None or scoped.trigger_event.event_id != trigger_event.event_id:
             token = set_current_turn(CognitiveTurnContext(
-                trigger_event=trigger_event, output_channel="qq", audience=audience,
+                trigger_event=trigger_event, output_channel=trigger_event.channel or trigger_event.source, audience=audience,
                 expression_policy=expression_policy, images=tuple(images or ())))
+        from zhaoxi.cognitive_stream.provenance import project_current_trigger
         view = Conversation()
-        view.add_user(user_message.strip() or "请查看图片。", images=images)
+        view.add(project_current_trigger(trigger_event, images or []))
         conversation_token = self._conversation_override.set(view)
         try:
             correlation = current_correlation()
@@ -570,7 +571,7 @@ class ZhaoxiAgent:
             return await asyncio.wait_for(
                 self._run_loop(
                     request_id, memories, user_message, no_tools=True,
-                    output_channel="qq", audience=audience,
+                    output_channel=trigger_event.channel or trigger_event.source, audience=audience,
                     expression_policy=expression_policy,
                 ),
                 timeout=self.timeout_seconds,
