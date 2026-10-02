@@ -939,7 +939,10 @@ def create_app(
         return unit
 
     @app.get("/api/debug/cognitive-stream/social-trace")
-    async def debug_social_trace(reference: str, statement_id: str | None = None, offset: int = 0,
+    async def debug_social_trace(reference: str | None = None, statement_id: str | None = None,
+                                 query: str | None = None, group_id: str | None = None,
+                                 source_plugin: str | None = None, since: str | None = None,
+                                 until: str | None = None, offset: int = 0,
                                  text_offset: int = 0, limit: int = 8, max_chars: int = 6000):
         from zhaoxi.tools.builtin.social_context import ReadSocialContextInput
         from zhaoxi.cognitive_stream.social_trace import SocialTraceReader
@@ -947,10 +950,17 @@ def create_app(
         stream=getattr(core,"experience_stream",None)
         if stream is None:raise HTTPException(status_code=409,detail="ExperienceStream 尚未就绪。")
         try:
-            args=ReadSocialContextInput(reference=reference,statement_id=statement_id,offset=offset,text_offset=text_offset,limit=limit,max_chars=max_chars)
+            args=ReadSocialContextInput(reference=reference,statement_id=statement_id,
+                query=query,group_id=group_id,source_plugin=source_plugin,since=since,until=until,
+                offset=offset,text_offset=text_offset,limit=limit,max_chars=max_chars)
         except ValidationError:
-            raise HTTPException(status_code=422,detail="回查参数无效。")
-        return SocialTraceReader(stream).read(**args.model_dump(exclude={"include_images"}))
+            raise HTTPException(status_code=422,detail="回查参数无效；引用与搜索条件分开使用，时间须含时区。")
+        reader=SocialTraceReader(stream, configured.perception_db_path)
+        page={"offset":args.offset,"text_offset":args.text_offset,"limit":args.limit,"max_chars":args.max_chars}
+        if args.reference:
+            return reader.read(args.reference,statement_id=args.statement_id,**page)
+        return reader.search(query=args.query,group_id=args.group_id,source_plugin=args.source_plugin,
+                             since=args.since,until=args.until,**page)
 
     @app.get("/api/debug/provenance")
     async def debug_provenance():

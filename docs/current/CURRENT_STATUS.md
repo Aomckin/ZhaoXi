@@ -1,5 +1,7 @@
 # 当前开发版本：v1.4.4
 
+2026-10-02：群聊回查已补齐按群、时间与字面关键词搜索，覆盖 Experience 与现存 Perception 旧记录；引用回查可只读衔接旧消息与旧摘要。真实库核验 590 条旧消息及 66 条旧摘要全部可展开，QQ 仍限定当前群和插件，未知插件旧记录仅限本地。加载需重启 Core 并刷新前端，真实模型使用效果待观察。详见 [补丁记录](../v1.4.x/Zhaoxi_v1.4.4_群聊历史搜索_补丁记录.md)。
+
 2026-10-02：v1.4.4 Presence 2.0 已接入 Registry、五态 Presence、前台抢占、FAST Digest、三类 Gardening、无增热重温及可选 Social Lurk / Wander。社交默认关闭，强制白名单、SELF / provenance、公开上下文、Privacy Gate 与限额；真实 QQ 和 5–7 天 dogfooding 待完成。开发验收时 Python 1035 通过、1 跳过，Node 64 通过，wheel 构建与源文件一致性通过。此轮未重启既有桌面实例，实际进程可能仍加载 1.4.3。本版整理为本地版本提交，未推送或外部发布。详见 [版本说明](../v1.4.x/Zhaoxi_v1.4.4_Release_Notes.md)、[开发记录](../v1.4.x/Zhaoxi_v1.4.4_开发记录.md)及 [任务书核对](../v1.4.x/Zhaoxi_v1.4.4_任务书核对.md)。
 
 ## v1.4.3 历史状态

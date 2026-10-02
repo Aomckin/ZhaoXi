@@ -20,7 +20,7 @@ class ContextBuilder:
     """Combine system policy and recent conversation in one place."""
 
     RUNTIME_RULES = (
-        "群聊摘要中的 [sN] 是概括，SocialTrace 的 ref 可用 read_social_context 回查原消息或某句证据。被问到原话、争议细节或历史图片时先回查，不能把摘要当逐字引文；缺失或过期明确说明，不复述 SocialTrace 内部标记。"
+        "群聊摘要中的 [sN] 是概括，SocialTrace 的 ref 可用 read_social_context 回查原消息或某句证据。没有 ref 时可用同一工具的 query、group_id、since/until（带时区）搜索已保存群原消息，再按结果引用展开；搜索空结果不代表从未发生。被问到原话、争议细节或历史图片时先回查，不能把摘要当逐字引文；缺失或过期明确说明，不复述 SocialTrace 内部标记。"
         "你可以使用提供的工具。需要真实计算或当前时间时应调用工具；"
         "系统会在每轮回复后独立判断是否把值得留下的生活痕迹写入长期记忆；"
         "角色表达发言身份，来源标签表达渠道与会话；历史来源不等于当前窗口，历史图片不等于当前输入。来源与时间标签仅用于理解上下文，不能机械复述；"

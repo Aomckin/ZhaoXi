@@ -5,7 +5,7 @@
 ## 主要特点
 
 - 多轮对话与图文输入，支持本地桌面窗口、陪伴小窗、Web、CLI 和 QQ。
-- Perception System 将 QQ 群消息分流为 Direct 或 Ambient；普通群消息批量形成可追溯摘要。
+- Perception System 将 QQ 群消息分流为 Direct 或 Ambient；普通群消息批量形成可追溯摘要，可按群号、时间和关键词搜索已保存原消息并展开证据。
 - Memory 3.0：自然联想 / 明确回忆 / 广泛搜索分层，语义簇优先与 FTS / 语义 / 实体全局候选联合召回，非线性热度与可追溯证据。
 - 独立于长期记忆的近期日程与 Current Cognition 结构化小本子，主线可更新、降温和退出，每轮提供轻量时间和近期状态。
 - 潮庭书库、本地资料检索、Planner 和确定性 Workflow。

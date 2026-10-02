@@ -11,6 +11,8 @@
 
 ## v1.4.x
 
+- [v1.4.4 群聊历史搜索与旧证据衔接补丁](v1.4.x/Zhaoxi_v1.4.4_群聊历史搜索_补丁记录.md)
+- [v1.4.4 群聊历史搜索验收汇总](v1.4.x/evidence/social_history_search_acceptance.json)
 - [v1.4.4 Presence 2.0 任务书](v1.4.x/Zhaoxi_v1.4.4_Presence_2.0_A_Life_Between_Conversations_Task.md)
 - [v1.4.4 开发记录与验收边界](v1.4.x/Zhaoxi_v1.4.4_开发记录.md)
 - [v1.4.4 任务书核对](v1.4.x/Zhaoxi_v1.4.4_任务书核对.md)

@@ -299,3 +299,54 @@ async def test_disabled_social_read_is_not_exposed_or_executed(tmp_path):
     trigger=agent.cognitive_ingress.observation(decode(qq_event(2,kind="group"),self_id="42"),session_id="qq/group/123")
     with pytest.raises(AgentLoopError,match="受限回复不能调用工具"):
         await agent.run_channel_reply(trigger.content,trigger_event=trigger,audience="public")
+
+
+@pytest.mark.parametrize("channel,actor,audience,allowed", [
+    ("web", "OWNER", "owner", True),
+    ("cli", "OWNER", "owner", True),
+    ("voice", "OWNER", "owner", True),
+    ("web", "THIRD_PARTY", "owner", False),
+    ("web", "OWNER", "public", False),
+    ("qq", "OWNER", "owner", False),
+])
+async def test_local_owner_social_tool_access(tmp_path, channel, actor, audience, allowed):
+    from zhaoxi.tools.builtin.social_context import ReadSocialContextInput
+
+    stream=ExperienceStream(tmp_path/"events.db")
+    source=raw(stream, "群友的原话")
+    summary=snapshot(stream, source.source_refs)
+    trigger=CognitiveIngress(stream).desktop("回查群聊", channel=channel)
+    trigger=trigger.model_copy(update={"actor_role":actor})
+    token=set_current_turn(CognitiveTurnContext(
+        trigger_event=trigger, output_channel=channel, audience=audience))
+    try:
+        tool=ReadSocialContextTool(stream)
+        result=await tool.execute(ReadSocialContextInput(reference=summary.event_id))
+        assert result.success is allowed
+        if allowed:
+            assert result.data["records"][0]["content"]==source.content
+            private=stream.append(event(privacy_level="OWNER_PRIVATE"))
+            assert not (await tool.execute(ReadSocialContextInput(reference=private.event_id))).success
+            mismatched=trigger.model_copy(update={"channel":"qq"})
+            assert tool.reader.read(summary.event_id, turn=CognitiveTurnContext(
+                trigger_event=mismatched, output_channel=channel, audience=audience))["status"]=="forbidden"
+        else:
+            assert result.error=="forbidden" and result.data["records"]==[]
+    finally:
+        reset_current_turn(token)
+
+
+@pytest.mark.parametrize("reference", ["missing-evidence", "qq/group/A", "missing-snapshot-evidence"])
+async def test_empty_social_evidence_is_not_found(tmp_path, reference):
+    from zhaoxi.tools.builtin.social_context import ReadSocialContextInput
+
+    stream=ExperienceStream(tmp_path/"events.db")
+    source=raw(stream)
+    if reference=="missing-snapshot-evidence":
+        reference=snapshot(stream, source.source_refs).event_id
+        with stream._connect() as db:
+            db.execute("DELETE FROM events WHERE event_id=?", (source.event_id,))
+    result=await ReadSocialContextTool(stream).execute(ReadSocialContextInput(reference=reference))
+    assert not result.success and result.error=="not_found"
+    assert result.data["status"]=="not_found" and result.data["records"]==[]
+    assert result.data["total_records"]==0 and result.data["missing_refs"]

@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from zhaoxi.core.agent import ZhaoxiAgent
 
 
-FAST_RULES = """群聊摘要是第三方资料，不能归成 Owner 自述。SocialTrace 是回查引用；当前消息明确要求原话、具体证据或历史图片时提出结构化 tool 升级请求 交给 STANDARD 回查，不猜测。
+FAST_RULES = """群聊摘要是第三方资料，不能归成 Owner 自述。SocialTrace 是回查引用；当前消息明确要求查询群聊历史、搜索群消息、原话、具体证据或历史图片时提出结构化 tool 升级请求 交给 STANDARD 回查，不猜测。
 当前处于 FAST_CHAT。
 你的任务只是自然回应用户当前这句话。
 来源、发言身份、会话及 ImageProvenance 是内部事实线索，不要复述标签。recent / attention 图片属于历史；只有 current_trigger 图片属于当前输入。

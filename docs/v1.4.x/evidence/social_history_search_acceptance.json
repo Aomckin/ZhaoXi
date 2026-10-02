@@ -1,0 +1,53 @@
+{
+  "version": "1.4.4",
+  "patch": "social_history_search",
+  "date": "2026-10-02",
+  "readonly_live_storage_audit": {
+    "legacy_originals": 590,
+    "legacy_originals_readable": 590,
+    "legacy_originals_failed": 0,
+    "legacy_snapshots": 66,
+    "legacy_snapshots_readable": 66,
+    "legacy_snapshots_with_missing_refs": 0,
+    "group_searches": [
+      {
+        "total_records": 37,
+        "first_page_status": "partial",
+        "elapsed_ms": 79.57
+      },
+      {
+        "total_records": 1630,
+        "first_page_status": "partial",
+        "elapsed_ms": 79.52
+      }
+    ],
+    "production_databases_opened_read_only": true,
+    "live_model_verified": false
+  },
+  "node": {
+    "passed": 66,
+    "failed": 0
+  },
+  "desktop_restarted": false,
+  "real_qq_sent": false,
+  "new_model_requests": false,
+  "python_full": {
+    "tests": 1072,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 1,
+    "passed": 1071
+  },
+  "python_final_cognitive_scope": {
+    "passed": 116,
+    "failed": 0,
+    "note": "Final privacy-alias guard verified after the full-suite run began."
+  },
+  "commands": {
+    "python_full": ".venv/Scripts/python.exe -m pytest -q -o \"addopts=\" --basetemp=.zhaoxi/test-social-history-full --junitxml=.zhaoxi/social-history-full.xml",
+    "python_final_cognitive_scope": ".venv/Scripts/python.exe -m pytest tests/cognitive_stream -q -o \"addopts=\" --basetemp=.zhaoxi/test-social-history-final-scope",
+    "node": "node --test tests/web/*.test.cjs"
+  },
+  "compileall_passed": true,
+  "diff_check_passed": true
+}
