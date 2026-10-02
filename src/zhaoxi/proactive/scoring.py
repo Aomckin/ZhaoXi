@@ -26,7 +26,7 @@ def score_event(event, now, state, policy, last_spoken, cooldown_minutes, focus_
     mode = interaction.refresh(now)
     interruptibility = interaction._resolve_interruptibility(now)
     if not explicit:
-        if mode == InteractionState.AWAY:
+        if mode in {InteractionState.AWAY, InteractionState.SLEEP}:
             return GateResult(score, 'inbox')
         if interruptibility is Interruptibility.BLOCKED:
             return GateResult(score, 'inbox')

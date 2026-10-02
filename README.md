@@ -1,6 +1,6 @@
 # Zhaoxi / 朝汐
 
-朝汐是一个以本地运行、长期陪伴和可控工具执行为核心的个人 Agent。当前开发版本为 **1.4.3**（[版本说明](docs/v1.4.x/Zhaoxi_v1.4.3_Release_Notes.md)）。Core 提供请求级运行观测、长任务中间回复、Perception、认知时间线和 External Source Plugin 协议；QQ / NapCat 作为可选插件接入。
+朝汐是一个以本地运行、长期陪伴和可控工具执行为核心的个人 Agent。当前开发版本为 **1.4.4**（[版本说明](docs/v1.4.x/Zhaoxi_v1.4.4_Release_Notes.md)）。Core 提供请求级运行观测、长任务中间回复、Perception、认知时间线和 External Source Plugin 协议；QQ / NapCat 作为可选插件接入。
 
 ## 主要特点
 
@@ -15,6 +15,7 @@
 - STANDARD 工具任务在调用成功后可继续执行后续操作，支持先查询、再修改；预算或耗时接近上限时进入无工具收尾。
 - 请求级运行指标、LLM/Tool 归属与耗时、Memory Retrieval Inspector、Planner Trace 桥接和独立的长任务中间回复。
 - 请求级行动轨迹、Tool 最终状态归并与 Token 预算错误归因。
+- Presence 2.0：前台抢占、Registry 内部活动、FAST 弱趋势消化、认知/记忆/簇增量整理和不增热的历史重温；可选授权 QQ 群闲逛默认关闭。
 - 主动心跳、桌面活动感知、语音输入与朗读。
 - 本地表情库、Reply DSL 属性匹配、收藏管理和有序图文回复。
 - SQLite 本地持久化、运行诊断、备份恢复和请求级 Trace。
@@ -128,6 +129,7 @@ python -m pytest
 
 ## 文档
 
+- [v1.4.4 Presence 2.0 开发记录](docs/v1.4.x/Zhaoxi_v1.4.4_开发记录.md)
 - [v1.4.3 开发记录与迁移说明](docs/v1.4.x/Zhaoxi_v1.4.3_开发记录.md)
 - [v1.4.2 开发记录与验收](docs/v1.4.x/Zhaoxi_v1.4.2_开发记录.md)
 - [文档索引](docs/README.md)

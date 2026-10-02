@@ -13,6 +13,7 @@ class InteractionState(StrEnum):
     SEMI_ACTIVE = "SEMI_ACTIVE"
     IDLE = "IDLE"
     AWAY = "AWAY"
+    SLEEP = "SLEEP"
 
 
 class Interruptibility(StrEnum):
@@ -145,7 +146,7 @@ class Interaction:
         self._resolve_interruptibility(now)
 
     def force_debug_state(self, state: InteractionState | None, now: datetime) -> None:
-        if state not in {None, InteractionState.ACTIVE, InteractionState.SEMI_ACTIVE, InteractionState.AWAY}:
+        if state is not None and state not in set(InteractionState):
             raise ValueError("unsupported debug presence state")
         self.debug_forced_state = state
         if state is None:
@@ -168,7 +169,7 @@ class Interaction:
         input_active = self.signals.resolve("desktop.input_active", now)
         focus = self.signals.resolve("attention.focus", now)
         manual = self.signals.resolve("interruptibility.manual", now)
-        if (manual and manual.value == "blocked") or self.state == InteractionState.AWAY or (self.snapshot and self.snapshot.locked):
+        if (manual and manual.value == "blocked") or self.state in {InteractionState.AWAY, InteractionState.SLEEP} or (self.snapshot and self.snapshot.locked):
             value = Interruptibility.BLOCKED
         elif (input_active and input_active.value) or (self.snapshot and self.snapshot.fullscreen) or (focus and focus.value == "active"):
             value = Interruptibility.LOW

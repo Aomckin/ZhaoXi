@@ -137,7 +137,10 @@ class RecentContextControlRequest(BaseModel):
 
 class InternalActivityDebugRequest(BaseModel):
     activity: Literal["tick", "current_cognition_consolidation", "memory_maintenance",
-                      "agenda_maintenance", "proactive_check"] = "tick"
+                      "agenda_maintenance", "proactive_check", "perception_cognition", "fast_digest",
+                      "cognition_gardening", "memory_gardening", "cluster_gardening",
+                      "memory_reminiscence", "social_lurk", "social_wander"] = "tick"
+    confirm_social_write: StrictBool = False
 
 
 class DecisionDebugRequest(BaseModel):
@@ -146,7 +149,7 @@ class DecisionDebugRequest(BaseModel):
 
 
 class PresenceDebugRequest(BaseModel):
-    state: Literal["ACTIVE", "SEMI_ACTIVE", "AWAY"] | None = Field(...)
+    state: Literal["ACTIVE", "SEMI_ACTIVE", "IDLE", "AWAY", "SLEEP"] | None = Field(...)
 
 
 class EmojiMetadataRequest(BaseModel):
@@ -405,6 +408,8 @@ def create_app(
     async def lifespan(_: FastAPI):
         supervisor.start()
         adapter.gateway.maintenance_queue().start()
+        if getattr(core, "internal_activity", None):
+            core.internal_activity.publish_status = events.publish_nowait
         heartbeat = getattr(core, "proactive_heartbeat", None)
         worker = getattr(core, "proactive_worker", None)
         if heartbeat is not None and worker is not None:
@@ -609,6 +614,7 @@ def create_app(
             "metrics": adapter.gateway.metrics.snapshot(),
             "presence": (core.proactive_state.interaction.diagnostics(datetime.now(UTC))
                          if getattr(core, "proactive_state", None) else None),
+            "presence_activity": core.internal_activity.public_status() if getattr(core, "internal_activity", None) else None,
             "sensor_health": getattr(getattr(core, "proactive_heartbeat", None), "sensor_health", {}),
             "active": (core.proactive_state.interaction.beat_loop.diagnostics(datetime.now(UTC))
                 if getattr(core, "proactive_state", None) and core.proactive_state.interaction.beat_loop else None),
@@ -1030,7 +1036,10 @@ def create_app(
         activity = getattr(core, "internal_activity", None)
         if activity is None:
             raise HTTPException(status_code=409, detail="Internal Activity 尚未就绪。")
-        deliveries = await activity.run_tick(force=None if body.activity == "tick" else body.activity)
+        if body.activity != "tick" and body.activity not in activity.registry:
+            raise HTTPException(status_code=409, detail="该活动尚未启用 Presence 2.0。")
+        deliveries = await activity.run_tick(force=None if body.activity == "tick" else body.activity,
+            confirm_social_write=body.confirm_social_write, manual=True)
         for delivery in deliveries:
             await events.publish({"type": "proactive", "delivery": delivery.model_dump(mode="json", exclude={"relevant_payload"})})
         return activity.diagnostics()
@@ -1054,6 +1063,8 @@ def create_app(
     async def recent_context_board():
         """Public desk view; each context source can fail independently."""
         result = {"agenda": [], "current_cognition": None, "errors": {}}
+        if getattr(core, "internal_activity", None):
+            result["presence"] = core.internal_activity.public_status()
         agenda = getattr(core, "agenda", None)
         if agenda is not None:
             try:

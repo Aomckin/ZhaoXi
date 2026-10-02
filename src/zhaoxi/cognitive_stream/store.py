@@ -198,3 +198,13 @@ class ExperienceStream:
                 db.execute("DELETE FROM events WHERE event_id=?",(event_id,))
                 removed+=1
         return removed
+
+
+    def mark_dialogue_lane(self, event_id: str, lane: str) -> None:
+        """Annotate routing after delivery, keeping the original evidence and identity."""
+        with self._connect() as db:
+            row = db.execute("SELECT payload FROM events WHERE event_id=?", (event_id,)).fetchone()
+            if row:
+                value = self.media.loads(row[0])
+                value.setdefault("metadata", {})["dialogue_lane"] = lane
+                db.execute("UPDATE events SET payload=? WHERE event_id=?", (self.media.dumps(value), event_id))

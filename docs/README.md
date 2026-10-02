@@ -11,6 +11,12 @@
 
 ## v1.4.x
 
+- [v1.4.4 Presence 2.0 任务书](v1.4.x/Zhaoxi_v1.4.4_Presence_2.0_A_Life_Between_Conversations_Task.md)
+- [v1.4.4 开发记录与验收边界](v1.4.x/Zhaoxi_v1.4.4_开发记录.md)
+- [v1.4.4 任务书核对](v1.4.x/Zhaoxi_v1.4.4_任务书核对.md)
+- [v1.4.4 版本说明](v1.4.x/Zhaoxi_v1.4.4_Release_Notes.md)
+- [v1.4.4 自动验收汇总](v1.4.x/evidence/presence_v144_acceptance.json)
+
 - [v1.4.3 Runtime Safety 补丁记录](v1.4.x/Zhaoxi_v1.4.3_Runtime_Safety_补丁记录.md)
 - [v1.4.3 Fast Escalation / Tool Repair / Budget Safety 任务书](v1.4.x/Zhaoxi_v1.4.3_Fast_Escalation_and_Tool_Repair_Safety_Patch.md)
 

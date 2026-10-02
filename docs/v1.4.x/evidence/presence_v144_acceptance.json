@@ -1,0 +1,32 @@
+{
+  "version": "1.4.4",
+  "date": "2026-10-02",
+  "python": {
+    "tests": 1036,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 1,
+    "passed": 1035
+  },
+  "node": {
+    "passed": 64,
+    "failed": 0
+  },
+  "python_command": ".venv/Scripts/python.exe -m pytest --basetemp=.zhaoxi/test-v144-delivery -o \"addopts=\" -q --junitxml=.zhaoxi/v144-delivery.xml",
+  "node_command": "node --test tests/web/*.test.cjs",
+  "wheel": {
+    "path": ".zhaoxi/v144-dist/zhaoxi-1.4.4-py3-none-any.whl",
+    "sha256": "b975f1bc9338898b6e2ee9c03c5cf49991d3a7ff437b8d0c90d4bd86126ccf9a",
+    "verified_python_sources": 247
+  },
+  "live_qq_verified": false,
+  "desktop_restarted": false,
+  "dogfooding_completed": false,
+  "social_default_enabled": false,
+  "skipped_tests": [
+    {
+      "name": "test_symlink_outside_archive_is_not_indexed",
+      "reason": "symlink creation unavailable"
+    }
+  ]
+}

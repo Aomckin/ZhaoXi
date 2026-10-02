@@ -302,7 +302,7 @@ class MemoryService:
         record.updated_at = utc_now()
         return await self.repository.save(record)
 
-    async def maintain(self, limit: int = 100) -> list[MemoryRecord]:
+    async def maintain(self, limit: int = 100, *, organize: bool = True) -> list[MemoryRecord]:
         cursor = int(await self.repository.get_runtime("maintenance_offset") or 0)
         batch = MemoryQuery(statuses=[MemoryStatus.ACTIVE, MemoryStatus.COLD, MemoryStatus.DORMANT, MemoryStatus.ARCHIVED], limit=min(limit,100), offset=cursor)
         records = await self.repository.list_records(batch)
@@ -356,14 +356,15 @@ class MemoryService:
                         confidence=record.confidence, evidence_memory_ids=[record.id, previous.id],
                     ))
                     changed.append(previous)
-            if (record.cluster_id is None and record.status in {MemoryStatus.ACTIVE, MemoryStatus.COLD}
+            if (organize and record.cluster_id is None and record.status in {MemoryStatus.ACTIVE, MemoryStatus.COLD}
                     and record.kind in {MemoryKind.SEMANTIC, MemoryKind.RELATIONSHIP}):
                 await self._ensure_embedding(record)
                 await self._organize(record)
                 if record.cluster_id is not None:
                     changed.append(record)
         from zhaoxi.memory.migration import split_oversized_clusters
-        await split_oversized_clusters(self)
+        if organize:
+            await split_oversized_clusters(self)
         return changed
 
     async def consolidate(self, memory_ids: list[str], content: str, *, tags: list[str] | None = None) -> MemoryRecord:

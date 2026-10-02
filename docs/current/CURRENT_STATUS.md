@@ -1,4 +1,8 @@
-# 当前开发版本：v1.4.3
+# 当前开发版本：v1.4.4
+
+2026-10-02：v1.4.4 Presence 2.0 已接入 Registry、五态 Presence、前台抢占、FAST Digest、三类 Gardening、无增热重温及可选 Social Lurk / Wander。社交默认关闭，强制白名单、SELF / provenance、公开上下文、Privacy Gate 与限额；真实 QQ 和 5–7 天 dogfooding 待完成。开发验收时 Python 1035 通过、1 跳过，Node 64 通过，wheel 构建与源文件一致性通过。此轮未重启既有桌面实例，实际进程可能仍加载 1.4.3。本版整理为本地版本提交，未推送或外部发布。详见 [版本说明](../v1.4.x/Zhaoxi_v1.4.4_Release_Notes.md)、[开发记录](../v1.4.x/Zhaoxi_v1.4.4_开发记录.md)及 [任务书核对](../v1.4.x/Zhaoxi_v1.4.4_任务书核对.md)。
+
+## v1.4.3 历史状态
 
 2026-10-01：Runtime Safety 源码补丁已接入当前消息升级校验、请求内 3 / 2 / 1 轮数与更严格 FAST 升级限制、工具失败锁与检索复用、WARNING / DANGER / EXHAUSTED 收尾、确定性结果说明和权限续跑限制。隔离 Desktop 网关真实模型合成验收通过；正式数据未修改，当前原生桌面实例未重启加载。详见 [补丁记录](../v1.4.x/Zhaoxi_v1.4.3_Runtime_Safety_补丁记录.md)。
 

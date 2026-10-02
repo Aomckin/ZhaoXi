@@ -1,6 +1,8 @@
 """One serialized gateway into the local single-user Zhaoxi Core."""
 
 from __future__ import annotations
+from zhaoxi.internal_activity.foreground import foreground_activity
+
 
 import asyncio
 import logging
@@ -66,6 +68,7 @@ class InterfaceGateway:
         trace.interim_max_count = settings.interim_reply_max_count
         trace.planner_interim_max_count = settings.planner_interim_reply_max_count
 
+    @foreground_activity
     async def chat(self, message: UnifiedMessage) -> UnifiedResponse:
         received_monotonic = monotonic()
         if message.origin is not MessageOrigin.USER:
@@ -149,6 +152,9 @@ class InterfaceGateway:
                         source="desktop", channel=message.channel.value, session_id=message.session_id,
                         parent_refs=[trigger.event_id] if trigger else [],
                         source_refs=["desktop:reply:" + message.request_id])
+                if trigger and ingress:
+                    lane = getattr(getattr(response, "route", None), "value", "standard")
+                    ingress.stream.mark_dialogue_lane(trigger.event_id, lane)
                 await self._persist_session(trace)
                 self._cache(result)
                 self._enqueue_maintenance(message.request_id, response, trace, trigger=trigger, session_id=message.session_id)
@@ -205,6 +211,7 @@ class InterfaceGateway:
                     state.last_interaction_at = datetime.now(UTC)
                 self.metrics.observe_duration("interface.chat", monotonic() - started)
 
+    @foreground_activity
     async def regenerate(self, message_id: str, *, request_id: str) -> UnifiedResponse:
         """Regenerate the latest assistant turn without forging a second user turn."""
         async with self._lock:
@@ -333,6 +340,7 @@ class InterfaceGateway:
                     self.agent.last_budget_snapshot = budget.snapshot()
                 self.metrics.observe_duration("interface.regenerate", monotonic() - started)
 
+    @foreground_activity
     async def activate_delivery(self, delivery_id: str):
         async with self._lock:
             runtime = getattr(self.agent, "proactive", None)
@@ -388,6 +396,7 @@ class InterfaceGateway:
             await self._persist_session()
             return self.session()
 
+    @foreground_activity
     async def resolve_permission(
         self,
         confirmation_id: str,

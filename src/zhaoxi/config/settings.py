@@ -125,6 +125,37 @@ class Settings(BaseSettings):
     internal_activity_enabled: bool = True
     internal_activity_max_llm_per_tick: int = Field(default=1, ge=0, le=4)
     internal_activity_max_local_per_tick: int = Field(default=3, ge=0, le=10)
+    presence_v2_enabled: bool = True
+    presence_sleep_enabled: bool = False
+    presence_sleep_start_hour: int = Field(default=0, ge=0, le=23)
+    presence_sleep_end_hour: int = Field(default=7, ge=0, le=23)
+    fast_digest_enabled: bool = True
+    fast_digest_min_signals: int = Field(default=10, ge=3, le=40)
+    fast_digest_min_interval_minutes: int = Field(default=30, ge=1, le=10080)
+    current_cognition_gardening_enabled: bool = True
+    current_cognition_gardening_min_interval_minutes: int = Field(default=30, ge=1, le=10080)
+    memory_gardening_min_interval_minutes: int = Field(default=60, ge=1, le=10080)
+    cluster_gardening_min_interval_minutes: int = Field(default=120, ge=1, le=10080)
+    social_lurk_min_interval_minutes: int = Field(default=60, ge=1, le=10080)
+    social_wander_min_interval_minutes: int = Field(default=120, ge=1, le=10080)
+    memory_gardening_enabled: bool = True
+    cluster_gardening_enabled: bool = True
+    memory_reminiscence_enabled: bool = True
+    memory_reminiscence_min_interval_minutes: int = Field(default=240, ge=1, le=10080)
+    memory_reminiscence_cooldown_days: int = Field(default=14, ge=1, le=365)
+    memory_reminiscence_daily_limit: int = Field(default=2, ge=0, le=20)
+    social_lurk_enabled: bool = False
+    social_wander_enabled: bool = False
+    social_wander_qq_allowed_groups: list[str] = Field(default_factory=list)
+    social_wander_public_interests: list[str] = Field(default_factory=list)
+    social_wander_chat_probability: float = Field(default=.15, ge=0, le=1)
+    social_lurk_daily_limit: int = Field(default=4, ge=0, le=100)
+    social_wander_daily_message_limit: int = Field(default=6, ge=0, le=100)
+    social_wander_group_cooldown_minutes: int = Field(default=45, ge=1, le=10080)
+    internal_activity_max_llm_light_per_tick: int = Field(default=1, ge=0, le=4)
+    internal_activity_max_llm_heavy_per_tick: int = Field(default=0, ge=0, le=4)
+    internal_activity_max_external_read_per_tick: int = Field(default=1, ge=0, le=10)
+    internal_activity_max_external_write_per_tick: int = Field(default=1, ge=0, le=4)
     current_cognition_consolidation_enabled: bool = True
     current_cognition_consolidation_min_turns: int = Field(default=10, ge=1, le=100)
     current_cognition_bootstrap_min_turns: int = Field(default=8, ge=1, le=100)

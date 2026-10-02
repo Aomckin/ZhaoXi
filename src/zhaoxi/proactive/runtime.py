@@ -72,11 +72,13 @@ class ProactiveRuntime:
             results.append(delivery)
         return results
 
-    async def flush_deferred(self, now: datetime, state: PolicyState, *, ordinary_cooldown_minutes: int = 0) -> list[Delivery]:
+    async def flush_deferred(self, now: datetime, state: PolicyState, *, ordinary_cooldown_minutes: int = 0, priorities: set[Priority] | None = None) -> list[Delivery]:
         results = []
         history = await self.store.list_deliveries(1000)
         last_spoken = max((d.delivered_at for d in history if d.delivered_at and d.priority != Priority.INFO), default=None)
         for delivery in history:
+            if priorities is not None and delivery.priority not in priorities:
+                continue
             if delivery.status != DeliveryStatus.DEFERRED or delivery.available_at > now:
                 continue
             event = await self.store.get_event(delivery.event_id)

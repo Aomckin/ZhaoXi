@@ -43,7 +43,7 @@ class InterruptPolicy:
             return PolicyDecision(action=PolicyAction.DEFER, reason="night_mode", defer_until=defer_until)
         if event.event_type != 'reminder.due' and event.priority != Priority.URGENT:
             interaction = state.interaction
-            if interaction.refresh(now) == InteractionState.AWAY:
+            if interaction.refresh(now) in {InteractionState.AWAY, InteractionState.SLEEP}:
                 return PolicyDecision(action=PolicyAction.INBOX_ONLY, reason="user_away")
             if interaction.snapshot and (interaction.snapshot.fullscreen or not interaction.snapshot.healthy):
                 return PolicyDecision(action=PolicyAction.DEFER, reason="desktop_unavailable", defer_until=now + timedelta(minutes=5))

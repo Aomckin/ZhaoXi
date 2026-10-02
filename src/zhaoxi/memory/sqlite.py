@@ -545,3 +545,53 @@ class SQLiteMemoryRepository(CandidateIndex, MemoryRepository):
                 connection.execute(f"ALTER TABLE memory_embeddings ADD COLUMN {name} {definition}")
                 if name=="embedding_dim":connection.execute("UPDATE memory_embeddings SET embedding_dim=json_array_length(vector_json)")
         connection.execute("UPDATE schema_version SET version=?", (SCHEMA_VERSION,))
+
+
+    async def update_presence_metadata(self, memory_id: str, values: dict) -> None:
+        """Merge annotations atomically without touching activation or recall statistics."""
+        def update():
+            with self._connect() as db:
+                db.execute("UPDATE memories SET metadata_json=json_patch(metadata_json,?) WHERE id=?",
+                           (json.dumps(values, ensure_ascii=False), memory_id))
+        await asyncio.to_thread(update)
+
+    async def presence_records(self, since=None, limit=40):
+        """A bounded dirty queue over existing records; annotations are not new evidence."""
+        def read():
+            with self._connect() as db:
+                rows = db.execute("SELECT * FROM memories WHERE status NOT IN ('forgotten','superseded') "
+                    "AND (json_extract(metadata_json,'$.presence_memory_gardened_at') IS NULL "
+                    "OR json_extract(metadata_json,'$.presence_memory_gardened_at') < updated_at) "
+                    "ORDER BY updated_at ASC LIMIT ?", (limit,)).fetchall()
+            return [self._from_row(row) for row in rows]
+        return await asyncio.to_thread(read)
+
+    async def presence_clusters(self, since=None, limit=10):
+        def read():
+            with self._connect() as db:
+                rows = db.execute("SELECT * FROM memories WHERE cluster_id IS NULL "
+                    "AND status NOT IN ('forgotten','superseded') "
+                    "AND (json_extract(metadata_json,'$.presence_cluster_gardened_at') IS NULL "
+                    "OR json_extract(metadata_json,'$.presence_cluster_gardened_at') < updated_at) "
+                    "ORDER BY updated_at DESC LIMIT ?", (limit,)).fetchall()
+                clusters = db.execute("SELECT * FROM memory_clusters WHERE active=1 "
+                    "AND (json_extract(metadata_json,'$.presence_cluster_gardened_at') IS NULL "
+                    "OR json_extract(metadata_json,'$.presence_cluster_gardened_at') < updated_at) "
+                    "ORDER BY updated_at DESC LIMIT ?", (limit,)).fetchall()
+            return [self._from_row(row) for row in rows], [self._cluster_from_row(row) for row in clusters]
+        return await asyncio.to_thread(read)
+
+    async def reminiscence_candidates(self, now, *, cooldown_days=14, limit=1):
+        from datetime import timedelta
+        def read():
+            with self._connect() as db:
+                rows = db.execute("SELECT * FROM memories WHERE status IN ('cold','dormant') "
+                    "AND importance>=0.5 AND activation<0.6 AND created_at<? "
+                    "AND COALESCE(accessed_at,created_at)<? "
+                    "AND (json_extract(metadata_json,'$.last_reminisced_at') IS NULL "
+                    "OR json_extract(metadata_json,'$.last_reminisced_at')<?) "
+                    "ORDER BY importance DESC, COALESCE(accessed_at,created_at) ASC LIMIT ?",
+                    ((now-timedelta(days=30)).isoformat(), (now-timedelta(days=30)).isoformat(),
+                     (now-timedelta(days=cooldown_days)).isoformat(), limit)).fetchall()
+            return [self._from_row(row) for row in rows]
+        return await asyncio.to_thread(read)

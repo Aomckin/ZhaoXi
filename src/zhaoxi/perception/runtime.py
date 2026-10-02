@@ -5,6 +5,7 @@ import logging
 import re
 from datetime import UTC, datetime, timedelta
 from dataclasses import replace
+from zhaoxi.internal_activity.foreground import external_foreground
 from zhaoxi.cognitive.fast_gate import FastGateLane
 from pydantic import ValidationError
 
@@ -93,6 +94,7 @@ class PerceptionRuntime:
             self.multimodal_input_count += 1
         return images
 
+    @external_foreground
     async def ingest(self, item: Observation) -> str | None:
         decision = route(item)
         status = {AttentionHint.IGNORE: ObservationStatus.IGNORED,
@@ -276,6 +278,9 @@ class PerceptionRuntime:
                 content = response.content.strip()
                 if not content:
                     raise ValueError("external response missing safe text")
+                if trigger and ingress:
+                    lane = "fast_chat" if fast_owner_reply and not self.last_fast_gate.get("fast_escalation_count") else "standard"
+                    ingress.stream.mark_dialogue_lane(trigger.event_id, lane)
                 await self._organize_owner_event(trigger, content)
                 self.store.set_status(item.observation_id, ObservationStatus.PROCESSED)
                 return content

@@ -129,3 +129,14 @@ class PerceptionStore:
         with self._connect() as db:
             db.execute("UPDATE snapshot_cognition SET status=? WHERE snapshot_id=?",
                        (status, snapshot_id))
+
+
+    def social_observations(self, plugin_id, group_id, *, limit=20, since):
+        """Only one authorized group; never mix private chats or other groups."""
+        with self._connect() as db:
+            rows = db.execute("SELECT payload FROM observations WHERE received_at>=? "
+                "AND json_extract(payload,'$.source_plugin')=? "
+                "AND json_extract(payload,'$.conversation_kind')='group' "
+                "AND json_extract(payload,'$.conversation_id')=? "
+                "ORDER BY received_at DESC LIMIT ?", (since.isoformat(), plugin_id, group_id, limit)).fetchall()
+        return [Observation.model_validate(self.media.loads(row[0])) for row in reversed(rows)]

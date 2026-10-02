@@ -71,7 +71,7 @@ async def refresh(service, cluster, records):
     await service.repository.save_cluster(cluster)
 
 
-async def organize(service, record):
+async def organize(service, record, *, merge=True):
     embedding=(await service.repository.embeddings_for([record.id])).get(record.id)
     if not embedding or not compatible(service.embedding_provider,embedding):
         return
@@ -106,7 +106,8 @@ async def organize(service, record):
     for peer in members[:5]:
         from zhaoxi.memory.models import MemoryEdge
         await service.repository.save_edge(MemoryEdge(source_id=record.id,target_id=peer.id,weight=max(.25,score),evidence_memory_ids=[record.id,peer.id]))
-    await service._maybe_merge_clusters(cluster)
+    if merge:
+        await service._maybe_merge_clusters(cluster)
 
 
 def plan_groups(service, records, embeddings):
