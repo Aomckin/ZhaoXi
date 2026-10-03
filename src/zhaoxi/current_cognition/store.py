@@ -14,6 +14,7 @@ class CurrentCognitionStore:
         self.legacy_stm_path = Path(legacy_stm_path) if legacy_stm_path else None
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(self.path) as db:
+            db.execute("CREATE TABLE IF NOT EXISTS cognition_revisions (id INTEGER PRIMARY KEY, target_type TEXT, target_id TEXT, operation TEXT, before_json TEXT, after_json TEXT, actor TEXT, timestamp TEXT, undone INTEGER DEFAULT 0)")
             db.execute("CREATE TABLE IF NOT EXISTS current_cognition (id INTEGER PRIMARY KEY CHECK(id=1), state_json TEXT NOT NULL)")
             db.execute("CREATE TABLE IF NOT EXISTS current_cognition_legacy_backup (id INTEGER PRIMARY KEY CHECK(id=1), state_json TEXT NOT NULL, migrated_at TEXT NOT NULL)")
 
@@ -79,3 +80,25 @@ class CurrentCognitionStore:
             return "\n".join(text for text in texts if text)[:1200]
         except (OSError, sqlite3.Error, ValueError, TypeError, AttributeError):
             return ""
+
+    def save_manual(self, state, *, target_type, target_id, operation, before):
+        with sqlite3.connect(self.path) as db:
+            cursor = db.execute("INSERT INTO cognition_revisions(target_type,target_id,operation,before_json,after_json,actor,timestamp) VALUES (?,?,?,?,?,?,?)",
+                (target_type, target_id, operation, json.dumps(before, ensure_ascii=False), state.model_dump_json(), "owner", state.updated_at.isoformat()))
+            db.execute("INSERT INTO current_cognition(id,state_json) VALUES (1,?) ON CONFLICT(id) DO UPDATE SET state_json=excluded.state_json", (state.model_dump_json(),))
+            return cursor.lastrowid
+
+    def revisions(self, limit=20, offset=0):
+        with sqlite3.connect(self.path) as db:
+            total = db.execute("SELECT COUNT(*) FROM cognition_revisions").fetchone()[0]
+            rows = db.execute("SELECT id,target_type,target_id,operation,before_json,after_json,actor,timestamp,undone FROM cognition_revisions ORDER BY id DESC LIMIT ? OFFSET ?", (limit,offset)).fetchall()
+        keys = ("revision_id","target_type","target_id","operation","before","after","actor","timestamp","undone")
+        items = [dict(zip(keys,row)) for row in rows]
+        for item in items:
+            item["before"],item["after"] = json.loads(item["before"]),json.loads(item["after"])
+        return {"items":items,"total":total,"next_offset":offset+limit if offset+limit<total else None}
+
+    def save_undo(self, state, revision_id):
+        with sqlite3.connect(self.path) as db:
+            db.execute("UPDATE cognition_revisions SET undone=1 WHERE id=?", (revision_id,))
+            db.execute("UPDATE current_cognition SET state_json=? WHERE id=1", (state.model_dump_json(),))

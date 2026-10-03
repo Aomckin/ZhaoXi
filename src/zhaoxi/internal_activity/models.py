@@ -35,6 +35,8 @@ class ActivityResult:
     cost: dict[str, int] = field(default_factory=dict)
     summary: str = ""
     evidence_refs: list[str] = field(default_factory=list)
+    details: list[dict] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
     deliveries: list = field(default_factory=list)
 
     def diagnostics(self):

@@ -11,6 +11,14 @@
 
 ## v1.4.x
 
+- [v1.4.5 Dashboard & Control Plane 任务书](v1.4.x/Zhaoxi_v1.4.5_Dashboard_Control_Plane_Task.md)
+- [v1.4.5 开发记录与验收边界](v1.4.x/Zhaoxi_v1.4.5_开发记录.md)
+- [v1.4.5 版本说明](v1.4.x/Zhaoxi_v1.4.5_Release_Notes.md)
+- [v1.4.5 自动验收汇总](v1.4.x/evidence/dashboard_v145_acceptance.json)
+- [v1.4.5 Web 入口与工程点击验收](v1.4.x/evidence/dashboard_web_v145_acceptance.json)
+- [v1.4.5 本地文件工具排查](v1.4.x/Zhaoxi_v1.4.5_Local_File_Tool_Investigation.md)
+- [v1.4.5 本地文件工具排查证据](v1.4.x/evidence/local_file_tool_investigation.json)
+
 - [v1.4.4 群聊历史搜索与旧证据衔接补丁](v1.4.x/Zhaoxi_v1.4.4_群聊历史搜索_补丁记录.md)
 - [v1.4.4 群聊历史搜索验收汇总](v1.4.x/evidence/social_history_search_acceptance.json)
 - [v1.4.4 Presence 2.0 任务书](v1.4.x/Zhaoxi_v1.4.4_Presence_2.0_A_Life_Between_Conversations_Task.md)

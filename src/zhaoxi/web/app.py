@@ -15,7 +15,7 @@ from typing import Any, Callable, Literal
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, RedirectResponse
 from pydantic import BaseModel, Field, ConfigDict, StrictBool, model_validator
 from zhaoxi.tools.manifest import group_inventory, inventory_summary
 from zhaoxi.tools.filesystem_access import (
@@ -267,6 +267,7 @@ def create_app(
     voice_runtime=None,
     now_provider=None,
     restart_callback: Callable[[], bool] | None = None,
+    desktop_open_callback: Callable[[], None] | None = None,
 ) -> FastAPI:
     configured = settings or Settings()
     if agent is not None:
@@ -399,10 +400,14 @@ def create_app(
             activity = getattr(core, "internal_activity", None)
             if activity is not None:
                 try:
-                    await activity.run_tick()
+                    if activity.control.presence()["heartbeat_enabled"]:
+                        await activity.run_tick()
                 except Exception as exc:
                     logger.warning("internal activity loop failed type=%s", type(exc).__name__)
-            await asyncio.sleep(configured.proactive_heartbeat_seconds)
+            if activity is not None:
+                await activity.control.wait_interval()
+            else:
+                await asyncio.sleep(configured.proactive_heartbeat_seconds)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -454,6 +459,9 @@ def create_app(
 
     app = FastAPI(title="Zhaoxi Local Shell", docs_url="/api/docs", lifespan=lifespan)
 
+    from .local_access import local_browser_request
+    dashboard_token = secrets.token_urlsafe(32)
+
     if api_token:
         @app.middleware("http")
         async def require_local_token(request: Request, call_next):
@@ -461,23 +469,49 @@ def create_app(
                 supplied = request.headers.get("X-Zhaoxi-Token") or request.cookies.get(
                     "zhaoxi_session", ""
                 )
-                if not secrets.compare_digest(supplied, api_token):
-                    return JSONResponse(status_code=401, content={"detail": "本地 Desktop 会话令牌无效。"})
+                desktop_authorized = secrets.compare_digest(supplied, api_token)
+                browser_authorized = (
+                    not request.headers.get("X-Zhaoxi-Token")
+                    and secrets.compare_digest(request.cookies.get("zhaoxi_dashboard_session", ""), dashboard_token)
+                    and local_browser_request(request)
+                )
+                if not (desktop_authorized or browser_authorized):
+                    return JSONResponse(status_code=401, content={"detail": "本地管理会话无效，请刷新管理面板。"})
             return await call_next(request)
 
     from fastapi.staticfiles import StaticFiles
 
     mimetypes.add_type("image/webp", ".webp")
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    from .dashboard import dashboard_router
+    app.include_router(dashboard_router(core, static_dir, desktop_open_callback=desktop_open_callback))
 
     @app.middleware("http")
     async def desktop_entry_guard(request: Request, call_next):
         import posixpath
         normalized_path = posixpath.normpath(request.url.path.replace("\\", "/")).lower().rstrip(" .")
-        if (normalized_path == "/" or normalized_path.startswith("/static/") and normalized_path.endswith(".html")) and not configured.dev_browser_ui:
-            supplied = request.cookies.get("zhaoxi_session", "")
-            if not api_token or not secrets.compare_digest(supplied, api_token):
-                return JSONResponse(status_code=403, content={"detail": "请从桌面或托盘打开朝汐。开发调试可设置 ZHAOXI_DEV_BROWSER_UI=true。"})
+        desktop_authorized = bool(api_token and secrets.compare_digest(request.cookies.get("zhaoxi_session", ""), api_token))
+        browser_authorized = (
+            secrets.compare_digest(request.cookies.get("zhaoxi_dashboard_session", ""), dashboard_token)
+            and local_browser_request(request)
+        )
+        if normalized_path == "/dashboard":
+            if not local_browser_request(request):
+                return JSONResponse(status_code=403, content={"detail": "管理面板仅允许本机浏览器访问。"})
+            response = await call_next(request)
+            response.set_cookie("zhaoxi_dashboard_session", dashboard_token, httponly=True,
+                                samesite="strict", path="/")
+            response.headers["Referrer-Policy"] = "no-referrer"
+            response.headers["Cache-Control"] = "no-store"
+            return response
+        if normalized_path == "/" and not desktop_authorized and not configured.dev_browser_ui:
+            return RedirectResponse("/dashboard", status_code=303)
+        engineering = normalized_path in {"/static/dashboard.html", "/static/engineering.html"}
+        if engineering and browser_authorized:
+            return await call_next(request)
+        if normalized_path.startswith("/static/") and normalized_path.endswith(".html") and not configured.dev_browser_ui:
+            if not desktop_authorized:
+                return JSONResponse(status_code=403, content={"detail": "请从桌面或托盘打开朝汐；浏览器管理页面位于 /dashboard。"})
         return await call_next(request)
 
     @app.get("/desktop-entry", include_in_schema=False)
@@ -1039,6 +1073,8 @@ def create_app(
 
         now = datetime.now(UTC)
         state.interaction.force_debug_state(InteractionState(body.state) if body.state else None, now)
+        if getattr(core, "internal_activity", None):
+            core.internal_activity.publish_presence()
         return state.interaction.diagnostics(now)
 
     @app.post("/api/debug/internal-activity")
@@ -1048,11 +1084,14 @@ def create_app(
             raise HTTPException(status_code=409, detail="Internal Activity 尚未就绪。")
         if body.activity != "tick" and body.activity not in activity.registry:
             raise HTTPException(status_code=409, detail="该活动尚未启用 Presence 2.0。")
-        deliveries = await activity.run_tick(force=None if body.activity == "tick" else body.activity,
+        if body.activity != "tick":
+            receipt = await activity.run_manual(body.activity, confirm_social_write=body.confirm_social_write)
+            return {**activity.diagnostics(), "receipts": [receipt], "receipt": receipt}
+        deliveries = await activity.run_tick(force=None,
             confirm_social_write=body.confirm_social_write, manual=True)
         for delivery in deliveries:
             await events.publish({"type": "proactive", "delivery": delivery.model_dump(mode="json", exclude={"relevant_payload"})})
-        return activity.diagnostics()
+        return {**activity.diagnostics(), "receipts": activity.tick_receipts, "receipt": activity.tick_receipts[-1] if activity.tick_receipts else None}
 
     @app.get("/api/debug/budget-context")
     async def debug_budget_context():

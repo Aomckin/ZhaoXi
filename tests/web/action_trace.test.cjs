@@ -4,9 +4,9 @@ const vm=require('node:vm');
 const fs=require('node:fs');
 const path=require('node:path');
 
-const html=fs.readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/index.html'),'utf8');
+const html=fs.readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/engineering.html'),'utf8')+fs.readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/shell.js'),'utf8');
 const source=html.slice(html.indexOf('let activeTraceId='),html.indexOf('let activityHintTimer='));
-test('the live action list is visible in the side panel',()=>{
+test('the live action list is available in dashboard engineering',()=>{
   const summary=html.indexOf('id="actionTraceSummary"');
   const list=html.indexOf('id="actionTraceEvents"');
   const debug=html.indexOf('id="runtimeDebugPanel"');

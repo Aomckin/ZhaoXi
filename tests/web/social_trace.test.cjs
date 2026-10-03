@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');const fs=require('node:fs');const vm=require('node:vm');const path=require('node:path');
-const html=fs.readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/index.html'),'utf8');
+const html=fs.readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/index.html'),'utf8')+fs.readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/shell.js'),'utf8');
 const code=html.slice(html.indexOf('let socialTracePage=null'),html.indexOf("$('#provenanceInspectorRun').onclick="));
 function setup(responses){const elements=new Map(),urls=[];const $=key=>{if(!elements.has(key))elements.set(key,{value:'',disabled:false,textContent:'',set innerHTML(x){throw Error('unsafe HTML')}});return elements.get(key)};
  vm.runInNewContext(code,{$,JSON,URLSearchParams,request:async url=>{urls.push(url);const data=responses.shift();if(data instanceof Error)throw data;return data}});return {$,urls};}

@@ -1,9 +1,10 @@
 # Zhaoxi / 朝汐
 
-朝汐是一个以本地运行、长期陪伴和可控工具执行为核心的个人 Agent。当前开发版本为 **1.4.4**（[版本说明](docs/v1.4.x/Zhaoxi_v1.4.4_Release_Notes.md)）。Core 提供请求级运行观测、长任务中间回复、Perception、认知时间线和 External Source Plugin 协议；QQ / NapCat 作为可选插件接入。
+朝汐是一个以本地运行、长期陪伴和可控工具执行为核心的个人 Agent。当前开发版本为 **1.4.5**（[版本说明](docs/v1.4.x/Zhaoxi_v1.4.5_Release_Notes.md)）。Core 提供请求级运行观测、长任务中间回复、Perception、认知时间线和 External Source Plugin 协议；QQ / NapCat 作为可选插件接入。
 
 ## 主要特点
 
+- 独立 Dashboard 管理面板：中文活动回执、Presence / Heartbeat 与活动权限控制、带锁定保护和撤销的近期认知编辑；浏览器访问本地 Core 地址进入；小桌边和托盘设置在浏览器打开。
 - 多轮对话与图文输入，支持本地桌面窗口、陪伴小窗、Web、CLI 和 QQ。
 - Perception System 将 QQ 群消息分流为 Direct 或 Ambient；普通群消息批量形成可追溯摘要，可按群号、时间和关键词搜索已保存原消息并展开证据。
 - Memory 3.0：自然联想 / 明确回忆 / 广泛搜索分层，语义簇优先与 FTS / 语义 / 实体全局候选联合召回，非线性热度与可追溯证据。
@@ -119,7 +120,7 @@ python scripts/benchmark_memory_v143.py --semantic --output .zhaoxi/memory-v143-
 
 - 图片：点击输入区图片按钮或直接粘贴；发送前可预览和移除。
 - 语音：安装 voice 可选依赖并在 `.env` 中启用对应 Provider。
-- 表情：本地注册表位于 `data/emoji/emoji_registry.json`，可在维护抽屉的表情柜中管理。FAST 闲聊也可按属性使用表情，支持有序图文和纯表情回复；QQ Owner 私聊沿用同一条发送链路。
+- 表情：本地注册表位于 `data/emoji/emoji_registry.json`，可在 Dashboard 的表情柜中管理。FAST 闲聊也可按属性使用表情，支持有序图文和纯表情回复；QQ Owner 私聊沿用同一条发送链路。
 
 ## 测试
 
@@ -129,6 +130,7 @@ python -m pytest
 
 ## 文档
 
+- [v1.4.5 Dashboard 开发记录与验收](docs/v1.4.x/Zhaoxi_v1.4.5_开发记录.md)
 - [v1.4.4 Presence 2.0 开发记录](docs/v1.4.x/Zhaoxi_v1.4.4_开发记录.md)
 - [v1.4.3 开发记录与迁移说明](docs/v1.4.x/Zhaoxi_v1.4.3_开发记录.md)
 - [v1.4.2 开发记录与验收](docs/v1.4.x/Zhaoxi_v1.4.2_开发记录.md)
@@ -142,4 +144,4 @@ python -m pytest
 
 ## External Source Plugins
 
-Core 默认不启用任何第三方聊天平台。插件通过 `ObservationSink` 发送标准 Observation，Core 负责认知、权限和回复路由。仓库附带可选的 QQ / NapCat 插件；将 `config/plugins/qq_napcat.example.toml` 复制为被 Git 忽略的 `config/plugins/qq_napcat.toml`，配置账号与连接并设置 `enabled = true` 后启用，也可在维护抽屉的 External Sources 中运行时启停或重启。移除插件包后，Core 的本地对话、Memory 和 Experience Stream 继续可用。协议和配置见 [External Source Plugin Spec](docs/plugin/External_Source_Plugin_Spec.md) 与 [QQ 插件](docs/plugin/QQ_NapCat_Plugin.md)。
+Core 默认不启用任何第三方聊天平台。插件通过 `ObservationSink` 发送标准 Observation，Core 负责认知、权限和回复路由。仓库附带可选的 QQ / NapCat 插件；将 `config/plugins/qq_napcat.example.toml` 复制为被 Git 忽略的 `config/plugins/qq_napcat.toml`，配置账号与连接并设置 `enabled = true` 后启用，也可在 Dashboard 的 External Sources 中运行时启停或重启。移除插件包后，Core 的本地对话、Memory 和 Experience Stream 继续可用。协议和配置见 [External Source Plugin Spec](docs/plugin/External_Source_Plugin_Spec.md) 与 [QQ 插件](docs/plugin/QQ_NapCat_Plugin.md)。

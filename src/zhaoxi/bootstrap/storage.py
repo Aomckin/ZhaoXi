@@ -83,7 +83,9 @@ def build_data_store_specs(settings: Settings, *, archive_enabled: bool) -> list
         ("decision_rule_candidates", ".zhaoxi/decisions/rule_candidates.jsonl"),
     ):
         specs.append(DataStoreSpec(name, Path(path), kind="file"))
-    specs.append(DataStoreSpec("internal_activity", Path(settings.internal_activity_db_path)))
+    activity_path = Path(settings.internal_activity_db_path)
+    specs.append(DataStoreSpec("internal_activity", activity_path))
+    specs.append(DataStoreSpec("runtime_settings", activity_path.with_name(activity_path.stem + "-settings.json"), kind="file"))
     specs.append(DataStoreSpec("perception", Path(settings.perception_db_path)))
     specs.append(DataStoreSpec("experience", Path(".zhaoxi/experience.db")))
     # Legacy backup/restore only; neither source enters the current Context.

@@ -1,0 +1,46 @@
+{
+  "fresh_browser_root": "dashboard",
+  "desktop_token_required": false,
+  "browser_write_status": 200,
+  "engineering": [
+    {
+      "mode": "memory",
+      "disclosures_clicked": 7,
+      "refresh_status": 200
+    },
+    {
+      "mode": "runtime",
+      "disclosures_clicked": 9,
+      "refresh_status": 200
+    },
+    {
+      "mode": "capability",
+      "disclosures_clicked": 8,
+      "refresh_status": 200
+    },
+    {
+      "mode": "settings",
+      "disclosures_clicked": 4,
+      "refresh_status": 409
+    }
+  ],
+  "desktop_bridge_opens_browser": true,
+  "errors": [],
+  "python_web_desktop_passed": 152,
+  "node_passed": 78,
+  "original_dashboard_smoke": {
+    "checks": [
+      "living_dashboard_split",
+      "overview",
+      "active_semi_idle",
+      "human_receipt",
+      "cognition_editor_literal",
+      "delete_undo",
+      "engineering_lazy_panels_clickable",
+      "no_browser_errors"
+    ],
+    "errors": []
+  },
+  "production_desktop_process_restarted": false,
+  "native_browser_opener": "Python callback mock and headless browser bridge mock"
+}

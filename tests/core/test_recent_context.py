@@ -48,7 +48,7 @@ def test_agenda_and_cognition_precede_retrieved_long_term_memory(tmp_path):
 
 
 def test_debug_ui_keeps_existing_panel():
-    page = (Path(__file__).parents[2] / "src/zhaoxi/web/static/index.html").read_text(encoding="utf-8")
+    page = (Path(__file__).parents[2] / "src/zhaoxi/web/static/engineering.html").read_text(encoding="utf-8") + (Path(__file__).parents[2] / "src/zhaoxi/web/static/shell.js").read_text(encoding="utf-8")
     assert "agendaContextToggle" in page
     assert "日程 / 近期状态调试" in page
     assert "/api/debug/recent-context" in page

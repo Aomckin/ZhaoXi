@@ -36,17 +36,17 @@ def render_for_fast_chat(state: CurrentCognitionState, *, max_chars: int = 350) 
         return ("[来源: " + "、".join(labels) + "] " if labels else "") + text
 
     lines = ["[Current Cognition]"]
-    if state.overview and _fresh(state.updated_at, 7):
+    if state.overview and (state.overview_manual.source == "OWNER_MANUAL" or _fresh(state.updated_at, 7)):
         overview = with_source(state.overview,state.overview_source_refs)
         if len("\n".join([*lines,"这几天：",overview,"[/Current Cognition]"])) <= max_chars:
             lines.extend(["这几天：", overview])
-    active = sorted((t for t in state.threads if t.status == "active" and _fresh(t.last_evidence_at, 7)),
-                    key=lambda t: (-t.salience, -t.last_evidence_at.timestamp()))
-    cooling = sorted((t for t in state.threads if t.status == "cooling" and _fresh(t.last_evidence_at, 7)),
-                     key=lambda t: (-t.salience, -t.last_evidence_at.timestamp()))
+    active = sorted((t for t in state.threads if t.status == "active" and (t.manual_state in {"PINNED", "LOCKED"} or _fresh(t.last_evidence_at, 7))),
+                    key=lambda t: (t.manual_state != "PINNED", -t.salience, -t.last_evidence_at.timestamp()))
+    cooling = sorted((t for t in state.threads if t.status == "cooling" and (t.manual_state in {"PINNED", "LOCKED"} or _fresh(t.last_evidence_at, 7))),
+                     key=lambda t: (t.manual_state != "PINNED", -t.salience, -t.last_evidence_at.timestamp()))
     groups = [("还挂着：", [with_source(t.summary,t.source_refs) for t in active]),
-              ("刚变化：", [with_source(x.text,x.source_refs) for x in state.recent_changes if _fresh(x.updated_at, 3)]),
-              ("需要留意：", [with_source(x.text,x.source_refs) for x in state.watch_items if _fresh(x.updated_at, 7)]),
+              ("刚变化：", [with_source(x.text,x.source_refs) for x in state.recent_changes if (x.source == "OWNER_MANUAL" or _fresh(x.updated_at, 3))]),
+              ("需要留意：", [with_source(x.text,x.source_refs) for x in state.watch_items if (x.source == "OWNER_MANUAL" or _fresh(x.updated_at, 7))]),
               ("降温中：", [with_source(t.summary,t.source_refs) for t in cooling])]
     for heading, values in groups:
         added = False
@@ -63,10 +63,10 @@ def render_for_fast_chat(state: CurrentCognitionState, *, max_chars: int = 350) 
     return "\n".join([*lines, "[/Current Cognition]"])
 
 def render_for_desk(state: CurrentCognitionState) -> dict:
-    return {"overview": state.overview if _fresh(state.updated_at, 7) else "",
-            "sections": {"active_thread": [t.summary for t in state.threads if t.status == "active" and _fresh(t.last_evidence_at, 7)],
-                         "recent_change": [item.text for item in state.recent_changes if _fresh(item.updated_at, 3)],
-                         "unresolved": [item.text for item in state.watch_items if _fresh(item.updated_at, 7)]},
+    return {"overview": state.overview if (state.overview_manual.source == "OWNER_MANUAL" or _fresh(state.updated_at, 7)) else "",
+            "sections": {"active_thread": [t.summary for t in state.threads if t.status == "active" and (t.manual_state in {"PINNED", "LOCKED"} or _fresh(t.last_evidence_at, 7))],
+                         "recent_change": [item.text for item in state.recent_changes if (item.source == "OWNER_MANUAL" or _fresh(item.updated_at, 3))],
+                         "unresolved": [item.text for item in state.watch_items if (item.source == "OWNER_MANUAL" or _fresh(item.updated_at, 7))]},
             "updated_at": state.updated_at.isoformat() if state.updated_at else None}
 
 def render_for_debug(state: CurrentCognitionState) -> dict:

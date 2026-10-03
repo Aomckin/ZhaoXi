@@ -2,7 +2,7 @@
 from datetime import timedelta
 from zhaoxi.memory.models import aware_utc
 from zhaoxi.reliability import provider_budget_scope
-from ..models import ActivitySpec, ActivityCategory as Category, CostClass as Cost, PresenceState as Presence
+from ..models import ActivityResult, ActivitySpec, ActivityCategory as Category, CostClass as Cost, PresenceState as Presence
 from ..registry import ActivityRegistry
 
 COGNITION = "current_cognition_consolidation"
@@ -88,7 +88,10 @@ async def cognition(r, kind):
     stream = getattr(r.agent, "experience_stream", None)
     if stream is None:
         return "SKIP"
-    return await r.agent.current_cognition_maintainer.maintain_events(stream, background=True)
+    status = await r.agent.current_cognition_maintainer.maintain_events(stream, background=True)
+    record = r.agent.current_cognition.last_maintenance
+    summary = f"近期认知：新增 {record.get('threads_added',0)} 条主线，更新 {record.get('threads_updated',0)} 条，移除 {record.get('threads_removed',0)} 条。"
+    return ActivityResult(status=status, changed=status == "UPDATE", summary=summary if status not in {"FAILED", "REJECTED"} else "近期认知维护失败。", cost={"manual_guard_hits":record.get("manual_guard_hits",0)})
 
 async def perception(r, kind):
     runtime = getattr(r.agent, "perception", None)

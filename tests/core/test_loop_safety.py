@@ -308,3 +308,29 @@ def test_budget_metrics_follow_provider_usage_outside_standard_loop():
         assert trace.budget_state=="WARNING" and trace.budget_remaining_ratio==pytest.approx(.3)
         record_provider_tokens(150)
         assert trace.budget_state=="DANGER" and trace.budget_remaining_ratio==pytest.approx(.15)
+
+
+@pytest.mark.parametrize("expanded,business_calls,tool_round,limit,credited", [
+    (True, False, 0, 1, True),
+    (False, False, 0, 1, False),
+    (True, True, 0, 1, False),
+    (True, False, 1, 1, False),
+    (True, False, 0, 0, False),
+])
+def test_discovery_credit_requires_new_capability_without_business_execution(expanded, business_calls, tool_round, limit, credited):
+    safety = LoopSafety(tool_round=tool_round, discovery_limit=limit)
+    assert safety.credit_discovery_round(expanded=expanded, business_calls=business_calls) == credited
+    assert safety.discovery_round == int(credited)
+
+
+def test_productive_discovery_credit_is_bounded_and_actual_calls_still_counted():
+    safety = LoopSafety()
+    assert safety.credit_discovery_round(expanded=True, business_calls=False)
+    assert not safety.credit_discovery_round(expanded=True, business_calls=False)
+    for _ in range(3):
+        safety.begin_round()
+    assert not safety.model_limit_reached
+    safety.begin_round()
+    assert safety.model_limit_reached
+    assert safety.metrics()["standard_model_round"] == 4
+    assert safety.metrics()["discovery_round"] == 1

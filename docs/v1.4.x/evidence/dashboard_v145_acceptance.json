@@ -1,0 +1,122 @@
+{
+  "version": "1.4.5",
+  "date": "2026-10-03",
+  "python_full": {
+    "passed": 1169,
+    "skipped": 1,
+    "duration_seconds": 233.79,
+    "scope": "final v1.4.5 including local tool fix and browser migration",
+    "command": "python -m pytest -q -o addopts='' --basetemp=.zhaoxi/v145-commit-final"
+  },
+  "final_domain_recheck": {
+    "passed": 113
+  },
+  "overview_recheck": {
+    "passed": 2
+  },
+  "node": {
+    "passed": 78,
+    "commit_recheck_passed": 78
+  },
+  "browser": {
+    "checks": [
+      "living_dashboard_split",
+      "overview",
+      "active_semi_idle",
+      "human_receipt",
+      "cognition_editor_literal",
+      "delete_undo",
+      "engineering_lazy_panels_clickable",
+      "no_browser_errors"
+    ],
+    "errors": []
+  },
+  "desktop_bridge": "mock bridge only; production pywebview not restarted",
+  "packaging": {
+    "path": ".zhaoxi\\v145-dist\\zhaoxi-1.4.5-py3-none-any.whl",
+    "sha256": "7a80689a6e93340a2585fc7b56c9c9a9f37125e53eb2e9f33f6a35463ae6ff52",
+    "source_files_compared": 280,
+    "exact_match": true
+  },
+  "production_restarted": false,
+  "real_social_send": false,
+  "long_term_dogfooding": "pending",
+  "engineering_click_fix": {
+    "checks": [
+      {
+        "mode": "memory",
+        "disclosures_clicked": 7,
+        "refresh_status": 200
+      },
+      {
+        "mode": "runtime",
+        "disclosures_clicked": 9,
+        "refresh_status": 200
+      },
+      {
+        "mode": "capability",
+        "disclosures_clicked": 8,
+        "refresh_status": 200
+      },
+      {
+        "mode": "settings",
+        "disclosures_clicked": 4,
+        "refresh_status": 409
+      }
+    ],
+    "errors": [],
+    "node_passed": 78,
+    "dashboard_api_passed": 2
+  },
+  "local_file_tool_fix_regression": {
+    "passed": 1167,
+    "skipped": 1,
+    "duration_seconds": 232.25
+  },
+  "browser_migration": {
+    "fresh_browser_root": "dashboard",
+    "desktop_token_required": false,
+    "browser_write_status": 200,
+    "engineering": [
+      {
+        "mode": "memory",
+        "disclosures_clicked": 7,
+        "refresh_status": 200
+      },
+      {
+        "mode": "runtime",
+        "disclosures_clicked": 9,
+        "refresh_status": 200
+      },
+      {
+        "mode": "capability",
+        "disclosures_clicked": 8,
+        "refresh_status": 200
+      },
+      {
+        "mode": "settings",
+        "disclosures_clicked": 4,
+        "refresh_status": 409
+      }
+    ],
+    "desktop_bridge_opens_browser": true,
+    "errors": [],
+    "python_web_desktop_passed": 152,
+    "node_passed": 78,
+    "original_dashboard_smoke": {
+      "checks": [
+        "living_dashboard_split",
+        "overview",
+        "active_semi_idle",
+        "human_receipt",
+        "cognition_editor_literal",
+        "delete_undo",
+        "engineering_lazy_panels_clickable",
+        "no_browser_errors"
+      ],
+      "errors": []
+    },
+    "production_desktop_process_restarted": false,
+    "native_browser_opener": "Python callback mock and headless browser bridge mock"
+  }
+}

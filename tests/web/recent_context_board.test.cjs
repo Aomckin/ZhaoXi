@@ -4,7 +4,7 @@ const {readFileSync}=require('node:fs');
 const vm=require('node:vm');
 const path=require('node:path');
 
-const html=readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/index.html'),'utf8');
+const html=readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/index.html'),'utf8')+readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/shell.js'),'utf8');
 const source=html.slice(html.indexOf('const agendaTypeNames='),html.indexOf('async function setupEmojiDebug()'));
 
 function element(tag='div'){return {tag,textContent:'',className:'',children:[],append(...items){this.children.push(...items)},replaceChildren(){this.children=[]}}}
@@ -61,7 +61,7 @@ test('current cognition uses one paper, hides absent sections and uses text-only
   assert.ok(nodes.some(n=>n.className==='memory-overview'&&n.textContent==='最近持续开发 Zhaoxi'));
   assert.ok(nodes.some(n=>n.tag==='li'&&n.textContent==='<script>alert(1)</script>'));
   assert.equal(nodes.filter(n=>n.className==='memory-section').length,2);
-  assert.match(html,/日程 \/ 近期状态调试/);
+  assert.match(html,/打开管理面板/);
   assert.doesNotMatch(html,/workingNoteCards|Working Notes Context/);
 });
 

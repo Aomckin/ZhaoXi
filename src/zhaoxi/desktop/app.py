@@ -77,12 +77,13 @@ class DesktopHost:
             width=settings.desktop_window_width,
             height=settings.desktop_window_height,
             geometry_path=getattr(settings, "desktop_geometry_path", ".zhaoxi/window-geometry.json"),
+            on_dashboard=self.open_dashboard,
         )
         self.tray = TrayIcon(
             on_show=self.window.show_main,
             on_companion=self.window.show_companion,
             on_hide=self.window.hide,
-            on_settings=self.window.show_settings,
+            on_settings=lambda: self.open_dashboard("settings"),
             on_quit=self.stop,
             on_toggle_quiet=self._toggle_quiet,
             is_quiet=self._is_quiet,
@@ -101,6 +102,15 @@ class DesktopHost:
         self._server_thread: threading.Thread | None = None
         self._stopping = threading.Event()
         self._restart_lock = threading.Lock()
+
+    def open_dashboard(self, view="overview"):
+        import webbrowser
+        if view not in {"overview", "presence", "activity", "cognition", "memory", "runtime", "capability", "settings"}:
+            view = "overview"
+        host = self.settings.web_host
+        if host in {"0.0.0.0", "::"}:
+            host = "127.0.0.1" if host == "0.0.0.0" else "[::1]"
+        return webbrowser.open(f"http://{host}:{self.settings.web_port}/dashboard#{view}", new=2)
 
     def _initialize_core(self) -> None:
         settings = self.settings
@@ -171,6 +181,7 @@ class DesktopHost:
                 api_token=self.api_token,
                 voice_runtime=self.voice,
                 restart_callback=self.request_restart,
+                desktop_open_callback=self.window.show_main,
             ),
             host=self.settings.web_host,
             port=self.settings.web_port,

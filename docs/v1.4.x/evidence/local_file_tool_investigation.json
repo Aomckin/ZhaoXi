@@ -1,0 +1,38 @@
+{
+  "request_id": "5b49c944-7034-46a8-885f-8523e7024f19",
+  "observed_tool_results": {
+    "mcp_filesystem_list_directory": "success",
+    "mcp_filesystem_search_files": "success"
+  },
+  "body_read_executed": false,
+  "finalization_reason": "round_limit",
+  "provider_error_code": "provider_tool_arguments_invalid",
+  "exact_bad_protocol_unavailable": true,
+  "scoped_tests_passed": 170,
+  "actual_mcp": {
+    "list_directory": "success",
+    "read_text_file": "success",
+    "filename": "Zhaoxi_v1.4.6_Decision_2.0_Decision_as_Agency_开发任务书.md",
+    "characters": 15914,
+    "content_sha256": "9ab79f458b958e89121ed2703507955bee4279091b2473cce30d180980940f01",
+    "real_model_used": false,
+    "external_writes": false
+  },
+  "production_restarted": false,
+  "real_model_replay": false,
+  "fix": {
+    "new_user_keyword_matching": false,
+    "productive_discovery_credit_max": 1,
+    "standard_model_limit": 3,
+    "normal_model_calls_max_with_credit": 4,
+    "fast_escalation_credit_max": 0,
+    "business_tool_round_limit": 2,
+    "actual_model_calls_remain_counted": true,
+    "budgets_and_permission_boundary_preserved": true
+  },
+  "python_full": {
+    "passed": 1167,
+    "skipped": 1,
+    "duration_seconds": 232.25
+  }
+}

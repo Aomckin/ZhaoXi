@@ -11,7 +11,14 @@ class EvidenceRef(BaseModel):
     source: str = "owner"
     provenance: dict = Field(default_factory=dict)
 
-class CognitionThread(BaseModel):
+class ManualMetadata(BaseModel):
+    source: str = "AUTO"
+    manual_state: Literal["NORMAL", "PINNED", "LOCKED", "RESOLVED", "DISMISSED"] = "NORMAL"
+    manual_revision: int = 0
+    updated_by: str = "runtime"
+    manual_updated_at: datetime | None = None
+
+class CognitionThread(ManualMetadata):
     key: str
     title: str = Field(max_length=40)
     summary: str = Field(max_length=160)
@@ -22,7 +29,7 @@ class CognitionThread(BaseModel):
     last_evidence_at: datetime
     source_refs: list[EvidenceRef] = Field(default_factory=list, max_length=8)
 
-class JournalItem(BaseModel):
+class JournalItem(ManualMetadata):
     key: str
     text: str = Field(max_length=80)
     created_at: datetime
@@ -32,6 +39,8 @@ class JournalItem(BaseModel):
 class CurrentCognitionState(BaseModel):
     version: int = 2
     overview: str = Field(default="", max_length=160)
+    overview_manual: ManualMetadata = Field(default_factory=ManualMetadata)
+    manual_suppressions: list[dict] = Field(default_factory=list)
     overview_source_refs: list[EvidenceRef] = Field(default_factory=list, max_length=8)
     threads: list[CognitionThread] = Field(default_factory=list)
     recent_changes: list[JournalItem] = Field(default_factory=list)

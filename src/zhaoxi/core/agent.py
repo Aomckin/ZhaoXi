@@ -761,7 +761,8 @@ class ZhaoxiAgent:
             discovery.safety = LoopSafety(
                 model_limit=min(self.max_steps, 2 if escalated else getattr(settings, "standard_model_round_limit", 3)),
                 tool_limit=1 if escalated else getattr(settings, "standard_tool_round_limit", 2),
-                repair_limit=getattr(settings, "standard_repair_round_limit", 1))
+                repair_limit=getattr(settings, "standard_repair_round_limit", 1),
+                discovery_limit=0 if escalated else 1)
         return discovery.safety
 
     @staticmethod
@@ -833,7 +834,7 @@ class ZhaoxiAgent:
         response_started = False
         safety = self._safety_state(discovery,fast_escalated)
         for step in range(1, self.max_steps + 1):
-            if safety.model_round >= safety.model_limit:
+            if safety.model_limit_reached:
                 return self._deterministic_final(request_id, step-1, safety, "model_round_limit")
             budget = current_budget()
             if budget and budget.state is BudgetState.EXHAUSTED:
@@ -849,7 +850,7 @@ class ZhaoxiAgent:
                 trace.emit("model_step_started", "model", "running", "正在思考下一步…", step_id=step)
             try:
                 budget_stage, final_only = self._budget_mode(tool_called, trace, step)
-                final_only = final_only or bool(safety.forced_reason) or safety.model_round >= safety.model_limit or safety.tool_round >= safety.tool_limit
+                final_only = final_only or bool(safety.forced_reason) or safety.model_limit_reached or safety.tool_round >= safety.tool_limit
                 if final_only and not safety.forced_reason:
                     safety.force("budget_danger" if budget and budget.state is BudgetState.DANGER else "round_limit")
                 if final_only:
@@ -862,7 +863,8 @@ class ZhaoxiAgent:
                 final_only = final_only or discovery.stalled >= 2 or (tool_called and trace is not None
                     and time.monotonic() - trace.started_monotonic >= self.timeout_seconds * 0.75)
                 if trace and step > 2 and not trace.extra_round_reason:
-                    trace.extra_round_reason = ("tool_repair" if trace.tool_rounds > 1 else "discovery_or_model_retry")
+                    trace.extra_round_reason = ("capability_discovery" if safety.discovery_round else
+                        "tool_repair" if trace.tool_rounds > 1 else "discovery_or_model_retry")
                 schemas = [] if final_only or no_tools else discovery.schemas(self.registry)
                 if no_tools and not final_only:
                     schemas = [self.registry.get(name).schema() for name in allowed_read_tools if any(t.name==name for t in self.registry.list()) and self.registry.usable(name)]
@@ -1122,6 +1124,7 @@ class ZhaoxiAgent:
                     None if any(call.name == "emit_interim_reply" for call in response.tool_calls) else response.content,
                     tool_calls=business_calls,
                     metadata=transcript_metadata)
+            expanded_before = set(discovery.expanded)
             for call_index, call in enumerate(response.tool_calls):
                 observable_name = self._observable_tool_name(call.name)
                 tool_logger.info(
@@ -1236,6 +1239,13 @@ class ZhaoxiAgent:
                     self._finish_traced_tool(trace, attempt, execution)
                 tool_logger.info("request=%s tool=%s success=%s", request_id, observable_name, result.success)
 
+            if not no_tools and safety.credit_discovery_round(
+                expanded=bool(set(discovery.expanded) - expanded_before), business_calls=bool(business_calls)
+            ) and trace:
+                trace.emit("discovery_round_credited", "tool_discovery", "success",
+                           "新能力已加载，保留业务执行与回复轮次",
+                           metadata={"discovery_round": safety.discovery_round,
+                                     "model_round_limit": min(self.max_steps, safety.model_limit + safety.discovery_round)})
             safety.finish_round()
             self._sync_safety(safety)
         return self._deterministic_final(request_id, self.max_steps, safety, "model_round_limit")

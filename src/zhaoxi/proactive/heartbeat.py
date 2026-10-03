@@ -24,6 +24,11 @@ class TidalHeartbeat:
         self.started_at = datetime.now(UTC)
         self.focus_active = False
         self.updated = asyncio.Event()
+        self.control_changed = asyncio.Event()
+        self.control = None
+        self.last_tick_at = None
+        self.next_tick_at = None
+        self.last_tick_result = "NEVER"
         self.presence = presence
         self.continuation = None
         self.sensor_health = {}
@@ -149,9 +154,14 @@ class TidalHeartbeat:
 
     async def run(self):
         while True:
+            self.control = getattr(self, "control", None)
             try:
-                await self.tick()
+                if self.control is None or self.control.presence()["heartbeat_enabled"]:
+                    self.last_tick_at = datetime.now(UTC)
+                    await self.tick()
+                    self.last_tick_result = "SUCCESS"
             except Exception as exc:
+                self.last_tick_result = 'FAILED'
                 self.metrics.increment('proactive.heartbeat_errors')
                 correlation = current_correlation()
                 logging.getLogger('HEARTBEAT').error(
@@ -159,5 +169,17 @@ class TidalHeartbeat:
                     correlation.trace_id if correlation else '-',
                     correlation.request_id if correlation else '-', type(exc).__name__,
                 )
-            self.updated.set()
-            await asyncio.sleep(self.settings.proactive_heartbeat_seconds)
+            if self.control is None or self.control.presence()["heartbeat_enabled"]:
+                self.updated.set()
+            if self.control is None:
+                await asyncio.sleep(self.settings.proactive_heartbeat_seconds)
+                continue
+            while True:
+                self.control_changed.clear()
+                interval = self.control.interval() if self.control else self.settings.proactive_heartbeat_seconds
+                enabled = self.control is None or self.control.presence()["heartbeat_enabled"]
+                self.next_tick_at = datetime.now(UTC) + timedelta(seconds=interval) if enabled else None
+                try:
+                    await asyncio.wait_for(self.control_changed.wait(), interval)
+                except TimeoutError:
+                    break

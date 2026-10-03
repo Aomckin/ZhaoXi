@@ -56,11 +56,17 @@ class Interaction:
         self.signals = SignalAggregator()
         self.interruptibility = Interruptibility.NORMAL
         self.debug_forced_state: InteractionState | None = None
+        self.forced_since = None
+        self.entered_at = None
+        self.transition_reason = "等待交互"
+        self.last_foreground_end_at = None
 
     def _set(self, state, now):
         if state == self.state:
             return
         previous = self.state
+        self.entered_at = now
+        self.transition_reason = "人工强制" if self.debug_forced_state else "交互窗口或桌面状态变化"
         self.state = state
         self.transitions += 1
         if state == InteractionState.AWAY:
@@ -79,12 +85,25 @@ class Interaction:
             self.pending_events.append(("conversation.cooled", now))
 
     def interact(self, now):
-        self.debug_forced_state = None
         self.refresh(now)
         self.last_user_interaction_at = now
+        self.last_foreground_end_at = None
         self.active_until = now + timedelta(minutes=self.active_minutes)
         self.semi_active_until = now + timedelta(minutes=self.active_minutes + self.semi_active_minutes)
-        self._set(InteractionState.ACTIVE, now)
+        if self.debug_forced_state is None:
+            self._set(InteractionState.ACTIVE, now)
+
+    def set_timing(self, active_seconds, semi_seconds):
+        self.active_minutes, self.semi_active_minutes = active_seconds / 60, semi_seconds / 60
+        base = self.last_foreground_end_at or self.last_user_interaction_at
+        if base:
+            self.active_until = base + timedelta(seconds=active_seconds)
+            self.semi_active_until = self.active_until + timedelta(seconds=semi_seconds)
+
+    def foreground_finished(self, now):
+        self.last_foreground_end_at = now
+        self.active_until = now + timedelta(minutes=self.active_minutes)
+        self.semi_active_until = self.active_until + timedelta(minutes=self.semi_active_minutes)
 
     def receptive(self, now):
         if self.debug_forced_state is not None:
@@ -148,8 +167,13 @@ class Interaction:
     def force_debug_state(self, state: InteractionState | None, now: datetime) -> None:
         if state is not None and state not in set(InteractionState):
             raise ValueError("unsupported debug presence state")
+        was_forced = self.debug_forced_state is not None
         self.debug_forced_state = state
+        self.forced_since = now if state is not None else None
         if state is None:
+            if was_forced and self.last_user_interaction_at:
+                self.active_until = now + timedelta(minutes=self.active_minutes)
+                self.semi_active_until = self.active_until + timedelta(minutes=self.semi_active_minutes)
             # Recompute from the latest physical observation and conversation clock.
             if self.snapshot and self.snapshot.healthy:
                 self.observe(self.snapshot, now)

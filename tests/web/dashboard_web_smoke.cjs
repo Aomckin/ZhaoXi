@@ -1,0 +1,32 @@
+// Production-mode browser entry, API controls, engineering clicks and desktop handoff.
+const {chromium}=require(process.env.ZHAOXI_PLAYWRIGHT||'playwright');
+const assert=require('node:assert/strict'),fs=require('node:fs');
+(async()=>{const browser=await chromium.launch({channel:'msedge',headless:true});
+try{
+ const context=await browser.newContext();const page=await context.newPage();const errors=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('http://127.0.0.1:18765/');
+ await page.getByRole('heading',{name:'朝汐现在怎样？'}).waitFor();
+ assert.equal(new URL(page.url()).pathname,'/dashboard');
+ const cookies=await context.cookies();assert(cookies.some(c=>c.name==='zhaoxi_dashboard_session'&&c.httpOnly));assert(!cookies.some(c=>c.name==='zhaoxi_session'));
+ assert.equal(await page.locator('#dashboardChrome,#messages').count(),0);
+ await page.screenshot({path:'.zhaoxi/v145-web-dashboard.png',fullPage:true});
+ await page.getByRole('button',{name:'生活状态',exact:true}).click();
+ await page.getByRole('button',{name:'保存并生效',exact:true}).waitFor();
+ const saved=page.waitForResponse(r=>r.url().endsWith('/api/settings/presence')&&r.request().method()==='PUT');
+ await page.getByRole('button',{name:'保存并生效',exact:true}).click();assert.equal((await saved).status(),200);
+ assert.equal(await page.evaluate(async()=>{const r=await fetch('/static/index.html');return r.status}),403);
+ const engineering=await require('./dashboard_engineering_smoke.cjs').checkEngineeringPanels(page);
+ await page.getByRole('button',{name:'打开朝汐桌面',exact:true}).click();
+ await page.locator('#error').filter({hasText:'当前 Core 未连接桌面窗口'}).waitFor();
+ assert.deepEqual(errors,[]);
+ const desktop=await browser.newContext();
+ await desktop.addInitScript(()=>{window.nativeCommands=[];window.pywebview={api:{command:async(action,value)=>{window.nativeCommands.push({action,value});return {opened:true}}}}});
+ const shell=await desktop.newPage();await shell.goto('http://127.0.0.1:18765/desktop-entry?token=dashboard-ui-test');
+ await shell.locator('#sideToggle').click();await shell.getByRole('link',{name:'打开管理面板 ↗'}).click();
+ assert.equal(new URL(shell.url()).pathname,'/');
+ assert.deepEqual(await shell.evaluate(()=>nativeCommands),[{action:'open_dashboard',value:'overview'}]);
+ assert.equal(desktop.pages().length,1);
+ const evidence={fresh_browser_root:'dashboard',desktop_token_required:false,browser_write_status:200,engineering,desktop_bridge_opens_browser:true,errors};
+ fs.writeFileSync('.zhaoxi/v145-web-dashboard-acceptance.json',JSON.stringify(evidence,null,2));console.log(JSON.stringify(evidence));
+}finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});

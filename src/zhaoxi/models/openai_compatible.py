@@ -170,6 +170,12 @@ class OpenAICompatibleProvider(ModelProvider):
                 try:
                     arguments = json.loads(raw_arguments) if isinstance(raw_arguments, str) else raw_arguments
                 except json.JSONDecodeError as exc:
+                    # Classify syntax failures without logging private arguments or paths.
+                    logger.warning(
+                        "stage=provider event=tool_arguments_invalid transport=native "
+                        "error_code=provider_tool_arguments_invalid line=%d column=%d position=%d",
+                        exc.lineno, exc.colno, exc.pos,
+                    )
                     raise ProviderError(
                         f"模型返回了无效的工具参数 JSON：{exc}",
                         code="provider_tool_arguments_invalid",
@@ -181,6 +187,11 @@ class OpenAICompatibleProvider(ModelProvider):
                     message.get("content"), id_prefix=f"text-{data.get('id') or 'response'}"
                 )
             except ProviderError as exc:
+                logger.warning(
+                    "stage=provider event=tool_arguments_invalid transport=text "
+                    "error_code=provider_tool_arguments_invalid reason=%s",
+                    str(exc),
+                )
                 if exc.code != "provider_error":
                     raise
                 raise ProviderError(

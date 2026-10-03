@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
 const path=require('node:path');
-const html=fs.readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/index.html'),'utf8');
+const html=fs.readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/index.html'),'utf8')+fs.readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/shell.js'),'utf8');
 const source=html.slice(html.indexOf('let INPUT_MERGE_MS='),html.indexOf('async function resolve('));
 function setup(){
   let id=0;const timers=new Map(),requests=[],payloads=[],bubbles=[],retries=[],clear={replaceChildren(){},append(){}};

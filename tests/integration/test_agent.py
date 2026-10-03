@@ -336,3 +336,55 @@ async def test_agenda_lookup_update_and_verify_continue_after_success(
             assert provider.tool_schemas[2] is None
             assert agenda.require(item.id).note == "唐超科是候选人"
             assert not any(action.tool_call_id=="verify" for action in trace.actions)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("intent", ["想看就看吧", "resource ZQ7", "打开那个说明"])
+async def test_model_discovery_lists_reads_and_answers_within_bounded_rounds(context_builder, conversation, tmp_path, intent):
+    from pydantic import BaseModel
+    from zhaoxi.tools.base import Tool, ToolResult
+    from zhaoxi.tools.registry import ToolRegistry
+    from zhaoxi.permission.models import PermissionLevel, SideEffect
+    from zhaoxi.observability import action_trace_scope
+    from zhaoxi.reliability import CorrelationContext, correlation_scope
+    from pathlib import Path
+
+    document = tmp_path / "v1.4.6.md"
+    document.write_text("Decision 2.0: verified file body", encoding="utf-8")
+    calls = []
+    class FileInput(BaseModel):
+        path: str
+    class LocalReadTool(Tool):
+        input_model = FileInput
+        description = "isolated filesystem fixture"
+        permission = PermissionLevel.READ
+        side_effects = frozenset({SideEffect.NONE})
+        def __init__(self, name):
+            self.name = name
+        async def execute(self, args):
+            calls.append(self.name)
+            target = Path(args.path)
+            content = '\n'.join(p.name for p in target.iterdir()) if target.is_dir() else target.read_text(encoding="utf-8")
+            return ToolResult(success=True, content=content)
+    registry = ToolRegistry()
+    for name in ("mcp_filesystem_list_directory", "mcp_filesystem_read_text_file"):
+        registry.register(LocalReadTool(name))
+    provider = FakeProvider([
+        ModelResponse(tool_calls=[ToolCall(id="discover", name="request_tool_group", arguments={"group": "filesystem_read"})]),
+        ModelResponse(tool_calls=[ToolCall(id="list", name="mcp_filesystem_list_directory", arguments={"path": str(tmp_path)})]),
+        ModelResponse(tool_calls=[ToolCall(id="read", name="mcp_filesystem_read_text_file", arguments={"path": str(document)})]),
+        ModelResponse(content="已阅读正文：Decision 2.0。"),
+    ])
+    agent = make_agent(provider, registry, context_builder, conversation)
+    with correlation_scope(CorrelationContext(trace_id="local-file-read", request_id="local-file-read")), action_trace_scope() as trace:
+        result = await agent.run(intent, require_tool_call=True)
+        assert trace.standard_model_round == 4
+        assert trace.discovery_round == 1
+        assert trace.extra_round_reason == "capability_discovery"
+        assert trace.standard_tool_round == 2
+    assert "mcp_filesystem_read_text_file" not in {s["function"]["name"] for s in provider.tool_schemas[0]}
+    assert "mcp_filesystem_read_text_file" in {s["function"]["name"] for s in provider.tool_schemas[1]}
+    assert calls == ["mcp_filesystem_list_directory", "mcp_filesystem_read_text_file"]
+    assert "verified file body" in provider.calls[3][-1].content
+    assert result.content == "已阅读正文：Decision 2.0。"
+    assert result.result_status == "completed"

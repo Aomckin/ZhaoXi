@@ -5,7 +5,7 @@ const {readFileSync}=require('node:fs');
 const vm=require('node:vm');
 const path=require('node:path');
 
-const html=readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/index.html'),'utf8');
+const html=readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/index.html'),'utf8')+readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/shell.js'),'utf8');
 const source=html.slice(html.indexOf('function interactionBadgeView('),html.indexOf('let setupNoticeShown='));
 
 function createBadge(){

@@ -15,7 +15,8 @@ from zhaoxi.web.app import create_app
 
 
 def test_image_only_messages_use_a_dedicated_component():
-    page = (Path(__file__).parents[2] / "src/zhaoxi/web/static/index.html").read_text(encoding="utf-8")
+    page = (Path(__file__).parents[2] / "src/zhaoxi/web/static/engineering.html").read_text(encoding="utf-8")
+    page += (Path(__file__).parents[2] / "src/zhaoxi/web/static/shell.js").read_text(encoding="utf-8")
     assert "imageOnly=images.length>0" in page
     assert "splitParts.length?splitParts:(images.length?['']:[])" in page
     assert "async function renderMessage(message" in page
@@ -68,7 +69,7 @@ def test_emoji_debug_and_guarded_image_endpoint(tmp_path):
 
 def test_emoji_cabinet_assets_and_routes_are_present():
     root = Path(__file__).parents[2]
-    page = (root / "src/zhaoxi/web/static/index.html").read_text(encoding="utf-8")
+    page = (root / "src/zhaoxi/web/static/engineering.html").read_text(encoding="utf-8")
     script = (root / "src/zhaoxi/web/static/emoji-cabinet.js").read_text(encoding="utf-8")
     assert 'id="emojiCabinetPanel"' in page
     assert 'id="emojiPendingGrid"' in page

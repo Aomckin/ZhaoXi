@@ -110,6 +110,7 @@ class ActionTrace:
     tool_retry_count: int = 0
     tool_locked: list = field(default_factory=list)
     standard_model_round: int = 0
+    discovery_round: int = 0
     standard_tool_round: int = 0
     repair_round: int = 0
     budget_state: str = "NORMAL"
@@ -349,7 +350,7 @@ class ActionTrace:
                 **{name: getattr(self, name) for name in (
                     "fast_escalation_requested", "fast_escalation_validated", "fast_escalation_rejected_reason",
                     "fast_escalation_trigger_span", "tool_failure_fingerprint", "tool_retry_count", "tool_locked",
-                    "standard_model_round", "standard_tool_round", "repair_round", "budget_state",
+                    "standard_model_round", "discovery_round", "standard_tool_round", "repair_round", "budget_state",
                     "budget_remaining_ratio", "forced_finalization_reason", "partial_success",
                     "deterministic_fallback_used", "result_status")},
                 **self.fast_gate_details,

@@ -63,7 +63,7 @@ async def test_discovery_continues_business_call_retains_schema_and_resets_next_
     assert result.used_tool_path
     assert names(provider.tool_schemas[0]) == {"remember_memory", "update_memory", "search_memories", "request_tool_group", "inspect_tool_catalog"}
     assert "archive_search" in names(provider.tool_schemas[1])
-    assert provider.tool_schemas[2] is None
+    assert "archive_search" in names(provider.tool_schemas[2])
     tool_results = [json.loads(m.content) for m in provider.calls[2] if m.role.value == "tool"]
     assert len(tool_results) == 1 and tool_results[0]["success"]
     assert not any(m.role.value == "tool" for m in provider.calls[1])

@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
 const path=require('node:path');
-const html=fs.readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/index.html'),'utf8');
+const html=fs.readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/engineering.html'),'utf8')+fs.readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/shell.js'),'utf8');
 const source=html.slice(html.indexOf('function receiveDelivery('),html.indexOf('let replyIntervalMs='));
 test('live proactive replies use normal reply queue and deduplicate restored deliveries',async()=>{
  const sent=[],notices=[];
@@ -16,7 +16,7 @@ test('live proactive replies use normal reply queue and deduplicate restored del
  c.receiveDelivery(d);assert.equal(sent.length,1);
  c.receiveDelivery({...d,delivery_id:'sys',event_type:'system.warning'});assert.equal(notices.length,1);
 });
-test('sidebar shows live action steps while raw details stay in Debug',()=>{
+test('dashboard engineering shows live steps with raw details folded',()=>{
  assert.match(html,/<div class="desk-content">[\s\S]*<div id="actionTrace" class="action-trace">/);
  assert.match(html,/<div id="actionTrace" class="action-trace">[\s\S]*?id="actionTraceEvents"/);
  assert.match(html,/<details id="runtimeDebugPanel">[\s\S]*?id="actionTraceDebug"/);

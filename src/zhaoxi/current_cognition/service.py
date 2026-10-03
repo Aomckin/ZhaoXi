@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 from .models import CognitionThread, CurrentCognitionState, EvidenceRef, JournalItem
 from .renderer import render_for_debug, render_for_desk, render_for_fast_chat
 from .store import CurrentCognitionStore
+from .editor import suppressed
 
 logger = logging.getLogger("CURRENT_COGNITION")
 _FORBIDDEN = re.compile(r"用户|该用户|用户自述|用户倾向|\d{1,2}:\d{2}|\d+(?:\.\d+)?(?:元|千卡|kcal)|[A-Za-z]:\\|早餐|午餐|晚餐|(?:明天|后天|今晚|下周\S{0,4}).{0,20}(?:面试|交|截止|开会|先修|提交|提醒)", re.I)
@@ -107,6 +108,9 @@ class CurrentCognitionService:
         counts = {"threads_removed": 0, "threads_updated": 0}
         kept = []
         for thread in state.threads:
+            if thread.manual_state in {"PINNED", "LOCKED"}:
+                kept.append(thread)
+                continue
             days = (now - thread.last_evidence_at).total_seconds() / 86400
             if days >= 7 or thread.status == "resolved":
                 counts["threads_removed"] += 1
@@ -118,9 +122,9 @@ class CurrentCognitionService:
                 counts["threads_updated"] += 1
             kept.append(thread)
         state.threads = kept
-        state.recent_changes = [x for x in state.recent_changes if now - x.updated_at < timedelta(days=3)]
-        state.watch_items = [x for x in state.watch_items if now - x.updated_at < timedelta(days=7)]
-        if not state.threads and state.overview and state.updated_at and now - state.updated_at >= timedelta(days=7):
+        state.recent_changes = [x for x in state.recent_changes if x.source == "OWNER_MANUAL" or now - x.updated_at < timedelta(days=3)]
+        state.watch_items = [x for x in state.watch_items if x.source == "OWNER_MANUAL" or now - x.updated_at < timedelta(days=7)]
+        if state.overview_manual.source != "OWNER_MANUAL" and not state.threads and state.overview and state.updated_at and now - state.updated_at >= timedelta(days=7):
             state.overview = ""
         return counts
 
@@ -137,7 +141,7 @@ class CurrentCognitionService:
         state = self.state()
         before = state.model_dump(mode="json")
         counts = self._decay(state, now)
-        counts.update({"threads_added": 0, "ops_count": 0})
+        counts.update({"threads_added": 0, "ops_count": 0, "manual_guard_hits": 0, "manual_guard_skips": 0})
         trusted = {key for key, source in source_by_id.items() if source in {"user", "owner_external"}}
         all_ids = [key for key in patch.evidence_message_ids if key in trusted]
         evidence = "\n".join(evidence_by_id.get(key, "") for key in all_ids)
@@ -168,7 +172,10 @@ class CurrentCognitionService:
             elif any(x.action == "upsert" and not x.text.strip() for x in [*patch.change_ops, *patch.watch_ops]):
                 rejection = "empty_item"
         if not rejection and patch.decision == "UPDATE":
-            if patch.overview.action == "replace":
+            if state.overview_manual.source == "OWNER_MANUAL" and patch.overview.action != "keep":
+                counts["manual_guard_hits"] += 1
+                counts["manual_guard_skips"] += 1
+            elif patch.overview.action == "replace":
                 state.overview = patch.overview.value.strip()
                 state.overview_source_refs = [EvidenceRef(message_id=i, event_id=i, timestamp=timestamp_by_id.get(i), source=source_by_id[i], provenance=provenance_by_id.get(i, {})) for i in all_ids]
                 counts["ops_count"] += 1
@@ -180,6 +187,10 @@ class CurrentCognitionService:
                 key = normalize_key(op.key)
                 same = next((t for t in state.threads if normalize_key(t.key) == key or
                              (op.title and normalize_key(t.title) == normalize_key(op.title))), None)
+                if same and (same.manual_state == "LOCKED" or same.manual_state == "PINNED" and op.action in {"remove", "resolve"}):
+                    counts["manual_guard_hits"] += 1
+                    counts["manual_guard_skips"] += 1
+                    continue
                 if op.action in {"remove", "resolve"}:
                     if same:
                         state.threads.remove(same)
@@ -189,6 +200,10 @@ class CurrentCognitionService:
                 refs = [EvidenceRef(message_id=i, event_id=i, timestamp=timestamp_by_id.get(i), source=source_by_id[i],
                                     provenance=provenance_by_id.get(i, {}))
                         for i in (op.evidence_message_ids or all_ids) if i in trusted]
+                if suppressed(state, key, op.title + op.summary, refs, now):
+                    counts["manual_guard_hits"] += 1
+                    counts["manual_guard_skips"] += 1
+                    continue
                 if same:
                     same.title, same.summary, same.salience = op.title.strip(), op.summary.strip(), op.salience
                     same.status, same.last_updated_at, same.last_evidence_at = "active", now, now
@@ -205,6 +220,10 @@ class CurrentCognitionService:
                 for op in ops:
                     key = normalize_key(op.key)
                     same = next((x for x in collection if normalize_key(x.key) == key), None)
+                    if same and (same.manual_state == "LOCKED" or same.manual_state == "PINNED" and op.action == "remove"):
+                        counts["manual_guard_hits"] += 1
+                        counts["manual_guard_skips"] += 1
+                        continue
                     if op.action == "remove":
                         if same:
                             collection.remove(same)
@@ -213,6 +232,10 @@ class CurrentCognitionService:
                     refs = [EvidenceRef(message_id=i, event_id=i, timestamp=timestamp_by_id.get(i), source=source_by_id[i],
                                     provenance=provenance_by_id.get(i, {}))
                             for i in (op.evidence_message_ids or all_ids) if i in trusted]
+                    if suppressed(state, key, op.text, refs, now, "change" if collection is state.recent_changes else "watch"):
+                        counts["manual_guard_hits"] += 1
+                        counts["manual_guard_skips"] += 1
+                        continue
                     if same:
                         same.text, same.updated_at = op.text.strip(), now
                         same.source_refs = (same.source_refs + refs)[-4:]
@@ -223,9 +246,10 @@ class CurrentCognitionService:
         state.threads.sort(key=lambda t: (t.status != "active", -t.salience, -t.last_evidence_at.timestamp()))
         active = [x for x in state.threads if x.status == "active"][:4]
         cooling = [x for x in state.threads if x.status == "cooling"][:3]
-        state.threads = active + cooling
-        state.recent_changes = sorted(state.recent_changes, key=lambda x: x.updated_at, reverse=True)[:3]
-        state.watch_items = sorted(state.watch_items, key=lambda x: x.updated_at, reverse=True)[:3]
+        protected = [x for x in state.threads if x.source == "OWNER_MANUAL"]
+        state.threads = sorted(protected, key=lambda x: x.manual_state != "PINNED") + [x for x in active + cooling if x not in protected]
+        state.recent_changes = [x for x in state.recent_changes if x.source == "OWNER_MANUAL"] + sorted([x for x in state.recent_changes if x.source != "OWNER_MANUAL"], key=lambda x: x.updated_at, reverse=True)[:3]
+        state.watch_items = [x for x in state.watch_items if x.source == "OWNER_MANUAL"] + sorted([x for x in state.watch_items if x.source != "OWNER_MANUAL"], key=lambda x: x.updated_at, reverse=True)[:3]
         changed = state.model_dump(mode="json") != before
         if changed:
             state.version = max(2, state.version + 1)

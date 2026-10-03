@@ -89,7 +89,14 @@
   document.querySelector('#compactVoice').onclick = () => { menu.hidden = true; document.querySelector('#mic').click(); };
   document.querySelector('#windowTopmost').onchange = event => command('topmost',event.target.checked);
   document.querySelector('#compactDesk').onclick = async () => { await command('mode','main'); toggleDesk(true); };
-  window.desktopOpenSettings = () => { toggleDesk(true); document.querySelectorAll('.desk-tools>details')[1].open = true; };
+  const dashboardLink = document.querySelector('.dashboard-entry');
+  if (dashboardLink) dashboardLink.onclick = async event => {
+    if (!window.pywebview?.api) return;
+    event.preventDefault();
+    const result = await command('open_dashboard', 'overview');
+    if (!result?.opened) showActivityHint('管理面板未能打开，请在浏览器访问 /dashboard');
+  };
+  window.desktopOpenSettings = () => command('open_dashboard', 'settings');
   // Defer drag until movement so double clicks are handled by our mode rules.
   const title = document.querySelector('#windowTitle');
   let drag = null;

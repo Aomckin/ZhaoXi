@@ -38,6 +38,8 @@ class LoopSafety:
     tool_limit: int = 2
     repair_limit: int = 1
     model_round: int = 0
+    discovery_round: int = 0
+    discovery_limit: int = 1
     tool_round: int = 0
     repair_round: int = 0
     failed_tools: dict = field(default_factory=dict)
@@ -51,6 +53,21 @@ class LoopSafety:
     forced_reason: str = ""
     last_fingerprint: str | None = None
     last_retry: int = 0
+
+    @property
+    def model_limit_reached(self):
+        return self.model_round >= self.model_limit + self.discovery_round
+
+    def credit_discovery_round(self, *, expanded, business_calls):
+        """Allow one productive, discovery-only round before business execution.
+
+        Actual calls remain counted, and provider token/call budgets still apply.
+        Catalog-only, repeated, failed, mixed and post-execution discovery get no credit.
+        """
+        if expanded and not business_calls and not self.tool_round and self.discovery_round < self.discovery_limit:
+            self.discovery_round += 1
+            return True
+        return False
 
     def begin_round(self):
         self.model_round += 1
@@ -114,7 +131,7 @@ class LoopSafety:
                 "tool_locked": call.name in self.locked}
 
     def metrics(self):
-        return {"standard_model_round": self.model_round, "standard_tool_round": self.tool_round,
+        return {"standard_model_round": self.model_round, "discovery_round": self.discovery_round, "standard_tool_round": self.tool_round,
                 "repair_round": self.repair_round, "forced_finalization_reason": self.forced_reason or None,
                 "partial_success": any(r.success for _, r in self.outcomes) and
                     any(not r.success and not r.metadata.get("resolved_by_retry") for _, r in self.outcomes),

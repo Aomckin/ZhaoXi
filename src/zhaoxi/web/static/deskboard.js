@@ -91,7 +91,7 @@ window.addEventListener('resize', () => { void markVisibleNotesRead(); });
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && deskHandle.getAttribute('aria-expanded') === 'true') toggleDesk(false);
 });
-document.querySelector('#endpoint').textContent = location.host;
+const endpointLabel=document.querySelector('#endpoint');if(endpointLabel)endpointLabel.textContent=location.host;
 
 // One character configuration, independent of theme and with a deterministic fallback.
 const avatar = document.querySelector('#characterAvatar');

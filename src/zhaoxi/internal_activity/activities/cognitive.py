@@ -105,6 +105,9 @@ async def cognition_gardening(r, kind):
     stream = getattr(r.agent, "experience_stream", None)
     merged = {}
     for thread in state.threads:
+        if thread.manual_state in {"PINNED", "LOCKED"}:
+            merged["manual:" + thread.key] = thread
+            continue
         thread.key = normalize_key(thread.key)
         if thread.key in merged:
             target = merged[thread.key]
@@ -116,17 +119,31 @@ async def cognition_gardening(r, kind):
     state.threads = list(merged.values())
     for collection in (state.threads, state.recent_changes, state.watch_items):
         for item in collection:
+            if item.source == "OWNER_MANUAL":
+                continue
             if stream:
                 item.source_refs = [ref for ref in item.source_refs if not ref.event_id or stream.get(ref.event_id)]
         # Remove unsupported watch items; don't manufacture replacement evidence.
-    state.watch_items = [x for x in state.watch_items if x.source_refs]
-    changed = before != state.model_dump(mode="json")
+    state.watch_items = [x for x in state.watch_items if x.source == "OWNER_MANUAL" or x.source_refs]
+    after = state.model_dump(mode="json")
+    changes = []
+    for attr, label in (("threads", "主线"), ("recent_changes", "近期变化"), ("watch_items", "留意事项")):
+        old = {x["key"]: x for x in before[attr]}
+        new = {x["key"]: x for x in after[attr]}
+        for key, item in old.items():
+            if key not in new:
+                changes.append({"label": "移除" + label, "text": item.get("title") or item.get("text"), "target_id": key})
+            elif item != new[key]:
+                changes.append({"label": "整理" + label, "text": item.get("title") or item.get("text"), "target_id": key})
+    changed = before != after
     if changed:
         state.version += 1
         state.updated_at = now
         state.last_maintenance = {"decision": "UPDATE", "reason": "cognition_gardening", "model_call": False}
         service.store.save(state)
-    return ActivityResult(status="UPDATE" if changed else "NO_CHANGE", changed=changed)
+    return ActivityResult(status="UPDATE" if changed else "NO_CHANGE", changed=changed,
+        details=changes, summary=f"检查 {len(before["threads"])} 条主线；{"已调整认知结构" if changed else "没有需要合并、淡出或移除的内容"}。",
+        cost={"threads_checked": len(before["threads"]), "manual_guard_hits": sum(t.manual_state in {"PINNED", "LOCKED"} for t in state.threads)})
 
 async def memory_due(r, now):
     service = r.memory_service
@@ -179,7 +196,9 @@ async def memory_gardening(r, kind):
         await repository.update_presence_metadata(record.id, {"presence_memory_gardened_at": datetime.now(UTC).isoformat()})
     return ActivityResult(status="UPDATE" if changes or audits else "NO_CHANGE", changed=bool(changes or audits),
         summary=f"维护 {len(rows)} 条近期记忆，修复/标记 {len(changes) + len(audits)} 条",
-        evidence_refs=list(dict.fromkeys([x.id for x in changes] + audits)))
+        evidence_refs=list(dict.fromkeys([x.id for x in changes] + audits)),
+        details=[{"label":"记忆状态维护","text":x.content[:100],"target_id":x.id} for x in changes] +
+                [{"label":"记忆检查标记","text":next((x.content[:100] for x in rows if x.id==key), key),"target_id":key} for key in dict.fromkeys(audits)])
 
 async def cluster_due(r, now):
     service = r.memory_service
@@ -262,7 +281,7 @@ async def reminiscence(r, kind):
     r.state[REMINISCENCE]["last_memory_id"] = record.id
     r.state[REMINISCENCE]["reminiscence_count"] = r.state[REMINISCENCE].get("reminiscence_count", 0) + 1
     return ActivityResult(status="UPDATE" if new else "NO_CHANGE", changed=bool(new),
-        summary=result, evidence_refs=[record.id] + ([new.id] if new else []))
+        summary="重温 1 条旧记忆，建立 1 条新关联。" if new else "重温 1 条旧记忆，没有需要建立的新关联。", evidence_refs=[record.id] + ([new.id] if new else []))
 
 def register_cognitive(registry, settings):
     awake = frozenset({Presence.SEMI_ACTIVE, Presence.IDLE})

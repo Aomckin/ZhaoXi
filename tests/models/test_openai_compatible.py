@@ -355,3 +355,26 @@ async def test_extraction_reasoning_reserve_is_bounded_and_gateway_specific(base
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         provider = OpenAICompatibleProvider(base_url=base_url, api_key='test',model='deepseek-v4-flash',client=client)
         await provider.generate([Message(role=Role.USER,content='JSON')],max_tokens=1000,reasoning_budget_tokens=99999,thinking={'type':'disabled'})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("transport", ["native", "text"])
+async def test_malformed_tool_diagnostics_classify_transport_without_private_arguments(transport, caplog):
+    private = "private-local-filename-and-secret"
+    message = {"content": None, "tool_calls": [{"id": "broken", "function": {
+        "name": "read_file", "arguments": '{"path":"' + private + '",'
+    }}]} if transport == "native" else {"content":
+        '<|DSML|tool_calls><|DSML|invoke name="read_file"><|DSML|parameter name="path" string="true">' + private}
+    async def handler(request):
+        return httpx.Response(200, json={"choices": [{"message": message}]})
+    with caplog.at_level(logging.WARNING, logger="MODEL"):
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = OpenAICompatibleProvider(base_url="https://example.test/v1", api_key="secret", model="test", client=client)
+            with pytest.raises(ProviderError) as error:
+                await provider.generate([Message(role=Role.USER, content="read file")])
+    assert error.value.code == "provider_tool_arguments_invalid"
+    assert "event=tool_arguments_invalid" in caplog.text
+    assert "transport=" + transport in caplog.text
+    assert private not in caplog.text
+    if transport == "native":
+        assert "position=" in caplog.text

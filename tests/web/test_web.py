@@ -458,7 +458,7 @@ def test_permission_deny_resumes_without_success_claim():
 
 def test_core_error_is_sanitized_and_page_remains_available():
     app = create_app(agent=FakeAgent())
-    with TestClient(app, raise_server_exceptions=False) as client:
+    with TestClient(app, raise_server_exceptions=False, base_url="http://127.0.0.1", client=("127.0.0.1",50000)) as client:
         failed = client.post("/api/chat", json={"message": "boom"})
         assert failed.status_code == 500
         assert "secret traceback" not in failed.text
@@ -491,33 +491,35 @@ def test_web_shell_has_keyboard_and_live_status_accessibility_baseline():
     app = create_app(agent=FakeAgent(), settings=Settings(dev_browser_ui=True))
     with TestClient(app) as client:
         page = client.get("/").text
+        engineering = client.get("/static/engineering.html").text
+        script = client.get("/static/shell.js").text
     assert 'aria-label="发送给朝汐的消息"' in page
     assert 'id="activity" class="activity" role="status" aria-live="polite"' in page
     assert 'id="connection" role="status" aria-live="polite"' in page
-    assert 'id="restartCore" type="button">重启 Core</button>' in page
+    assert 'id="restartCore" type="button">重启 Core</button>' in engineering
     assert 'id="interactionBadge" class="interaction-badge" role="status" aria-live="polite" hidden' in page
-    assert "if(state==='ACTIVE')return {label:'活跃 · 还在聊呢'" in page
-    assert "if(state==='SEMI_ACTIVE')return {label:'半活跃 · 就在附近'" in page
-    assert "if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing)" in page
+    assert "if(state==='ACTIVE')return {label:'活跃 · 还在聊呢'" in script
+    assert "if(state==='SEMI_ACTIVE')return {label:'半活跃 · 就在附近'" in script
+    assert "if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing)" in script
     assert ".send,.mic{flex:0 0 34px;width:34px;height:34px" in page
     assert "#attachImage{flex:0 0 34px;width:34px;height:34px" in page
-    assert "button.textContent='🔄'" in page
-    assert "'/api/chat/regenerate'" in page
-    assert "aria-label','重新生成这条回复'" in page
-    assert "function addRetryableError(content)" in page
-    assert 'id="regenerateDebugToggle" type="checkbox"' in page
-    assert 'id="longWaitToggle" type="checkbox"' in page
-    assert 'id="forceFastChatToggle" type="checkbox"' in page
-    assert "long_wait_enabled:$('#longWaitToggle').checked" in page
-    assert "force_fast_chat:$('#forceFastChatToggle').checked" in page
-    assert "normalRegenerationEnabled=false" in page
-    assert "button.classList.add('normal-regenerate')" in page
+    assert "button.textContent='🔄'" in script
+    assert "'/api/chat/regenerate'" in script
+    assert "aria-label','重新生成这条回复'" in script
+    assert "function addRetryableError(content)" in script
+    assert 'id="regenerateDebugToggle" type="checkbox"' in engineering
+    assert 'id="longWaitToggle" type="checkbox"' in engineering
+    assert 'id="forceFastChatToggle" type="checkbox"' in engineering
+    assert "long_wait_enabled:$('#longWaitToggle').checked" in script
+    assert "force_fast_chat:$('#forceFastChatToggle').checked" in script
+    assert "normalRegenerationEnabled=false" in script
+    assert "button.classList.add('normal-regenerate')" in script
     with TestClient(app) as client:
         tool_control = client.get("/static/tool-control.js").text
     assert "写入前确认" in tool_control
-    assert "regenerateDebugToggle.checked=false" in page
-    assert 'id="toolCabinetPanel"><summary>钥匙柜</summary>' in page
-    assert 'id="debugPanel"><summary>调试</summary>' in page
+    assert "regenerateDebugToggle.checked=false" in script
+    assert 'id="toolCabinetPanel"><summary>钥匙柜</summary>' in engineering
+    assert 'id="debugPanel"><summary>调试</summary>' in engineering
     assert "调试 · 钥匙柜" not in page
 
 

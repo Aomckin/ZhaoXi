@@ -24,6 +24,8 @@ class ShellBridge:
         owner = self._owner
         if action == 'state':
             return owner.state()
+        if action == 'open_dashboard':
+            return {'opened': bool(owner.on_dashboard(value or 'overview'))}
         if action == 'mode':
             owner.switch_mode(value)
         elif action == 'hide':
@@ -40,11 +42,12 @@ class ShellBridge:
 
 
 class DesktopWindow:
-    def __init__(self, url: str, *, width: int, height: int, geometry_path=None) -> None:
+    def __init__(self, url: str, *, width: int, height: int, geometry_path=None, on_dashboard=None) -> None:
         self.url, self.width, self.height = url, width, height
         self._window = None
         self._native = None
         self.on_show = lambda: None
+        self.on_dashboard = on_dashboard or (lambda view: False)
         self._ready = threading.Event()
         self._allow_close = False
         self._visible = False
@@ -132,9 +135,7 @@ class DesktopWindow:
         self.show()
 
     def show_settings(self):
-        self.show_main()
-        if self._loaded.is_set():
-            self._window.evaluate_js('window.desktopOpenSettings && window.desktopOpenSettings()')
+        return self.on_dashboard('settings')
 
     def run(self, on_closed=None, *, background=False):
         import webview

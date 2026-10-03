@@ -228,7 +228,7 @@ class Settings(BaseSettings):
     proactive_threshold_active: float = Field(default=.45, ge=0, le=1)
     proactive_threshold_semi_active: float = Field(default=.55, ge=0, le=1)
     proactive_threshold_idle: float = Field(default=.70, ge=0, le=1)
-    proactive_heartbeat_seconds: int = Field(default=30, ge=5, le=300)
+    proactive_heartbeat_seconds: int = Field(default=30, ge=5, le=1800)
     proactive_cooldown_minutes: int = Field(default=45, ge=1, le=1440)
     proactive_natural_checkin_enabled: bool = True
     proactive_natural_checkin_min_hours: float = Field(default=3, ge=1, le=48)

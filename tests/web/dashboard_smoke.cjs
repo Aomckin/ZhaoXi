@@ -1,0 +1,21 @@
+// Run dashboard_smoke_server.py first. Uses isolated stores, no external services.
+const {chromium}=require(process.env.ZHAOXI_PLAYWRIGHT||'playwright');
+const assert=require('node:assert/strict'),fs=require('node:fs');
+(async()=>{const browser=await chromium.launch({channel:'msedge',headless:true});const errors=[],checks=[],title="浏览器认知验收"+Date.now();
+try{let page=await browser.newPage({viewport:{width:1440,height:1000}});page.on('pageerror',e=>errors.push(e.stack||e.message));
+await page.goto('http://127.0.0.1:18765/desktop-entry?token=dashboard-ui-test');
+await page.locator('#sideToggle').click();await page.getByRole('link',{name:'打开管理面板 ↗'}).waitFor();assert.equal(await page.locator('#runtimeDebugPanel').count(),0);checks.push('living_dashboard_split');
+const desktopPage=page;const [dashboardPage]=await Promise.all([page.waitForEvent('popup'),page.getByRole('link',{name:'打开管理面板 ↗'}).click()]);page=dashboardPage;page.on('pageerror',e=>errors.push(e.stack||e.message));await page.getByRole('heading',{name:'朝汐现在怎样？'}).waitFor();checks.push('overview');
+await page.getByRole('button',{name:'生活状态',exact:true}).click();await page.getByRole('heading',{name:'生活状态与 Heartbeat'}).waitFor();const exit=page.getByRole('button',{name:'退出 DEBUG OVERRIDE，恢复正常配置'});if(await exit.count())await exit.click();await page.getByRole('button',{name:'启动 DEBUG OVERRIDE'}).click();await page.getByText('DEBUG OVERRIDE 已生效：').waitFor();
+await page.waitForTimeout(11000);assert.equal(await page.evaluate(async()=>{const r=await fetch('/api/presence/status');return (await r.json()).current_presence}),'SEMI_ACTIVE');
+await page.waitForTimeout(20500);assert.equal(await page.evaluate(async()=>{const r=await fetch('/api/presence/status');return (await r.json()).current_presence}),'IDLE');checks.push('active_semi_idle');
+await page.getByRole('button',{name:'退出 DEBUG OVERRIDE，恢复正常配置'}).click();await page.getByRole('button',{name:'空闲',exact:true}).click();
+await page.getByRole('button',{name:'内部活动',exact:true}).click();const garden=page.locator('section.card').filter({has:page.locator('h2').filter({hasText:'cognition_gardening'})});await garden.getByRole('button',{name:'手动执行',exact:true}).click();await page.locator('#feedback p').filter({hasText:'没有需要合并、淡出或移除的内容'}).waitFor();assert.equal(await page.locator('#feedback details[open]').count(),0);checks.push('human_receipt');
+await page.getByRole('button',{name:'近期认知',exact:true}).click();await page.getByRole('button',{name:'新增主线'}).click();const dialog=page.locator('dialog');await dialog.locator('[name=title]').fill(title);await dialog.locator('[name=summary]').fill('锁定正文 <img src=x>');await dialog.locator('select').selectOption('LOCKED');await dialog.getByRole('button',{name:'保存',exact:true}).click();await page.getByText('锁定正文 <img src=x>',{exact:true}).first().waitFor();assert.equal(await page.locator('#view img').count(),0);checks.push('cognition_editor_literal');
+const item=page.locator('.list-item').filter({hasText:title});page.once('dialog',d=>d.accept());await item.getByRole('button',{name:'删除',exact:true}).click();await page.getByRole('button',{name:'撤销最近一次人工修改'}).click();await page.getByText('锁定正文 <img src=x>',{exact:true}).first().waitFor();checks.push('delete_undo');
+await page.screenshot({path:'.zhaoxi/v145-cognition.png',fullPage:true});
+await require('./dashboard_engineering_smoke.cjs').checkEngineeringPanels(page);
+checks.push('engineering_lazy_panels_clickable');
+await page.goto('http://127.0.0.1:18765/');await page.waitForTimeout(800);await page.screenshot({path:'.zhaoxi/v145-living.png',fullPage:true});
+assert.deepEqual(errors,[]);checks.push('no_browser_errors');fs.writeFileSync('.zhaoxi/v145-browser-acceptance.json',JSON.stringify({checks,errors},null,2));console.log(JSON.stringify({checks,errors}));
+}finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});
