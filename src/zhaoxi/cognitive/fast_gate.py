@@ -62,6 +62,15 @@ class FastDialogueDecision:
                 "heavy_evidence": list(self.heavy_evidence)}
 
 
+def is_reply_emoji_request(text: str) -> bool:
+    """Recognize only a single expression request in the current reply."""
+    return bool(re.fullmatch(
+        r"(?:请|麻烦|给我)?(?:来|发|发送|用|展示)(?:一个|一|个|张)?"
+        r"[\w\u4e00-\u9fff、]{0,12}(?:表情包|表情|emoji|贴图)"
+        r"(?:给我|回复我|回应我|吧|嘛|呀)?[？?！!。~～]*", text.strip())) and not re.search(
+            r"保存|收藏|收进|加入|并|然后|再|转发|到|给(?!我)", text)
+
+
 def _terms(text: str) -> set[str]:
     # Local lexical overlap is evidence of relevance, never evidence of truth.
     ignored = {"最近", "近期", "现在", "这个", "那个", "一下", "我们", "你们", "什么", "自己"}
@@ -93,6 +102,11 @@ class FastDialogueGate:
             r"(?:帮我|替我|麻烦|自己去|(?:^|[，,；;])(?:请|去|先|再)|把.{1,40}(?:起来|进去|进|掉|成|到))"
             r"|^(?:读取|打开|查询|检索|计算|记录|保存|修改|删除).+"
             r"|(?:记|记录|保存|修改|删除|忘|提醒|补)(?:住|一下|起来|一份|掉|我)", text))
+        # An expression in the current reply has no tool side effect. The full
+        # sentence must be a reply-expression request; compound/external actions stay guarded.
+        emoji_expression = is_reply_emoji_request(text)
+        if emoji_expression:
+            command = False
         mutation = bool(re.search(r"记|写|补|存|改|删|发|传|建|移|执行|同步|提醒|忘", text))
         opinion = bool(re.search(r"觉得|感觉|看着|看起来|有点|太.{1,8}了|真.{1,10}|好怪|舒服|烦|开心|累|哈哈|嘿嘿", text))
         question = bool(re.search(r"哪些|哪[个里天]|多少|什么时候|具体|什么|怎么|几[点号]|实时|最新|想(?:知道|了解|确认)|告诉我", text))
@@ -100,7 +114,7 @@ class FastDialogueGate:
         personal_statement = (bool(re.match(r"(?:我|今天|最近|这几天).+", text)) and not question
             and not re.search(r"^(?:我|今天|最近|这几天).{0,8}(?:想|要|需要|希望|请求|准备|打算)", text))
         reaction = bool(re.match(r"(?:确实|是啊|对啊|嗯|好吧|这样|这也|那就).+", text)) and not command
-        conversation = 0.95 if greeting else 0.9 if opinion and not command else 0.8 if personal_statement and not command else 0.8 if reaction else 0.2
+        conversation = 0.95 if greeting or emoji_expression else 0.9 if opinion and not command else 0.8 if personal_statement and not command else 0.8 if reaction else 0.2
 
         deictic = bool(re.search(r"(?:刚刚|刚才|之前|前面|上一).{0,8}(?:那个|那[两几]条|这|继续)|(?:这|那)[个份两条]|继续|接着|去补", text))
         pending_action = bool(re.search(r"缺.{0,16}(?:记录|文件|一份)|(?:还没|未完成|待处理|正在|需要).{0,24}(?:补|写|查|处理|执行|记录|文件)", recent_context))

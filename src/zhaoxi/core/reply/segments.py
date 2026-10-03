@@ -27,3 +27,25 @@ class ReplySequence(BaseModel):
             segment.content for segment in self.segments
             if isinstance(segment, TextSegment) and segment.content
         )
+
+
+class ResolvedReply(str):
+    """Channel text with its resolved segments, carried with this reply only."""
+
+    reply_sequence: ReplySequence
+
+    def __new__(cls, sequence: ReplySequence):
+        reply = super().__new__(cls, sequence.visible_text)
+        reply.reply_sequence = sequence
+        return reply
+
+    def __bool__(self) -> bool:
+        return bool(self.reply_sequence.segments)
+
+    @property
+    def history_text(self) -> str:
+        return "\n\n".join(
+            segment.content if isinstance(segment, TextSegment) else
+            "[曾使用表情：" + "、".join(segment.requested_tags) + "]"
+            for segment in self.reply_sequence.segments
+        )

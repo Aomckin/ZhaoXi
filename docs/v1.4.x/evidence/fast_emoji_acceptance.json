@@ -1,0 +1,36 @@
+{
+  "version": "1.4.4",
+  "patch": "fast_emoji",
+  "date": "2026-10-03",
+  "python_full": {
+    "passed": 1094,
+    "skipped": 1,
+    "failures": 0,
+    "elapsed_seconds": 230.18,
+    "skip_reason": "symlink creation unavailable",
+    "warning": "existing Starlette/httpx deprecation"
+  },
+  "python_final_scope": {
+    "passed": 383,
+    "failures": 0,
+    "elapsed_seconds": 41.39,
+    "note": "Final local pure-emoji Experience recording added after full-suite startup; all affected modules verified on final code."
+  },
+  "new_regression_cases": 23,
+  "node": {
+    "passed": 66,
+    "failed": 0
+  },
+  "compileall_passed": true,
+  "diff_check_passed": true,
+  "commands": {
+    "python_full": ".venv/Scripts/python.exe -m pytest -ra",
+    "python_final_scope": ".venv/Scripts/python.exe -m pytest tests/core tests/cognitive tests/cognitive_stream tests/interfaces tests/plugins tests/perception -q -o \"addopts=\" --basetemp=.zhaoxi/test-fast-emoji-final --junitxml=.zhaoxi/fast-emoji-final.xml --tb=short",
+    "node": "node --test tests/web/*.test.cjs"
+  },
+  "live_model_verified": false,
+  "real_qq_sent": false,
+  "desktop_restarted": false,
+  "production_data_modified": false,
+  "validation": "Temporary databases, synthetic provider responses and mocked QQ transport."
+}

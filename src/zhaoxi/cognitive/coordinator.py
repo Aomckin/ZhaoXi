@@ -9,6 +9,7 @@ from zhaoxi.cognitive.memory_decision import AutoMemory, MemoryAction
 from zhaoxi.cognitive.router import CognitiveRoute, CognitiveRouter, RouteDecision
 from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.core.fast_chat import FastChatRuntime, FastChatResult, FastEscalationKind
+from zhaoxi.core.reply import ReplySequence
 from zhaoxi.observability import current_trace
 from zhaoxi.permission.models import PendingConfirmation
 from zhaoxi.reliability.retry import budget_stage_scope
@@ -25,6 +26,7 @@ class CognitiveResponse:
     memory_action: MemoryAction = MemoryAction.IGNORE
     permission_confirmation: PendingConfirmation | None = None
     workflow_run_id: str | None = None
+    reply_sequence: ReplySequence | None = None
 
 
 class CognitiveCoordinator:
@@ -266,6 +268,7 @@ class CognitiveCoordinator:
             memory_action=memory_action,
             permission_confirmation=getattr(result, "permission_confirmation", None),
             workflow_run_id=workflow_run_id,
+            reply_sequence=getattr(result, "reply_sequence", None),
         )
 
     @staticmethod

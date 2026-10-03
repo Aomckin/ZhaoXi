@@ -11,7 +11,9 @@ import re
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from zhaoxi.cognitive.fast_gate import is_reply_emoji_request
 from zhaoxi.core.image_thumbnails import references_image
+from zhaoxi.core.reply import ReplySequence
 from zhaoxi.core.message import Message, Role, is_cognition_message, strip_echoed_timeline_header
 from zhaoxi.errors import AgentLoopError
 from zhaoxi.observability import current_trace, llm_owner_scope
@@ -53,6 +55,7 @@ class FastChatResult:
     escalation_reason: str = ""
     escalation_kind: FastEscalationKind | None = None
     trigger_span: str = ""
+    reply_sequence: ReplySequence | None = None
 
 
 class FastChatRuntime:
@@ -151,11 +154,12 @@ class FastChatRuntime:
             return FastChatResult(request_id=request_id, escalated=True,
                                   escalation_reason=reason, escalation_kind=kind, trigger_span=span)
         self.agent.conversation.add_user(user_message.strip())
-        content = self.agent._commit_model_reply(content)
+        sequence = self.agent._commit_model_reply_sequence(content)
+        content = sequence.visible_text
         if trace:
             trace.emit("response_generation_succeeded", "response_generation", "success", "回复已生成", step_id=1)
             trace.response_status = "succeeded"
-        return FastChatResult(content=content, request_id=request_id)
+        return FastChatResult(content=content, request_id=request_id, reply_sequence=sequence)
 
     @staticmethod
     def structured_request(content):
@@ -180,6 +184,8 @@ class FastChatRuntime:
             return bool(re.search(r"还记得|记不记得|回忆|检索|查.{0,12}记忆|(?:上次|之前|以前|当时|去年).{0,30}(?:什么|怎么|哪些|多少|何时|说过|记得)", text))
         if kind is FastEscalationKind.DECISION:
             return bool(re.search(r"要不要|该不该|怎么选|选哪个|值得|值不值|应该|推荐|取舍|(?:还是|或者).{0,30}[？?吗]$", text))
+        if is_reply_emoji_request(text):
+            return False
         return bool(re.search(r"(?:帮我|请|去|把|给我|替我|麻烦|继续|接着).{0,30}(?:查|搜|读|找|补|写|存|记|改|删|发送|执行|处理|打开|关闭|计算)|(?:查一下|查询|查看|读取|搜索|检索|补一下|写入|保存|更新|修改|删除|发送|计算|算一下|几点|几号|什么时间|原话|原文|证据|原图)", text))
 
     @classmethod
@@ -245,6 +251,9 @@ class FastChatRuntime:
                     system += f"\n\n{snapshot}\n这是近期整体认识；若与当前用户明确表达冲突，以当前用户为准。"
             except Exception:
                 pass
+        emoji_context = builder.emoji_service.build_context() if builder.emoji_service is not None else ""
+        if emoji_context:
+            system += "\n\n" + emoji_context + "\n表情属于本轮回复表达，直接使用 emoji DSL，不需要工具或升级通道；收藏、保存和对其他会话发送仍属于动作。"
         system += f"\n\n当前时间：{now.isoformat(timespec='minutes')}"
         recent = self._recent_owner_conversation(
             user_message, output_channel=output_channel, audience=audience,
@@ -258,6 +267,8 @@ class FastChatRuntime:
             {"name": "system.character", "chars": len(builder.character_prompt.strip())},
             {"name": "runtime.fast_chat_rules", "chars": len(FAST_RULES)},
         ]
+        if emoji_context:
+            components.append({"name": "runtime.emoji_context", "chars": len(emoji_context)})
         if image_note:
             components.append({"name": "runtime.fast_chat_image_rules", "chars": len(image_note)})
         return [Message(role=Role.SYSTEM, content=system, metadata={"prompt_components": components}), *recent]
@@ -291,6 +302,8 @@ class FastChatRuntime:
             if item.role in {Role.USER, Role.ASSISTANT, Role.EXTERNAL} and (is_cognition_message(item) or item.role is Role.EXTERNAL and item.visibility=="conversation")
             and not item.tool_calls and not item.tool_turn and ((item.content or "").strip() or item.images)
         ]
+        recent = [item.model_copy(update={"content": "[曾使用表情：" + "、".join(item.requested_tags) + "]" if item.requested_tags else "[曾使用表情]", "images": []})
+                  if item.source == "emoji" else item for item in recent]
         if trigger:
             recent = [m for m in recent if m.message_id != trigger.event_id]
             recent.append(project_current_trigger(trigger, turn.images))

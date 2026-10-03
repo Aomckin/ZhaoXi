@@ -16,7 +16,7 @@ from zhaoxi.core.context import ContextBuilder
 from zhaoxi.cognitive_stream.models import CognitiveEventType
 from zhaoxi.core.conversation import Conversation
 from zhaoxi.core.message import Role, strip_echoed_timeline_header
-from zhaoxi.core.reply import commit_reply
+from zhaoxi.core.reply import ReplySequence, commit_reply
 from zhaoxi.errors import AgentLoopError, ProviderError
 from zhaoxi.models.base import ModelProvider
 from zhaoxi.models.types import ToolCall
@@ -129,6 +129,10 @@ class ZhaoxiAgent:
 
     def _commit_model_reply(self, raw_reply: str) -> str:
         """Parse, resolve and persist one final model reply exactly once."""
+        return self._commit_model_reply_sequence(raw_reply).visible_text
+
+    def _commit_model_reply_sequence(self, raw_reply: str) -> ReplySequence:
+        """Return the resolved segments so transports never select an emoji twice."""
         sequence, message_ids = commit_reply(
             self.conversation, raw_reply, getattr(self, "emoji_service", None)
         )
@@ -160,7 +164,7 @@ class ZhaoxiAgent:
             "frontend_received": False,
             "frontend_rendered": False,
         }
-        return sequence.visible_text
+        return sequence
 
     async def run_planned(self, goal: str) -> "PlannerResponse":
         """Run an explicit multi-step task through the optional planner."""

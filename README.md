@@ -119,7 +119,7 @@ python scripts/benchmark_memory_v143.py --semantic --output .zhaoxi/memory-v143-
 
 - 图片：点击输入区图片按钮或直接粘贴；发送前可预览和移除。
 - 语音：安装 voice 可选依赖并在 `.env` 中启用对应 Provider。
-- 表情：本地注册表位于 `data/emoji/emoji_registry.json`，可在维护抽屉的表情柜中管理。
+- 表情：本地注册表位于 `data/emoji/emoji_registry.json`，可在维护抽屉的表情柜中管理。FAST 闲聊也可按属性使用表情，支持有序图文和纯表情回复；QQ Owner 私聊沿用同一条发送链路。
 
 ## 测试
 

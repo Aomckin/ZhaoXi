@@ -147,11 +147,16 @@ class InterfaceGateway:
                 beat = getattr(getattr(state, "interaction", None), "beat_loop", None)
                 if beat:
                     beat.note_assistant(datetime.now(UTC))
-                if ingress and result.content:
-                    ingress.record(CognitiveEventType.ASSISTANT_REPLY, result.content,
+                from zhaoxi.core.reply import ResolvedReply
+                reply_sequence = getattr(response, "reply_sequence", None)
+                history_text = ResolvedReply(reply_sequence).history_text if reply_sequence is not None else result.content
+                if ingress and history_text:
+                    ingress.record(CognitiveEventType.ASSISTANT_REPLY, history_text,
                         source="desktop", channel=message.channel.value, session_id=message.session_id,
                         parent_refs=[trigger.event_id] if trigger else [],
-                        source_refs=["desktop:reply:" + message.request_id])
+                        source_refs=["desktop:reply:" + message.request_id],
+                        metadata={"reply_segments": [segment.model_dump(mode="json") for segment in reply_sequence.segments]}
+                            if reply_sequence is not None else None)
                 if trigger and ingress:
                     lane = getattr(getattr(response, "route", None), "value", "standard")
                     ingress.stream.mark_dialogue_lane(trigger.event_id, lane)

@@ -10,6 +10,7 @@ from zhaoxi.cognitive.fast_gate import FastGateLane
 from pydantic import ValidationError
 
 from zhaoxi.core.message import Message, Role
+from zhaoxi.core.reply import ResolvedReply
 from zhaoxi.cognitive_stream.provenance import from_observation, project_current_trigger
 from zhaoxi.core.conversation import Conversation
 from zhaoxi.cognitive_stream.models import CognitiveEventType
@@ -275,13 +276,14 @@ class PerceptionRuntime:
                             images=images, audience=audience,
                             expression_policy=safe_expression_policy,
                         )
-                content = response.content.strip()
+                sequence = getattr(response, "reply_sequence", None)
+                content = ResolvedReply(sequence) if sequence is not None else response.content.strip()
                 if not content:
                     raise ValueError("external response missing safe text")
                 if trigger and ingress:
                     lane = "fast_chat" if fast_owner_reply and not self.last_fast_gate.get("fast_escalation_count") else "standard"
                     ingress.stream.mark_dialogue_lane(trigger.event_id, lane)
-                await self._organize_owner_event(trigger, content)
+                await self._organize_owner_event(trigger, content.history_text if isinstance(content, ResolvedReply) else content)
                 self.store.set_status(item.observation_id, ObservationStatus.PROCESSED)
                 return content
         except Exception as exc:
@@ -294,12 +296,14 @@ class PerceptionRuntime:
                 reset_current_turn(turn_token)
 
     async def reply_sent(self, item: Observation, content: str, segment_count: int) -> None:
+        sequence = content.reply_sequence if isinstance(content, ResolvedReply) else None
+        history_text = content.history_text if sequence is not None else content
         ingress = getattr(self.agent, "cognitive_ingress", None)
         if ingress:
             refs = item.metadata.get("merged_refs") or ([item.raw_ref] if item.raw_ref else
                 ["observation:" + item.observation_id])
             parents = ingress.stream.query_refs(refs, 1)
-            ingress.record(CognitiveEventType.ASSISTANT_REPLY, content, source=item.source,
+            ingress.record(CognitiveEventType.ASSISTANT_REPLY, history_text, source=item.source,
                 channel=item.source, session_id=session_key(item),
                 source_refs=[item.source + ":reply:" + item.observation_id],
                 parent_refs=[parents[0].event_id] if parents else [],
@@ -307,6 +311,7 @@ class PerceptionRuntime:
                 reply_to_event_id=parents[0].event_id if parents else None,
                 privacy_level="OWNER_PRIVATE" if item.actor_role == "OWNER" and item.conversation_kind == "private" else "SOCIAL",
                 metadata={"conversation_kind": item.conversation_kind, "conversation_id":item.conversation_id,
+                          "reply_segments": [segment.model_dump(mode="json") for segment in sequence.segments] if sequence is not None else [],
                           "external_reply": item.actor_role != "OWNER",
                           "source_plugin": item.source_plugin,
                           "external_actor_id": item.actor_id if item.actor_role != "OWNER" else None})
@@ -316,7 +321,7 @@ class PerceptionRuntime:
         if self.settings.interaction_ledger_enabled:
             is_owner_private = item.actor_role == "OWNER" and item.conversation_kind == "private"
             import json
-            summary = (f"已通过 {item.source} 私聊回复 Owner：{json.dumps(content[:180], ensure_ascii=False)}"
+            summary = (f"已通过 {item.source} 私聊回复 Owner：{json.dumps(history_text[:180], ensure_ascii=False)}"
                        if is_owner_private else
                        f"已通过 {item.source} {'私聊' if item.conversation_kind == 'private' else '群聊'}回复{item.actor_role}")
             self.ledger.record("external_reply_sent", item.source, summary,
@@ -326,9 +331,20 @@ class PerceptionRuntime:
                 private=is_owner_private)
         session = await self._session(item)
         if session is not None:
-            session.conversation.add_assistant(content, source=item.source,
-                metadata={**from_observation(item).metadata(), "origin_actor_role":"SELF",
-                          "origin_actor_id":None, "origin_actor_name":"朝汐"})
+            metadata = {**from_observation(item).metadata(), "origin_actor_role": "SELF",
+                        "origin_actor_id": None, "origin_actor_name": "朝汐"}
+            if sequence is None:
+                session.conversation.add_assistant(content, source=item.source, metadata=metadata)
+            else:
+                for segment in sequence.segments:
+                    common = {"reply_group_id": item.observation_id, "segment_type": segment.type,
+                              "metadata": metadata}
+                    if segment.type == "text":
+                        session.conversation.add_assistant(segment.content, source=item.source, **common)
+                    else:
+                        session.conversation.add_assistant_image(
+                            segment.image_url or "", source="emoji", emoji_id=segment.emoji_id,
+                            requested_tags=segment.requested_tags, **common)
             await self.agent.session_store.save(session)
 
     async def _organize_owner_event(self, event, response: str) -> None:
