@@ -46,6 +46,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         proactive_scheduler=proactive_scheduler,
         proactive_state=proactive_state,
         tool_router_mode=settings.tool_router_mode,
+        decision_mode=settings.decision_mode,
     )
     agent.settings = settings
     agent.experience_stream = ExperienceStream(Path(".zhaoxi") / "experience.db",media_directory=settings.media_directory)
@@ -83,7 +84,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     agent.decision_service = DecisionService(
         provider,
         rule_directory=Path(__file__).resolve().parents[3] / "data" / "decisions" / "rules",
-        data_directory=Path(".zhaoxi") / "decisions",
+        data_directory=settings.decision_data_directory,
         agenda=agenda_service,
         current_cognition=current_cognition_service,
         memory_retriever=context_builder.memory_retriever,
@@ -91,6 +92,13 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         timezone=settings.proactive_timezone,
     )
     agent.decision_service.attention_retriever = agent.attention_retriever
+    from zhaoxi.decision.history import ChoiceHistory
+    awareness = agent.decision_awareness
+    awareness.history = ChoiceHistory(settings.decision_data_directory)
+    awareness.principles = agent.decision_service.rules
+    awareness.agenda = agenda_service
+    awareness.cognition = current_cognition_service
+    awareness.memory = memory_retriever
     agent.current_cognition_maintainer = CurrentCognitionMaintainer(
         current_cognition_service, provider, timezone=settings.proactive_timezone,
     )
@@ -171,7 +179,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
                 archive_enabled=archive_service is not None,
                 artifact_resolver=archive_service.artifact_reference_match if archive_service else None,
             ),
-            fast_gate=(FastDialogueGate(settings.fast_gate) if settings.fast_dialogue_enabled else None),
+            fast_gate=(FastDialogueGate(settings.fast_gate, decision_mode=settings.decision_mode) if settings.fast_dialogue_enabled else None),
             fast_chat=(FastChatRuntime(
                 agent, recent_limit=settings.fast_dialogue_recent_limit,
                 max_chars=settings.fast_dialogue_context_max_chars,

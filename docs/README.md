@@ -11,6 +11,13 @@
 
 ## v1.4.x
 
+- [v1.4.6 版本说明与加载方式](v1.4.x/Zhaoxi_v1.4.6_Release_Notes.md)
+- [v1.4.6 开发记录与验收边界](v1.4.x/Zhaoxi_v1.4.6_开发记录.md)
+- [v1.4.6 Decision as Agency 任务书](v1.4.x/Zhaoxi_v1.4.6_Decision_2.0_Decision_as_Agency_开发任务书.md)
+- [v1.4.6 自动验收汇总](v1.4.x/evidence/decision_v146_acceptance.json)
+- [v1.4.6 Dashboard 浏览器验收](v1.4.x/evidence/decision_v146_browser_acceptance.json)
+- [v1.4.6 真实模型完整合成场景](v1.4.x/evidence/decision_v146_live_acceptance.json)
+- [v1.4.6 最终关键场景与失败记录](v1.4.x/evidence/decision_v146_live_final_acceptance.json)
 - [v1.4.5 Dashboard & Control Plane 任务书](v1.4.x/Zhaoxi_v1.4.5_Dashboard_Control_Plane_Task.md)
 - [v1.4.5 开发记录与验收边界](v1.4.x/Zhaoxi_v1.4.5_开发记录.md)
 - [v1.4.5 版本说明](v1.4.x/Zhaoxi_v1.4.5_Release_Notes.md)

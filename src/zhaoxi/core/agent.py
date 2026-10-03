@@ -103,6 +103,7 @@ class ZhaoxiAgent:
         proactive_scheduler=None,
         proactive_state=None,
         tool_router_mode: str = "dynamic",
+        decision_mode: str = "legacy",
     ) -> None:
         self.provider = provider
         self.registry = registry
@@ -110,6 +111,16 @@ class ZhaoxiAgent:
             if not any(tool.name == control_tool.name for tool in registry.list()):
                 registry.register(control_tool)
         self.context_builder = context_builder
+        from zhaoxi.decision.awareness import DecisionAwareness
+        from zhaoxi.decision.context import ReadDecisionContext
+        if decision_mode not in {"agency", "legacy"}:
+            raise ValueError("decision_mode must be agency or legacy")
+        self.decision_mode = decision_mode
+        self.decision_awareness = DecisionAwareness(agenda=context_builder.agenda_service,
+            cognition=context_builder.current_cognition_service, memory=context_builder.memory_retriever)
+        context_builder.decision_awareness = self.decision_awareness if decision_mode == "agency" else None
+        if decision_mode == "agency":
+            registry.register(ReadDecisionContext(self.decision_awareness))
         self.emoji_service = getattr(context_builder, "emoji_service", None)
         from contextvars import ContextVar
         self._conversation = conversation or Conversation()
@@ -133,9 +144,22 @@ class ZhaoxiAgent:
 
     def _commit_model_reply_sequence(self, raw_reply: str) -> ReplySequence:
         """Return the resolved segments so transports never select an emoji twice."""
+        awareness_row = None
+        if getattr(self, "decision_mode", "legacy") == "agency":
+            from zhaoxi.decision.awareness import split_awareness
+            raw_reply, awareness_trace, awareness_error = split_awareness(raw_reply)
+            try:
+                awareness_row = self.decision_awareness.commit(
+                    awareness_trace, awareness_error, self.conversation, self.context_builder)
+            except Exception as exc:
+                logger.warning("decision trace ignored; preserving reply type=%s", type(exc).__name__)
         sequence, message_ids = commit_reply(
             self.conversation, raw_reply, getattr(self, "emoji_service", None)
         )
+        if awareness_row:
+            for message in self.conversation.messages:
+                if message.message_id in message_ids:
+                    message.metadata["decision_awareness"] = awareness_row
         turn_messages = []
         for item in reversed(self.conversation.messages):
             if item.role == Role.USER:
@@ -443,7 +467,7 @@ class ZhaoxiAgent:
                        metadata={"image_count": len(images)})
         logger.info("request=%s received user input", request_id)
         memories = []
-        if self.context_builder.memory_retriever and not (current_budget() and current_budget().state is not BudgetState.NORMAL):
+        if getattr(self, "decision_mode", "legacy") == "legacy" and self.context_builder.memory_retriever and not (current_budget() and current_budget().state is not BudgetState.NORMAL):
             trace = current_trace()
             if trace:
                 trace.emit("memory_search_started", "memory_search", "running", "正在检索相关记忆…")
@@ -512,7 +536,7 @@ class ZhaoxiAgent:
         clean_message = user_message.strip()
         self.conversation.add_user(clean_message)
         memories = []
-        if self.context_builder.memory_retriever and not (current_budget() and current_budget().state is not BudgetState.NORMAL):
+        if getattr(self, "decision_mode", "legacy") == "legacy" and self.context_builder.memory_retriever and not (current_budget() and current_budget().state is not BudgetState.NORMAL):
             trace = current_trace()
             if trace:
                 trace.emit("memory_search_started", "memory_search", "running", "正在检索相关记忆…")
@@ -570,7 +594,7 @@ class ZhaoxiAgent:
             request_id = correlation.request_id if correlation and correlation.request_id else uuid4().hex
             memories = []
             retriever = self.context_builder.memory_retriever
-            if audience == "owner" and retriever and user_message.strip() and not (current_budget() and current_budget().state is not BudgetState.NORMAL):
+            if getattr(self, "decision_mode", "legacy") == "legacy" and audience == "owner" and retriever and user_message.strip() and not (current_budget() and current_budget().state is not BudgetState.NORMAL):
                 try:
                     memories = await retriever.retrieve(user_message)
                 except Exception as exc:
@@ -624,7 +648,7 @@ class ZhaoxiAgent:
         correlation = current_correlation()
         request_id = correlation.request_id if correlation and correlation.request_id else uuid4().hex
         memories = []
-        if self.context_builder.memory_retriever and not (current_budget() and current_budget().state is not BudgetState.NORMAL):
+        if getattr(self, "decision_mode", "legacy") == "legacy" and self.context_builder.memory_retriever and not (current_budget() and current_budget().state is not BudgetState.NORMAL):
             try:
                 memories = await self.context_builder.memory_retriever.retrieve(user_message)
             except Exception as exc:
@@ -811,6 +835,12 @@ class ZhaoxiAgent:
         audience: str = "owner",
         expression_policy: str = "",
     ) -> AgentResponse:
+        if getattr(self, "decision_mode", "legacy") == "agency" and audience == "owner":
+            allowed_read_tools = allowed_read_tools | {"read_decision_context", "search_memories"}
+        reply_format = None
+        if getattr(self, "decision_mode", "legacy") == "agency" and audience == "owner":
+            from zhaoxi.decision.reply import REPLY_FORMAT
+            reply_format = REPLY_FORMAT
         allowed_read_tools=frozenset(item["name"] for item in self.registry.manifest()
             if item["name"] in allowed_read_tools and item["read_only"] and item["enabled"] and item["available"])
         if discovery is None:
@@ -980,6 +1010,7 @@ class ZhaoxiAgent:
                         **({"tool_choice": {"type": "function", "function": {"name": forced_tool}}}
                            if forced_tool else {"tool_choice": "required"}
                            if require_tool_call and corrective_retry and not tool_called and schemas else {}),
+                        **({"response_format":reply_format} if reply_format else {}),
                     )
                 self.last_tool_diagnostics["prompt_tokens"] = response.usage.get("prompt_tokens", response.usage.get("input_tokens"))
                 if trace:
@@ -1043,6 +1074,9 @@ class ZhaoxiAgent:
                     ), code=error_code
                 ) from exc
 
+            if getattr(self, "decision_mode", "legacy") == "agency" and audience == "owner":
+                from zhaoxi.decision.reply import decode_main_reply
+                response = decode_main_reply(response)
             # Providers can emit calls despite tools=None; final-only is enforced
             # by the runtime, not just by the schema or prompt.
             if final_only and response.tool_calls:
@@ -1162,7 +1196,8 @@ class ZhaoxiAgent:
                     continue
                 if call.name == "emit_interim_reply":
                     if trace:
-                        trace.emit_interim(str(call.arguments.get("content", "")), reason="agent")
+                        from zhaoxi.decision.awareness import split_awareness
+                        trace.emit_interim(split_awareness(str(call.arguments.get("content", "")))[0], reason="agent")
                     continue
                 if call.name in {"request_tool_group", "inspect_tool_catalog"}:
                     if trace and call.name == "inspect_tool_catalog":

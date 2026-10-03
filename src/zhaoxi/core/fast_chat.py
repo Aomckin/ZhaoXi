@@ -74,6 +74,10 @@ class FastChatRuntime:
             user_message, output_channel=output_channel, audience=audience,
             expression_policy=expression_policy,
         )
+        reply_format = None
+        if getattr(self.agent, "decision_mode", "legacy") == "agency" and audience == "owner":
+            from zhaoxi.decision.reply import REPLY_FORMAT
+            reply_format = REPLY_FORMAT
         trace = current_trace()
         if trace:
             trace.emit("model_step_started", "model", "running", "正在回应…", step_id=1)
@@ -81,7 +85,9 @@ class FastChatRuntime:
         try:
             with budget_stage_scope("response_generation"), llm_owner_scope("fast_chat", "response_generation"):
                 response = await asyncio.wait_for(
-                    self.agent.provider.generate(messages, None), timeout=self.agent.timeout_seconds
+                    self.agent.provider.generate(messages,
+                        None, **({"response_format":reply_format} if reply_format else {})),
+                    timeout=self.agent.timeout_seconds
                 )
         except TimeoutError as exc:
             if trace:
@@ -91,16 +97,25 @@ class FastChatRuntime:
                            "最终回复生成超时", step_id=1, error_code="agent_timeout")
                 trace.response_status = "failed"
             raise AgentLoopError(f"请求超过 {self.agent.timeout_seconds:g} 秒，已停止。", code="agent_timeout") from exc
+        if reply_format:
+            from zhaoxi.decision.reply import decode_main_reply
+            response = decode_main_reply(response, fast=True)
         content = strip_echoed_timeline_header(response.content or "模型没有返回可显示的内容。")
-        kind, span, validation_reason = self.validated_request(content, user_message)
-        requested = self.escalation_request(content) is not None or self.structured_request(content) is not None
+        if getattr(self.agent, "decision_mode", "legacy") == "agency":
+            from zhaoxi.decision.awareness import split_awareness
+            visible_content, _, _ = split_awareness(content)
+        else:
+            visible_content = content
+        kind, span, validation_reason = self.validated_request(
+            visible_content, user_message, semantic_context=getattr(self.agent, "decision_mode", "legacy") == "agency")
+        requested = self.escalation_request(visible_content) is not None or self.structured_request(visible_content) is not None
         reason = "fast_requires_" + kind.value if kind is not None else ""
         if response.tool_calls:
             requested = True
             kind = FastEscalationKind.TOOL if self.current_evidence(user_message, FastEscalationKind.TOOL) else None
             span, reason = user_message if kind else "", "fast_tool_call"
             validation_reason = "" if kind else "no_current_turn_evidence"
-        elif kind is None and self.requires_action_escalation(content):
+        elif kind is None and self.requires_action_escalation(visible_content):
             requested = True
             kind = FastEscalationKind.TOOL if self.current_evidence(user_message, FastEscalationKind.TOOL) else None
             span, reason = user_message if kind else "", "fast_action_commitment"
@@ -127,7 +142,11 @@ class FastChatRuntime:
                 from zhaoxi.errors import ProviderError
                 try:
                     with budget_stage_scope("finalization"), llm_owner_scope("fast_chat", "response_generation"):
-                        retry = await asyncio.wait_for(self.agent.provider.generate(retry_messages, None), timeout=self.agent.timeout_seconds)
+                        retry = await asyncio.wait_for(self.agent.provider.generate(retry_messages, None,
+                            **({"response_format":reply_format} if reply_format else {})), timeout=self.agent.timeout_seconds)
+                    if reply_format:
+                        from zhaoxi.decision.reply import decode_main_reply
+                        retry = decode_main_reply(retry, fast=True)
                     content = strip_echoed_timeline_header(retry.content or "")
                     if (not content or retry.tool_calls or self.escalation_request(content) is not None
                             or self.structured_request(content) is not None or self.requires_action_escalation(content)):
@@ -153,7 +172,8 @@ class FastChatRuntime:
                            metadata={"reason": reason, "capability": kind.value, "count": 1})
             return FastChatResult(request_id=request_id, escalated=True,
                                   escalation_reason=reason, escalation_kind=kind, trigger_span=span)
-        self.agent.conversation.add_user(user_message.strip())
+        user = self.agent.conversation.add_user(user_message.strip())
+        user.metadata["decision_context_sources"] = messages[0].metadata.get("decision_context_sources", {})
         sequence = self.agent._commit_model_reply_sequence(content)
         content = sequence.visible_text
         if trace:
@@ -189,7 +209,7 @@ class FastChatRuntime:
         return bool(re.search(r"(?:帮我|请|去|把|给我|替我|麻烦|继续|接着).{0,30}(?:查|搜|读|找|补|写|存|记|改|删|发送|执行|处理|打开|关闭|计算)|(?:查一下|查询|查看|读取|搜索|检索|补一下|写入|保存|更新|修改|删除|发送|计算|算一下|几点|几号|什么时间|原话|原文|证据|原图)", text))
 
     @classmethod
-    def validated_request(cls, content, current):
+    def validated_request(cls, content, current, *, semantic_context=False):
         request = cls.structured_request(content)
         kind = cls.escalation_request(content)
         span = current
@@ -207,6 +227,10 @@ class FastChatRuntime:
             return None, "", ""
         if kind is FastEscalationKind.STANDARD:
             return None, "", "invalid_request"
+        if semantic_context and request is not None and kind in {FastEscalationKind.DECISION, FastEscalationKind.RECALL}:
+            # Same-model, same-turn request for information. It grants no action
+            # permission; all writes still pass the STANDARD permission gateway.
+            return kind, span, ""
         if not cls.current_evidence(current, kind) or not cls.current_evidence(span, kind):
             return None, span, "no_current_turn_evidence"
         return kind, span, ""
@@ -240,13 +264,27 @@ class FastChatRuntime:
     ) -> list[Message]:
         builder = self.agent.context_builder
         now = datetime.now(builder.timezone)
-        system = builder.character_prompt.strip() + "\n\n" + FAST_RULES
+        rules = FAST_RULES
+        if getattr(self.agent, "decision_mode", "legacy") == "agency" and audience == "owner":
+            rules = rules.replace("当前没有工具，也不能查询长期记忆或执行 Decision 判断。",
+                "当前没有工具或长期记忆检索；你可以直接完成低价值 PICK。需要补日程、近期状态、记忆或大问题资料时，提出结构化 decision/recall 升级请求，再由 STANDARD 主模型按需查阅。")
+            rules = rules.replace("Runtime 会验证当前消息的行动、回忆或决策证据；",
+                "Runtime 会校验本轮引用；资料升级由你判断，执行行动仍需明确意图与权限；")
+        system = builder.character_prompt.strip() + "\n\n" + rules
+        if getattr(self.agent, "decision_mode", "legacy") == "agency" and audience == "owner":
+            system += "\n\n" + self.agent.decision_awareness.prompt(self.agent.conversation)
+        builder.last_recent_context = {"agenda": None, "current_cognition": None, "errors": {}}
         if expression_policy:
             system += "\n\n" + expression_policy
         cognition = getattr(builder, "current_cognition_service", None)
         if cognition is not None:
             try:
-                snapshot = cognition.render_for_fast_chat()
+                if getattr(self.agent, "decision_mode", "legacy") == "agency":
+                    from zhaoxi.decision.context import relevant_cognition
+                    snapshot = relevant_cognition(cognition, user_message)
+                else:
+                    snapshot = cognition.render_for_fast_chat()
+                builder.last_recent_context["current_cognition"] = snapshot
                 if snapshot:
                     system += f"\n\n{snapshot}\n这是近期整体认识；若与当前用户明确表达冲突，以当前用户为准。"
             except Exception:
@@ -271,7 +309,9 @@ class FastChatRuntime:
             components.append({"name": "runtime.emoji_context", "chars": len(emoji_context)})
         if image_note:
             components.append({"name": "runtime.fast_chat_image_rules", "chars": len(image_note)})
-        return [Message(role=Role.SYSTEM, content=system, metadata={"prompt_components": components}), *recent]
+        return [Message(role=Role.SYSTEM, content=system, metadata={"prompt_components": components, "decision_context_sources": {
+            source: ["context:" + source] for source in ("agenda", "current_cognition")
+            if builder.last_recent_context.get(source)}}), *recent]
 
     def _recent_owner_conversation(
         self, user_message: str, *, output_channel: str, audience: str,

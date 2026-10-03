@@ -1,5 +1,5 @@
 
-const FRONTEND_BUILD_ID='v1.4.5-dashboard-20261003',FRONTEND_LOADED_AT=new Date().toISOString();
+const FRONTEND_BUILD_ID='v1.4.6-agency-20261003',FRONTEND_LOADED_AT=new Date().toISOString();
 const shellInertNodes=new Map();
 const $=s=>{const found=document.querySelector(s);if(found)return found;
   if(!shellInertNodes.has(s)){const node=document.createElement('div');node.value='';node.checked=false;shellInertNodes.set(s,node)}
@@ -595,7 +595,27 @@ $('#memoryInspectorRun').onclick=async()=>{
 };
 $('#memoryClusterInspectorRun').onclick=async()=>{try{$('#memoryMaintenanceOutput').textContent=JSON.stringify(await request('/api/debug/memory-clusters'),null,2)}catch(e){$('#memoryMaintenanceOutput').textContent=e.message}};
 $('#databaseInspectorRun').onclick=async()=>{try{$('#memoryMaintenanceOutput').textContent=JSON.stringify(await request('/api/debug/database-maintenance'),null,2)}catch(e){$('#memoryMaintenanceOutput').textContent=e.message}};
-async function refreshDecisionDebug(){try{$('#decisionDebugOutput').textContent=JSON.stringify(await request('/api/debug/decision'),null,2)}catch(e){$('#decisionDebugOutput').textContent=e.message}}
+function renderDecisionDebug(data){
+ const target=$('#decisionDebugOutput');target.replaceChildren();
+ const legacy=data.decision_mode==='legacy';$('#decisionLegacyControls').hidden=!legacy;
+ const text=value=>{const p=document.createElement('p');p.textContent=value;target.append(p)};
+ const sources={current_input:'当前表达',agenda:'Agenda',current_cognition:'Current Cognition',memory:'Memory',principles:'Decision Principles',choice_history:'Choice History',tool:'实际工具资料'};
+ if(legacy){text('当前使用 Legacy 决策链。')}else{
+  const row=data.latest;
+  if(row){text('这次朝汐建议：'+(row.agent_recommendation||'整理事实与价值冲突'));text('模式：'+row.mode);
+   if(row.predicted_user_choice)text('推测你更可能选择：'+row.predicted_user_choice);
+   text('本轮参考：'+((row.context_sources||[]).map(s=>sources[s]||s).join('、')||'当前对话'));
+   if(row.principle_ids?.length)text('参考原则：'+row.principle_ids.join('、'));
+   text(row.guard_flags?.length?'行动边界：'+row.guard_flags.join('、'):'本次判断没有行动 Guard 命中。');
+  }else text('还没有生活判断记录。正常对话后刷新即可，查看不会调用模型。');
+  if(data.choice_history?.length){text('最近选择（历史只作弱证据）：');const list=document.createElement('ul');
+   for(const row of data.choice_history){const li=document.createElement('li');li.textContent=row.mode+' · '+(row.suggestion||row.summary)+(row.user_final_choice?' → 最终：'+row.user_final_choice:'')+(row.overridden?'（已接受覆盖）':'')+(row.outcome?' · 结果：'+row.outcome:'');list.append(li)}target.append(list)}
+  if(data.guard_events?.length){text('最近行动边界：');for(const event of data.guard_events)text(event.tool+' · '+event.flags.join('、')+' · '+event.status)}
+ }
+ const details=document.createElement('details'),summary=document.createElement('summary'),raw=document.createElement('pre');
+ summary.textContent='技术详情';raw.textContent=JSON.stringify(data,null,2);details.append(summary,raw);target.append(details);
+}
+async function refreshDecisionDebug(){try{renderDecisionDebug(await request('/api/debug/decision'))}catch(e){$('#decisionDebugOutput').textContent=e.message}}
 $('#decisionDebugPanel').addEventListener('toggle',event=>{if(event.target.open)void refreshDecisionDebug()});
 $('#decisionDebugRefresh').onclick=refreshDecisionDebug;
 $('#decisionDebugEvaluate').onclick=async()=>{const message=$('#decisionDebugInput').value.trim();if(!message)return;try{$('#decisionDebugOutput').textContent=JSON.stringify(await request('/api/debug/decision',{method:'POST',body:JSON.stringify({message,forced_level:$('#decisionDebugLevel').value||null})}),null,2)}catch(e){$('#decisionDebugOutput').textContent=e.message}};

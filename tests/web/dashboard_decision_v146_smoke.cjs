@@ -1,0 +1,24 @@
+const {chromium}=require(process.env.ZHAOXI_PLAYWRIGHT||'playwright');
+const assert=require('node:assert/strict'),fs=require('node:fs');
+(async()=>{const browser=await chromium.launch({channel:'msedge',headless:true});
+try{const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('http://127.0.0.1:18766/desktop-entry?token=decision-ui-test');
+ await page.goto('http://127.0.0.1:18766/dashboard#runtime');
+ const frame=page.frameLocator('iframe');
+ await frame.locator('#decisionDebugPanel > summary').click();
+ await frame.locator('#decisionDebugOutput').getByText('这次朝汐建议：去打舞萌',{exact:true}).waitFor();
+ const output=await frame.locator('#decisionDebugOutput').innerText();
+ for(const text of ['模式：ADVISE','推测你更可能选择：继续项目','Agenda、Current Cognition','三瓶','已接受覆盖','require_confirmation'])assert.ok(output.includes(text),text);
+ assert.equal(await frame.locator('#decisionLegacyControls').isVisible(),false);
+ assert.equal(await frame.locator('#decisionDebugOutput > details').evaluate(n=>n.open),false);
+ await frame.locator('#decisionDebugRefresh').click();
+ await frame.locator('#decisionDebugOutput').getByText('这次朝汐建议：去打舞萌',{exact:true}).waitFor();
+ assert.equal(errors.length,0);
+ await page.screenshot({path:'.zhaoxi/decision-v146-dashboard.png',fullPage:true});
+ const anonymous=await browser.newContext();const response=await anonymous.request.get('http://127.0.0.1:18766/api/debug/decision');assert.equal(response.status(),401);await anonymous.close();
+ const result={passed:true,checks:['actual iframe rendering','ADVISE and prediction','context sources','override history','execution guard','raw JSON folded','legacy classifier hidden','refresh','authentication','no script errors']};
+ fs.writeFileSync('docs/v1.4.x/evidence/decision_v146_browser_acceptance.json',JSON.stringify(result,null,2));
+ console.log(JSON.stringify(result));
+}finally{await browser.close()}
+})().catch(e=>{console.error(e);process.exit(1)});

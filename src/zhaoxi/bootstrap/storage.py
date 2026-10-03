@@ -78,12 +78,13 @@ def build_data_store_specs(settings: Settings, *, archive_enabled: bool) -> list
     )
     specs = [DataStoreSpec(name, Path(getattr(settings, field))) for name, field in database_fields]
     for name, path in (
-        ("decision_log", ".zhaoxi/decisions/decision_log.jsonl"),
-        ("decision_overrides", ".zhaoxi/decisions/override_log.jsonl"),
-        ("decision_rule_candidates", ".zhaoxi/decisions/rule_candidates.jsonl"),
+        ("decision_log", str(Path(settings.decision_data_directory) / "decision_log.jsonl")),
+        ("decision_overrides", str(Path(settings.decision_data_directory) / "override_log.jsonl")),
+        ("decision_rule_candidates", str(Path(settings.decision_data_directory) / "rule_candidates.jsonl")),
     ):
         specs.append(DataStoreSpec(name, Path(path), kind="file"))
     activity_path = Path(settings.internal_activity_db_path)
+    specs.append(DataStoreSpec("choice_history", Path(settings.decision_data_directory) / "choice_history.jsonl", kind="file"))
     specs.append(DataStoreSpec("internal_activity", activity_path))
     specs.append(DataStoreSpec("runtime_settings", activity_path.with_name(activity_path.stem + "-settings.json"), kind="file"))
     specs.append(DataStoreSpec("perception", Path(settings.perception_db_path)))

@@ -1,0 +1,101 @@
+{
+  "version": "1.4.6",
+  "date": "2026-10-03",
+  "base_commit": "875fbf8461addf35d7c9318bac90bc8dc6f897eb",
+  "scope": "source implementation and isolated acceptance; production dogfooding is pending",
+  "python": {
+    "command": ".venv/Scripts/python.exe -m pytest --basetemp=.zhaoxi/v146-complete-final-tmp",
+    "passed": 1216,
+    "skipped": 1,
+    "warnings": 1,
+    "elapsed_seconds": 247.92,
+    "warning": "existing FastAPI/Starlette httpx deprecation"
+  },
+  "final_changed_area_regression": {
+    "passed": 361,
+    "elapsed_seconds": 32.34
+  },
+  "final_cleanup_decision_regression": {
+    "passed": 49,
+    "elapsed_seconds": 0.61
+  },
+  "node": {
+    "command": "node --test tests/web/*.test.cjs",
+    "passed": 86,
+    "failed": 0
+  },
+  "browser": {
+    "passed": true,
+    "checks": [
+      "actual iframe rendering",
+      "ADVISE and prediction",
+      "context sources",
+      "override history",
+      "execution guard",
+      "raw JSON folded",
+      "legacy classifier hidden",
+      "refresh",
+      "authentication",
+      "no script errors"
+    ]
+  },
+  "wheel": {
+    "filename": "zhaoxi-1.4.6-py3-none-any.whl",
+    "sha256": "4b933495f4f16d5958819f6cae29e0f7b6a5e0c25ce0dd0182fd06190754b2e9",
+    "source_files_verified": 299,
+    "mismatches": [],
+    "version": "1.4.6"
+  },
+  "real_model": {
+    "synthetic_data": true,
+    "production_tools": false,
+    "full_ten_cases": "decision_v146_live_acceptance.json",
+    "final_critical_cases": "decision_v146_live_final_acceptance.json",
+    "final_cases_passed": true,
+    "final_cases": [
+      {
+        "case": "afternoon",
+        "mode": "ADVISE",
+        "generate_calls": 1,
+        "elapsed_ms": 9470,
+        "context_sources": [
+          "current_cognition"
+        ]
+      },
+      {
+        "case": "offer",
+        "mode": "FRAME",
+        "generate_calls": 3,
+        "elapsed_ms": 30927,
+        "context_sources": [
+          "current_cognition",
+          "memory",
+          "principles",
+          "choice_history",
+          "offer_facts"
+        ]
+      },
+      {
+        "case": "implicit",
+        "mode": "PICK",
+        "generate_calls": 1,
+        "elapsed_ms": 7448,
+        "context_sources": [
+          "current_cognition"
+        ]
+      }
+    ],
+    "call_count_unit": "main provider generate calls, excluding internal transport retries",
+    "failures_preserved": "prior_attempts retains transport error and invalid Offer metadata",
+    "reproduction_script": "tests/decision/decision_v146_live_acceptance.py"
+  },
+  "remaining": [
+    "Daily production dogfooding, actual QQ and long-term behavioral observation",
+    "FRAME brevity and final value-conflict compression vary with model responses",
+    "Provider speed and strict JSON conformance can vary; valid replies survive telemetry errors",
+    "Legacy removal follows stable dogfooding as required by the task"
+  ],
+  "production_restart_performed": false,
+  "rollback": "ZHAOXI_DECISION_MODE=legacy, then restart the entire process",
+  "delivery": "Included in the local v1.4.6 version commit; no remote push or production restart"
+}

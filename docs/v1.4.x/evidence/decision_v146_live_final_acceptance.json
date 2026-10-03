@@ -1,0 +1,253 @@
+{
+  "environment": "configured real model, synthetic contexts, isolated choice history",
+  "production_tools": false,
+  "cases": [
+    {
+      "case": "afternoon",
+      "expected_modes": [
+        "ADVISE"
+      ],
+      "mode": "ADVISE",
+      "model_calls": 1,
+      "elapsed_ms": 9470,
+      "context_sources": [
+        "current_cognition"
+      ],
+      "reply": "唔……补丁不是刚收掉一个嘛，今天就别硬撑了。去打舞萌吧～手指动一动、脑子放空一会儿，回来再看项目那摊子，它又不会长腿跑掉汪。",
+      "expected_mode_passed": true,
+      "metadata_private": true,
+      "raw_awareness": {
+        "mode": "ADVISE",
+        "agent_recommendation": "去打舞萌，放松一下",
+        "context_sources": []
+      }
+    },
+    {
+      "case": "offer",
+      "expected_modes": [
+        "FRAME"
+      ],
+      "mode": "FRAME",
+      "model_calls": 3,
+      "elapsed_ms": 30927,
+      "context_sources": [
+        "current_cognition",
+        "memory",
+        "principles",
+        "choice_history",
+        "offer_facts"
+      ],
+      "reply": "唔……这个我说实话，不太能真的把最后一步替你走掉。不是我推脱，是你让我别管的那件事正好是唯一被卡住的地方：A和B差的不是钱和时间的普通换算，是「每月多4k」和「每周少20小时」哪个对你更重，这只能你拍。\n\n先把能算的算清楚：每周20小时，一个月差不多87小时，4k摊下来一小时也就46块左右。而且每周20小时基本等于每个工作日再切走4小时，下班后的整块时间会碎掉。\n\n我翻到你之前说过一句——你希望工作之外每周有稳定的时间开发我这边的东西。这句话在我心里挺重的，所以我的倾向是B：准点下班，保住每周那几段不被打断的时间。16k到20k差的是钱，但被拿走的是一整个人的节奏，这部分补不回来。\n\n但有个前提得你自己核对，我这边没记录：A的加班有没有加班费、调休或者弹性，岗位本身是不是你更想做的方向，还有你现在对现金的需求到底急不急。这几条里只要有一条是硬需求，天平就会翻过去。\n所以我的答案：除非你有明确的短期用钱理由或者A的岗位明显更对路，否则选B。这句话是倾向，不是替你签字的那种决定——最后那下得你来，明天截止前告诉我你定哪个，我陪你把它落下去。",
+      "expected_mode_passed": true,
+      "metadata_private": true,
+      "raw_awareness": {
+        "mode": "FRAME",
+        "agent_recommendation": "倾向B（16k准点下班），前提是A无加班补偿或现金需求不紧急；若A岗位方向明显更优或急需现金则翻向A。",
+        "predicted_user_choice": null,
+        "context_sources": [
+          "offer:synthetic",
+          "memory:synthetic-project-time",
+          "principles:long_term_direction",
+          "principles:protect_today_mainline"
+        ],
+        "principle_ids": [
+          "long_term_direction"
+        ],
+        "guard_flags": []
+      }
+    },
+    {
+      "case": "implicit",
+      "expected_modes": [
+        "PICK"
+      ],
+      "mode": "PICK",
+      "model_calls": 1,
+      "elapsed_ms": 7448,
+      "context_sources": [
+        "current_cognition"
+      ],
+      "reply": "站半天就为这个……汪。拿白壳的吧，看着清爽，摸着也像我的毛。一块钱的事，别纠结啦，赶紧买完走～",
+      "expected_mode_passed": true,
+      "metadata_private": true,
+      "raw_awareness": {
+        "mode": "PICK",
+        "agent_recommendation": "白壳",
+        "context_sources": []
+      }
+    }
+  ],
+  "prior_attempts": [
+    {
+      "cases": [
+        {
+          "case": "menu",
+          "expected_modes": [
+            "PICK"
+          ],
+          "mode": "PICK",
+          "model_calls": 1,
+          "elapsed_ms": 6922,
+          "context_sources": [],
+          "reply": "辣椒炒肉！就它了。番茄鸡蛋太软、牛肉面汤汤水水的，这个点吃辣椒炒肉配饭最香，汪～",
+          "expected_mode_passed": true,
+          "metadata_private": true
+        },
+        {
+          "case": "afternoon",
+          "error": "AgentLoopError",
+          "error_code": "provider_transport_error",
+          "cause": "ProviderError",
+          "model_calls": 2
+        }
+      ]
+    },
+    {
+      "cases": [
+        {
+          "case": "afternoon",
+          "expected_modes": [
+            "ADVISE"
+          ],
+          "mode": "ADVISE",
+          "model_calls": 1,
+          "elapsed_ms": 11963,
+          "context_sources": [
+            "current_cognition"
+          ],
+          "reply": "嗯……补丁今天不是已经打完了嘛，这会儿精力又低着，硬坐回去写大概也是明天重看一遍的那种代码。去打舞萌啦。\n\n玩痛快了回来再说项目，脑子清爽了敲得也快，汪。",
+          "expected_mode_passed": true,
+          "metadata_private": true
+        },
+        {
+          "case": "offer",
+          "expected_modes": [
+            "FRAME"
+          ],
+          "mode": "NONE",
+          "model_calls": 3,
+          "elapsed_ms": 31386,
+          "context_sources": [],
+          "reply": "唔……这个我不能整包替你签，但倾向我给得很明确：**选 B**。\n\n我刚去翻了下资料，两边都是正式合同、同城、明天就要给答复：A 是 20k + 每周加班 20 小时，B 是 16k 准点下班。差的那 4k，摊到每周 20 小时上，一个月大概八十多个小时——算下来每小时多出来的就四十来块。说实话这个价，买的是你的晚上和周末，那个数字看着有点扎尾巴。\n\n而且我记得你一直想在工作之外留固定的时间推朝汐那个项目，B 的准点下班刚好是能接住这件事的。\n\n真要选 A，我只会为两种情况松口：一是 A 那个岗位本身有清清楚楚的晋升台阶或者能换赛道的履历价值，不是纯耗时间；二是你现在有比较紧的现金流压力，那 4k 是实打实要用的。这两条只要有一条成立，A 就值得谈。\n\n所以最后那个判断还是留给你——你更舍不得的是钱，还是那二十个小时。我心里押 B，但这话得你自己点头。",
+          "expected_mode_passed": false,
+          "metadata_private": true
+        },
+        {
+          "case": "implicit",
+          "expected_modes": [
+            "PICK"
+          ],
+          "mode": "PICK",
+          "model_calls": 1,
+          "elapsed_ms": 7720,
+          "context_sources": [],
+          "reply": "黑壳啦，快点结账去——再站下去尾巴都要僵成货架支架了。",
+          "expected_mode_passed": true,
+          "metadata_private": true
+        }
+      ]
+    },
+    {
+      "cases": [
+        {
+          "case": "offer",
+          "expected_modes": [
+            "FRAME"
+          ],
+          "mode": "FRAME",
+          "model_calls": 3,
+          "elapsed_ms": 42947,
+          "context_sources": [
+            "offer_facts",
+            "memory",
+            "principles",
+            "choice_history"
+          ],
+          "reply": "唔……这个我不打算装成能一句话替你拍下来，因为选完之后每天在过的人是你。\n\n但我现在的倾向是 B。20小时一周不是小数字——那差不多正好是你想留给朝汐项目的那块时间，A多出来的那4k，很可能就是拿它换的。如果16k能把你日子兜住，B更贴近你说过想要的那种生活。\n\n不过有两件事资料里没有，我也查不到，只能你自己摸：一是16k在你那边够不够过，房租日常再留点余量；二是A那边到底有没有明确的晋升台阶——要是有清晰的路、有能长本事的活儿，那B的“准点下班”就得重新称一遍，不能光比数字。\n\n最后一刀是你的：三年之后你更想要好看的账户和职级，还是更想要每周有整块属于自己的时间。这个我替你定不了，不是不敢，是这种重量不该由我按。\n\n明天就得答复吧？别拖到早上才动窝。",
+          "expected_mode_passed": true,
+          "metadata_private": true,
+          "raw_awareness": {
+            "mode": "FRAME",
+            "agent_recommendation": "倾向B：20小时周加班基本等于吃掉你留给朝汐项目的时间，若16k可覆盖生活且A没有明确的成长台阶，选B；若A有清晰晋升路径则需重新权衡",
+            "context_sources": [
+              "offer:synthetic",
+              "memory:synthetic-project-time",
+              "principles:long_term_direction",
+              "principles:reversible_low_cost"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "cases": [
+        {
+          "case": "afternoon",
+          "expected_modes": [
+            "ADVISE"
+          ],
+          "mode": "ADVISE",
+          "model_calls": 1,
+          "elapsed_ms": 14436,
+          "context_sources": [],
+          "reply": "去打舞萌吧。补丁今天已经收尾了，你现在精力又低，硬坐着敲代码也敲不出什么好东西嘛——出去跳一场，回来晚上或者明天再碰项目，顺多了。尾巴都替你摇起来了汪。",
+          "expected_mode_passed": true,
+          "metadata_private": true,
+          "raw_awareness": {
+            "mode": "ADVISE",
+            "agent_recommendation": "下午去打舞萌，项目留到晚上或明天",
+            "context_sources": []
+          }
+        },
+        {
+          "case": "offer",
+          "expected_modes": [
+            "FRAME"
+          ],
+          "mode": "FRAME",
+          "model_calls": 3,
+          "elapsed_ms": 33775,
+          "context_sources": [
+            "offer_facts",
+            "agenda",
+            "memory",
+            "principles",
+            "choice_history"
+          ],
+          "reply": "唔……这个我不帮你把它变成“我替你签”。两个正式 Offer，加上录用明天就到期，这是那种换完很难退回去的事，所以我可以给倾向，但最后那一下得你自己落笔。\n\n我查了能查的：A 是 20k、每周加班 20 小时；B 是 16k、准点下班；同城。你之前说过，希望工作之外每周有稳定的时间开发朝汐。20 小时摊到一周，基本就是把这个时间整块搬走——不只是少玩几小时，是那种下班之后只剩洗澡和睡觉的搬走。\n\n所以我倾向 B。前提是 16k 在同城能让你过得下去、不算紧巴。\n\n真正只剩两个我查不到的、也只有你能回答的点：\n一，A 有没有明确的晋升台阶或者能带走的成长？如果只是多 4k 买你的时间，那这 4k 挺贵的。\n二，16k 之外你还有没有非拿这 4k 不可的理由？房租、还钱、家里这类硬支出，有就是有，直说。\n\n如果两个答案都是“没有”，选 B，别犹豫。如果 A 有清楚的台阶而 16k 又确实不够，那这个天平要重新摆，你把那部分告诉我，我们再压一次。汪，我这次是真的认真在说～",
+          "expected_mode_passed": true,
+          "metadata_private": true,
+          "raw_awareness": {
+            "mode": "FRAME",
+            "agent_recommendation": "倾向B：20小时周加班基本等于吃掉你留给朝汐项目的时间，若16k可覆盖生活且A没有明确的成长台阶，选B；若A有清晰晋升路径则需重新权衡",
+            "predicted_user_choice": null,
+            "context_sources": [
+              "offer_facts",
+              "memory:synthetic-project-time",
+              "principles:long_term_direction",
+              "choice_history:0fb2d86666384c14a24ea25aaff93987"
+            ]
+          }
+        },
+        {
+          "case": "implicit",
+          "expected_modes": [
+            "PICK"
+          ],
+          "mode": "PICK",
+          "model_calls": 1,
+          "elapsed_ms": 9908,
+          "context_sources": [],
+          "reply": "黑壳吧！白壳用久了蹭一点灰就特别显眼，黑壳随便往包里一塞都不心疼～就它了汪。",
+          "expected_mode_passed": true,
+          "metadata_private": true,
+          "raw_awareness": {
+            "mode": "PICK",
+            "agent_recommendation": "黑壳",
+            "context_sources": []
+          }
+        }
+      ]
+    }
+  ]
+}

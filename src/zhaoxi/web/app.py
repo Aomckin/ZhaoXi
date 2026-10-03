@@ -1048,13 +1048,22 @@ def create_app(
 
     @app.get("/api/debug/decision")
     async def debug_decision():
+        if getattr(core, "decision_mode", "legacy") == "agency":
+            awareness = getattr(core, "decision_awareness", None)
+            if awareness is None:
+                raise HTTPException(status_code=409, detail="Decision Awareness 尚未就绪。")
+            executor = getattr(core, "tool_executor", None)
+            return {**awareness.diagnostics(),
+                    "guard_events": list(getattr(executor, "recent_decision_guard_events", []))}
         service = getattr(core, "decision_service", None)
         if service is None:
             raise HTTPException(status_code=409, detail="Decision Layer 尚未就绪。")
-        return service.diagnostics()
+        return {"decision_mode": "legacy", **service.diagnostics()}
 
     @app.post("/api/debug/decision")
     async def debug_evaluate_decision(body: DecisionDebugRequest):
+        if getattr(core, "decision_mode", "legacy") == "agency":
+            raise HTTPException(status_code=409, detail="Agency 模式从正常回复读取判断记录；不运行额外 Decision 模型。")
         service = getattr(core, "decision_service", None)
         if service is None:
             raise HTTPException(status_code=409, detail="Decision Layer 尚未就绪。")

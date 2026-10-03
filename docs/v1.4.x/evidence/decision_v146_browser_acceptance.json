@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "checks": [
+    "actual iframe rendering",
+    "ADVISE and prediction",
+    "context sources",
+    "override history",
+    "execution guard",
+    "raw JSON folded",
+    "legacy classifier hidden",
+    "refresh",
+    "authentication",
+    "no script errors"
+  ]
+}

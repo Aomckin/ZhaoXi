@@ -36,6 +36,7 @@ class PermissionGateway:
         request: PermissionRequest,
         *,
         confirm_write: bool | None = None,
+        guard_confirmation: bool = False,
     ) -> tuple[PermissionDecision, PendingConfirmation | None]:
         self._audit(request, "permission_requested")
         if request.origin is InvocationOrigin.EXTERNAL:
@@ -58,6 +59,11 @@ class PermissionGateway:
                     status=PermissionStatus.ALLOW,
                     reason_code="tool_write_confirmation_disabled",
                 )
+        # Explicit one-use grants were consumed above. Disabling a generic
+        # WRITE prompt cannot disable a high-impact execution boundary.
+        if guard_confirmation and decision.status != PermissionStatus.DENY and decision.reason_code != "explicit_user_intent":
+            decision = PermissionDecision(status=PermissionStatus.REQUIRE_CONFIRMATION,
+                                          reason_code="decision_action_guard")
         if decision.status == PermissionStatus.ALLOW:
             self._audit(request, "policy_allowed", reason_code=decision.reason_code)
             return decision, None

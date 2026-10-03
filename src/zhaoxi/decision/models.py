@@ -3,9 +3,55 @@
 from datetime import datetime
 from enum import StrEnum
 import re
+import logging
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
+
+
+class DecisionMode(StrEnum):
+    NONE = "NONE"
+    PICK = "PICK"
+    ADVISE = "ADVISE"
+    FRAME = "FRAME"
+
+
+class ChoiceFeedback(BaseModel):
+    decision_id: str = Field(max_length=64)
+    user_final_choice: str = Field(min_length=1, max_length=200)
+    overridden: bool = False
+    outcome: str | None = Field(default=None, max_length=200)
+
+
+class DecisionAwarenessTrace(BaseModel):
+    """Side effect of the main reply; never a classifier or verdict lock."""
+    mode: DecisionMode = DecisionMode.NONE
+    predicted_user_choice: str | None = Field(default=None, max_length=200)
+    agent_recommendation: str | None = Field(default=None, max_length=200)
+    context_sources: list[str] = Field(default_factory=list, max_length=20)
+    context_refs: list[str] = Field(default_factory=list, max_length=20)
+    principle_ids: list[str] = Field(default_factory=list, max_length=10)
+    guard_flags: list[str] = Field(default_factory=list, max_length=10)
+    feedback: ChoiceFeedback | None = None
+
+
+    @classmethod
+    def from_reply(cls, payload: object) -> "DecisionAwarenessTrace":
+        """Keep a valid mode when optional model telemetry has invalid fields."""
+        try:
+            return cls.model_validate(payload)
+        except ValidationError as exc:
+            if not isinstance(payload, dict):
+                raise
+            invalid = {error["loc"][0] for error in exc.errors()
+                       if error["loc"] and error["loc"][0] in cls.model_fields}
+            if not invalid or "mode" in invalid:
+                raise
+            cleaned = {name: value for name, value in payload.items() if name not in invalid}
+            trace = cls.model_validate(cleaned)
+            logging.getLogger("DECISION").warning(
+                "invalid optional awareness fields ignored: %s", ", ".join(sorted(invalid)))
+            return trace
 
 
 class DecisionLevel(StrEnum):

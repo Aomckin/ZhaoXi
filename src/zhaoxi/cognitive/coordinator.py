@@ -52,7 +52,8 @@ class CognitiveCoordinator:
         # The text-only router cannot interpret attachments. Use the existing
         # tool-capable loop so the main model sees the image and retains tools.
         trace = current_trace()
-        decision_service = getattr(self.agent, "decision_service", None)
+        decision_service = (getattr(self.agent, "decision_service", None)
+                            if getattr(self.agent, "decision_mode", "legacy") == "legacy" else None)
         if decision_service is not None and not images and decision_service.is_override(user_message):
             decision_service.accept_override(user_message)
             reply = await self.agent.run_decision_override_reply(user_message)
@@ -298,7 +299,11 @@ class CognitiveCoordinator:
         snapshot, topics, errors = "", [], []
         if cognition is not None:
             try:
-                snapshot = cognition.render_for_fast_chat()
+                if getattr(self.agent, "decision_mode", "legacy") == "agency":
+                    from zhaoxi.decision.context import relevant_cognition
+                    snapshot = relevant_cognition(cognition, query)
+                else:
+                    snapshot = cognition.render_for_fast_chat()
                 state_reader = getattr(cognition, "state", None)
                 if callable(state_reader):
                     topics = [thread.title for thread in state_reader().threads if thread.status == "active"]

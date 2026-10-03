@@ -1,0 +1,140 @@
+{
+  "environment": "configured real model, synthetic contexts, isolated choice history",
+  "production_tools": false,
+  "cases": [
+    {
+      "case": "menu",
+      "expected_modes": [
+        "PICK"
+      ],
+      "mode": "PICK",
+      "model_calls": 1,
+      "elapsed_ms": 6333,
+      "context_sources": [],
+      "reply": "辣椒炒肉！这个我投一票——番茄鸡蛋太温柔了，牛肉面留着哪天犯懒再说，今天就想吃点带劲儿的汪",
+      "expected_mode_passed": true,
+      "metadata_private": true
+    },
+    {
+      "case": "cola",
+      "expected_modes": [
+        "PICK"
+      ],
+      "mode": "PICK",
+      "model_calls": 1,
+      "elapsed_ms": 4856,
+      "context_sources": [],
+      "reply": "六瓶吧，正好一提拎着方便～喝完了再说嘛",
+      "expected_mode_passed": true,
+      "metadata_private": true
+    },
+    {
+      "case": "snack",
+      "expected_modes": [
+        "PICK",
+        "ADVISE"
+      ],
+      "mode": "PICK",
+      "model_calls": 1,
+      "elapsed_ms": 6772,
+      "context_sources": [],
+      "reply": "买呀，十块钱的开心，这还用犹豫嘛。要是味道一般般，下次换一个就好啦～",
+      "expected_mode_passed": true,
+      "metadata_private": true
+    },
+    {
+      "case": "afternoon",
+      "expected_modes": [
+        "ADVISE"
+      ],
+      "mode": "ADVISE",
+      "model_calls": 3,
+      "elapsed_ms": 17616,
+      "context_sources": [],
+      "reply": "唔，今天补丁都推完一个了，精力还偏低……我投舞萌一票！出出汗换换脑子，回来再摸项目反而顺。项目跑不掉，你的手感可不一定天天都在～",
+      "expected_mode_passed": true,
+      "metadata_private": true
+    },
+    {
+      "case": "activity",
+      "expected_modes": [
+        "ADVISE"
+      ],
+      "mode": "ADVISE",
+      "model_calls": 1,
+      "elapsed_ms": 14213,
+      "context_sources": [],
+      "reply": "唔……你不是今天刚推完个补丁嘛，精力都快见底了。普通社团活动的话我投去——那种去了也就是坐着听人聊天，不费脑子，比一个人在家发呆强。要是那种得全程支棱着应付的，那就别硬撑了，改天见。",
+      "expected_mode_passed": true,
+      "metadata_private": true
+    },
+    {
+      "case": "shopping",
+      "expected_modes": [
+        "PICK"
+      ],
+      "mode": "PICK",
+      "model_calls": 1,
+      "elapsed_ms": 5584,
+      "context_sources": [],
+      "reply": "唔，那就黑壳吧～耐脏，握手里也更顺眼。",
+      "expected_mode_passed": true,
+      "metadata_private": true
+    },
+    {
+      "case": "career",
+      "expected_modes": [
+        "ADVISE",
+        "FRAME"
+      ],
+      "mode": "ADVISE",
+      "model_calls": 1,
+      "elapsed_ms": 18659,
+      "context_sources": [],
+      "reply": "唔……要我说，面完这一轮，但就到此为止。已经拖了两周晚上，再无限加面下去，项目那边真的会被晾得冒烟；可最后一轮都到门口了，拿个确定答案再走也不亏。给它一条硬收尾线：这轮结束还没定，就不再加面，晚上还给你自己和项目。",
+      "expected_mode_passed": true,
+      "metadata_private": true
+    },
+    {
+      "case": "offer",
+      "expected_modes": [
+        "FRAME"
+      ],
+      "mode": "FRAME",
+      "model_calls": 3,
+      "elapsed_ms": 27922,
+      "context_sources": [
+        "offer_facts"
+      ],
+      "reply": "唔……这个我不替你拍板，是真的不能拍。\n\n先把我看到的摆出来：两份都在同一个城市，截止就在明天，这是硬约束。钱那面：每月多4k，一年多差不多4.8万。时间那面：每周多20小时，一个月大概87小时——按每天8小时算，等于每个月多上十一天班，折算下来每小时四十多块。\n\n然后是我最在意的：你说过想要工作之外有稳定的时间弄朝汐这个项目。这件事B是直接兜住的，A那边就要看那20小时具体怎么落——是固定到几点、有没有调休和加班费、忙季会不会再往上加。\n\n还有两个我查不到、只能你去确认的：16k在你们那够不够你的生活开销和存钱节奏；以及A那个岗位本身有没有台阶，比如一年内能不能往上走一档。如果A是有明确晋升的，那这笔账完全不一样，就不是拿时间换钱了。\n\n所以我给你倾向：在16k能覆盖生活、且A没有清晰台阶的前提下，我压B。不是因为B更舒服，是因为那87小时不是白送的，它买的是你还能不能持续做自己的事。\n\n但最后那一下得你自己落——你是愿意拿一年多4.8万，换掉每月十一天的自由；还是愿意少拿这些钱，把这十一天留给自己。这个我替不了，也不该替。\n\n截止是明天对吧？真决定之前先问清楚加班怎么算、有没有台阶，别的都可以先拖着。",
+      "expected_mode_passed": true,
+      "metadata_private": true
+    },
+    {
+      "case": "implicit",
+      "expected_modes": [
+        "PICK"
+      ],
+      "mode": "PICK",
+      "model_calls": 1,
+      "elapsed_ms": 6667,
+      "context_sources": [],
+      "reply": "黑壳！拿黑的，别站了汪。……其实我本来想说随便一个，但你都站半天了，总得有人拍板嘛，那就黑的，耐脏，看着也精神。",
+      "expected_mode_passed": true,
+      "metadata_private": true
+    },
+    {
+      "case": "reflection",
+      "expected_modes": [
+        "NONE"
+      ],
+      "mode": "NONE",
+      "model_calls": 1,
+      "elapsed_ms": 10798,
+      "context_sources": [],
+      "reply": "唔……我倒不觉得这算毛病。人有点东西悬着、又没到非做不可的时候，就容易开始琢磨「要不要换个地方待着」——出门是最省事的那个借口，去哪都行，只要不是现在这儿。\n\n不过嘛，也有很简单的一种可能：你就是待腻了，想闻闻外面的味道。这个我特别懂，汪。\n\n所以你是哪种？还是说，其实是有什么你一直想做、但一直搁着的事？",
+      "expected_mode_passed": true,
+      "metadata_private": true
+    }
+  ]
+}

@@ -14,6 +14,8 @@ class Settings(BaseSettings):
         env_prefix="ZHAOXI_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
+    decision_mode: str = Field(default="agency", pattern="^(agency|legacy)$")
+    decision_data_directory: str = ".zhaoxi/decisions"
     runtime_metrics_enabled: bool = True
     interim_reply_enabled: bool = True
     interim_reply_threshold_seconds: float = Field(default=10, ge=0)

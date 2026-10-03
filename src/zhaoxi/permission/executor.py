@@ -65,6 +65,7 @@ class ToolExecutor:
         self.gateway = gateway or PermissionGateway()
         self.max_output_chars = max_output_chars
         self.filesystem_write_roots = filesystem_write_roots
+        self.recent_decision_guard_events: list[dict] = []
 
     async def execute(
         self,
@@ -141,6 +142,8 @@ class ToolExecutor:
             return ToolExecution(
                 ToolResult(success=False, content="工具参数触发安全限制。", error=str(exc))
             )
+        from zhaoxi.decision.action_guard import guard_action
+        boundary = guard_action(permission, side_effects, high_impact=bool(getattr(tool, "high_impact", False)))
         canonical = json.dumps(arguments, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
         digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         request = PermissionRequest(
@@ -173,17 +176,27 @@ class ToolExecutor:
             self.gateway.grant_batch_member(approved_batch_confirmation_id, request)
         decision, confirmation = self.gateway.evaluate(
             request,
+            guard_confirmation=boundary.requires_confirmation,
             confirm_write=(
                 self.registry.write_confirmation_required(name)
                 if permission is PermissionLevel.WRITE
                 else None
             ),
         )
+        guard_metadata = {"decision_guard_flags": list(boundary.flags)}
+        if boundary.flags:
+            from zhaoxi.observability import current_trace
+            row = {"request_id": request_id, "tool": name, "flags": list(boundary.flags),
+                   "status": decision.status.value, "reason": decision.reason_code}
+            self.recent_decision_guard_events.append(row)
+            self.recent_decision_guard_events[:] = self.recent_decision_guard_events[-20:]
+            if trace := current_trace():
+                trace.emit("decision_action_guard", "permission", "info", "已检查行动边界", metadata=row)
         if confirmation:
-            return ToolExecution(None, request=request, confirmation=confirmation)
+            return ToolExecution(None, request=request, confirmation=confirmation, safe_metadata=guard_metadata)
         if decision.status == PermissionStatus.DENY:
             return ToolExecution(
-                ToolResult(success=False, content="权限策略拒绝了该操作。", error=decision.reason_code),
+                ToolResult(success=False, content="权限策略拒绝了该操作。", error=decision.reason_code, metadata=guard_metadata),
                 request=request,
             )
         self.gateway.record_execution(request, "tool_execution_started", "started")
@@ -210,6 +223,7 @@ class ToolExecutor:
                 }
         result.metadata = {
             **result.metadata,
+            **guard_metadata,
             "trust": "untrusted_tool_output",
             "source_tool": name,
         }

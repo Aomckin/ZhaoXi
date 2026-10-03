@@ -115,6 +115,9 @@ class ContextBuilder:
                 add("system.formatting", "\n\n")
             add(name, prompt.strip())
         add("system.runtime_rules", f"\n\n运行规则：\n{self.runtime_rules}")
+        awareness = getattr(self, "decision_awareness", None)
+        if awareness is not None and audience == "owner":
+            add("runtime.decision_awareness", "\n\n" + awareness.prompt(conversation))
         self.last_recent_context = {"agenda": None, "current_cognition": None, "errors": {}}
         if expression_policy:
             add("runtime.expression_policy", "\n\n" + expression_policy)
@@ -123,7 +126,7 @@ class ContextBuilder:
                 add("runtime.shared_self", "\n\n" + self.self_activity_provider())
             except Exception as exc:
                 logging.getLogger("CONTEXT").warning("shared self context unavailable type=%s", type(exc).__name__)
-        if output_channel == "desktop" and self.agenda_context_enabled and self.agenda_service is not None:
+        if awareness is None and output_channel == "desktop" and self.agenda_context_enabled and self.agenda_service is not None:
             try:
                 snapshot = self.agenda_service.snapshot(now=now)
                 self.last_recent_context["agenda"] = snapshot
@@ -133,12 +136,23 @@ class ContextBuilder:
                 self.last_recent_context["errors"]["agenda"] = type(exc).__name__
         if audience == "owner" and self.current_cognition_service is not None:
             try:
-                snapshot = self.current_cognition_service.render_for_fast_chat()
+                if awareness is not None:
+                    from zhaoxi.decision.context import relevant_cognition
+                    query = next((m.content or "" for m in reversed(conversation.messages) if m.role in {Role.USER, Role.EXTERNAL}), "")
+                    snapshot = relevant_cognition(self.current_cognition_service, query)
+                else:
+                    snapshot = self.current_cognition_service.render_for_fast_chat()
                 self.last_recent_context["current_cognition"] = snapshot
                 add("runtime.current_cognition", f"\n\n{snapshot}\n这是近期整体认识；若与当前用户明确纠正冲突，以当前用户为准。")
             except Exception as exc:
                 logging.getLogger("CONTEXT").warning("current cognition context unavailable type=%s", type(exc).__name__)
                 self.last_recent_context["errors"]["current_cognition"] = type(exc).__name__
+        if awareness is not None:
+            current_message = next((m for m in reversed(conversation.messages) if m.role in {Role.USER, Role.EXTERNAL}), None)
+            if current_message is not None:
+                current_message.metadata["decision_context_sources"] = {
+                    source: ["context:" + source] for source in ("agenda", "current_cognition")
+                    if self.last_recent_context.get(source)}
         if self.emoji_service is not None:
             emoji_context = self.emoji_service.build_context()
             if emoji_context:

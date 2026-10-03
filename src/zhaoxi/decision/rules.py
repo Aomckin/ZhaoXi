@@ -11,6 +11,8 @@ class RuleStore:
         self.directory = Path(directory)
 
     def get(self, rule_id: str) -> DecisionRule | None:
+        if not re.fullmatch(r"[\w-]+", rule_id):
+            return None
         path = self.directory / f"{rule_id}.json"
         if not path.is_file() or path.stem != rule_id:
             return None
@@ -30,3 +32,18 @@ class RuleStore:
             scored.append((hits * 2 + (3 if rule.domain == domain else 0), rule))
         scored.sort(key=lambda pair: (-pair[0], pair[1].id))
         return [rule for _, rule in scored[:limit]]
+
+    def retrieve_principles(self, query: str, *, limit: int = 5) -> list[DecisionRule]:
+        from .principles import relevance
+        scored = []
+        for path in self.directory.glob("*.json"):
+            rule = DecisionRule.model_validate_json(path.read_text(encoding="utf-8"))
+            if rule.id != path.stem:
+                raise ValueError(f"Decision principle ID mismatch: {path.name}")
+            # Legacy triggers and level hints do not authorize a judgment.
+            score = relevance(query, " ".join([rule.domain, rule.trigger, rule.default,
+                                              *rule.tags, *rule.keywords, *rule.reasons]))
+            if score:
+                scored.append((score, rule))
+        scored.sort(key=lambda pair: (-pair[0], pair[1].id))
+        return [rule for _, rule in scored[:max(1, min(limit, 10))]]

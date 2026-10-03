@@ -89,8 +89,9 @@ def _relevance(text: str, context: str) -> float:
 class FastDialogueGate:
     """Consume bounded local evidence; never call a model, Memory or a Tool."""
 
-    def __init__(self, config: FastGateConfig | None = None) -> None:
+    def __init__(self, config: FastGateConfig | None = None, *, decision_mode: str = "legacy") -> None:
         self.config = config or FastGateConfig()
+        self.decision_mode = decision_mode
 
     def collect(self, user_message: str, *, recent_context: str = "",
                 current_cognition: str = "", current_topics: Sequence[str] = (), capability_groups: Sequence[str] = (),
@@ -129,7 +130,11 @@ class FastDialogueGate:
         multi_step = len(re.findall(r"(?:^|[，,；;])(?:先|然后|再|最后)", text)) >= 2
         choice = bool(re.search(r"要不要|该不该|选哪个|值不值得|去不去|接不接|怎么选"
             r"|(?:还是|或者).{0,30}[？?吗]$|(?:选|应该|该|推荐).{0,40}(?:还是|或者)", text))
-        complexity = 0.95 if multi_step else 0.85 if choice else 0
+        complexity = 0.95 if multi_step else 0.85 if choice and self.decision_mode == "legacy" else 0
+        # Admit short natural turns to the existing FAST model. Semantic choice
+        # and context sufficiency belong to that reply, not another classifier.
+        if self.decision_mode == "agency" and len(text) <= 160 and not multi_step:
+            conversation = max(conversation, 0.8)
         groups = tuple(dict.fromkeys(capability_groups))
         capability = 0.9 if groups and (command or question) and not (opinion and not command) else 0.15 if groups else 0
         recent_relevance = _relevance(text, recent_context)
