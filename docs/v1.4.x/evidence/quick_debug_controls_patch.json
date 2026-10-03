@@ -1,0 +1,47 @@
+{
+  "checks": [
+    "desktop_shortcuts_visible",
+    "dashboard_settings_debug_visible",
+    "dashboard_runtime_debug_visible",
+    "bidirectional_sse_settings",
+    "normal_regenerate_shown_and_hidden",
+    "reload_restores_settings",
+    "partial_update_preserves_timings",
+    "poke_both_surfaces",
+    "poke_busy_guard",
+    "no_page_errors"
+  ],
+  "mock_proactive_requests": 2,
+  "real_model_calls": 0,
+  "real_social_send": false,
+  "errors": [],
+  "date": "2026-10-03",
+  "python_web_desktop_passed": 155,
+  "node_passed": 78,
+  "engineering_panels": {
+    "checks": [
+      {
+        "mode": "memory",
+        "disclosures_clicked": 7,
+        "refresh_status": 200
+      },
+      {
+        "mode": "runtime",
+        "disclosures_clicked": 10,
+        "refresh_status": 200
+      },
+      {
+        "mode": "capability",
+        "disclosures_clicked": 8,
+        "refresh_status": 200
+      },
+      {
+        "mode": "settings",
+        "disclosures_clicked": 5,
+        "refresh_status": 409
+      }
+    ],
+    "errors": []
+  },
+  "production_restarted": false
+}

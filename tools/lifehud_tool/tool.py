@@ -10,6 +10,7 @@ from zhaoxi.sdk import PermissionLevel, SideEffect, Tool, ToolResult
 from tools.lifehud_tool.client import LifeHudClient
 from tools.lifehud_tool.errors import LifeHudError
 from tools.lifehud_tool.living_io import LivingIO
+from tools.lifehud_tool.input_schema import MEAL_EXAMPLE, arguments_schema, input_hint
 from tools.lifehud_tool.models import FocusCompleteInput, FocusStartInput, JournalInput, RecentInput
 
 
@@ -37,9 +38,9 @@ class LifeHudOperation(StrEnum):
 
 
 class LifeHudInput(BaseModel):
-    model_config = ConfigDict(extra="allow")
-    operation: LifeHudOperation
-    arguments: dict[str, Any] = Field(default_factory=dict)
+    model_config = ConfigDict(extra="allow", json_schema_extra={"examples": [MEAL_EXAMPLE]})
+    operation: LifeHudOperation = Field(description="业务分组：context=查询汇总，record=生活记录，journal=日记，focus=专注，task=任务，ritual=仪式，media=媒体，dream=梦想；从 arguments 对应分支选择字段。")
+    arguments: dict[str, Any] = Field(default_factory=dict, json_schema_extra=arguments_schema())
 
     @model_validator(mode="before")
     @classmethod
@@ -78,7 +79,9 @@ class LifeHudTool(Tool):
     )
     description = (
         "读取和记录 Life HUD 生活事实。operation=context|record|journal|focus|task|ritual|media|dream，"
-        "具体动作放在 arguments.action，record 使用 arguments.type。可记录睡眠、饮食、运动、状态、饮水、咖啡因、"
+        "具体动作放在 arguments.action。record 的 type 只能是 sleep|meal|exercise|check_in|life_record；饮食用 meal，不能填 diet。"
+        "饮食的 description 填食物名称、分量和搭配，note 只填额外备注，satisfaction 填用户给的1–5分。其他字段是 mealType,time,images。"
+        "完整字段和枚举见 arguments schema；参数出错按 input_hint 修正，不向用户索取字段名。可记录睡眠、饮食、运动、状态、饮水、咖啡因、"
         "日记及图片，也可管理专注、任务、媒体进度、仪式和梦想。图片使用 images=['<current-message-image>']，"
         "多图可用 <current-message-image:2> 等序号。只在用户有记录/查询意图或既定主动记录策略时使用；"
         "普通闲聊提到活动不应自动落库。兼容旧版 context.* 与 focus.start/complete。"
@@ -165,7 +168,9 @@ class LifeHudTool(Tool):
             success=False,
             content=str(exc),
             error=exc.code,
-            data={"ok": False, "error": {"type": exc.code, "message": str(exc)}, "warnings": warning},
+            data={"ok": False, "error": {"type": exc.code, "message": str(exc)}, "warnings": warning,
+                  **({"input_hint": input_hint(operation.value, payload or {})}
+                     if exc.code == "validation_error" and operation is not None else {})},
             metadata={
                 "retryable": exc.retryable,
                 "safe_to_replay": False,
@@ -243,9 +248,9 @@ class LifeHudTool(Tool):
             else:
                 parsed = FocusCompleteInput.model_validate(payload)
                 value = await self.client.complete(parsed.session_id, parsed.note)
-        except ValidationError:
-            return ToolResult(success=False, content="Life HUD 操作参数无效。", error="validation_error",
-                              data={"ok": False, "error": {"type": "validation_error", "message": "Life HUD 操作参数无效。"}})
+        except ValidationError as exc:
+            details = "; ".join(".".join(map(str, error["loc"])) + ": " + error["msg"] for error in exc.errors())
+            return self._error(LifeHudError("Life HUD 操作参数无效：" + details, code="validation_error"), operation, payload)
         except LifeHudError as exc:
             return self._error(exc, operation, payload)
         content = "已从 Life HUD 读取事实。"

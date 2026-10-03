@@ -1,7 +1,7 @@
 /* Adapt the existing engineering tools to a lazy dashboard panel. */
 (()=>{
  const mode=location.hash.slice(1)||'runtime';
- const sets={memory:['runtimeDebugPanel'],runtime:['runtimeDebugPanel','budgetDebugPanel','decisionDebugPanel'],capability:['toolCabinetPanel','emojiCabinetPanel','emojiDebugPanel','externalSourcesPanel','perceptionPanel'],settings:['recentContextDebugPanel']};
+ const sets={memory:['runtimeDebugPanel'],runtime:['runtimeDebugPanel','budgetDebugPanel','decisionDebugPanel','debugPanel'],capability:['toolCabinetPanel','emojiCabinetPanel','emojiDebugPanel','externalSourcesPanel','perceptionPanel'],settings:['recentContextDebugPanel','debugPanel']};
  const allowed=sets[mode]||sets.runtime;
  const panels=[...document.querySelectorAll('.maintenance details[id]')];
  for(const n of panels)if(!allowed.includes(n.id))n.hidden=true;

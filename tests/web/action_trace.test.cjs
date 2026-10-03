@@ -20,11 +20,11 @@ function setup(){
   const nodes={
     '#actionTrace':{open:false},'#actionTraceSummary':{textContent:''},
     '#actionTraceEvents':list,'#actionTraceDebug':{textContent:''},
-    '#actionRuntimeSummary':{textContent:''},'#actionPlannerStatus':{textContent:''},
+    '#actionRuntimeSummary':{textContent:''},'#actionPlannerStatus':{textContent:''},'#actionMaintenance':{textContent:''},
   };
   const activity={textContent:''};
   const context=vm.createContext({
-    $:selector=>nodes[selector],activity,crypto:{randomUUID:()=> 'request-1'},
+    $:selector=>nodes[selector],activity,busy:true,crypto:{randomUUID:()=> 'request-1'},
     document:{createElement:()=>({className:'',textContent:'',remove(){
       const index=list.children.indexOf(this);if(index>=0)list.children.splice(index,1);
     }})},
@@ -158,4 +158,65 @@ test('Debug shows the single capability upgrade without rendering a draft',()=>{
   assert.match(text,/STANDARD \/ 标准/);
   assert.match(text,/FAST → STANDARD 1 次 · 能力 recall/);
   assert.match(text,/升级：fast_requires_recall/);
+});
+
+
+test('observer adopts desktop requests, ignores retired events and completes without its own POST',()=>{
+  const s=setup();s.context.busy=false;s.context.document.body={dataset:{traceMonitor:'true'}};
+  s.emit('runtime_started','runtime','running','请求一开始');
+  s.emit('tool_call_succeeded','tool_execution','success','工具已完成');
+  assert.equal(s.list.children.length,2);
+  s.emit('runtime_started','runtime','running','请求二开始',{request_id:'request-2'});
+  s.emit('tool_call_succeeded','tool_execution','success','旧请求晚到的事件');
+  s.emit('request_started','request','running','旧请求晚到的启动');
+  assert.deepEqual(s.list.children.map(n=>n.textContent),['请求二开始']);
+  s.emit('runtime_finished','runtime','success','请求二完成',{request_id:'request-2'});
+  assert.equal(s.nodes['#actionTraceSummary'].textContent,'行动记录 · 已完成');
+  assert.equal(s.activity.textContent,'');
+});
+
+test('busy chat keeps its own trace and does not adopt another request',()=>{
+  const s=setup();s.context.beginActionTrace();
+  s.emit('runtime_started','runtime','running','别的请求',{request_id:'request-2'});
+  assert.equal(s.list.children.length,0);
+  s.emit('tool_call_started','tool_execution','running','当前请求');
+  assert.equal(s.list.children[0].textContent,'当前请求');
+});
+
+test('snapshot restores an in-flight trace and metrics without changing composer text',async()=>{
+  const s=setup();s.context.busy=false;
+  s.context.document.querySelector=()=>({});
+  s.activity.textContent='正在录音';
+  s.context.request=async()=>({live_action_trace:{request_id:'request-live',events:[
+    {request_id:'request-live',event_type:'runtime_started',stage:'runtime',outcome:'running',display_message:'运行中'},
+    {request_id:'request-live',event_type:'llm_call_finished',stage:'model',outcome:'success',display_message:'模型完成',metadata:{owner:'agent',index:1,duration_ms:123}},
+  ],maintenance:{status:'running'}}});
+  await s.context.setupActionTrace();
+  assert.equal(s.list.children.length,2);assert.match(s.list.children[1].textContent,/123.00 ms/);
+  assert.equal(s.nodes['#actionTraceSummary'].textContent,'行动记录 · 进行中');
+  assert.equal(s.activity.textContent,'正在录音');
+});
+
+test('late HTTP snapshot cannot overwrite a newer live request',async()=>{
+  const s=setup();s.context.busy=false;s.context.document.querySelector=()=>({});
+  let resolve;s.context.request=()=>new Promise(r=>{resolve=r});
+  const pending=s.context.setupActionTrace();
+  s.emit('runtime_started','runtime','running','新请求开始',{request_id:'request-new'});
+  resolve({live_action_trace:{request_id:'request-old',events:[]}});
+  await pending;
+  assert.deepEqual(s.list.children.map(n=>n.textContent),['新请求开始']);
+});
+
+
+test('existing completed runtime timeline is restored when the live cache is empty',async()=>{
+  const s=setup();s.context.busy=false;s.context.document.querySelector=()=>({});
+  s.context.request=async()=>({request_id:'prior',response_status:'succeeded',
+    live_action_trace:{request_id:null,events:[]},runtime_metrics:{request_id:'prior',total_ms:42,
+      finished_at:'2026-10-03T10:00:00Z',timeline:[
+        {request_id:'prior',event_type:'tool_call_succeeded',stage:'tool_execution',outcome:'success',display_message:'已有工具结果'},
+      ]}});
+  await s.context.setupActionTrace();
+  assert.equal(s.list.children[0].textContent,'已有工具结果');
+  assert.equal(s.nodes['#actionTraceSummary'].textContent,'行动记录 · 已完成');
+  assert.match(s.nodes['#actionRuntimeSummary'].textContent,/42.00 ms/);
 });

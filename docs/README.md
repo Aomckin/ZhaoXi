@@ -18,6 +18,9 @@
 - [v1.4.5 Web 入口与工程点击验收](v1.4.x/evidence/dashboard_web_v145_acceptance.json)
 - [v1.4.5 本地文件工具排查](v1.4.x/Zhaoxi_v1.4.5_Local_File_Tool_Investigation.md)
 - [v1.4.5 本地文件工具排查证据](v1.4.x/evidence/local_file_tool_investigation.json)
+- [v1.4.5 感知调试图片 URL 膨胀修复](v1.4.x/Zhaoxi_v1.4.5_Perception_Inspector_Patch.md)
+- [v1.4.5 Dashboard / Desktop 常用调试入口补回](v1.4.x/Zhaoxi_v1.4.5_Quick_Debug_Controls_Patch.md)
+- [v1.4.5 行动记录侧边栏与 Web 观测修复](v1.4.x/Zhaoxi_v1.4.5_Action_Trace_Monitor_Patch.md)
 
 - [v1.4.4 群聊历史搜索与旧证据衔接补丁](v1.4.x/Zhaoxi_v1.4.4_群聊历史搜索_补丁记录.md)
 - [v1.4.4 群聊历史搜索验收汇总](v1.4.x/evidence/social_history_search_acceptance.json)

@@ -1,0 +1,39 @@
+{
+  "checks": [
+    "desktop_sidebar_trace",
+    "web_observes_desktop_sse",
+    "reload_mid_request_recovers_snapshot",
+    "terminal_status_both_surfaces",
+    "runtime_metrics_displayed",
+    "navigation_back_restores_completed_trace",
+    "latest_request_snapshot",
+    "no_page_errors"
+  ],
+  "desktop_events": 8,
+  "web_events": 8,
+  "real_model_calls": 0,
+  "real_social_send": false,
+  "errors": [],
+  "date": "2026-10-03",
+  "python_web_desktop_passed": 158,
+  "node_passed": 83,
+  "production_restarted": false,
+  "quick_debug_regression": {
+    "checks": [
+      "desktop_shortcuts_visible",
+      "dashboard_settings_debug_visible",
+      "dashboard_runtime_debug_visible",
+      "bidirectional_sse_settings",
+      "normal_regenerate_shown_and_hidden",
+      "reload_restores_settings",
+      "partial_update_preserves_timings",
+      "poke_both_surfaces",
+      "poke_busy_guard",
+      "no_page_errors"
+    ],
+    "mock_proactive_requests": 2,
+    "real_model_calls": 0,
+    "real_social_send": false,
+    "errors": []
+  }
+}

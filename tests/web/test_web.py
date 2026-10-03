@@ -510,14 +510,14 @@ def test_web_shell_has_keyboard_and_live_status_accessibility_baseline():
     assert 'id="regenerateDebugToggle" type="checkbox"' in engineering
     assert 'id="longWaitToggle" type="checkbox"' in engineering
     assert 'id="forceFastChatToggle" type="checkbox"' in engineering
-    assert "long_wait_enabled:$('#longWaitToggle').checked" in script
-    assert "force_fast_chat:$('#forceFastChatToggle').checked" in script
+    assert "longWaitToggle:'long_wait_enabled'" in script
+    assert "forceFastChatToggle:'force_fast_chat'" in script
     assert "normalRegenerationEnabled=false" in script
     assert "button.classList.add('normal-regenerate')" in script
     with TestClient(app) as client:
         tool_control = client.get("/static/tool-control.js").text
     assert "写入前确认" in tool_control
-    assert "regenerateDebugToggle.checked=false" in script
+    assert "renderNormalRegeneration(saved.show_normal_regenerate)" in script
     assert 'id="toolCabinetPanel"><summary>钥匙柜</summary>' in engineering
     assert 'id="debugPanel"><summary>调试</summary>' in engineering
     assert "调试 · 钥匙柜" not in page
@@ -562,6 +562,7 @@ def test_interface_settings_persist_across_app_rebuilds(tmp_path):
             "external_reply_interval_seconds": 0.5,
             "long_wait_enabled": True,
             "force_fast_chat": True,
+            "show_normal_regenerate": False,
         }
 
 

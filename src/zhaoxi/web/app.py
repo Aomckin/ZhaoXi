@@ -110,6 +110,7 @@ class InterfaceSettingsRequest(BaseModel):
     external_reply_interval_seconds: float = Field(default=0.5, ge=0, le=5)
     long_wait_enabled: StrictBool = False
     force_fast_chat: StrictBool = False
+    show_normal_regenerate: StrictBool = False
 
 
 class FilesystemAccessRequest(BaseModel):
@@ -583,8 +584,7 @@ def create_app(
     async def interface_settings():
         return _load_interface_settings(interface_settings_path)
 
-    @app.put("/api/settings/interface")
-    async def change_interface_settings(request: InterfaceSettingsRequest):
+    async def persist_interface_settings(request: InterfaceSettingsRequest):
         try:
             _save_interface_settings(interface_settings_path, request)
         except OSError as exc:
@@ -596,7 +596,18 @@ def create_app(
             default_seconds=configured.request_timeout_seconds,
         )
         _apply_force_fast_chat(core, enabled=request.force_fast_chat)
+        await events.publish({"type": "interface_settings", "settings": request.model_dump()})
         return request
+
+    @app.put("/api/settings/interface")
+    async def change_interface_settings(request: InterfaceSettingsRequest):
+        return await persist_interface_settings(request)
+
+    @app.patch("/api/settings/interface")
+    async def patch_interface_settings(request: InterfaceSettingsRequest):
+        saved = _load_interface_settings(interface_settings_path)
+        updated = saved.model_copy(update=request.model_dump(exclude_unset=True))
+        return await persist_interface_settings(updated)
 
     @app.post("/api/proactive/active/poke")
     async def poke():
@@ -699,8 +710,9 @@ def create_app(
     async def perception_recent():
         if perception is None:
             raise HTTPException(status_code=503, detail="Perception 未启用")
-        return {"observations": [x.model_dump(mode="json") for x in perception.store.recent_observations()],
-                "snapshots": [x.model_dump(mode="json") for x in perception.store.recent_all_snapshots()]}
+        return {"observations": perception.store.inspect_recent_observations(),
+                "snapshots": [x.model_dump(mode="json") for x in perception.store.recent_all_snapshots()],
+                "media_payloads_included": False}
 
     @app.get("/api/perception/sessions")
     async def perception_sessions():
@@ -810,6 +822,7 @@ def create_app(
     @app.get("/api/debug/runtime")
     async def debug_runtime():
         return {**(getattr(core, "last_action_trace", {}) or {}),
+                "live_action_trace": events.action_trace_snapshot(),
                 "maintenance": adapter.gateway.maintenance_queue().diagnostics(),
                 "render_receipts": dict(adapter.gateway.render_receipts)}
 

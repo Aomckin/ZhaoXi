@@ -109,6 +109,29 @@ class PerceptionStore:
             rows = db.execute("SELECT payload FROM observations ORDER BY received_at DESC LIMIT ?", (limit,)).fetchall()
         return [Observation.model_validate(self.media.loads(row[0])) for row in rows]
 
+    def inspect_recent_observations(self, limit: int = 20) -> list[dict]:
+        """Inspect stored records without loading image blobs into debug responses."""
+        with self._connect() as db:
+            rows = db.execute("SELECT payload FROM observations ORDER BY received_at DESC LIMIT ?", (limit,)).fetchall()
+        return [self._inspection_value(json.loads(row[0])) for row in rows]
+
+    @staticmethod
+    def _inspection_value(value):
+        # Legacy records may still contain inline images, including attachment metadata.
+        if isinstance(value, str):
+            comma = value.find(",")
+            if value.startswith("data:image/") and comma >= 0 and value[:comma].endswith(";base64"):
+                return {"$inline_media": True, "mime": value[5:comma].split(";", 1)[0],
+                        "encoded_chars": len(value) - comma - 1, "payload_omitted": True}
+            if value.startswith("base64://"):
+                return {"$inline_media": True, "encoded_chars": len(value) - 9,
+                        "payload_omitted": True}
+        if isinstance(value, list):
+            return [PerceptionStore._inspection_value(item) for item in value]
+        if isinstance(value, dict):
+            return {key: PerceptionStore._inspection_value(item) for key, item in value.items()}
+        return value
+
     def recent_all_snapshots(self, limit: int = 10) -> list[SocialSnapshot]:
         with self._connect() as db:
             rows = db.execute("SELECT payload FROM snapshots ORDER BY window_end DESC LIMIT ?", (limit,)).fetchall()

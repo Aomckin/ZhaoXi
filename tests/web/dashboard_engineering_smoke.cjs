@@ -4,9 +4,9 @@ async function checkEngineeringPanels(page) {
   const checks = [];
   const modes = {
     memory: ['runtimeDebugPanel'],
-    runtime: ['runtimeDebugPanel', 'budgetDebugPanel', 'decisionDebugPanel'],
+    runtime: ['runtimeDebugPanel', 'budgetDebugPanel', 'decisionDebugPanel', 'debugPanel'],
     capability: ['toolCabinetPanel', 'emojiCabinetPanel', 'emojiDebugPanel', 'externalSourcesPanel', 'perceptionPanel'],
-    settings: ['recentContextDebugPanel'],
+    settings: ['recentContextDebugPanel', 'debugPanel'],
   };
   for (const [mode, panels] of Object.entries(modes)) {
     await page.goto('http://127.0.0.1:18765/dashboard#' + mode);

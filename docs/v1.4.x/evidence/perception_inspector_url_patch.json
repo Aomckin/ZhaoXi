@@ -1,0 +1,19 @@
+{
+  "date": "2026-10-03",
+  "scope": "read-only production observation inspection; no model or external send",
+  "database_observations": 1761,
+  "stored_media_references": 215,
+  "stored_inline_images": 0,
+  "previous_live_recent_observations": 20,
+  "previous_live_inline_images": 8,
+  "previous_live_largest_data_url_chars": 6655734,
+  "compact_observations": 20,
+  "compact_image_references": 8,
+  "compact_observation_response_bytes": 34867,
+  "images_hydrated_for_compact_inspection": false,
+  "production_restarted": false,
+  "regression": {
+    "passed": 49,
+    "command": "python -m pytest -q -o addopts='' tests/perception tests/web/test_perception_inspector.py tests/web/test_images.py --basetemp=.zhaoxi/perception-url-fix-test"
+  }
+}

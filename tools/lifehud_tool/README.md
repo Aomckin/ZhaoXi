@@ -33,6 +33,8 @@ The package retains its existing surface switches such as `*_WORKFLOW_ENABLED` a
 
 ## Tool schema
 
+The model receives per-operation argument schemas with field descriptions, types, enum values and a complete meal example. The human-readable Chinese reference is [请求字段说明](docs/TOOL_FIELDS.md). For meals, `description` describes the food and portions; `note` contains additional remarks; `satisfaction` is the user's 1–5 rating. A create that supplies only `note` without `description`, or a record write with unknown fields, is rejected before any upload or API write. Validation failures return `input_hint` with the supported fields and a corrected example so the model can repair the call.
+
 `operation` is closed to `context`, `record`, `journal`, `focus`, `task`, `ritual`, `media`, `dream`, plus the previous `context.*` and `focus.start`/`focus.complete` values for compatibility. Business parameters go in `arguments`; flat fields are also accepted at runtime.
 
 | Operation | Actions / fields |

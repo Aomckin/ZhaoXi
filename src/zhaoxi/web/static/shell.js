@@ -4,8 +4,32 @@ const shellInertNodes=new Map();
 const $=s=>{const found=document.querySelector(s);if(found)return found;
   if(!shellInertNodes.has(s)){const node=document.createElement('div');node.value='';node.checked=false;shellInertNodes.set(s,node)}
   return shellInertNodes.get(s)}, messages=$('#messages'), input=$('#input'), send=$('#send'), mic=$('#mic'), activity=$('#activity'), debug=$('#debug'), voiceReview=$('#voiceReview'), voiceText=$('#voiceText');let busy=false,voiceEnabled=false,voiceRecording=false,speechActive=false,normalRegenerationEnabled=false;
-let activeTraceId=null,traceTerminated=false;
-function beginActionTrace(){activeTraceId=crypto.randomUUID();traceTerminated=false;$('#actionTraceSummary').textContent='行动记录 · 进行中';$('#actionTraceEvents').replaceChildren();$('#actionTraceDebug').textContent='';if($('#actionMaintenance'))$('#actionMaintenance').textContent='';if($('#actionRuntimeSummary'))$('#actionRuntimeSummary').textContent='';if($('#actionPlannerStatus'))$('#actionPlannerStatus').textContent='Planner：本轮尚未启用';activity.textContent='理解 · 耳朵竖起来了，先听清你的意思…';return activeTraceId}
+let activeTraceId=null,traceTerminated=false,traceRevision=0;
+const retiredTraceIds=new Set();
+function resetActionTrace(requestId){
+  if(activeTraceId&&activeTraceId!==requestId){retiredTraceIds.add(activeTraceId);if(retiredTraceIds.size>20)retiredTraceIds.delete(retiredTraceIds.values().next().value)}
+  activeTraceId=requestId;traceTerminated=false;traceRevision++;
+  $('#actionTraceSummary').textContent='行动记录 · 进行中';$('#actionTraceEvents').replaceChildren();$('#actionTraceDebug').textContent='';
+  if($('#actionMaintenance'))$('#actionMaintenance').textContent='';if($('#actionRuntimeSummary'))$('#actionRuntimeSummary').textContent='';if($('#actionPlannerStatus'))$('#actionPlannerStatus').textContent='Planner：本轮尚未启用';
+}
+function beginActionTrace(){const id=crypto.randomUUID();resetActionTrace(id);activity.textContent='理解 · 耳朵竖起来了，先听清你的意思…';return id}
+const actionTraceMonitor=()=>document.body?.dataset.traceMonitor==='true';
+async function setupActionTrace(){
+  if(!document.querySelector('#actionTrace')||busy)return;
+  const revision=traceRevision;
+  try{
+    const data=await request('/api/debug/runtime');
+    if(busy||revision!==traceRevision)return; // A newer live event wins over an older HTTP response.
+    const live=data.live_action_trace,metrics=data.runtime_metrics||{};
+    const snapshot=live?.request_id?live:{request_id:data.request_id||metrics.request_id,events:metrics.timeline||[]};
+    if(!snapshot.request_id){$('#actionTraceSummary').textContent='行动记录 · 暂无请求';return}
+    if(retiredTraceIds.has(snapshot.request_id))return;
+    resetActionTrace(snapshot.request_id);
+    for(const event of snapshot.events||[])renderAgentEvent(event,true);
+    if(!live?.request_id){renderRuntimeMetrics(metrics);if(metrics.finished_at||['succeeded','failed'].includes(data.response_status))endActionTraceFallback(data.response_status==='failed'?'本次回复未完成':'本次任务已完成',data.response_status==='failed')}
+    if(snapshot.maintenance)$('#actionMaintenance').textContent='后台维护：'+snapshot.maintenance.status;
+  }catch(e){if(revision===traceRevision&&!activeTraceId)$('#actionTraceSummary').textContent='行动记录 · 读取失败，可刷新重试'}
+}
 function renderInterimReply(event){
   if(!busy||!event||event.request_id!==activeTraceId||!event.content)return;
   addMessage('assistant',event.content,'interim',[],event.emitted_at);
@@ -59,8 +83,14 @@ function renderRuntimeMetrics(m){
     ...(m.tool_calls||[]).map(c=>`工具 ${c.tool_name}：${ms(c.duration_ms)}`)].join('\n');
   const planner=$('#actionPlannerStatus');if(planner)planner.textContent=m.planner_used?'Planner：本轮已启用':'Planner：本轮未启用（普通 Agent 执行）';
 }
-function renderAgentEvent(event){
-  if(!event||event.request_id!==activeTraceId)return;
+function renderAgentEvent(event,replay=false){
+  if(!event?.request_id)return;
+  if(event.request_id!==activeTraceId){
+    if(replay||retiredTraceIds.has(event.request_id)||busy&&!actionTraceMonitor())return;
+    if(activeTraceId&&!['runtime_started','request_started'].includes(event.event_type))return;
+    resetActionTrace(event.request_id);
+  }
+  traceRevision++;
   const type=event.event_type||'',outcome=event.outcome||'info';
   $('#actionTraceDebug').textContent+=`${event.timestamp||''} ${type} ${JSON.stringify(event)}\n`;
   if(event.stage==='context')return;
@@ -80,8 +110,9 @@ function renderAgentEvent(event){
     }else if(state.task_status==='waiting_for_permission'){
       $('#actionTraceSummary').textContent='行动记录 · 等待确认';traceTerminated=true;
     }
-    activity.textContent='整理 · 快弄好啦…';
-  }else if(event.stage!=='token_budget'&&event.stage!=='context')activity.textContent=traceActivity(event);
+    if(!replay&&busy)activity.textContent='整理 · 快弄好啦…';
+  }else if(!replay&&busy&&event.stage!=='token_budget'&&event.stage!=='context')activity.textContent=traceActivity(event);
+  if(type==='runtime_finished'&&!traceTerminated){$('#actionTraceSummary').textContent=outcome==='failed'?'行动记录 · 未完成':'行动记录 · 已完成';traceTerminated=true;}
 }
 let activityHintTimer=null;
 function showActivityHint(text){
@@ -443,16 +474,26 @@ function applySettings(event,persist=false){
   $('#externalDebounceValue').textContent=externalDebounce?`${externalDebounce} 秒`:'关闭';
   $('#externalReplyValue').textContent=externalReply?`${externalReply.toFixed(1)} 秒`:'立即';
   try{localStorage.setItem('zhaoxiTiming',JSON.stringify([INPUT_MERGE_MS/1000,replyIntervalMs/1000]))}catch{}
-  if(persist)void request('/api/settings/interface',{method:'PUT',body:JSON.stringify({input_merge_seconds:INPUT_MERGE_MS/1000,reply_interval_seconds:replyIntervalMs/1000,external_input_debounce_seconds:externalDebounce,external_reply_interval_seconds:externalReply,long_wait_enabled:$('#longWaitToggle').checked,force_fast_chat:$('#forceFastChatToggle').checked})}).catch(()=>{$('#pokeStatus').textContent='界面设置保存失败'});
+  if(persist){const key=INTERFACE_SETTING_KEYS[event?.target?.id];if(key){const node=event.target,value=node.type==='checkbox'?node.checked:Number(node.value);void request('/api/settings/interface',{method:'PATCH',body:JSON.stringify({[key]:value})}).then(applyInterfaceSettings).catch(()=>{$('#pokeStatus').textContent='界面设置保存失败';void setupInterfaceSettings()})}}
   if(event?.target===$('#mergeRange')&&inputTimer!==null){clearTimeout(inputTimer);inputTimer=setTimeout(()=>{inputTimer=null;flushInput()},INPUT_MERGE_MS)}
 }
-async function setupInterfaceSettings(){
-  try{const saved=await request('/api/settings/interface');$('#mergeRange').value=saved.input_merge_seconds;$('#replyRange').value=saved.reply_interval_seconds;$('#externalDebounceRange').value=saved.external_input_debounce_seconds??5;$('#externalReplyRange').value=saved.external_reply_interval_seconds??0.5;$('#longWaitToggle').checked=!!saved.long_wait_enabled;$('#forceFastChatToggle').checked=!!saved.force_fast_chat}
-  catch{try{const saved=JSON.parse(localStorage.getItem('zhaoxiTiming'));if(Array.isArray(saved)&&saved.length===2&&saved.every(Number.isFinite)){ $('#mergeRange').value=Math.max(0,Math.min(30,saved[0]));$('#replyRange').value=Math.max(0,Math.min(15,saved[1]))}}catch{}}
+const INTERFACE_SETTING_KEYS={mergeRange:'input_merge_seconds',replyRange:'reply_interval_seconds',externalDebounceRange:'external_input_debounce_seconds',externalReplyRange:'external_reply_interval_seconds',longWaitToggle:'long_wait_enabled',forceFastChatToggle:'force_fast_chat',regenerateDebugToggle:'show_normal_regenerate'};
+function renderNormalRegeneration(enabled){normalRegenerationEnabled=!!enabled;$('#regenerateDebugToggle').checked=normalRegenerationEnabled;document.querySelectorAll('.normal-regenerate').forEach(button=>button.hidden=!normalRegenerationEnabled)}
+function applyInterfaceSettings(saved){
+  $('#mergeRange').value=saved.input_merge_seconds;$('#replyRange').value=saved.reply_interval_seconds;
+  $('#externalDebounceRange').value=saved.external_input_debounce_seconds??5;$('#externalReplyRange').value=saved.external_reply_interval_seconds??0.5;
+  $('#longWaitToggle').checked=!!saved.long_wait_enabled;$('#forceFastChatToggle').checked=!!saved.force_fast_chat;
+  renderNormalRegeneration(saved.show_normal_regenerate);
+  for(const id of ['longWaitToggle','forceFastChatToggle','regenerateDebugToggle'])$('#'+id).disabled=false;
   applySettings();
 }
-$('#mergeRange').oninput=applySettings;$('#replyRange').oninput=applySettings;$('#externalDebounceRange').oninput=applySettings;$('#externalReplyRange').oninput=applySettings;$('#mergeRange').onchange=e=>applySettings(e,true);$('#replyRange').onchange=e=>applySettings(e,true);$('#externalDebounceRange').onchange=e=>applySettings(e,true);$('#externalReplyRange').onchange=e=>applySettings(e,true);$('#longWaitToggle').onchange=e=>applySettings(e,true);$('#forceFastChatToggle').onchange=e=>applySettings(e,true);applySettings();
-const regenerateDebugToggle=$('#regenerateDebugToggle');regenerateDebugToggle.checked=false;regenerateDebugToggle.onchange=e=>{normalRegenerationEnabled=e.target.checked;document.querySelectorAll('.normal-regenerate').forEach(button=>button.hidden=!normalRegenerationEnabled)};
+async function setupInterfaceSettings(){
+  try{applyInterfaceSettings(await request('/api/settings/interface'))}
+  catch{try{const saved=JSON.parse(localStorage.getItem('zhaoxiTiming'));if(Array.isArray(saved)&&saved.length===2&&saved.every(Number.isFinite)){ $('#mergeRange').value=Math.max(0,Math.min(30,saved[0]));$('#replyRange').value=Math.max(0,Math.min(15,saved[1]))}}catch{}applySettings()}
+}
+$('#mergeRange').oninput=applySettings;$('#replyRange').oninput=applySettings;$('#externalDebounceRange').oninput=applySettings;$('#externalReplyRange').oninput=applySettings;
+for(const id of Object.keys(INTERFACE_SETTING_KEYS))$('#'+id).onchange=e=>{if(id==='regenerateDebugToggle')renderNormalRegeneration(e.target.checked);applySettings(e,true)};
+applySettings();
 function renderDebugPresenceControls(presence){document.querySelectorAll('.forcePresence').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.state===presence?.debug_forced_state)));const label={ACTIVE:'活跃',SEMI_ACTIVE:'半活跃',AWAY:'离开',IDLE:'发呆',SLEEP:'睡眠'}[presence?.debug_forced_state];$('#presenceDebugStatus').textContent=label?`当前强制：${label}；再次点击恢复自动判断`:'自动判断中；点击按钮强制状态'}
 document.querySelectorAll('.forcePresence').forEach(button=>button.onclick=async()=>{const state=button.getAttribute('aria-pressed')==='true'?null:button.dataset.state;button.disabled=true;try{const presence=await request('/api/debug/presence',{method:'POST',body:JSON.stringify({state})});renderInteractionBadge(presence);renderDebugPresenceControls(presence)}catch(e){$('#presenceDebugStatus').textContent=e.message}finally{button.disabled=false}});
 $('#poke').onclick=async()=>{if(busy||pendingInput.length){$('#pokeStatus').textContent='请等当前消息处理完成';return}$('#poke').disabled=true;try{const r=await request('/api/proactive/active/poke',{method:'POST'});$('#pokeStatus').textContent=r.delivered?'已投递':r.trace?.model_diagnostics?.provider_error_code||r.trace?.model_error||r.trace?.gate_reason||'本次选择沉默';void setupDiagnostics()}catch(e){$('#pokeStatus').textContent=e.message}finally{$('#poke').disabled=false}};
@@ -476,7 +517,7 @@ $('#restartCore').onclick=async()=>{
 const THINKING_STATUS={off:'由服务端默认决定',disabled:'已关闭思考',enabled:'已开启思考'};let savedThinkingMode='off';
 async function setupThinking(){try{const s=await request('/api/settings/thinking');const select=$('#thinkingMode');savedThinkingMode=s.mode;select.value=s.mode;select.disabled=false;$('#thinkingStatus').textContent=THINKING_STATUS[s.mode]||''}catch{$('#thinkingStatus').textContent='读取失败'}}
 $('#thinkingMode').onchange=async()=>{const select=$('#thinkingMode');select.disabled=true;try{await request('/api/settings/thinking',{method:'PUT',body:JSON.stringify({mode:select.value})});await setupThinking()}catch(e){select.value=savedThinkingMode;select.disabled=false;$('#thinkingStatus').textContent=e.message}};
-async function start(){const token=new URLSearchParams(location.hash.slice(1)).get('token')||'';if(token){const boot=await fetch('/api/bootstrap',{method:'POST',headers:{'X-Zhaoxi-Token':token}});history.replaceState(null,'',location.pathname+location.search);if(!boot.ok)throw new Error('Desktop 会话初始化失败')}const es=new EventSource('/api/events');es.onmessage=e=>{const data=JSON.parse(e.data);if(data.type==='agent_event')renderAgentEvent(data.event);if(data.type==='interim_reply')renderInterimReply(data);if(data.type==='maintenance_status'&&data.request_id===activeTraceId){const node=$('#actionMaintenance');if(node)node.textContent='后台维护：'+data.status;}if(data.type==='activity'&&(!busy||!activeTraceId))activity.textContent=data.label||'';if(data.type==='presence_activity')renderPresenceActivity(data.presence);if(data.type==='activity_finished')renderRecentActivityReceipt(data.receipt);if(data.type==='proactive')receiveDelivery(data.delivery)};es.onerror=()=>{$('#connection').textContent='事件通道正在重连…'};es.onopen=()=>{$('#connection').textContent='本地 Core 已连接'};await setupInterfaceSettings();if(document.querySelector("#thinkingMode"))await setupThinking();await setupVoice();await restore();const pendingDelivery=sessionStorage.getItem("zhaoxiPendingDelivery");if(pendingDelivery){sessionStorage.removeItem("zhaoxiPendingDelivery");await openDelivery(pendingDelivery)}await setupDiagnostics();await setupRecentContextBoard();setInterval(()=>{void setupDiagnostics();void setupRecentContextBoard();void setupInterfaceSettings()},30000);input.focus()};start().catch(()=>{$('#connection').textContent='Desktop 会话初始化失败'});
+async function start(){const token=new URLSearchParams(location.hash.slice(1)).get('token')||'';if(token){const boot=await fetch('/api/bootstrap',{method:'POST',headers:{'X-Zhaoxi-Token':token}});history.replaceState(null,'',location.pathname+location.search);if(!boot.ok)throw new Error('Desktop 会话初始化失败')}const es=new EventSource('/api/events');es.onmessage=e=>{const data=JSON.parse(e.data);if(data.type==='agent_event')renderAgentEvent(data.event);if(data.type==='interim_reply')renderInterimReply(data);if(data.type==='maintenance_status'&&data.request_id===activeTraceId){const node=$('#actionMaintenance');if(node)node.textContent='后台维护：'+data.status;}if(data.type==='activity'&&(!busy||!activeTraceId))activity.textContent=data.label||'';if(data.type==='presence_activity')renderPresenceActivity(data.presence);if(data.type==='activity_finished')renderRecentActivityReceipt(data.receipt);if(data.type==='interface_settings')applyInterfaceSettings(data.settings);if(data.type==='proactive')receiveDelivery(data.delivery)};es.onerror=()=>{$('#connection').textContent='事件通道正在重连…'};es.onopen=()=>{$('#connection').textContent='本地 Core 已连接';void setupActionTrace()};await setupInterfaceSettings();if(document.querySelector("#thinkingMode"))await setupThinking();await setupVoice();await restore();const pendingDelivery=sessionStorage.getItem("zhaoxiPendingDelivery");if(pendingDelivery){sessionStorage.removeItem("zhaoxiPendingDelivery");await openDelivery(pendingDelivery)}await setupDiagnostics();await setupRecentContextBoard();await setupActionTrace();setInterval(()=>{void setupDiagnostics();void setupRecentContextBoard();void setupInterfaceSettings();void setupActionTrace()},30000);input.focus()};window.addEventListener('focus',()=>{void setupInterfaceSettings();void setupActionTrace()});start().catch(()=>{$('#connection').textContent='Desktop 会话初始化失败'});
 async function refreshRuntimeDebug(){
   try{
     const data=await request('/api/debug/runtime'),m=data.runtime_metrics||{};

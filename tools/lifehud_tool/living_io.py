@@ -198,14 +198,31 @@ class LivingIO:
     async def record(self, payload: dict[str, Any]) -> Any:
         self._require_enabled("write") if payload.get("action", "create") in {"create", "update"} else None
         kind, action = payload.get("type"), payload.get("action", "create")
-        if kind not in RECORD_PATHS or action not in {"list", "get", "create", "update"}:
-            raise _invalid("不支持的记录类型或操作。")
+        if kind not in RECORD_PATHS:
+            raise _invalid(f"arguments.type={kind!r} 不支持。可用类型：{', '.join(RECORD_PATHS)}。"
+                           "饮食必须用 type='meal'，不是 diet；食物内容填 description，备注填 note，满意度填 satisfaction(1–5)。")
+        if action not in {"list", "get", "create", "update"}:
+            raise _invalid(f"arguments.action={action!r} 不支持。record 可用动作：list, get, create, update。")
         path = RECORD_PATHS[kind]
         if action == "list":
             return await self.client.request_json("GET", path)
         if action == "get":
             return await self.client.request_json("GET", path + "/" + _id(payload.get("id")))
+        aliases = {"sleep": "sleepType", "exercise": "exerciseType", "life_record": "recordType"}
+        allowed = (RECORD_FIELDS[kind] - {"type"}) | {"action", "type", "id"}
+        if kind in aliases:
+            allowed.add(aliases[kind])
+        if kind == "check_in":
+            allowed.add("source")
+        if unknown := payload.keys() - allowed:
+            raise _invalid("不支持的字段：" + ", ".join(sorted(unknown)) +
+                           f"。{kind} 可用字段：" + ", ".join(sorted(allowed)) +
+                           ("。饮食内容用 description，额外备注用 note，满意度用 satisfaction(1–5)。" if kind == "meal" else "。"))
         body = _body({key: value for key, value in payload.items() if key != "type"}, RECORD_FIELDS[kind])
+        if kind == "meal" and action == "create" and body.get("note"):
+            description = body.get("description")
+            if not isinstance(description, str) or not description.strip():
+                raise _invalid("创建饮食记录缺少 description（具体吃了什么）。note 只填写额外备注，不能替代饮食内容；请按用户事实分别填写。")
         if kind == "sleep" and "sleepType" in payload:
             body["type"] = payload["sleepType"]
         if kind == "exercise" and "exerciseType" in payload:

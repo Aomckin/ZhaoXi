@@ -4,7 +4,7 @@ const fs=require('node:fs'),path=require('node:path');
 const common=fs.readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/dashboard-common.js'),'utf8');
 const script=fs.readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/dashboard.js'),'utf8');
 const page=fs.readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/index.html'),'utf8');
-test('living page has dashboard entry and engineering controls have moved',()=>{assert.match(page,/href="\/dashboard"/);for(const id of ['runtimeDebugPanel','toolCabinetPanel','internalActivityPanel','actionTrace'])assert.ok(!page.includes('id="'+id+'"'))});
+test('living page has dashboard entry and engineering controls have moved',()=>{assert.match(page,/href="\/dashboard"/);assert.match(page,/id="actionTrace"/);for(const id of ['runtimeDebugPanel','toolCabinetPanel','internalActivityPanel'])assert.ok(!page.includes('id="'+id+'"'))});
 test('manual receipt is rendered before awaiting the runtime and technical details stay folded',()=>{assert.ok(common.indexOf("summary:'正在处理，请稍候。'")<common.indexOf("await send('/api/internal-activity/"));assert.match(common,/el\('details'\)/);assert.doesNotMatch(common,/innerHTML/)});
 test('overview polls only its own bounded API and engineering iframe loads on demand',()=>{assert.match(script,/if\(loaders\[view\]\)/);assert.match(script,/frame.src='\/static\/engineering.html#'\+view/);assert.doesNotMatch(script,/memory-retrieval|memory-clusters/)});
 
