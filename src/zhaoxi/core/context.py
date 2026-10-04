@@ -290,6 +290,32 @@ class ContextBuilder:
                         facts["item"] = {key: value for key, value in nested.items()
                                          if key in {"id", "title", "status", "start_at", "end_at", "due_at"}
                                          and isinstance(value, (str, int, float, bool))}
+                    # Finalization must retain the facts just read, not only tool IDs.
+                    if item.name == "read_decision_context" and isinstance(data.get("sources"), dict):
+                        keys = {"ref", "id", "content", "summary", "title", "principle", "basis",
+                                "exceptions", "source", "confidence", "scope", "start_at", "end_at",
+                                "due_at", "note", "mode", "suggestion", "user_final_choice", "outcome"}
+                        sources = {}
+                        for source, rows in list(data["sources"].items())[:5]:
+                            if not isinstance(rows, list):
+                                continue
+                            kept = []
+                            for row in rows[:8]:
+                                if not isinstance(row, dict):
+                                    continue
+                                fact = {}
+                                for key, value in row.items():
+                                    if key not in keys:
+                                        continue
+                                    if isinstance(value, str):
+                                        fact[key] = value[:500]
+                                    elif isinstance(value, (int, float, bool)) or value is None:
+                                        fact[key] = value
+                                    elif isinstance(value, list):
+                                        fact[key] = [v[:300] for v in value[:8] if isinstance(v, str)]
+                                kept.append(fact)
+                            sources[str(source)[:100]] = kept
+                        facts["sources"] = sources
                     summary = json.dumps({"success": True, "content": str(original.get("content") or "")[:240],
                                           "data": facts, "compacted": True}, ensure_ascii=False)
                     if len(summary) < len(item.content or ""):

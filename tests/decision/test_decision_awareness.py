@@ -67,6 +67,7 @@ async def test_fast_pick_has_no_classifier_rule_or_extra_model(tmp_path, questio
     assert provider.options[0]["response_format"]["type"] == "json_schema"
     agent.cognitive.router.route.assert_not_awaited()
     assert agent.decision_awareness.diagnostics()["latest"]["mode"] == "PICK"
+    assert agent.last_reply_protocol["awareness"] == "valid" and agent.last_reply_protocol["mode"] == "PICK"
     row = agent.decision_awareness.history.list()[0]
     assert row["suggestion"] == answer and row["schema_version"] == 2
     assert row["context_refs"] == [] and row["user_final_choice"] is None
@@ -371,3 +372,66 @@ async def test_injected_cognition_receipt_is_recorded_when_model_omits_source(tm
     assert trace["context_sources"] == ["current_cognition"]
     assert trace["context_refs"] == ["context:current_cognition"]
     assert len(provider.calls) == 1
+
+
+@pytest.mark.parametrize("fast", [False, True])
+@pytest.mark.parametrize(("raw", "code"), [
+    (" \n\t", "empty_model_reply"),
+    ('{"reply":" ","awareness":{"mode":"ADVISE"}}', "empty_model_reply"),
+    ('{"reply":null,"awareness":{"mode":"ADVISE"}}', "empty_model_reply"),
+    ('{"awareness":{"mode":"ADVISE"}}', "invalid_reply_protocol"),
+    ('{"awareness":{"mode":', "invalid_reply_protocol"),
+    ('{"reply":"未完成', "invalid_reply_protocol"),
+    ('<decision-awareness>{"mode":"ADVISE"}</decision-awareness>', "empty_model_reply"),
+    ('<decision-awareness>{"mode":"ADVISE"', "empty_model_reply"),
+    ('[emoji:missing]<decision-awareness>{"mode":"ADVISE"}</decision-awareness>', "empty_model_reply"),
+])
+async def test_undeliverable_reply_fails_without_empty_bubble_choice_or_maintenance(tmp_path, fast, raw, code):
+    from zhaoxi.errors import AgentLoopError
+    from zhaoxi.interfaces import InterfaceGateway, InterfaceChannel, UnifiedMessage
+    agent, provider = make_agent(tmp_path, [ModelResponse(content=raw)], fast=fast)
+    gateway = InterfaceGateway(agent)
+    with pytest.raises(AgentLoopError) as failure:
+        await gateway.chat(UnifiedMessage(channel=InterfaceChannel.WEB, content="会员要不要开？", request_id="empty"))
+    assert failure.value.code == code
+    assert agent.last_action_trace["response_status"] == "failed"
+    assert agent.last_reply_protocol["status"] == "failed"
+    assert agent.last_reply_protocol["error_code"] == code
+    assert all(m.role.value == "user" for m in agent.conversation.messages)
+    assert agent.decision_awareness.history.list() == []
+    assert gateway._maintenance is None and len(provider.calls) == 1
+    assert "empty" not in gateway._responses
+    # The accepted user turn remains; the existing resume route delivers a fresh reply.
+    provider.responses.clear()
+    provider.responses.append(reply("先不开，等真需要同步再买。", "ADVISE", agent_recommendation="先不开"))
+    retry = await gateway.regenerate(agent.conversation.messages[-1].message_id, request_id="retry")
+    assert retry.content.startswith("先不开")
+    assert sum(m.role.value == "user" for m in agent.conversation.messages) == 1
+    assert len(agent.decision_awareness.history.list()) == 1
+    if gateway._maintenance and gateway._maintenance.worker:
+        await gateway._maintenance.worker
+
+
+async def test_picture_choice_uses_previous_dialogue_and_records_actual_image(tmp_path):
+    agent, provider = make_agent(tmp_path, [ModelResponse(content=json.dumps({
+        "reply": "如果只是单机阅读，先不开；需要同步再试年费。",
+        "awareness": {"mode": "ADVISE", "agent_recommendation": "单机阅读先不开"}}, ensure_ascii=False))])
+    agent.conversation.add_user("平常只在这个阅读器上看书。")
+    agent.conversation.add_assistant("好，我会把单机阅读这一点带上。")
+    result = await agent.run("会员要不要开，开哪档？", images=["data:image/png;base64,AAAA"])
+    assert result.content.startswith("如果只是单机阅读") and len(provider.calls) == 1
+    assert any(m.content == "平常只在这个阅读器上看书。" for m in provider.calls[0])
+    assert provider.calls[0][-1].images
+    trace = agent.decision_awareness.diagnostics()["latest"]
+    assert trace["mode"] == "ADVISE" and "current_image" in trace["context_sources"]
+    assert any(ref.startswith("image:") for ref in trace["context_refs"])
+    assert agent.last_reply_protocol["body_chars"] > 0 and agent.last_reply_protocol["awareness"] == "valid"
+
+
+async def test_invalid_awareness_preserves_valid_body_without_extra_model(tmp_path):
+    agent, provider = make_agent(tmp_path, [ModelResponse(content='{"reply":"先不开。","awareness":{"mode":"UNKNOWN"}}')])
+    result = await agent.run_direct("会员要不要开？")
+    assert result.content == "先不开。" and len(provider.calls) == 1
+    assert agent.decision_awareness.history.list() == []
+    assert agent.last_reply_protocol["awareness"] == "invalid"
+    assert "reply" not in result.content and "UNKNOWN" not in result.content

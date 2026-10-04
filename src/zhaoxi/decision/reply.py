@@ -20,40 +20,70 @@ REPLY_FORMAT = {"type":"json_schema","json_schema":{
     "name":"main_reply","schema":MainReply.model_json_schema()}}
 
 
+def _finish(response: ModelResponse, body: str, *, encoding: str,
+            awareness: str = "missing", mode: str | None = None,
+            content: str | None = None, error_code: str | None = None) -> ModelResponse:
+    """Record protocol shape and sizes only, never private text or reasoning."""
+    protocol = {"encoding": encoding, "input_chars": len(response.content or ""),
+                "body_chars": len(body.strip()), "awareness": awareness,
+                "mode": mode, "status": "failed" if error_code else "decoded",
+                "error_code": error_code}
+    from zhaoxi.observability import current_trace
+    if trace := current_trace():
+        trace.emit("main_reply_protocol", "response_generation",
+                   "failed" if error_code else "warning" if awareness == "invalid" else "info",
+                   "模型未返回可交付正文" if error_code else "已核对主回复格式",
+                   error_code=error_code, metadata=protocol)
+    if error_code:
+        from zhaoxi.errors import AgentLoopError
+        logging.getLogger("DECISION").warning("main reply rejected: %s", protocol)
+        raise AgentLoopError("模型没有返回可显示的正文或回复格式不完整，请重试。", code=error_code)
+    return response.model_copy(update={"content": body if content is None else content,
+        "raw_metadata": {**response.raw_metadata, "main_reply_protocol": protocol}})
+
+
 def decode_main_reply(response: ModelResponse, *, fast: bool = False) -> ModelResponse:
     if response.tool_calls:
         return response
     raw = (response.content or "").strip()
+    if not raw:
+        return _finish(response, "", encoding="empty", error_code="empty_model_reply")
     if raw.startswith("```json") and raw.endswith("```"):
         raw = raw[7:-3].strip()
     try:
         arguments = json.loads(raw)
     except ValueError:
-        # Salvage completed reply text from a truncated metadata envelope;
-        # metadata must not become a prerequisite or leak onto the chat surface.
+        # Recover only a complete reply string, never unfinished/private metadata.
         match = re.search(r'"reply"\s*:\s*(")', raw)
         if raw.startswith("{") and match:
             try:
                 value, _ = json.JSONDecoder().raw_decode(raw[match.start(1):])
-                if isinstance(value, str):
-                    return response.model_copy(update={"content":value})
+                if isinstance(value, str) and value.strip():
+                    return _finish(response, value, encoding="truncated_json", awareness="invalid")
             except ValueError:
                 pass
-            return response.model_copy(update={"content":"模型回复未能完整解析，请重试。"})
-        return response
+            return _finish(response, "", encoding="truncated_json", error_code="invalid_reply_protocol")
+        if raw.startswith("{") and re.search(r'"(?:awareness|escalation)"\s*:', raw):
+            return _finish(response, "", encoding="truncated_json", error_code="invalid_reply_protocol")
+        return _finish(response, raw, encoding="text")
     if not isinstance(arguments, dict) or "reply" not in arguments:
-        return response
+        if isinstance(arguments, dict) and any(key in arguments for key in ("awareness", "escalation")):
+            return _finish(response, "", encoding="json", error_code="invalid_reply_protocol")
+        return _finish(response, raw, encoding="text")
     if fast and isinstance(arguments.get("escalation"), dict):
-        return response.model_copy(update={
-            "content":"[escalate:" + json.dumps(arguments["escalation"],ensure_ascii=False) + "]"})
-    content = arguments.get("reply")
-    if not isinstance(content, str) or not content.strip():
-        content = "模型没有返回可显示的内容。"
-    try:
-        awareness = DecisionAwarenessTrace.from_reply(arguments.get("awareness"))
-        if awareness.mode.value != "NONE" or awareness.feedback:
-            content += "<decision-awareness>" + awareness.model_dump_json() + "</decision-awareness>"
-    except ValueError:
-        # A metadata failure never blocks valid text or asks another model.
-        logging.getLogger("DECISION").warning("main reply has invalid awareness metadata")
-    return response.model_copy(update={"content":content})
+        return _finish(response, "", encoding="fast_escalation", content=
+            "[escalate:" + json.dumps(arguments["escalation"], ensure_ascii=False) + "]")
+    body = arguments.get("reply")
+    if not isinstance(body, str) or not body.strip():
+        return _finish(response, "", encoding="json", error_code="empty_model_reply")
+    content, awareness_state, mode = body, "missing", None
+    if arguments.get("awareness") is not None:
+        try:
+            awareness = DecisionAwarenessTrace.from_reply(arguments["awareness"])
+            awareness_state, mode = "valid", awareness.mode.value
+            if mode != "NONE" or awareness.feedback:
+                content += "<decision-awareness>" + awareness.model_dump_json() + "</decision-awareness>"
+        except ValueError:
+            awareness_state = "invalid"
+            logging.getLogger("DECISION").warning("main reply has invalid awareness metadata")
+    return _finish(response, body, encoding="json", awareness=awareness_state, mode=mode, content=content)

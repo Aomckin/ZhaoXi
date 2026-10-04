@@ -63,3 +63,27 @@ def test_context_report_has_categories_and_separates_unknown_image_cost():
     assert sizes["memory_snapshot"] > 0 and sizes["retrieved_memory"] > 0
     assert sizes["image_count"] == 1 and sizes["image_tokens"] is None
     assert sizes["image_payload_chars"] > 0
+
+
+def test_absorbed_decision_read_keeps_facts_and_refs_for_final_reply():
+    conversation = Conversation()
+    original = {"success": True, "content": "按需资料", "data": {"sources": {
+        "memory": [{"ref": "memory:reading", "content": "只在阅读器上看书，不需要跨设备同步。",
+                    "confidence": 1, "private_debug": "CANARY" * 500}],
+        "principles": [{"ref": "principles:subscription", "principle": "先试一年",
+                        "basis": ["使用习惯仍不确定"], "exceptions": ["长期使用且功能必需"]}],
+        "extra": [{"ref": "extra:large", "content": "x" * 10000}] * 20}}}
+    conversation.add_assistant(None, tool_calls=[ToolCall(id="read-1", name="read_decision_context", arguments={})])
+    receipt = conversation.add_tool(json.dumps(original, ensure_ascii=False), tool_call_id="read-1",
+                                    name="read_decision_context")
+    builder = ContextBuilder("人格")
+    compacted = json.loads(builder.build(conversation, absorbed_tool_call_ids={"read-1"})[-1].content)
+    sources = compacted["data"]["sources"]
+    assert sources["memory"][0]["ref"] == "memory:reading"
+    assert "不需要跨设备同步" in sources["memory"][0]["content"]
+    assert sources["principles"][0]["basis"] == ["使用习惯仍不确定"]
+    assert sources["principles"][0]["exceptions"] == ["长期使用且功能必需"]
+    assert "private_debug" not in sources["memory"][0]
+    assert len(sources["extra"]) == 8 and len(sources["extra"][0]["content"]) == 500
+    assert conversation.messages[-1].content == receipt.content
+    assert compacted["compacted"] and builder.last_compaction["tool_chars_saved"] > 1000

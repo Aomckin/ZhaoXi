@@ -1054,7 +1054,8 @@ def create_app(
                 raise HTTPException(status_code=409, detail="Decision Awareness 尚未就绪。")
             executor = getattr(core, "tool_executor", None)
             return {**awareness.diagnostics(),
-                    "guard_events": list(getattr(executor, "recent_decision_guard_events", []))}
+                    "guard_events": list(getattr(executor, "recent_decision_guard_events", [])),
+                    "reply_protocol": getattr(core, "last_reply_protocol", None)}
         service = getattr(core, "decision_service", None)
         if service is None:
             raise HTTPException(status_code=409, detail="Decision Layer 尚未就绪。")

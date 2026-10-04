@@ -98,8 +98,7 @@ class FastChatRuntime:
                 trace.response_status = "failed"
             raise AgentLoopError(f"请求超过 {self.agent.timeout_seconds:g} 秒，已停止。", code="agent_timeout") from exc
         if reply_format:
-            from zhaoxi.decision.reply import decode_main_reply
-            response = decode_main_reply(response, fast=True)
+            response = self._decode_reply(response, user_message, messages)
         content = strip_echoed_timeline_header(response.content or "模型没有返回可显示的内容。")
         if getattr(self.agent, "decision_mode", "legacy") == "agency":
             from zhaoxi.decision.awareness import split_awareness
@@ -145,8 +144,7 @@ class FastChatRuntime:
                         retry = await asyncio.wait_for(self.agent.provider.generate(retry_messages, None,
                             **({"response_format":reply_format} if reply_format else {})), timeout=self.agent.timeout_seconds)
                     if reply_format:
-                        from zhaoxi.decision.reply import decode_main_reply
-                        retry = decode_main_reply(retry, fast=True)
+                        retry = self._decode_reply(retry, user_message, messages)
                     content = strip_echoed_timeline_header(retry.content or "")
                     if (not content or retry.tool_calls or self.escalation_request(content) is not None
                             or self.structured_request(content) is not None or self.requires_action_escalation(content)):
@@ -180,6 +178,16 @@ class FastChatRuntime:
             trace.emit("response_generation_succeeded", "response_generation", "success", "回复已生成", step_id=1)
             trace.response_status = "succeeded"
         return FastChatResult(content=content, request_id=request_id, reply_sequence=sequence)
+
+    def _decode_reply(self, response, user_message, messages):
+        try:
+            return self.agent._decode_main_reply(response, fast=True)
+        except AgentLoopError:
+            # FAST normally commits only after validation. A failed final reply
+            # still needs the accepted user turn so the existing retry can find it.
+            user = self.agent.conversation.add_user(user_message.strip())
+            user.metadata["decision_context_sources"] = messages[0].metadata.get("decision_context_sources", {})
+            raise
 
     @staticmethod
     def structured_request(content):

@@ -15,6 +15,7 @@ def test_debug_is_authenticated_read_only_and_agency_never_runs_classifier(tmp_p
     monkeypatch.chdir(tmp_path)
     core = FakeAgent()
     core.decision_mode = "agency"
+    core.last_reply_protocol = {"status":"failed", "error_code":"empty_model_reply", "input_chars":3}
     core.decision_awareness = DecisionAwareness(history=ChoiceHistory(tmp_path / "choices"))
     core.decision_service = SimpleNamespace(evaluate=AsyncMock(side_effect=AssertionError("classifier")))
     trace = DecisionAwarenessTrace(mode="ADVISE", agent_recommendation="去打舞萌",
@@ -32,6 +33,7 @@ def test_debug_is_authenticated_read_only_and_agency_never_runs_classifier(tmp_p
         assert body["decision_mode"] == "agency" and body["latest"]["mode"] == "ADVISE"
         assert body["choice_history"][0]["overridden"]
         assert body["guard_events"][0]["status"] == "require_confirmation"
+        assert body["reply_protocol"]["error_code"] == "empty_model_reply"
         response = client.post("/api/debug/decision", headers=headers, json={"message":"吃啥？"})
         assert response.status_code == 409
         core.decision_service.evaluate.assert_not_awaited()

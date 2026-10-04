@@ -1,0 +1,25 @@
+const {chromium}=require(process.env.ZHAOXI_PLAYWRIGHT||'playwright');
+const assert=require('node:assert/strict'),fs=require('node:fs');
+(async()=>{const browser=await chromium.launch({channel:'msedge',headless:true});
+try{const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('http://127.0.0.1:18766/desktop-entry?token=decision-ui-test');
+ await page.goto('http://127.0.0.1:18766/dashboard#runtime');
+ const frame=page.frameLocator('iframe');
+ await frame.locator('#decisionDebugPanel > summary').click();
+ await frame.locator('#decisionDebugOutput').getByText('本轮回复未能交付：empty_model_reply。请重试本轮消息。',{exact:true}).waitFor();
+ const output=await frame.locator('#decisionDebugOutput').innerText();
+ for(const text of ['上次已完成的判断：去打舞萌','本轮图片','模式：ADVISE'])assert.ok(output.includes(text),text);
+ assert.ok(!output.includes('这次朝汐建议：'));
+ assert.equal(await frame.locator('#decisionDebugOutput > details').evaluate(n=>n.open),false);
+ await frame.locator('#decisionDebugRefresh').click();
+ await frame.locator('#decisionDebugOutput').getByText('上次已完成的判断：去打舞萌',{exact:true}).waitFor();
+ const diagnostic=await page.request.get('http://127.0.0.1:18766/api/debug/decision');
+ assert.equal((await diagnostic.json()).reply_protocol.error_code,'empty_model_reply');
+ assert.equal(errors.length,0);
+ await page.screenshot({path:'.zhaoxi/decision-v146-reply-patch-dashboard.png',fullPage:true});
+ const result={passed:true,checks:['actual iframe rendering','failed delivery notice','previous decision labelled separately','current image receipt','raw details folded','refresh','read-only API protocol diagnostic','no script errors']};
+ fs.writeFileSync('.zhaoxi/decision-v146-reply-patch-browser.json',JSON.stringify(result,null,2));
+ console.log(JSON.stringify(result));
+}finally{await browser.close()}
+})().catch(e=>{console.error(e);process.exit(1)});

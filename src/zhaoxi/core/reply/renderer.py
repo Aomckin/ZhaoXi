@@ -65,6 +65,9 @@ def commit_reply(conversation: Conversation, raw_reply: str | None, emoji_servic
             "image_url": f"/api/expression/emoji/{result.emoji_id}",
         }))
 
+    if not resolved:
+        from zhaoxi.errors import AgentLoopError
+        raise AgentLoopError("模型没有返回可显示的正文或可用表情，请重试。", code="empty_model_reply")
     sequence = ReplySequence(segments=resolved, raw_reply=parsed.raw_reply)
     group_id = uuid4().hex
     message_ids: list[str] = []
@@ -91,8 +94,5 @@ def commit_reply(conversation: Conversation, raw_reply: str | None, emoji_servic
                 **common,
             )
         first = False
-        message_ids.append(message.message_id)
-    if not sequence.segments:
-        message = conversation.add_assistant("", raw_reply=sequence.raw_reply, reply_group_id=group_id)
         message_ids.append(message.message_id)
     return sequence, message_ids

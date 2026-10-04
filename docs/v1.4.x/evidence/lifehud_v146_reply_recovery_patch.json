@@ -1,0 +1,195 @@
+{
+  "date": "2026-10-03",
+  "version": "1.4.6",
+  "baseline_commit": "ba0b0cd",
+  "production_observation": {
+    "request_id": "cf801c8c-f502-42f8-bdf0-41b14221f721",
+    "started_local": "21:16:26",
+    "route": "tool",
+    "required_tool": "lifehud",
+    "tool_calls": 1,
+    "tool_success": true,
+    "tool_ms": 2204.45,
+    "confirmed_http": [
+      {
+        "at_local": "21:17:00",
+        "method": "POST",
+        "path": "/api/focus/start",
+        "status": 200
+      },
+      {
+        "at_local": "21:17:01",
+        "method": "GET",
+        "path": "/api/focus/current",
+        "status": 200
+      }
+    ],
+    "final_llm_ms": 10361.85,
+    "final_llm_tool_calls": 0,
+    "final_finish_reason": "stop",
+    "decoded_input_chars": 81,
+    "visible_body_chars": 0,
+    "protocol_error": "empty_model_reply",
+    "task_status": "completed",
+    "response_status": "failed",
+    "retry_error": "只能重试当前最后一条未回复消息。",
+    "cause": "Internal assistant tool-call messages were counted as visible replies in regenerate validation."
+  },
+  "changes": [
+    "At most one remaining ordinary round for a tool-free final reply after undeliverable tool-path response",
+    "No extra calls after forced finalization, model-round exhaustion or dangerous/exhausted token budget",
+    "Confirmed-result notice if recovery fails; preserve response_status=failed and do not enqueue success maintenance",
+    "Regenerate validation ignores internal/interim tool messages while still rejecting old visible turns",
+    "Explicit result-only regeneration gets one fresh model round and cannot replay business tools",
+    "Existing visible failure notice survives session reload without persisting raw tool payloads"
+  ],
+  "tests": {
+    "full_python": {
+      "passed": 1247,
+      "skipped": 1,
+      "seconds": 234.01
+    },
+    "final_focused_python": {
+      "passed": 145,
+      "seconds": 4.6,
+      "note": "Includes one additional session-reload regression added after the full run"
+    },
+    "new_tool_recovery_cases": 11,
+    "lifehud_transport": "httpx.MockTransport",
+    "checked": [
+      "POST focus/start once + GET current readback",
+      "whitespace/blank JSON/metadata-only/unmatched emoji/truncated reply recovery",
+      "repeated failure returns known results",
+      "model-round limit honoured",
+      "failed operation not called success",
+      "manual retry after exhausted model-round counter",
+      "user-target retry ignores internal tool messages",
+      "visible later reply still blocks old user retry",
+      "saved notice retry after session reload sends no business requests"
+    ]
+  },
+  "synthetic_live": {
+    "passed": true,
+    "synthetic_only": true,
+    "lifehud_transport": "httpx.MockTransport",
+    "operation_selection": "fixture native call",
+    "injected_blank": true,
+    "response_status": "succeeded",
+    "provider_calls": [
+      {
+        "source": "fixture_tool_call",
+        "tool_names": [
+          "lifehud"
+        ],
+        "content_chars": 0,
+        "tools_exposed": true,
+        "finish_reason": null,
+        "usage": {}
+      },
+      {
+        "source": "configured_model",
+        "tool_names": [
+          "lifehud"
+        ],
+        "content_chars": 0,
+        "tools_exposed": true,
+        "finish_reason": "tool_calls",
+        "usage": {
+          "prompt_tokens": 9494,
+          "completion_tokens": 210,
+          "total_tokens": 9704,
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 9216,
+            "cache_write_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0,
+            "video_tokens": 0
+          },
+          "completion_tokens_details": {
+            "audio_tokens": 0,
+            "reasoning_tokens": 150,
+            "accepted_prediction_tokens": 0,
+            "rejected_prediction_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0,
+            "video_tokens": 0
+          }
+        },
+        "injected_blank": true
+      },
+      {
+        "source": "configured_model",
+        "tool_names": [],
+        "content_chars": 330,
+        "tools_exposed": false,
+        "finish_reason": "stop",
+        "usage": {
+          "prompt_tokens": 2437,
+          "completion_tokens": 430,
+          "total_tokens": 2867,
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 2048,
+            "cache_write_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0,
+            "video_tokens": 0
+          },
+          "completion_tokens_details": {
+            "audio_tokens": 0,
+            "reasoning_tokens": 266,
+            "accepted_prediction_tokens": 0,
+            "rejected_prediction_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0,
+            "video_tokens": 0
+          }
+        }
+      }
+    ],
+    "local_http_calls": [
+      [
+        "POST",
+        "/api/focus/start"
+      ],
+      [
+        "GET",
+        "/api/focus/current"
+      ]
+    ],
+    "elapsed_ms": 17267
+  },
+  "live_boundary": "Tool selection is seeded by the native-call fixture. Two post-tool responses use the configured model. The first is deliberately replaced by 81 spaces; the recovery reply is real. No real dialogue/image or real LifeHUD request is sent.",
+  "live_prior_attempt": {
+    "method": "Unseeded model selects the synthetic operations",
+    "result": "The model first queried current state, then started focus. Blank injection in the third round returned the confirmed-result notice because no fourth round was allowed.",
+    "response_status": "failed",
+    "start_posts": 1,
+    "note": "Natural recovery assertion failed; budget fallback itself behaved as intended."
+  },
+  "wheel": {
+    "filename": "zhaoxi-1.4.6-py3-none-any.whl",
+    "sha256": "a177f6d966f860a38dd22c8505bb8085268345b00bf28c16c89fcca8b207f399",
+    "source_files_verified": 299,
+    "missing": [],
+    "mismatches": [],
+    "version": "1.4.6"
+  },
+  "deployment": {
+    "production_restarted": false,
+    "production_business_tools_executed_by_this_debugging_task": false,
+    "production_db_modified": false,
+    "committed": true,
+    "local_commit_date": "2026-10-04"
+  },
+  "legacy_turn_limit": "The old failed turn has no persisted notice and SQLiteSessionStore intentionally omits raw internal tool messages. After restart, this old user-only turn cannot be assumed to support safe result-only regeneration. This patch creates notices for future equivalent failures.",
+  "commit_validation": {
+    "full_regression_rerun": false,
+    "basis": "Previously completed acceptance retained; static checks only for this commit."
+  }
+}

@@ -29,3 +29,20 @@ test('engineering has Decision 2 panel and hides independent classifier controls
  assert.match(page,/Decision 2.0 · 生活判断/);assert.match(page,/id="decisionLegacyControls" hidden/);
  assert.match(source,/refreshDecisionDebug\(\).*renderDecisionDebug\(await request\('\/api\/debug\/decision'\)\)/);
 });
+
+
+test('failed delivery is visible and previous advice is not presented as this turn',()=>{
+ const {context,nodes}=setup();context.renderDecisionDebug({decision_mode:'agency',
+ reply_protocol:{status:'failed',error_code:'empty_model_reply'},
+ latest:{mode:'ADVISE',agent_recommendation:'旧建议',context_sources:['current_image']}});
+ assert.match(text(nodes['#decisionDebugOutput']),/本轮回复未能交付：empty_model_reply/);
+ assert.match(text(nodes['#decisionDebugOutput']),/上次已完成的判断：旧建议/);
+ assert.match(text(nodes['#decisionDebugOutput']),/本轮图片/);
+ assert.doesNotMatch(text(nodes['#decisionDebugOutput']),/这次朝汐建议：/);
+});
+
+test('valid body without awareness explains the missing decision record',()=>{
+ const {context,nodes}=setup();context.renderDecisionDebug({decision_mode:'agency',
+ reply_protocol:{status:'decoded',awareness:'invalid'},latest:null});
+ assert.match(text(nodes['#decisionDebugOutput']),/正文已生成，但没有有效的生活判断记录/);
+});

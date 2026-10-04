@@ -138,6 +138,17 @@ class ZhaoxiAgent:
         self.cognitive: "CognitiveCoordinator | None" = None
         self.last_emoji_trace: dict[str, object] = {}
 
+    def _decode_main_reply(self, response, *, fast: bool = False):
+        from zhaoxi.decision.reply import decode_main_reply
+        try:
+            decoded = decode_main_reply(response, fast=fast)
+        except AgentLoopError as exc:
+            self.last_reply_protocol = {"status": "failed", "error_code": exc.code,
+                                        "input_chars": len(response.content or "")}
+            raise
+        self.last_reply_protocol = decoded.raw_metadata.get("main_reply_protocol", {})
+        return decoded
+
     def _commit_model_reply(self, raw_reply: str) -> str:
         """Parse, resolve and persist one final model reply exactly once."""
         return self._commit_model_reply_sequence(raw_reply).visible_text
@@ -145,17 +156,32 @@ class ZhaoxiAgent:
     def _commit_model_reply_sequence(self, raw_reply: str) -> ReplySequence:
         """Return the resolved segments so transports never select an emoji twice."""
         awareness_row = None
+        awareness_trace, awareness_error = None, None
         if getattr(self, "decision_mode", "legacy") == "agency":
             from zhaoxi.decision.awareness import split_awareness
             raw_reply, awareness_trace, awareness_error = split_awareness(raw_reply)
+            if awareness_trace is not None or awareness_error:
+                self.last_reply_protocol = {**getattr(self, "last_reply_protocol", {}),
+                    "awareness": "valid" if awareness_trace is not None else "invalid",
+                    "mode": awareness_trace.mode.value if awareness_trace is not None else None,
+                    "body_chars": len(raw_reply.strip())}
+        try:
+            sequence, message_ids = commit_reply(
+                self.conversation, raw_reply, getattr(self, "emoji_service", None)
+            )
+        except AgentLoopError as exc:
+            self.last_reply_protocol = {**getattr(self, "last_reply_protocol", {}),
+                                        "status": "failed", "error_code": exc.code, "body_chars": 0}
+            if trace := current_trace():
+                trace.emit("main_reply_delivery_failed", "response_generation", "failed",
+                           "回复没有可显示内容", error_code=exc.code)
+            raise
+        if getattr(self, "decision_mode", "legacy") == "agency":
             try:
                 awareness_row = self.decision_awareness.commit(
                     awareness_trace, awareness_error, self.conversation, self.context_builder)
             except Exception as exc:
                 logger.warning("decision trace ignored; preserving reply type=%s", type(exc).__name__)
-        sequence, message_ids = commit_reply(
-            self.conversation, raw_reply, getattr(self, "emoji_service", None)
-        )
         if awareness_row:
             for message in self.conversation.messages:
                 if message.message_id in message_ids:
@@ -657,6 +683,13 @@ class ZhaoxiAgent:
                     request_id,
                     exc=exc,
                 )
+        discovery = (copy.deepcopy(getattr(self, "_tool_discovery_state", None))
+                     or ToolDiscoveryState(self._tool_context(user_message)))
+        safety = self._safety_state(discovery)
+        safety.model_round = 0
+        safety.model_limit = 1
+        safety.discovery_round = 0
+        safety.forced_reason = "reply_regeneration"
         try:
             return await asyncio.wait_for(
                 self._run_loop(
@@ -664,7 +697,7 @@ class ZhaoxiAgent:
                     memories,
                     user_message,
                     no_tools=True,
-                    discovery=getattr(self, "_tool_discovery_state", None),
+                    discovery=discovery,
                     turn_images=next((tuple(item.images) for item in reversed(self.conversation.messages)
                                       if item.role is Role.USER), ()),
                 ),
@@ -753,6 +786,32 @@ class ZhaoxiAgent:
             steps=step,
             used_tool_path=True, result_status=result_status,
         )
+
+    def _recover_missing_reply(self, request_id, step, safety, exc, *, tool_called, attempted, final_only):
+        if not tool_called or exc.code not in {"empty_model_reply", "invalid_reply_protocol"}:
+            raise exc
+        trace, budget = current_trace(), current_budget()
+        if trace:
+            trace.emit("response_generation_failed", "response_generation", "failed",
+                       "工具结果已保留，但模型回复没有可显示内容", step_id=step, error_code=exc.code)
+        # Use at most one remaining ordinary round for text, with no business
+        # tool or budget extension. Otherwise return the confirmed-result notice.
+        if (not attempted and step < self.max_steps and not safety.model_limit_reached and not final_only
+                and (budget is None or budget.state in {BudgetState.NORMAL, BudgetState.WARNING})):
+            safety.force("reply_protocol_recovery")
+            self._sync_safety(safety)
+            if trace:
+                trace.response_status = "pending"
+                trace.emit("reply_recovery_requested", "response_generation", "info",
+                           "仅补生成回复，不重复工具操作", step_id=step)
+            return None
+        if trace:
+            trace.response_status = "failed"
+        degraded = self._return_degraded(request_id, step,
+            "（提醒：模型未能生成完整正文；已执行的操作和结果均已保留。重新生成只补回复，不重复操作。）")
+        if degraded is None:
+            raise exc
+        return degraded
 
     def _tool_context(self, user_intent: str) -> ToolContext:
         context = safe_resolve_tool_context(
@@ -862,6 +921,7 @@ class ZhaoxiAgent:
         corrective_retry = bool(lookup_commitment)
         trace = current_trace()
         response_started = False
+        reply_recovery_attempted = False
         safety = self._safety_state(discovery,fast_escalated)
         for step in range(1, self.max_steps + 1):
             if safety.model_limit_reached:
@@ -987,6 +1047,11 @@ class ZhaoxiAgent:
                         + "request_tool_group、inspect_tool_catalog 等能力发现操作不算完成任务。"
                     )
                 self.last_tool_diagnostics = discovery.diagnostics(self.registry)
+                if reply_recovery_attempted:
+                    messages[0].content += (
+                        "\n上一轮最终回复缺少可显示正文。请根据上面的真实工具结果补齐 reply 字段，"
+                        "先回答原请求的执行结果，再自然回应；不得重新操作或复述内部协议。"
+                    )
                 if final_only:
                     self.last_tool_diagnostics.update({
                         "final_exposed_tools": [], "total_exposed_tools_count": 0,
@@ -1075,8 +1140,15 @@ class ZhaoxiAgent:
                 ) from exc
 
             if getattr(self, "decision_mode", "legacy") == "agency" and audience == "owner":
-                from zhaoxi.decision.reply import decode_main_reply
-                response = decode_main_reply(response)
+                try:
+                    response = self._decode_main_reply(response)
+                except AgentLoopError as exc:
+                    recovered = self._recover_missing_reply(request_id, step, safety, exc,
+                        tool_called=tool_called, attempted=reply_recovery_attempted, final_only=final_only)
+                    if recovered is not None:
+                        return recovered
+                    reply_recovery_attempted = True
+                    continue
             # Providers can emit calls despite tools=None; final-only is enforced
             # by the runtime, not just by the schema or prompt.
             if final_only and response.tool_calls:
@@ -1114,9 +1186,18 @@ class ZhaoxiAgent:
                 except Exception as exc:
                     if trace:
                         trace.emit("response_generation_failed", "response_generation", "failed",
-                                   "回复整理失败", step_id=step, error_code="response_generation_error",
+                                   "回复整理失败", step_id=step, error_code=getattr(exc, "code", "response_generation_error"),
                                    metadata={"error_type": type(exc).__name__})
                         trace.response_status = "failed"
+                    if isinstance(exc, AgentLoopError):
+                        recovered = self._recover_missing_reply(request_id, step, safety, exc,
+                            tool_called=tool_called, attempted=reply_recovery_attempted, final_only=final_only)
+                        if recovered is not None:
+                            return recovered
+                        reply_recovery_attempted = True
+                        if trace:
+                            trace.response_status = "pending"
+                        continue
                     raise AgentLoopError("回复整理失败，请重试。", code="response_generation_error") from exc
                 if trace:
                     trace.emit("response_generation_succeeded", "response_generation", "success", "回复已生成", step_id=step)

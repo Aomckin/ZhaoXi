@@ -229,7 +229,7 @@ class InterfaceGateway:
                 raise KeyError("找不到要重新生成的回复。")
             target = messages[target_index]
             if target.role == Role.ASSISTANT and (target.delivery_id or any(
-                item.role in {Role.USER, Role.ASSISTANT} for item in messages[target_index + 1:]
+                (item.role == Role.USER or is_user_visible_message(item)) for item in messages[target_index + 1:]
             )):
                 raise ValueError("只能重新生成当前最后一条普通回复。")
             pending = getattr(
@@ -239,7 +239,7 @@ class InterfaceGateway:
             if any(not item.resolved for item in getattr(pending, "pending", {}).values()):
                 raise ValueError("当前有操作等待确认，不能重新生成这条回复。")
             if target.role == Role.USER:
-                if any(item.role in {Role.USER, Role.ASSISTANT}
+                if any(item.role == Role.USER or is_user_visible_message(item)
                        for item in messages[target_index + 1:]):
                     raise ValueError("只能重试当前最后一条未回复消息。")
                 user_index = target_index

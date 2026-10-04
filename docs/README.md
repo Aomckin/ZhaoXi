@@ -12,6 +12,8 @@
 ## v1.4.x
 
 - [v1.4.6 版本说明与加载方式](v1.4.x/Zhaoxi_v1.4.6_Release_Notes.md)
+- [v1.4.6 LifeHUD 工具后空回复与重试补丁](v1.4.x/Zhaoxi_v1.4.6_工具后回复与重试_补丁记录.md)
+- [v1.4.6 空回复与决策上下文补丁](v1.4.x/Zhaoxi_v1.4.6_回复交付与决策上下文_补丁记录.md)
 - [v1.4.6 开发记录与验收边界](v1.4.x/Zhaoxi_v1.4.6_开发记录.md)
 - [v1.4.6 Decision as Agency 任务书](v1.4.x/Zhaoxi_v1.4.6_Decision_2.0_Decision_as_Agency_开发任务书.md)
 - [v1.4.6 自动验收汇总](v1.4.x/evidence/decision_v146_acceptance.json)

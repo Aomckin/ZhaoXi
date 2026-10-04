@@ -1,0 +1,142 @@
+{
+  "date": "2026-10-03",
+  "version": "1.4.6",
+  "baseline_commit": "ba0b0cd",
+  "scope": "Reply delivery validation, decision evidence retention, image receipts, purchase judgment and read-only diagnostics",
+  "production_observation": {
+    "earlier_request": {
+      "started_local": "20:18:58",
+      "tools": [
+        "search_memories",
+        "read_decision_context"
+      ],
+      "status": "final_reply_timeout",
+      "elapsed_ms": 120247
+    },
+    "membership_request": {
+      "started_local": "20:22:40",
+      "route": "standard",
+      "decision_mode": "agency",
+      "main_llm_calls": 1,
+      "tool_calls": 0,
+      "llm_ms": 24758.02,
+      "prompt_tokens": 19223,
+      "completion_tokens": 2165,
+      "persisted_reply_chars": 0,
+      "incorrect_response_status": "succeeded",
+      "choice_history_recorded": false
+    },
+    "original_provider_content_retained": false,
+    "conclusion": "An empty assistant reply was accepted as success; exact original model payload cannot be recovered or attributed to a particular protocol variant."
+  },
+  "automated": {
+    "python_full": {
+      "passed": 1237,
+      "skipped": 1,
+      "seconds": 240.21
+    },
+    "final_focused_python": {
+      "passed": 212,
+      "seconds": 7.06,
+      "scope": "Decision/Core/Interfaces/Decision debug API, after final sidecar diagnostic alignment"
+    },
+    "node": {
+      "passed": 88
+    },
+    "empty_reply_regressions": {
+      "cases": 9,
+      "lanes": [
+        "FAST",
+        "STANDARD"
+      ],
+      "checks": [
+        "failed response status",
+        "no empty assistant message",
+        "no choice record",
+        "no maintenance",
+        "accepted user retained",
+        "successful regeneration without duplicate user"
+      ]
+    },
+    "other_checks": [
+      "valid reply preserved despite invalid awareness",
+      "image receipt and prior dialogue retained",
+      "decision facts and references retained under compaction"
+    ]
+  },
+  "browser": {
+    "passed": true,
+    "checks": [
+      "actual iframe rendering",
+      "failed delivery notice",
+      "previous decision labelled separately",
+      "current image receipt",
+      "raw details folded",
+      "refresh",
+      "read-only API protocol diagnostic",
+      "no script errors"
+    ]
+  },
+  "wheel": {
+    "filename": "zhaoxi-1.4.6-py3-none-any.whl",
+    "sha256": "4149622bef5fd12354d6deb0b7e860565161a8c1fe19d1f041efe91ff5fcb810",
+    "source_files_verified": 299,
+    "missing": [],
+    "mismatches": [],
+    "version": "1.4.6"
+  },
+  "authorized_live_replay": {
+    "destination": "api.commandcode.ai",
+    "model": "deepseek/deepseek-v4-flash",
+    "context": "Membership screenshot and preceding six related messages, explicitly authorized by user",
+    "isolation": "Transient conversation, fresh fixture choice history, read_decision_context and control tools only; production memory/agenda services not attached",
+    "final": {
+      "delivered": true,
+      "mode": "ADVISE",
+      "generate_calls": 2,
+      "tools": [
+        "read_decision_context"
+      ],
+      "elapsed_ms": 36790,
+      "visible_chars": 271,
+      "recognised_prices": [
+        78,
+        268
+      ],
+      "one_critical_question": true,
+      "unverified_upgrade_credit_claim": false,
+      "guaranteed_multiyear_usage_claim": false
+    },
+    "prior_attempts": [
+      {
+        "outcome": "baseline replay delivered ADVISE",
+        "limitation": "unverified annual-to-lifetime upgrade economics"
+      },
+      {
+        "outcome": "probe terminal UnicodeEncodeError",
+        "limitation": "local GBK terminal failed while printing newly generated response; not a product delivery failure"
+      },
+      {
+        "outcome": "delivered ADVISE before final behavior constraint",
+        "limitation": "treated break-even threshold as likely usage duration"
+      }
+    ],
+    "limitations": [
+      "Replay is newly generated, not recovery of the swallowed original reply",
+      "Reduced registry/context cannot establish production latency or reproduce original provider output",
+      "No guarantee that all future model replies follow the behavioral prompt; delivery checks are deterministic"
+    ]
+  },
+  "deployment": {
+    "production_restarted": false,
+    "production_business_tools_executed": false,
+    "production_db_modified": false,
+    "patch_committed": true,
+    "private_replay_inputs_committed": false,
+    "local_commit_date": "2026-10-04"
+  },
+  "commit_validation": {
+    "full_regression_rerun": false,
+    "basis": "Previously completed acceptance retained; static checks only for this commit."
+  }
+}

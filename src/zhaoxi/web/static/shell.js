@@ -599,10 +599,13 @@ function renderDecisionDebug(data){
  const target=$('#decisionDebugOutput');target.replaceChildren();
  const legacy=data.decision_mode==='legacy';$('#decisionLegacyControls').hidden=!legacy;
  const text=value=>{const p=document.createElement('p');p.textContent=value;target.append(p)};
- const sources={current_input:'当前表达',agenda:'Agenda',current_cognition:'Current Cognition',memory:'Memory',principles:'Decision Principles',choice_history:'Choice History',tool:'实际工具资料'};
+ const sources={current_input:'当前表达',current_image:'本轮图片',agenda:'Agenda',current_cognition:'Current Cognition',memory:'Memory',principles:'Decision Principles',choice_history:'Choice History',tool:'实际工具资料'};
  if(legacy){text('当前使用 Legacy 决策链。')}else{
+  const protocol=data.reply_protocol,failed=protocol?.status==='failed';
+  if(failed)text('本轮回复未能交付：'+protocol.error_code+'。请重试本轮消息。');
+  else if(protocol&&['invalid','missing'].includes(protocol.awareness))text('本轮正文已生成，但没有有效的生活判断记录。');
   const row=data.latest;
-  if(row){text('这次朝汐建议：'+(row.agent_recommendation||'整理事实与价值冲突'));text('模式：'+row.mode);
+  if(row){text((protocol&&(failed||protocol.mode!==row.mode)?'上次已完成的判断：':'这次朝汐建议：')+(row.agent_recommendation||'整理事实与价值冲突'));text('模式：'+row.mode);
    if(row.predicted_user_choice)text('推测你更可能选择：'+row.predicted_user_choice);
    text('本轮参考：'+((row.context_sources||[]).map(s=>sources[s]||s).join('、')||'当前对话'));
    if(row.principle_ids?.length)text('参考原则：'+row.principle_ids.join('、'));
