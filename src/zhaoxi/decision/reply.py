@@ -81,7 +81,7 @@ def decode_main_reply(response: ModelResponse, *, fast: bool = False) -> ModelRe
         try:
             awareness = DecisionAwarenessTrace.from_reply(arguments["awareness"])
             awareness_state, mode = "valid", awareness.mode.value
-            if mode != "NONE" or awareness.feedback:
+            if mode != "NONE" or awareness.feedback or awareness.follow_up_asked_id:
                 content += "<decision-awareness>" + awareness.model_dump_json() + "</decision-awareness>"
         except ValueError:
             awareness_state = "invalid"

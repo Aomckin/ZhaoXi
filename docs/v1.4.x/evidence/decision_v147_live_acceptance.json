@@ -1,0 +1,499 @@
+{
+  "environment": "configured real provider; synthetic contexts; isolated stores; no production tools",
+  "run_id": "8fecdd6288ca4c949efbfc1b01c1d901",
+  "call_count_unit": "generate calls, not transport attempts",
+  "cases": [
+    {
+      "passed": true,
+      "model_calls": 1,
+      "mode": "PICK",
+      "reply": "黑壳。白壳沾点墨、用旧了发黄都显眼，黑壳省心，功能一样就选它。",
+      "case": "FAST PICK",
+      "elapsed_ms": 5305
+    },
+    {
+      "passed": true,
+      "model_calls": 1,
+      "feedback": {
+        "id": "DF-f961317dce8446c9b826c24005ec3e2e",
+        "label": "GOOD",
+        "text": "昨天你让我出去散步，我去了，回来精神好多了，这个建议挺好。",
+        "source": "natural",
+        "timestamp": "2026-10-04T12:35:12.845224+00:00"
+      },
+      "reply": "那就好。昨天你那状态，坐在寝室里也不是在做项目，纯粹是在耗着——出门走一圈，成本最低，见效也最快。这条我记下了：下次你又在低能耗里磨一个小时，我就不跟你讲道理，直接让你出门。",
+      "raw_awareness": {
+        "mode": "NONE",
+        "agent_recommendation": null,
+        "predicted_user_choice": null,
+        "context_sources": [],
+        "journal_ids": [],
+        "follow_up_policy": "PASSIVE",
+        "follow_up_after": null,
+        "feedback": {
+          "decision_id": "yesterday",
+          "user_final_choice": "出去散步",
+          "overridden": false,
+          "outcome": "GOOD",
+          "outcome_label": "GOOD",
+          "outcome_text": "昨天你让我出去散步，我去了，回来精神好多了，这个建议挺好。",
+          "feedback_source": "natural"
+        }
+      },
+      "case": "natural outcome feedback",
+      "elapsed_ms": 8122
+    },
+    {
+      "passed": true,
+      "model_calls": 1,
+      "reply": "哦？难得听你这么说。是今天哪件事顺了心，还是单纯风对味、人也不烦？说给我听听——我记性不错，这种好日子值得留一笔。",
+      "case": "unbound casual feedback",
+      "elapsed_ms": 7639
+    },
+    {
+      "passed": true,
+      "model_calls": 1,
+      "reflection": {
+        "id": "DR-9c666dc0cb1745d4bf3c233995a47402",
+        "decision_id": "one",
+        "feedback_id": "DF-df6ffca0dac04c1b849ac199fdf2a752",
+        "learnable": true,
+        "summary": "低精力且没有紧急 deadline、在寝室低效很久时，建议出去散步获得明确正面反馈，支持已有经验。",
+        "lessons": [
+          "在无紧急 deadline 且低精力、低效持续较久时，换个环境活动可能帮助恢复精神，并促进后续任务推进。",
+          "该反馈只支持已有经验增加证据，不需要新建长期经验。"
+        ],
+        "conditions": [
+          "无紧急 deadline",
+          "低精力且低效很久"
+        ],
+        "exceptions": [],
+        "journal_action": "SUPPORT",
+        "target_journal_id": "DJ-b6860302194546cd",
+        "confidence_delta": 0.1,
+        "reason": "用户明确反馈出门散步后精神好多了，晚上项目也顺利推进；这与已有日志 DJ-b6860302194546cd 的条件和主张一致，可作为一次正面证据支持该日志。",
+        "title": "低精力时换个环境",
+        "domain": "general",
+        "statement": "没有紧急 deadline 时，低精力且低效很久可以考虑出去活动",
+        "source_decision_ids": [
+          "one"
+        ],
+        "principle_conflicts": [],
+        "timestamp": "2026-10-04T12:35:34.266944Z"
+      },
+      "journal": {
+        "id": "DJ-b6860302194546cd",
+        "domain": "general",
+        "title": "低精力时换个环境",
+        "statement": "没有紧急 deadline 时，低精力且低效很久可以考虑出去活动",
+        "rationale": "",
+        "conditions": [
+          "无紧急 deadline",
+          "低精力且低效很久"
+        ],
+        "exceptions": [],
+        "confidence": 0.7,
+        "support_count": 1,
+        "conflict_count": 0,
+        "feedback_summary": "低精力且没有紧急 deadline、在寝室低效很久时，建议出去散步获得明确正面反馈，支持已有经验。",
+        "source_decision_ids": [
+          "one"
+        ],
+        "source_feedback_ids": [
+          "DF-df6ffca0dac04c1b849ac199fdf2a752"
+        ],
+        "last_reviewed_at": "2026-10-04T12:35:34.267462Z",
+        "created_at": "2026-10-04T12:35:20.490111Z",
+        "updated_at": "2026-10-04T12:35:34.267462Z",
+        "status": "UNCERTAIN",
+        "manual_state": "NORMAL"
+      },
+      "case": "GOOD reflection",
+      "elapsed_ms": 13792
+    },
+    {
+      "passed": true,
+      "model_calls": 1,
+      "reflection": {
+        "id": "DR-ec08af40aad0459bb8ae6201124ba57d",
+        "decision_id": "one",
+        "feedback_id": "DF-942c1f00ff0043a8bd86e8e8dc2918b0",
+        "learnable": true,
+        "summary": "多次 NO_DIFFERENCE 反馈表明，当选项功能完全相同时，用户希望减少分析、检索和澄清成本，而不是让助手推断选项偏好。",
+        "lessons": [
+          "当选项在功能上无差异且用户明确表示‘不用纠结’时，应最小化分析、检索和澄清步骤，直接给出任意选项或说明无差别即可。",
+          "NO_DIFFERENCE 反馈不应被用来学习选项偏好（如偏好黑色笔），而应被用来优化决策过程的效率。"
+        ],
+        "conditions": [
+          "PICK 模式下，选项之间在功能、价格、可用性等关键属性上无实质差异。",
+          "用户反馈明确标注为 NO_DIFFERENCE，或文本表达‘一样’、‘不用纠结’等含义。"
+        ],
+        "exceptions": [
+          "选项之间存在隐藏差异（如用户未明说的偏好、后续使用场景不同）。",
+          "用户虽未明确反馈，但选项差异可能影响长期满意度或产生额外成本。"
+        ],
+        "journal_action": "CREATE",
+        "target_journal_id": "DJ-0bdce1f01b8f4249",
+        "confidence_delta": 0.1,
+        "reason": "本次及关联历史决策（one、two、three）均获得 NO_DIFFERENCE 反馈，且文本一致表明‘黑壳白壳写起来都一样，真不用纠结’。这提示对于功能无差异的选项，用户期望助手减少不必要的分析、检索和澄清，而不是学习选项偏好。该经验可推广到类似场景，减少计算和交互成本。",
+        "title": "功能无差异选项的决策效率优化",
+        "domain": "decision_process",
+        "statement": "在 PICK 模式且选项功能无实质差异时，若用户反馈 NO_DIFFERENCE，助手应减少分析、检索和澄清成本，不将反馈用于学习选项偏好。",
+        "source_decision_ids": [
+          "one",
+          "two",
+          "three"
+        ],
+        "principle_conflicts": [],
+        "timestamp": "2026-10-04T12:35:48.479269Z"
+      },
+      "journal": [
+        {
+          "id": "DJ-0bdce1f01b8f4249",
+          "domain": "decision_process",
+          "title": "功能无差异选项的决策效率优化",
+          "statement": "在 PICK 模式且选项功能无实质差异时，若用户反馈 NO_DIFFERENCE，助手应减少分析、检索和澄清成本，不将反馈用于学习选项偏好。",
+          "rationale": "本次及关联历史决策（one、two、three）均获得 NO_DIFFERENCE 反馈，且文本一致表明‘黑壳白壳写起来都一样，真不用纠结’。这提示对于功能无差异的选项，用户期望助手减少不必要的分析、检索和澄清，而不是学习选项偏好。该经验可推广到类似场景，减少计算和交互成本。",
+          "conditions": [
+            "PICK 模式下，选项之间在功能、价格、可用性等关键属性上无实质差异。",
+            "用户反馈明确标注为 NO_DIFFERENCE，或文本表达‘一样’、‘不用纠结’等含义。"
+          ],
+          "exceptions": [
+            "选项之间存在隐藏差异（如用户未明说的偏好、后续使用场景不同）。",
+            "用户虽未明确反馈，但选项差异可能影响长期满意度或产生额外成本。"
+          ],
+          "confidence": 0.6,
+          "support_count": 1,
+          "conflict_count": 0,
+          "feedback_summary": "多次 NO_DIFFERENCE 反馈表明，当选项功能完全相同时，用户希望减少分析、检索和澄清成本，而不是让助手推断选项偏好。",
+          "source_decision_ids": [
+            "one",
+            "two",
+            "three"
+          ],
+          "source_feedback_ids": [
+            "DF-942c1f00ff0043a8bd86e8e8dc2918b0",
+            "DF-fac3182929574f92bae700f0bd32334c",
+            "DF-e9967a0a89a44625bab362fa4facf180"
+          ],
+          "last_reviewed_at": "2026-10-04T12:35:48.479838Z",
+          "created_at": "2026-10-04T12:35:48.479791Z",
+          "updated_at": "2026-10-04T12:35:48.479838Z",
+          "status": "UNCERTAIN",
+          "manual_state": "NORMAL"
+        }
+      ],
+      "case": "repeated NO_DIFFERENCE reflection",
+      "elapsed_ms": 14212
+    }
+  ],
+  "prior_attempts": [
+    {
+      "cases": [
+        {
+          "passed": false,
+          "error": "ProviderError",
+          "error_code": "provider_transport_error",
+          "case": "FAST PICK",
+          "elapsed_ms": 654
+        },
+        {
+          "passed": false,
+          "error": "AgentLoopError",
+          "error_code": "provider_transport_error",
+          "case": "natural outcome feedback",
+          "elapsed_ms": 588
+        },
+        {
+          "passed": false,
+          "error": "AgentLoopError",
+          "error_code": "provider_transport_error",
+          "case": "unbound casual feedback",
+          "elapsed_ms": 598
+        },
+        {
+          "passed": false,
+          "error": "ProviderError",
+          "error_code": "provider_transport_error",
+          "case": "GOOD reflection",
+          "elapsed_ms": 588
+        },
+        {
+          "passed": false,
+          "error": "ProviderError",
+          "error_code": "provider_transport_error",
+          "case": "repeated NO_DIFFERENCE reflection",
+          "elapsed_ms": 547
+        }
+      ]
+    },
+    {
+      "cases": [
+        {
+          "passed": true,
+          "model_calls": 1,
+          "mode": "PICK",
+          "reply": "黑壳。耐脏，写字时也不容易分心，闭眼拿它。",
+          "case": "FAST PICK",
+          "elapsed_ms": 5492
+        },
+        {
+          "passed": false,
+          "model_calls": 1,
+          "feedback": null,
+          "reply": "那就好。你昨天缺的不是自律，是从椅子上站起来那一下——硬坐着也是耗着，出去走一圈反而把脑子松开。以后再遇上那种\"坐着一下午也没干成什么\"的状态，先出门二十分钟，别先跟自己谈判。",
+          "case": "natural outcome feedback",
+          "elapsed_ms": 9678
+        },
+        {
+          "passed": true,
+          "model_calls": 1,
+          "reply": "那就好。是有什么好事，还是单纯今天过得顺？说给我听听——我这边安静得很，正缺一点别人的好消息。",
+          "case": "unbound casual feedback",
+          "elapsed_ms": 6193
+        },
+        {
+          "passed": true,
+          "model_calls": 1,
+          "reflection": {
+            "id": "DR-df7be8f791a74d5dbc7a91a72d1ebb00",
+            "decision_id": "one",
+            "feedback_id": "DF-7976612e8427434cb336f9b990f9deac",
+            "learnable": true,
+            "summary": "用户采纳出门散步建议后，反馈出门回来精神好多了，晚上项目顺利推进；该结果与现有“低精力时换个环境”经验一致。",
+            "lessons": [
+              "低精力且无紧急 deadline、久坐低效时，短暂离开寝室活动可能有助于恢复精力并推进后续任务。",
+              "单次明确正向反馈可作为支持证据，但仍需更多样本提升置信度。"
+            ],
+            "conditions": [
+              "无紧急 deadline",
+              "低精力且低效很久"
+            ],
+            "exceptions": [],
+            "journal_action": "SUPPORT",
+            "target_journal_id": "DJ-8d9da5b2557d4c25",
+            "confidence_delta": 0.1,
+            "reason": "反馈明确说明出门后精力恢复且晚上项目推进顺利，条件与现有 journal 匹配，可归因且可支持；但仅为单次证据，因此只小幅提升置信度。",
+            "title": "低精力时换个环境",
+            "domain": "general",
+            "statement": "没有紧急 deadline 时，低精力且低效很久可以考虑出去活动。",
+            "source_decision_ids": [
+              "one"
+            ],
+            "principle_conflicts": [],
+            "timestamp": "2026-10-04T12:31:46.510305Z"
+          },
+          "journal": {
+            "id": "DJ-8d9da5b2557d4c25",
+            "domain": "general",
+            "title": "低精力时换个环境",
+            "statement": "没有紧急 deadline 时，低精力且低效很久可以考虑出去活动",
+            "rationale": "",
+            "conditions": [
+              "无紧急 deadline",
+              "低精力且低效很久"
+            ],
+            "exceptions": [],
+            "confidence": 0.7,
+            "support_count": 1,
+            "conflict_count": 0,
+            "feedback_summary": "用户采纳出门散步建议后，反馈出门回来精神好多了，晚上项目顺利推进；该结果与现有“低精力时换个环境”经验一致。",
+            "source_decision_ids": [
+              "one"
+            ],
+            "source_feedback_ids": [
+              "DF-7976612e8427434cb336f9b990f9deac"
+            ],
+            "last_reviewed_at": "2026-10-04T12:31:46.510837Z",
+            "created_at": "2026-10-04T12:31:29.550873Z",
+            "updated_at": "2026-10-04T12:31:46.510837Z",
+            "status": "UNCERTAIN",
+            "manual_state": "NORMAL"
+          },
+          "case": "GOOD reflection",
+          "elapsed_ms": 16974
+        },
+        {
+          "passed": true,
+          "model_calls": 1,
+          "reflection": {
+            "id": "DR-47fbac6b41764ebeb81d35b58067ec6c",
+            "decision_id": "one",
+            "feedback_id": "DF-bdec9f19095c4367b452d7f0d0b0644a",
+            "learnable": true,
+            "summary": "多次反馈表明，功能无差异的选项无需纠结；可减少分析、检索和澄清成本，不建立选项偏好。",
+            "lessons": [
+              "当选项在关键功能上无差异且用户反馈 NO_DIFFERENCE 时，可降低决策分析、检索和澄清投入。",
+              "不应将 NO_DIFFERENCE 反馈误解为对某一选项（如黑壳笔）的偏好。"
+            ],
+            "conditions": [
+              "选项在关键功能上无差异（如写起来一样）",
+              "用户明确反馈 NO_DIFFERENCE 或同等含义",
+              "多次类似情境反馈一致"
+            ],
+            "exceptions": [
+              "选项间存在非功能差异（价格、售后、情感偏好等）",
+              "用户明确要求必须选择一个选项",
+              "反馈来源不明确或单次反馈"
+            ],
+            "journal_action": "CREATE",
+            "target_journal_id": "DJ-f588cb208bdc489e",
+            "confidence_delta": 0.15,
+            "reason": "三次 NO_DIFFERENCE 反馈一致，表明功能等价时用户认为无需纠结，可学习降低决策成本，而非学习选项偏好；该经验在功能无差异场景下有推广价值。",
+            "title": "功能等价选项减少分析成本",
+            "domain": "decision_making",
+            "statement": "当多个选项在关键功能上无差异且用户反馈 NO_DIFFERENCE 时，应减少分析、检索和澄清投入，不坚持推荐特定选项；不将此反馈解读为对某一选项的偏好。",
+            "source_decision_ids": [
+              "one",
+              "two",
+              "three"
+            ],
+            "principle_conflicts": [],
+            "timestamp": "2026-10-04T12:32:00.260119Z"
+          },
+          "journal": [
+            {
+              "id": "DJ-f588cb208bdc489e",
+              "domain": "decision_making",
+              "title": "功能等价选项减少分析成本",
+              "statement": "当多个选项在关键功能上无差异且用户反馈 NO_DIFFERENCE 时，应减少分析、检索和澄清投入，不坚持推荐特定选项；不将此反馈解读为对某一选项的偏好。",
+              "rationale": "三次 NO_DIFFERENCE 反馈一致，表明功能等价时用户认为无需纠结，可学习降低决策成本，而非学习选项偏好；该经验在功能无差异场景下有推广价值。",
+              "conditions": [
+                "选项在关键功能上无差异（如写起来一样）",
+                "用户明确反馈 NO_DIFFERENCE 或同等含义",
+                "多次类似情境反馈一致"
+              ],
+              "exceptions": [
+                "选项间存在非功能差异（价格、售后、情感偏好等）",
+                "用户明确要求必须选择一个选项",
+                "反馈来源不明确或单次反馈"
+              ],
+              "confidence": 0.65,
+              "support_count": 1,
+              "conflict_count": 0,
+              "feedback_summary": "多次反馈表明，功能无差异的选项无需纠结；可减少分析、检索和澄清成本，不建立选项偏好。",
+              "source_decision_ids": [
+                "one",
+                "two",
+                "three"
+              ],
+              "source_feedback_ids": [
+                "DF-bdec9f19095c4367b452d7f0d0b0644a",
+                "DF-225fde8b5f624592bfb2b55b6e571ed2",
+                "DF-0e9cc30b235443c587aad8a28d7cb980"
+              ],
+              "last_reviewed_at": "2026-10-04T12:32:00.260720Z",
+              "created_at": "2026-10-04T12:32:00.260675Z",
+              "updated_at": "2026-10-04T12:32:00.260720Z",
+              "status": "UNCERTAIN",
+              "manual_state": "NORMAL"
+            }
+          ],
+          "case": "repeated NO_DIFFERENCE reflection",
+          "elapsed_ms": 13750
+        }
+      ]
+    },
+    {
+      "cases": [
+        {
+          "passed": true,
+          "model_calls": 1,
+          "mode": "PICK",
+          "reply": "挑黑的。白壳用两天准被手汗和笔袋蹭成花的，黑壳省心，一块钱也别给自己添后续麻烦。",
+          "case": "FAST PICK",
+          "elapsed_ms": 6600
+        },
+        {
+          "passed": false,
+          "model_calls": 1,
+          "feedback": null,
+          "reply": "看吧，低能量的时候把自己从那个房间里挪出去，往往比硬撑着继续磨更有用。你昨天不是没精力，是那面墙把你磨掉了。回来状态好，就说明身体早就想动了。\n\n记住了——下次又在寝室坐了半天什么也没推进的时候，别等我把这句再说一遍。",
+          "raw_awareness": {
+            "mode": "NONE",
+            "agent_recommendation": null,
+            "context_sources": [],
+            "follow_up_policy": "PASSIVE",
+            "follow_up_after": null
+          },
+          "case": "natural outcome feedback",
+          "elapsed_ms": 7938
+        },
+        {
+          "passed": true,
+          "model_calls": 1,
+          "reply": "哦？难得听你这么说一句。\n\n那我得问问——是哪儿让你高兴的，事本身，还是今天总算没被谁烦？说清楚点，我这人记性好，下次好照着给你复刻一遍。",
+          "case": "unbound casual feedback",
+          "elapsed_ms": 9004
+        },
+        {
+          "passed": true,
+          "model_calls": 1,
+          "reflection": {
+            "id": "DR-6b406419ecc445fe9b88f9e8ec558723",
+            "decision_id": "one",
+            "feedback_id": "DF-4181b0a7e5ec4c1a97a9fdeb71a4d9d4",
+            "learnable": true,
+            "summary": "低精力且无紧急 deadline 时，在寝室低效很久，建议出门散步得到正面反馈：精神恢复，后续项目推进顺利。",
+            "lessons": [
+              "当低精力且低效持续、又没有紧急 deadline 时，换个环境活动可能帮助恢复状态并提升后续效率。"
+            ],
+            "conditions": [
+              "无紧急 deadline",
+              "低精力且低效很久"
+            ],
+            "exceptions": [],
+            "journal_action": "SUPPORT",
+            "target_journal_id": "DJ-56390ddf70e24c23",
+            "confidence_delta": 0.1,
+            "reason": "本次显式 GOOD 反馈与已有日志 DJ-56390ddf70e24c23 的条件和判断一致，并提供了实际效果证据，适合作为支持性证据而非新建经验。",
+            "title": "低精力时换个环境",
+            "domain": "general",
+            "statement": "没有紧急 deadline 时，低精力且低效很久可以考虑出去活动",
+            "source_decision_ids": [
+              "one"
+            ],
+            "principle_conflicts": [],
+            "timestamp": "2026-10-04T12:33:47.900078Z"
+          },
+          "journal": {
+            "id": "DJ-56390ddf70e24c23",
+            "domain": "general",
+            "title": "低精力时换个环境",
+            "statement": "没有紧急 deadline 时，低精力且低效很久可以考虑出去活动",
+            "rationale": "",
+            "conditions": [
+              "无紧急 deadline",
+              "低精力且低效很久"
+            ],
+            "exceptions": [],
+            "confidence": 0.7,
+            "support_count": 1,
+            "conflict_count": 0,
+            "feedback_summary": "低精力且无紧急 deadline 时，在寝室低效很久，建议出门散步得到正面反馈：精神恢复，后续项目推进顺利。",
+            "source_decision_ids": [
+              "one"
+            ],
+            "source_feedback_ids": [
+              "DF-4181b0a7e5ec4c1a97a9fdeb71a4d9d4"
+            ],
+            "last_reviewed_at": "2026-10-04T12:33:47.900596Z",
+            "created_at": "2026-10-04T12:33:34.950505Z",
+            "updated_at": "2026-10-04T12:33:47.900596Z",
+            "status": "UNCERTAIN",
+            "manual_state": "NORMAL"
+          },
+          "case": "GOOD reflection",
+          "elapsed_ms": 12971
+        },
+        {
+          "passed": false,
+          "error": "ValidationError",
+          "error_code": null,
+          "case": "repeated NO_DIFFERENCE reflection",
+          "elapsed_ms": 16676
+        }
+      ]
+    }
+  ]
+}

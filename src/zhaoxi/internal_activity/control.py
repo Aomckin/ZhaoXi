@@ -72,6 +72,13 @@ class RuntimeControl:
                 presence_policy={p: "AUTO" if p in spec.presence_states else "DISABLED" for p in PresenceState}).model_dump(mode="json")
                 for spec in runtime.registry},
         }
+        for name in ("decision_follow_up", "decision_reflection", "decision_journal_gardening"):
+            if name in self.defaults["configs"]:
+                policies = self.defaults["configs"][name]["presence_policy"]
+                if name == "decision_follow_up":
+                    policies["IDLE"] = "MANUAL_ONLY"
+                else:
+                    policies["ACTIVE"] = policies["AWAY"] = "MANUAL_ONLY"
         self.saved = {"presence": {}, "activity": {}, "configs": {}}
         self.changed = asyncio.Event()
         self.next_tick_at = None

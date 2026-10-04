@@ -34,6 +34,8 @@ class InternalActivityRuntime:
             from .activities.social import register_social
             register_cognitive(self.registry, settings)
             register_social(self.registry, settings)
+        from .activities.decision_learning import register_decision_learning
+        register_decision_learning(self.registry, settings)
         self.lock = asyncio.Lock()
         self.scheduler = ActivityScheduler(settings.internal_activity_max_llm_per_tick,
                                            settings.internal_activity_max_local_per_tick)

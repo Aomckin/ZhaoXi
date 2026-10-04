@@ -99,6 +99,17 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     awareness.agenda = agenda_service
     awareness.cognition = current_cognition_service
     awareness.memory = memory_retriever
+    if settings.decision_learning_enabled and settings.decision_mode == "agency":
+        from zhaoxi.decision.journal import DecisionJournalStore
+        from zhaoxi.decision.user_principles import UserPrincipleStore, DecisionPrincipleArchiveProvider
+        from zhaoxi.decision.learning import DecisionLearning
+        awareness.user_principles = UserPrincipleStore(settings.decision_user_principles_directory)
+        awareness.principle_archive = DecisionPrincipleArchiveProvider(settings.archive_directory, settings.decision_principle_archive_paths)
+        awareness.journal = DecisionJournalStore(settings.decision_data_directory)
+        agent.decision_learning = DecisionLearning(awareness.history, awareness.journal, awareness.user_principles, provider)
+        from zhaoxi.decision.follow_up import DecisionFollowUp
+        agent.decision_follow_up = DecisionFollowUp(awareness.history, settings)
+        awareness.follow_up = agent.decision_follow_up
     agent.current_cognition_maintainer = CurrentCognitionMaintainer(
         current_cognition_service, provider, timezone=settings.proactive_timezone,
     )
@@ -195,6 +206,8 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
             ) if settings.auto_memory_enabled else None),
         )
     agent.internal_activity = InternalActivityRuntime(agent, settings, settings.internal_activity_db_path)
+    if getattr(agent, "decision_follow_up", None):
+        agent.decision_follow_up.runtime = agent.internal_activity
     if getattr(agent, "proactive_worker", None) is not None:
         agent.internal_activity.proactive_check = agent.proactive_worker.tick
         agent.proactive_worker.activity = agent.internal_activity

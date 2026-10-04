@@ -8,6 +8,7 @@ from typing import Protocol
 from uuid import uuid4
 
 from .models import DecisionAwarenessTrace, DecisionMode
+from .learning_models import private_owner
 
 logger = logging.getLogger("DECISION")
 
@@ -58,15 +59,21 @@ class DecisionAwareness:
         self.agenda = agenda
         self.cognition = cognition
         self.memory = memory
+        self.user_principles = None
+        self.journal = None
+        self.principle_archive = None
+        self.follow_up = None
         self.providers: dict[str, DecisionContextProvider] = {}
         self.recent_traces: list[dict] = []
 
     def register_context_provider(self, name: str, provider: DecisionContextProvider) -> None:
-        if name in {"agenda", "current_cognition", "memory", "principles", "choice_history"}:
+        if name in {"agenda", "current_cognition", "memory", "principles", "choice_history", "user_principles", "decision_journal"}:
             raise ValueError("Built-in source cannot be replaced")
         self.providers[name] = provider
 
     def pending_choice(self, conversation) -> dict | None:
+        if not private_owner():
+            return None
         for message in reversed(conversation.messages[-12:]):
             identity = message.metadata.get("decision_awareness")
             if identity and identity.get("scope") == choice_scope():
@@ -82,20 +89,46 @@ class DecisionAwareness:
                 logger.warning("pending choice unavailable: %s", type(exc).__name__)
         return None
 
+    def feedback_candidates(self, conversation):
+        if not private_owner():
+            return []
+        try:
+            rows = self.history.list(limit=5, scope=choice_scope()) if self.history else []
+            rows = [r for r in rows if datetime.fromisoformat(r['timestamp']) > datetime.now(UTC) - timedelta(days=30)]
+            if rows:
+                return rows
+        except (OSError, ValueError, TypeError):
+            logger.warning('feedback candidates unavailable')
+        pending = self.pending_choice(conversation)
+        return [pending] if pending else []
+
     def prompt(self, conversation) -> str:
-        value = AWARENESS_PROMPT
+        value = AWARENESS_PROMPT + """
+User Principles 是用户明确确认的准则，优先于朝汐自己的经验。Decision Journal 是你从真实选择和反馈中总结的暂时判断，可参考，不是用户原话或硬规则。Choice History 只作弱证据。当前现实和明确表达优先。需要时 read_decision_context sources 可选 user_principles/decision_journal；不全量预读。
+反馈是同一主回复的旁产物：用户明确承接下面某条选择且谈到实际结果时，必须在 awareness 中填 feedback={decision_id, user_final_choice:null或明确选择, outcome_label:GOOD/BAD/NEUTRAL/MIXED/NO_DIFFERENCE/UNKNOWN, outcome_text:本轮原话, feedback_source:natural或follow_up}。模糊的“挺好”“都一样”、不能唯一确认选择对象时不绑反馈；最终选择不明用 null，不臆造。反馈不直接变用户偏好。先简短自然回应，不在前台声称已经总结出长期经验；后台才反思。只是在接受已发生的结果时 mode=NONE，不把接受反馈改写成新的 ADVISE，也不能用一段安慰或新建议代替 feedback 字段。
+awareness 可填 journal_ids（仅实际读取的日记 ID）、follow_up_policy:NEVER/PASSIVE/OPPORTUNISTIC/SCHEDULED、follow_up_after:含时区ISO时间或null。琐碎菜单 NEVER、饮料小消费 PASSIVE；值得回顾才 OPPORTUNISTIC，明确长期观察时间才 SCHEDULED。不能每个 PICK 都主动问。后台反思不写进本轮 reply schema。
+"""
         if self.providers:
             value += "\n已注册按需扩展资料来源：" + ", ".join(self.providers)
-        if pending := self.pending_choice(conversation):
-            value += "\n待反馈选择（仅用户本轮明确承接才记录反馈）：" + json.dumps(
-                {"decision_id": pending["decision_id"], "suggestion": pending.get("suggestion")},
-                ensure_ascii=False)
+        if candidates := self.feedback_candidates(conversation):
+            value += "\n本轮反馈协议：若当前用户明确说候选中的哪个建议后来效果如何，最终 JSON 的 awareness.feedback 必须包含该 decision_id、outcome_label 与 outcome_text（原话）；只有自然回复不算保存反馈。如果对象不明确则 feedback=null，不猜。接受结果用 mode=NONE，但不能省掉 feedback。"
+            value += "\n可承接反馈的近期选择（仅明确承接才记录，不猜对象）：" + json.dumps(
+                [{"decision_id": r["decision_id"], "summary": r.get("summary"), "suggestion": r.get("suggestion"),
+                  "timestamp": r.get("timestamp"), "follow_up_status": r.get("follow_up_status")} for r in candidates], ensure_ascii=False)
+        try:
+            if private_owner() and self.follow_up and self.follow_up.policy_allowed() and self.follow_up.budget_allowed():
+                ready = self.follow_up.candidates(scope=choice_scope(), opportunistic=True)
+                if ready:
+                    value += "\n可顺便回访（仅在当前聊天自然合适时问，不抢占用户问题；问后填 awareness.follow_up_asked_id）：" + json.dumps(
+                        {"decision_id": ready[0]['decision_id'], "summary": ready[0]['summary']}, ensure_ascii=False)
+        except (OSError, ValueError, TypeError):
+            logger.warning('optional follow-up context unavailable')
         return value
 
     def commit(self, trace: DecisionAwarenessTrace | None, error: str | None, conversation, builder) -> dict | None:
         from zhaoxi.cognitive_stream.turn import current_turn
         turn = current_turn()
-        if turn and turn.audience != "owner":
+        if not private_owner():
             return None
         if trace is None:
             if error:
@@ -148,21 +181,38 @@ class DecisionAwareness:
         refs = {ref for source in trace.context_sources for ref in available[source]}
         trace.context_refs = list(dict.fromkeys([*[ref for ref in trace.context_refs if ref in refs],
             *[ref for values in consulted.values() for ref in values]]))
-        valid_principles = {ref.removeprefix("principles:") for ref in available.get("principles", [])}
+        valid_principles = {ref.split(":", 1)[1] for ref in
+            [*available.get("principles", []), *available.get("user_principles", [])]
+            if ref.startswith(("principles:", "user_principles:"))}
+        valid_journal = {ref.removeprefix("decision_journal:") for ref in available.get("decision_journal", [])}
+        trace.journal_ids = [i for i in trace.journal_ids if i in valid_journal]
         trace.principle_ids = [identity for identity in trace.principle_ids if identity in valid_principles]
         trace.guard_flags = list(dict.fromkeys(guard_flags))
         scope = choice_scope()
         if trace.feedback:
-            pending = self.pending_choice(conversation)
-            if self.history and pending and pending["decision_id"] == trace.feedback.decision_id:
+            candidates = self.feedback_candidates(conversation)
+            known = {r["decision_id"] for r in candidates}
+            known.update(ref.removeprefix("choice_history:") for ref in available.get("choice_history", []))
+            if self.history and trace.feedback.decision_id in known:
                 try:
                     self.history.feedback(scope=scope, final=trace.feedback.user_final_choice,
                         decision_id=trace.feedback.decision_id, overridden=trace.feedback.overridden,
-                        outcome=trace.feedback.outcome)
+                        outcome=trace.feedback.outcome, outcome_label=trace.feedback.outcome_label,
+                        outcome_text=trace.feedback.outcome_text, feedback_source=trace.feedback.feedback_source)
                 except (ValueError, OSError) as exc:
                     logger.warning("choice feedback not saved: %s", type(exc).__name__)
             else:
                 trace.feedback = None
+        if trace.follow_up_asked_id:
+            ready = self.follow_up.candidates(scope=scope, opportunistic=True) if self.follow_up else []
+            if self.follow_up and self.follow_up.policy_allowed() and self.follow_up.budget_allowed() and any(r['decision_id'] == trace.follow_up_asked_id for r in ready):
+                try:
+                    self.history.event(trace.follow_up_asked_id, 'follow_up', scope=scope,
+                        follow_up_status='ASKED', asked_at=datetime.now(UTC).isoformat())
+                except OSError:
+                    logger.warning('opportunistic follow-up receipt unavailable')
+            else:
+                trace.follow_up_asked_id = None
         row = {**trace.model_dump(mode="json"), "decision_id": uuid4().hex,
                "scope": scope, "timestamp": datetime.now(UTC).isoformat(),
                "summary": (user.content or "")[:160], "suggestion": trace.agent_recommendation}

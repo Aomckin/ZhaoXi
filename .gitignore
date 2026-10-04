@@ -15,6 +15,12 @@ data/*
 !data/decisions/
 data/decisions/*
 !data/decisions/rules/
+!data/decisions/user_principles/
+data/decisions/user_principles/*
+!data/decisions/user_principles/job_below_explicit_floor.json
+!data/decisions/user_principles/long_term_direction.json
+!data/decisions/user_principles/protect_today_mainline.json
+!data/decisions/user_principles/reversible_low_cost.json
 !data/emoji/
 data/emoji/images/*
 !data/emoji/images/.gitkeep

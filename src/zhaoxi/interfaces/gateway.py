@@ -228,8 +228,17 @@ class InterfaceGateway:
             if target_index is None or messages[target_index].role not in {Role.USER, Role.ASSISTANT}:
                 raise KeyError("找不到要重新生成的回复。")
             target = messages[target_index]
+            group_start = group_end = target_index
+            if target.role == Role.ASSISTANT and target.reply_group_id:
+                def same_reply(item):
+                    return (item.role == Role.ASSISTANT and is_user_visible_message(item)
+                            and not item.delivery_id and item.reply_group_id == target.reply_group_id)
+                while group_start > 0 and same_reply(messages[group_start - 1]):
+                    group_start -= 1
+                while group_end + 1 < len(messages) and same_reply(messages[group_end + 1]):
+                    group_end += 1
             if target.role == Role.ASSISTANT and (target.delivery_id or any(
-                (item.role == Role.USER or is_user_visible_message(item)) for item in messages[target_index + 1:]
+                (item.role == Role.USER or is_user_visible_message(item)) for item in messages[group_end + 1:]
             )):
                 raise ValueError("只能重新生成当前最后一条普通回复。")
             pending = getattr(
@@ -256,8 +265,9 @@ class InterfaceGateway:
             source_user = messages[user_index].model_copy(deep=True)
             resume_in_place = any(item.tool_calls for item in messages[user_index:]) or target.visibility == "notice" or target.tool_turn
             if resume_in_place and not target.tool_calls and target.role == Role.ASSISTANT:
-                prior = target.model_copy(update={"visibility": "internal"})
-                self.agent.conversation.replace([*messages[:target_index], prior])
+                prior = [item.model_copy(update={"visibility": "internal"})
+                         for item in messages[group_start:group_end + 1]]
+                self.agent.conversation.replace([*messages[:group_start], *prior])
             if not resume_in_place:
                 self.agent.conversation.replace(messages[:user_index])
             previous_messages = {id(item) for item in self.agent.conversation.messages}

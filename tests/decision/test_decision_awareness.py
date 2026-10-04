@@ -69,7 +69,7 @@ async def test_fast_pick_has_no_classifier_rule_or_extra_model(tmp_path, questio
     assert agent.decision_awareness.diagnostics()["latest"]["mode"] == "PICK"
     assert agent.last_reply_protocol["awareness"] == "valid" and agent.last_reply_protocol["mode"] == "PICK"
     row = agent.decision_awareness.history.list()[0]
-    assert row["suggestion"] == answer and row["schema_version"] == 2
+    assert row["suggestion"] == answer and row["schema_version"] == 3
     assert row["context_refs"] == [] and row["user_final_choice"] is None
     assert "<decision-awareness>" not in json.dumps(
         [m.model_dump(mode="json") for m in agent.conversation.messages], ensure_ascii=False)
@@ -291,7 +291,8 @@ async def test_public_context_cannot_read_or_record_owner_choices(tmp_path):
         result = await agent.registry.get("read_decision_context").run({"query":"偏好","sources":["choice_history"]})
         assert not result.success and result.error == "owner_only"
         await agent.run_direct(event.content)
-        assert agent.decision_awareness.history.list() == []
+        with pytest.raises(PermissionError):
+            agent.decision_awareness.history.list()
     finally:
         reset_current_turn(token)
 

@@ -1,5 +1,5 @@
 
-const FRONTEND_BUILD_ID='v1.4.6-agency-20261003',FRONTEND_LOADED_AT=new Date().toISOString();
+const FRONTEND_BUILD_ID='v1.4.7-reply-groups-20261004',FRONTEND_LOADED_AT=new Date().toISOString();
 const shellInertNodes=new Map();
 const $=s=>{const found=document.querySelector(s);if(found)return found;
   if(!shellInertNodes.has(s)){const node=document.createElement('div');node.value='';node.checked=false;shellInertNodes.set(s,node)}
@@ -147,10 +147,17 @@ function isActionSegment(text){
   const value=String(text??'').trim();
   return /^(（[^\r\n]*）|\([^\r\n]*\))$/.test(value);
 }
-function addMessage(role,content,kind='',images=[],timestamp=null,messageId=null,regeneratable=false,debugOnly=true){
+let currentReplyDisplayGroup=null;
+function replyDisplayGroup(message){
+  const key=message.role==='assistant'&&message.kind!=='system'?message.reply_group_id:null;
+  if(!key){currentReplyDisplayGroup=null;return null}
+  if(currentReplyDisplayGroup?.key!==key)currentReplyDisplayGroup={key};
+  return currentReplyDisplayGroup;
+}
+function addMessage(role,content,kind='',images=[],timestamp=null,messageId=null,regeneratable=false,debugOnly=true,replyGroup=null){
   const splitParts=role==='assistant'&&kind!=='system'?splitReply(content):[content];
   const parts=splitParts.length?splitParts:(images.length?['']:[]);
-  const group=role==='assistant'&&kind!=='system'?{}:null;
+  const group=role==='assistant'&&kind!=='system'?(replyGroup||{}):null;
   if(group&&regeneratable&&messageId)document.querySelectorAll('.regenerate').forEach(item=>item.remove());
   const rows=parts.map(part=>addMessageBubble(role,part,kind,images,timestamp,group));
   if(group&&regeneratable)attachRegenerate(group,messageId,debugOnly);
@@ -170,8 +177,8 @@ function waitReplySegment(pacing){
   pacing.shown+=1;
   return waiting;
 }
-async function sendReply(content,timestamp=null,messageId=null,regeneratable=true,pacing=null){
-  const parts=splitReply(content),group={},sequence=pacing||{shown:0};
+async function sendReply(content,timestamp=null,messageId=null,regeneratable=true,pacing=null,replyGroup=null){
+  const parts=splitReply(content),group=replyGroup||{},sequence=pacing||{shown:0};
   if(regeneratable&&messageId)document.querySelectorAll('.regenerate').forEach(item=>item.remove());
   for(const part of parts){
     const waiting=waitReplySegment(sequence);if(waiting)await waiting;
@@ -190,11 +197,13 @@ async function renderResponse(data){
 }
 async function renderMessage(message,{paced=false,latestMessageId=null,pacing=null}={}){
   const content=message.text??message.content??'',images=message.images||[],id=message.id||message.message_id||null;
+  const group=replyDisplayGroup(message);
+  if(id&&message.kind!=='system'&&['user','assistant'].includes(message.role))document.querySelectorAll('.regenerate').forEach(item=>item.remove());
   if(paced&&message.role==='assistant'){
-    if(content.trim())return sendReply(content,message.timestamp,id,id===latestMessageId,pacing);
+    if(content.trim())return sendReply(content,message.timestamp,id,id===latestMessageId,pacing,group);
     const waiting=waitReplySegment(pacing||{shown:0});if(waiting)await waiting;
   }
-  return addMessage(message.role,content,message.kind==='system'?'system':'',images,message.timestamp,id,!!message.regeneratable)[0]||null;
+  return addMessage(message.role,content,message.kind==='system'?'system':'',images,message.timestamp,id,paced?!!id&&id===latestMessageId:!!message.regeneratable,true,group)[0]||null;
 }
 let displayTimezone='Asia/Shanghai';
 function formatTime(value){return value?new Intl.DateTimeFormat('zh-CN',{timeZone:displayTimezone,year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(value)):''}
@@ -446,7 +455,7 @@ async function setupBudgetDebug(){try{$('#budgetDebug').textContent=JSON.stringi
 $('#budgetDebugRefresh').onclick=setupBudgetDebug;
 $('#budgetDebugPanel').addEventListener('toggle',event=>{if(event.target.open)void setupBudgetDebug()});
 let pendingDeliveryTimer=null;
-async function openDelivery(id){clearTimeout(pendingDeliveryTimer);if(busy||pendingInput.length){activity.textContent='当前回复结束后打开系统消息…';pendingDeliveryTimer=setTimeout(()=>openDelivery(id),500);return}try{await request('/api/proactive/'+encodeURIComponent(id)+'/activate',{method:'POST'});const data=await request('/api/session');displayTimezone=data.timezone||displayTimezone;messages.replaceChildren();data.messages.forEach(m=>{if(m.delivery_id)seenDeliveries.add(m.delivery_id);if(m.kind==='system')return;if(m.role==='user'&&m.display_parts?.length){let offset=0;for(const p of m.display_parts){addMessage('user',p.text,'',(m.images||[]).slice(offset,offset+p.image_count),p.timestamp);offset+=p.image_count}}else addMessage(m.role,m.content,m.kind==='system'?'system':'',m.images||[],m.timestamp,m.message_id,m.regeneratable)});debug.textContent=JSON.stringify(await request('/api/proactive/'+encodeURIComponent(id)+'/inspect'),null,2);const n=document.getElementById('notice-'+id);if(n)n.querySelector('.badge').textContent='已读';input.focus()}catch(e){showActivityHint('暂时无法打开系统消息，请稍后重试')}}
+async function openDelivery(id){clearTimeout(pendingDeliveryTimer);if(busy||pendingInput.length){activity.textContent='当前回复结束后打开系统消息…';pendingDeliveryTimer=setTimeout(()=>openDelivery(id),500);return}try{await request('/api/proactive/'+encodeURIComponent(id)+'/activate',{method:'POST'});const data=await request('/api/session');displayTimezone=data.timezone||displayTimezone;messages.replaceChildren();data.messages.forEach(m=>{if(m.delivery_id)seenDeliveries.add(m.delivery_id);if(m.kind==='system')return;if(m.role==='user'&&m.display_parts?.length){let offset=0;for(const p of m.display_parts){addMessage('user',p.text,'',(m.images||[]).slice(offset,offset+p.image_count),p.timestamp);offset+=p.image_count}}else void renderMessage(m)});debug.textContent=JSON.stringify(await request('/api/proactive/'+encodeURIComponent(id)+'/inspect'),null,2);const n=document.getElementById('notice-'+id);if(n)n.querySelector('.badge').textContent='已读';input.focus()}catch(e){showActivityHint('暂时无法打开系统消息，请稍后重试')}}
 function showNotice(d){showProactiveNote(d);if(d.kind!=='system'&&!String(d.event_type||'').startsWith('system.'))return;if(!['delivered','acknowledged'].includes(d.status)||document.getElementById('notice-'+d.delivery_id))return;const n=document.createElement('button');n.id='notice-'+d.delivery_id;n.className='notice';n.style.cssText='display:block;width:100%;text-align:left';n.innerHTML=`<div class="badge">${d.status==='acknowledged'?'已读':'未读'}</div><div>${markdown(d.content)}</div><small>${escapeHtml(formatTime(d.delivered_at||d.available_at))}</small>`;n.onclick=()=>openDelivery(d.delivery_id);$('#notices').querySelector('.sub')?.remove();$('#notices').prepend(n);while($('#notices').children.length>100)$('#notices').lastElementChild.remove()}
 function receiveDelivery(d){
   showProactiveNote(d);

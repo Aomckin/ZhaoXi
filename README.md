@@ -1,6 +1,6 @@
 # Zhaoxi / 朝汐
 
-朝汐是一个以本地运行、长期陪伴和可控工具执行为核心的个人 Agent。当前开发版本为 **1.4.6**（[版本说明](docs/v1.4.x/Zhaoxi_v1.4.6_Release_Notes.md)）。Core 提供请求级运行观测、长任务中间回复、Perception、认知时间线和 External Source Plugin 协议；QQ / NapCat 作为可选插件接入。
+朝汐是一个以本地运行、长期陪伴和可控工具执行为核心的个人 Agent。当前开发版本为 **1.4.7**（[版本说明](docs/v1.4.x/Zhaoxi_v1.4.7_Release_Notes.md)）。Core 提供请求级运行观测、长任务中间回复、Perception、认知时间线和 External Source Plugin 协议；QQ / NapCat 作为可选插件接入。
 
 ## 主要特点
 
@@ -11,6 +11,7 @@
 - 独立于长期记忆的近期日程与 Current Cognition 结构化小本子，主线可更新、降温和退出，每轮提供轻量时间和近期状态。
 - 潮庭书库、本地资料检索、Planner 和确定性 Workflow。
 - Decision 2.0：朝汐在同一主回复中承担 PICK / ADVISE / FRAME，低价值选择直接拍板，需要资料时按需读取日程、近期认知、记忆与原则；选择历史记录覆盖，高影响行动仍经过权限确认。
+- Decision Learning：在 Owner 私密上下文中记录结果反馈，后台反思形成可修订的判断经验；“判断与成长”管理页可查看证据、调整日记和控制回访，明确用户准则独立保留来源。
 - 统一 Tool Registry、动态能力发现、权限确认和脱敏审计。
 - FAST_CHAT 轻量对话通道：Fast Gate 2.0 综合近期对话、Current Cognition、能力与资源信号；高置信聊天单次前台模型调用，模糊输入交给 Router 并可判回 FAST，明确动作进入工具链；低价值 PICK 可在同次回复完成，发现必要 Tool / Recall / 决策资料需求时丢弃草稿，每轮单向升级 STANDARD 最多一次；Owner QQ 私聊复用 FAST 并保留外部边界。
 - STANDARD 工具任务在调用成功后可继续执行后续操作，支持先查询、再修改；预算或耗时接近上限时进入无工具收尾。
@@ -130,6 +131,7 @@ python -m pytest
 
 ## 文档
 
+- [v1.4.7 Decision Learning 开发记录](docs/v1.4.x/Zhaoxi_v1.4.7_开发记录.md)
 - [v1.4.6 Decision as Agency 开发记录与验收](docs/v1.4.x/Zhaoxi_v1.4.6_开发记录.md)
 - [v1.4.5 Dashboard 开发记录与验收](docs/v1.4.x/Zhaoxi_v1.4.5_开发记录.md)
 - [v1.4.4 Presence 2.0 开发记录](docs/v1.4.x/Zhaoxi_v1.4.4_开发记录.md)

@@ -1,0 +1,14 @@
+{
+  "checks": [
+    "history and follow-up human readable",
+    "feedback persisted and literal",
+    "background reflection queue receipt",
+    "reflection journal and receipt",
+    "evidence drill down",
+    "journal manual lock",
+    "principle provenance",
+    "unauthorized API rejected",
+    "no browser errors"
+  ],
+  "errors": []
+}

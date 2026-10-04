@@ -140,3 +140,48 @@ test('one assistant turn shares a group, separate turns never share it',()=>{
  calls.length=0;context.addMessage('assistant','（点头。）\n你好');context.addMessage('assistant','下一轮');
  assert.equal(calls[0][5],calls[1][5]);assert.notEqual(calls[1][5],calls[2][5]);
 });
+
+function groupedRenderer(){
+  const displayed=[],buttons=[];
+  const ui=vm.createContext({replyIntervalMs:0,
+    document:{querySelectorAll:()=>[]},acknowledgeEmojiTrace:()=>{},
+    addMessageBubble:(...args)=>{const group=args[5];if(group&&!group.element)group.element={};const row={parentElement:group?.element};displayed.push(args);return row},
+    attachRegenerate:(group,id)=>buttons.push({group,id}),
+  });
+  vm.runInContext(source,ui);return {ui,displayed,buttons};
+}
+test('live text emoji text segments share one response group and retry target',async()=>{
+  const {ui,displayed,buttons}=groupedRenderer();
+  await ui.renderResponse({message_id:'tail',output_messages:[
+    {role:'assistant',text:'before',id:'first',reply_group_id:'reply'},
+    {role:'assistant',text:'',id:'emoji',images:['/api/expression/emoji/a'],reply_group_id:'reply'},
+    {role:'assistant',text:'after\n\nlast paragraph',id:'tail',reply_group_id:'reply'},
+  ]});
+  assert.equal(displayed.length,4);
+  assert.ok(displayed.every(args=>args[5]===displayed[0][5]));
+  assert.equal(buttons.length,1);assert.equal(buttons[0].id,'tail');
+  assert.equal(buttons[0].group,displayed[0][5]);
+});
+test('image-only final segment retains regeneration for the whole group',async()=>{
+  const {ui,displayed,buttons}=groupedRenderer();
+  await ui.renderResponse({message_id:'emoji',output_messages:[
+    {role:'assistant',text:'before',id:'first',reply_group_id:'reply'},
+    {role:'assistant',text:'',id:'emoji',images:['/api/expression/emoji/a'],reply_group_id:'reply'},
+  ]});
+  assert.equal(displayed[0][5],displayed[1][5]);
+  assert.equal(buttons.length,1);assert.equal(buttons[0].id,'emoji');
+});
+test('restoration groups saved segments without merging adjacent reply turns',async()=>{
+  const {ui,displayed,buttons}=groupedRenderer();
+  for(const message of [
+    {role:'assistant',text:'before',id:'first',reply_group_id:'reply'},
+    {role:'assistant',text:'after',id:'tail',reply_group_id:'reply',regeneratable:true},
+    {role:'assistant',text:'next',id:'next',reply_group_id:'other'},
+    {role:'user',text:'new question',id:'user'},
+    {role:'assistant',text:'legacy',id:'legacy'},
+  ])await ui.renderMessage(message);
+  assert.equal(displayed[0][5],displayed[1][5]);
+  assert.notEqual(displayed[1][5],displayed[2][5]);
+  assert.notEqual(displayed[2][5],displayed[4][5]);
+  assert.equal(buttons[0].group,displayed[0][5]);
+});

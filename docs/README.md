@@ -11,6 +11,14 @@
 
 ## v1.4.x
 
+- [v1.4.7 Decision Learning 任务书](v1.4.x/Zhaoxi_v1.4.7_Decision_Learning_Decision_Journal_开发任务书.md)
+- [v1.4.7 开发记录与验收边界](v1.4.x/Zhaoxi_v1.4.7_开发记录.md)
+- [v1.4.7 版本说明](v1.4.x/Zhaoxi_v1.4.7_Release_Notes.md)
+- [v1.4.7 自动验收汇总](v1.4.x/evidence/decision_v147_acceptance.json)
+- [v1.4.7 浏览器验收](v1.4.x/evidence/decision_v147_browser_acceptance.json)
+- [v1.4.7 真实模型与失败记录](v1.4.x/evidence/decision_v147_live_acceptance.json)
+- [v1.4.7 回复分组修复与回归证据](v1.4.x/evidence/reply_group_v147_patch.json)
+
 - [v1.4.6 版本说明与加载方式](v1.4.x/Zhaoxi_v1.4.6_Release_Notes.md)
 - [v1.4.6 LifeHUD 工具后空回复与重试补丁](v1.4.x/Zhaoxi_v1.4.6_工具后回复与重试_补丁记录.md)
 - [v1.4.6 空回复与决策上下文补丁](v1.4.x/Zhaoxi_v1.4.6_回复交付与决策上下文_补丁记录.md)

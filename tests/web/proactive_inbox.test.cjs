@@ -11,7 +11,7 @@ function setup(){
   const context=vm.createContext({showProactiveNote:()=>{},seenDeliveries:new Set(),busy:false,pendingInput:[],activity:{},debug:{},displayTimezone:'Asia/Shanghai',clearTimeout(){},setTimeout(fn){timers.push(fn)},
     document:{getElementById:id=>nodes.get(id),createElement:()=>({style:{},querySelector:()=>({textContent:''})})},
     $:()=>notices,markdown:s=>s,escapeHtml:s=>s,formatTime:s=>s,input:{focus(){}},
-    messages:{replaceChildren(){rendered.length=0}},addMessage:(...args)=>rendered.push(args),
+    messages:{replaceChildren(){rendered.length=0}},addMessage:(...args)=>rendered.push(args),renderMessage:m=>rendered.push([m.role,m.content]),
     request:async(url,options)=>{requests.push({url,options});return url==='/api/session'?{messages:[{role:'assistant',content:'主动上下文'}]}:{}},
   });
   vm.runInContext(source,context);

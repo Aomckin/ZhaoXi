@@ -83,6 +83,9 @@ def build_data_store_specs(settings: Settings, *, archive_enabled: bool) -> list
         ("decision_rule_candidates", str(Path(settings.decision_data_directory) / "rule_candidates.jsonl")),
     ):
         specs.append(DataStoreSpec(name, Path(path), kind="file"))
+    for name in ("decision_journal", "decision_reflection", "decision_journal_revision"):
+        specs.append(DataStoreSpec(name, Path(settings.decision_data_directory) / (name + ".jsonl"), kind="file"))
+    specs.append(DataStoreSpec("user_principles", Path(settings.decision_user_principles_directory), kind="directory"))
     activity_path = Path(settings.internal_activity_db_path)
     specs.append(DataStoreSpec("choice_history", Path(settings.decision_data_directory) / "choice_history.jsonl", kind="file"))
     specs.append(DataStoreSpec("internal_activity", activity_path))

@@ -330,3 +330,53 @@ async def test_existing_task_notice_reclassified_without_duplicate():
     assert delivery.model_dump()['kind']=='system'
     beat=delivery.model_copy(update={'event_type':'conversation.beat','decision_reason':'active_conversation_beat'})
     assert beat.kind=='assistant'
+
+
+@pytest.mark.parametrize("segment_index", [0, 1, 2])
+async def test_regenerate_any_segment_replaces_the_whole_latest_reply_group(segment_index):
+    agent = FakeAgent()
+    user = agent.conversation.add_user("one question")
+    parts = [
+        agent.conversation.add_assistant("before", reply_group_id="one-reply", segment_type="text"),
+        agent.conversation.add_assistant_image("/api/expression/emoji/a", source="emoji", reply_group_id="one-reply", segment_type="emoji"),
+        agent.conversation.add_assistant("after", reply_group_id="one-reply", segment_type="text"),
+    ]
+    gateway = InterfaceGateway(agent)
+    result = await gateway.regenerate(parts[segment_index].message_id, request_id="retry-group")
+    assert result.content == "回复：one question"
+    assert [m.role.value for m in agent.conversation.messages] == ["user", "assistant"]
+    assert agent.conversation.messages[0].message_id == user.message_id
+    assert not {m.message_id for m in parts} & {m.message_id for m in agent.conversation.messages}
+
+
+async def test_latest_reply_group_is_still_rejected_after_a_new_visible_turn():
+    agent = FakeAgent()
+    agent.conversation.add_user("old question")
+    first = agent.conversation.add_assistant("before", reply_group_id="old-reply")
+    agent.conversation.add_assistant("after", reply_group_id="old-reply")
+    agent.conversation.add_assistant("later proactive", delivery_id="later-delivery")
+    before = list(agent.conversation.messages)
+    with pytest.raises(ValueError, match="最后一条普通回复"):
+        await InterfaceGateway(agent).regenerate(first.message_id, request_id="old-group")
+    assert agent.conversation.messages == before
+
+
+@pytest.mark.parametrize("segment_index", [0, 1])
+async def test_tool_retry_hides_all_old_reply_segments_without_replaying_tools(segment_index):
+    agent = FakeAgent()
+    user = agent.conversation.add_user("tool question")
+    agent.conversation.add_assistant(None, tool_calls=[ToolCall(id="completed", name="write", arguments={})])
+    tool = agent.conversation.add_tool('{"success":true}', tool_call_id="completed", name="write")
+    parts = [agent.conversation.add_assistant(text, reply_group_id="tool-reply", tool_turn=True)
+             for text in ["before", "after"]]
+    async def resume(content):
+        assert content == "tool question"
+        assert agent.conversation.messages[0].message_id == user.message_id
+        assert agent.conversation.messages[2].message_id == tool.message_id
+        assert all(m.visibility == "internal" for m in agent.conversation.messages[3:])
+        agent.conversation.add_assistant("new final")
+        return AgentResponse(content="new final", request_id="resumed", steps=1)
+    agent.resume_current_turn = resume
+    result = await InterfaceGateway(agent).regenerate(parts[segment_index].message_id, request_id="retry-tool-group")
+    assert result.content == "new final" and agent.calls == 0
+    assert [m["text"] for m in InterfaceGateway(agent).session()] == ["tool question", "new final"]

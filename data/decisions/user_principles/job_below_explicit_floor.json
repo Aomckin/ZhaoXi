@@ -1,0 +1,20 @@
+{
+  "id": "job_below_explicit_floor",
+  "type": "user_principle",
+  "statement": "不继续投递该岗位；适用情境：用户明确确认某岗位低于已设定的硬性底线，且没有提出例外",
+  "domain": "job_search",
+  "tags": [
+    "岗位",
+    "薪资",
+    "底线"
+  ],
+  "confidence": 1,
+  "source": {
+    "type": "archive",
+    "path": "data/archive/user/决策协议 v1.0.md",
+    "version": "1.0",
+    "ref": "2/L0",
+    "index_origin": "v1.4.7 migration"
+  },
+  "status": "active"
+}

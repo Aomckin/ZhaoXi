@@ -7,6 +7,7 @@ import logging
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, ValidationError, model_validator
+from .learning_models import FeedbackLabel, FollowUpPolicy, aware_time
 
 
 class DecisionMode(StrEnum):
@@ -17,10 +18,13 @@ class DecisionMode(StrEnum):
 
 
 class ChoiceFeedback(BaseModel):
-    decision_id: str = Field(max_length=64)
-    user_final_choice: str = Field(min_length=1, max_length=200)
+    decision_id: str = Field(max_length=64, description="本轮实际提供的候选选择 ID；只在用户明确承接该选择时填写。")
+    user_final_choice: str | None = Field(default=None, min_length=1, max_length=200)
     overridden: bool = False
     outcome: str | None = Field(default=None, max_length=200)
+    outcome_label: FeedbackLabel | None = Field(default=None, description="实际结果评价：GOOD/BAD/NEUTRAL/MIXED/NO_DIFFERENCE/UNKNOWN；用户明确谈到结果时填写。")
+    outcome_text: str | None = Field(default=None, max_length=1200)
+    feedback_source: str = Field(default="natural", pattern="^(explicit|natural|follow_up)$")
 
 
 class DecisionAwarenessTrace(BaseModel):
@@ -32,7 +36,19 @@ class DecisionAwarenessTrace(BaseModel):
     context_refs: list[str] = Field(default_factory=list, max_length=20)
     principle_ids: list[str] = Field(default_factory=list, max_length=10)
     guard_flags: list[str] = Field(default_factory=list, max_length=10)
-    feedback: ChoiceFeedback | None = None
+    feedback: ChoiceFeedback | None = Field(default=None, description="用户明确反馈某个已有选择的结果时必须填写，mode=NONE 也要填；无法唯一确认选择对象则 null。与自然回复同时产生，不等后台反思。")
+    journal_ids: list[str] = Field(default_factory=list, max_length=10)
+    follow_up_policy: FollowUpPolicy = FollowUpPolicy.PASSIVE
+    follow_up_after: datetime | None = None
+    follow_up_asked_id: str | None = Field(default=None, max_length=64)
+
+    @model_validator(mode="after")
+    def follow_up_time(self):
+        self.follow_up_after = aware_time(self.follow_up_after)
+        if self.follow_up_policy == FollowUpPolicy.SCHEDULED and self.follow_up_after is None:
+            self.follow_up_policy = FollowUpPolicy.OPPORTUNISTIC
+        return self
+
 
 
     @classmethod

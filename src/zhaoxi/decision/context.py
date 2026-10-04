@@ -11,8 +11,8 @@ from .principles import relevance
 class DecisionContextInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     query: str = Field(min_length=1, max_length=500)
-    sources: list[str] = Field(min_length=1, max_length=5,
-        description="只选本题需要的 agenda/current_cognition/memory/principles/choice_history 或已注册扩展来源。")
+    sources: list[str] = Field(min_length=1, max_length=8,
+        description="只选本题需要的 agenda/current_cognition/memory/user_principles/decision_journal/choice_history（principles兼容别名） 或已注册扩展来源。")
     limit: int = Field(default=5, ge=1, le=8)
 
 
@@ -27,12 +27,10 @@ class ReadDecisionContext(Tool):
         self.awareness = awareness
 
     async def execute(self, arguments: DecisionContextInput) -> ToolResult:
-        from zhaoxi.cognitive_stream.turn import current_turn
-        turn = current_turn()
-        if turn and turn.audience != "owner":
+        from .learning_models import private_owner
+        if not private_owner():
             return ToolResult(success=False, content="个人选择资料仅供 Owner 会话使用。", error="owner_only")
         sources, errors = {}, {}
-        service = self.awareness
         for source in dict.fromkeys(arguments.sources):
             try:
                 sources[source] = await self._read(source, arguments.query, arguments.limit)
@@ -44,8 +42,16 @@ class ReadDecisionContext(Tool):
 
     async def _read(self, source: str, query: str, limit: int) -> list[dict]:
         service = self.awareness
-        if source == "principles" and service.principles:
-            return [{"ref": "principles:" + rule.id, "id": rule.id,
+        if source in {"principles", "user_principles"} and service.user_principles:
+            result = [{"ref": source + ":" + r['id'], **r} for r in service.user_principles.retrieve(query, limit)]
+            if service.principle_archive:
+                result.extend(service.principle_archive.fragments(query, max(1, limit - len(result))))
+            return result[:limit]
+        if source == "decision_journal" and service.journal:
+            return [{"ref": "decision_journal:" + r['id'], "authority": "agent_experience_not_user_quote", **r}
+                    for r in service.journal.retrieve(query, limit)]
+        if source in {"principles", "user_principles"} and service.principles:
+            return [{"ref": source + ":" + rule.id, "id": rule.id,
                      "principle": rule.default, "basis": rule.reasons,
                      "exceptions": rule.exceptions, "source": rule.source}
                     for rule in service.principles.retrieve_principles(query, limit=limit)]

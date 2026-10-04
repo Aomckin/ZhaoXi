@@ -1,0 +1,69 @@
+{
+  "version": "1.4.7",
+  "date": "2026-10-04",
+  "baseline": "e039e5f",
+  "full_python_suite": {
+    "passed": 1298,
+    "skipped": 1,
+    "failed": 0,
+    "duration_seconds": 239.64,
+    "stage": "full-suite snapshot before final source-location, follow-up control-plane and projection fixes",
+    "local_log": ".zhaoxi/v147-final-pytest.log",
+    "junit": ".zhaoxi/v147-pytest.xml"
+  },
+  "final_focused_python_suite": {
+    "passed": 130,
+    "failed": 0,
+    "duration_seconds": 4.37,
+    "targets": [
+      "tests/decision",
+      "tests/web/test_dashboard.py",
+      "tests/integration/test_v129_closure.py"
+    ],
+    "stage": "after final Decision Learning changes; before reply-group patch",
+    "local_log": ".zhaoxi/v147-targeted.log"
+  },
+  "node_tests": {
+    "passed": 91,
+    "failed": 0,
+    "command": "node --test tests/web/*.test.cjs",
+    "local_log": ".zhaoxi/v147-node.log",
+    "stage": "Decision Learning initial acceptance; latest 94-test result is in reply_group_v147_patch.json"
+  },
+  "browser_acceptance": {
+    "passed": 9,
+    "failed": 0,
+    "evidence": "decision_v147_browser_acceptance.json",
+    "screenshot_local": ".zhaoxi/v147-decision-learning.png",
+    "environment": "isolated HTTP fixture; headless Edge"
+  },
+  "real_model_acceptance": {
+    "passed": 5,
+    "failed": 0,
+    "evidence": "decision_v147_live_acceptance.json",
+    "environment": "configured real provider; isolated synthetic context"
+  },
+  "wheel": {
+    "path": "build/v147/zhaoxi-1.4.7-py3-none-any.whl",
+    "sha256": "2b7449a381bca81ace28633afdf1fd7869aaa12dd86d42b8dc94705ebe0db711",
+    "source_files_byte_matched": 293,
+    "missing_sources": [],
+    "mismatched_sources": [],
+    "version_verified": true,
+    "personal_data_excluded": true
+  },
+  "compileall": {
+    "passed": true
+  },
+  "git_diff_check": {
+    "passed": true
+  },
+  "limitations": [
+    "Long-term real-user dogfooding A-F remains pending.",
+    "Production process was not restarted.",
+    "Read-only User Principles in this version.",
+    "Gardening automatically merges exact duplicates only.",
+    "Real model may omit metadata or produce excessive explanations; prior failed attempts are preserved."
+  ],
+  "follow_up_patch": "reply_group_v147_patch.json"
+}

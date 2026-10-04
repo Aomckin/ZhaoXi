@@ -1,0 +1,20 @@
+{
+  "id": "long_term_direction",
+  "type": "user_principle",
+  "statement": "长期、高影响、难以撤销或核心价值冲突的选择需要人工判断，不得机械套用默认规则。",
+  "domain": "job_search",
+  "tags": [
+    "offer",
+    "职业",
+    "长期"
+  ],
+  "confidence": 1,
+  "source": {
+    "type": "archive",
+    "path": "data/archive/user/决策协议 v1.0.md",
+    "version": "1.0",
+    "ref": "2/L2",
+    "index_origin": "v1.4.7 migration"
+  },
+  "status": "active"
+}

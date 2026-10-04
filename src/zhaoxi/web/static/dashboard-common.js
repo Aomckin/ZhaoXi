@@ -1,4 +1,4 @@
-export const BUILD='1.4.6';
+export const BUILD='1.4.7';
 export const $=s=>document.querySelector(s);
 export const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);if(cls)n.className=cls;return n};
 export async function api(url,options={}){const response=await fetch(url,{...options,headers:{'Content-Type':'application/json',...options.headers}});const data=await response.json();if(!response.ok)throw new Error(typeof data.detail==='string'?data.detail:'输入参数无效，请检查范围和单位。');return data}

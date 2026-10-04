@@ -1,0 +1,45 @@
+{
+  "date": "2026-10-04",
+  "version": "1.4.7",
+  "issue": "One model reply with multiple saved segments was rendered as separate logical replies; retry checked a segment instead of the whole reply group.",
+  "observation": {
+    "matching_screenshot_session_found": true,
+    "text_segments": 2,
+    "same_reply_group": true,
+    "production_data_modified": false
+  },
+  "changes": [
+    "Live output, session reload and Inbox activation reuse the reply_group_id for display.",
+    "Regeneration accepts any segment of the latest contiguous ordinary reply group.",
+    "Regeneration removes the whole old display group.",
+    "Completed-tool retries hide all old group segments and preserve completed tool results.",
+    "Image-only final segments retain regeneration."
+  ],
+  "before_fix": {
+    "regression_cases_failed": 2,
+    "detail": "First text and middle emoji segments were rejected as older replies."
+  },
+  "after_fix": {
+    "python_passed": 95,
+    "node_passed": 94,
+    "browser": {
+      "checks": [
+        "saved unresolved emoji text shares one reply group",
+        "regeneration replaces whole text emoji text response",
+        "reload preserves group and image ordering",
+        "image-only tail has whole-reply retry button",
+        "no browser script errors"
+      ],
+      "errors": []
+    },
+    "compileall": true,
+    "git_diff_check": true,
+    "model_calls": 0
+  },
+  "wheel": {
+    "path": "build/v147/zhaoxi-1.4.7-py3-none-any.whl",
+    "sha256": "2b7449a381bca81ace28633afdf1fd7869aaa12dd86d42b8dc94705ebe0db711",
+    "source_files_byte_matched": 293
+  },
+  "production_restarted": false
+}

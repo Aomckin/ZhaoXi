@@ -1,0 +1,20 @@
+{
+  "id": "reversible_low_cost",
+  "type": "user_principle",
+  "statement": "先选更省资源的方案并观察反馈；适用情境：两个低成本可逆选项差异不明显，继续分析成本已超过试错成本",
+  "domain": "general",
+  "tags": [
+    "可逆",
+    "低成本",
+    "试试"
+  ],
+  "confidence": 1,
+  "source": {
+    "type": "archive",
+    "path": "data/archive/user/决策协议 v1.0.md",
+    "version": "1.0",
+    "ref": "3.1-3.3",
+    "index_origin": "v1.4.7 migration"
+  },
+  "status": "active"
+}

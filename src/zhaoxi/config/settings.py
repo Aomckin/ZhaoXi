@@ -16,6 +16,12 @@ class Settings(BaseSettings):
 
     decision_mode: str = Field(default="agency", pattern="^(agency|legacy)$")
     decision_data_directory: str = ".zhaoxi/decisions"
+    decision_learning_enabled: bool = True
+    decision_user_principles_directory: str = "data/decisions/user_principles"
+    decision_principle_archive_paths: list[str] = ["user/决策协议 v1.0.md", "zhaoxi/先声 v0.1.md"]
+    decision_follow_up_daily_limit: int = Field(default=2, ge=0, le=10)
+    decision_follow_up_min_interval_minutes: int = Field(default=360, ge=1, le=10080)
+    decision_follow_up_expire_days: int = Field(default=30, ge=1, le=180)
     runtime_metrics_enabled: bool = True
     interim_reply_enabled: bool = True
     interim_reply_threshold_seconds: float = Field(default=10, ge=0)

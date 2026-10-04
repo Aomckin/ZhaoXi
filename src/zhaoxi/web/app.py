@@ -486,6 +486,8 @@ def create_app(
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
     from .dashboard import dashboard_router
     app.include_router(dashboard_router(core, static_dir, desktop_open_callback=desktop_open_callback))
+    from .decision_learning import decision_learning_router
+    app.include_router(decision_learning_router(core))
 
     @app.middleware("http")
     async def desktop_entry_guard(request: Request, call_next):
