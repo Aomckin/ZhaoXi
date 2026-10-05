@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from zhaoxi.core.runtime import AgentRuntime, RuntimeService
 from zhaoxi.core.loop_safety import LoopSafety, CONTROLS
 from zhaoxi.core.context import ContextBuilder
 from zhaoxi.cognitive_stream.models import CognitiveEventType
@@ -33,6 +34,25 @@ from zhaoxi.tools.router import ToolContext, safe_resolve_tool_context
 from zhaoxi.tools.manifest import is_action_request, resolve_capability
 
 if TYPE_CHECKING:
+    from zhaoxi.config.settings import Settings
+    from zhaoxi.memory.service import MemoryService
+    from zhaoxi.archive.service import ArchiveService
+    from zhaoxi.agenda.service import AgendaService
+    from zhaoxi.current_cognition import CurrentCognitionService, CurrentCognitionMaintainer
+    from zhaoxi.cognitive_stream import ExperienceStream, CognitiveIngress, AttentionRetriever, SessionProjector
+    from zhaoxi.session.base import Session, SessionStore
+    from zhaoxi.reflection.service import ReflectionService
+    from zhaoxi.reflection.periods import PeriodResolver
+    from zhaoxi.decision.service import DecisionService
+    from zhaoxi.decision.learning import DecisionLearning
+    from zhaoxi.decision.follow_up import DecisionFollowUp
+    from zhaoxi.internal_activity.runtime import InternalActivityRuntime
+    from zhaoxi.reliability.storage import BackupManager
+    from zhaoxi.perception.runtime import PerceptionRuntime
+    from zhaoxi.expression import EmojiService, EmojiManager
+    from zhaoxi.proactive.heartbeat import TidalHeartbeat
+    from zhaoxi.proactive.worker import DecisionWorker
+    from zhaoxi.proactive.beat import ConversationBeatLoop
     from zhaoxi.cognitive.coordinator import CognitiveCoordinator, CognitiveResponse
     from zhaoxi.planner.runtime import PlannerResponse, PlannerRuntime
     from zhaoxi.workflow.runtime import WorkflowRuntime
@@ -87,6 +107,33 @@ class PendingAgentInvocation:
 class ZhaoxiAgent:
     """Run model/tool iterations without knowing any concrete provider or tool."""
 
+    settings = RuntimeService["Settings | None"]("settings")
+    memory_service = RuntimeService["MemoryService | None"]("memory_service")
+    archive = RuntimeService["ArchiveService | None"]("archive")
+    agenda = RuntimeService["AgendaService | None"]("agenda")
+    current_cognition = RuntimeService["CurrentCognitionService | None"]("current_cognition")
+    current_cognition_maintainer = RuntimeService["CurrentCognitionMaintainer | None"]("current_cognition_maintainer")
+    experience_stream = RuntimeService["ExperienceStream | None"]("experience_stream")
+    cognitive_ingress = RuntimeService["CognitiveIngress | None"]("cognitive_ingress")
+    attention_retriever = RuntimeService["AttentionRetriever | None"]("attention_retriever")
+    session_projector = RuntimeService["SessionProjector | None"]("session_projector")
+    session_store = RuntimeService["SessionStore | None"]("session_store")
+    session_record = RuntimeService["Session | None"]("session_record")
+    reflection = RuntimeService["ReflectionService | None"]("reflection")
+    reflection_periods = RuntimeService["PeriodResolver | None"]("reflection_periods")
+    decision_service = RuntimeService["DecisionService | None"]("decision_service")
+    decision_learning = RuntimeService["DecisionLearning | None"]("decision_learning")
+    decision_follow_up = RuntimeService["DecisionFollowUp | None"]("decision_follow_up")
+    internal_activity = RuntimeService["InternalActivityRuntime | None"]("internal_activity")
+    backup_manager = RuntimeService["BackupManager | None"]("backup_manager")
+    perception = RuntimeService["PerceptionRuntime | None"]("perception")
+    emoji_service = RuntimeService["EmojiService | None"]("emoji_service")
+    emoji_manager = RuntimeService["EmojiManager | None"]("emoji_manager")
+    cognitive = RuntimeService["CognitiveCoordinator | None"]("cognitive")
+    proactive_heartbeat = RuntimeService["TidalHeartbeat | None"]("proactive_heartbeat")
+    proactive_worker = RuntimeService["DecisionWorker | None"]("proactive_worker")
+    conversation_continuation = RuntimeService["ConversationBeatLoop | None"]("conversation_continuation")
+
     def __init__(
         self,
         *,
@@ -105,6 +152,7 @@ class ZhaoxiAgent:
         tool_router_mode: str = "dynamic",
         decision_mode: str = "legacy",
     ) -> None:
+        self.runtime = AgentRuntime()
         self.provider = provider
         self.registry = registry
         for control_tool in (RequestToolGroupTool(), InspectToolCatalogTool()):

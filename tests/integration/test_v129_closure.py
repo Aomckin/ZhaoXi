@@ -1,10 +1,8 @@
 """v1.2.9 composition and legacy boundary regression checks."""
 
 import sqlite3
-import tomllib
 from pathlib import Path
 
-import zhaoxi
 from zhaoxi.bootstrap.runtime import build_agent
 from zhaoxi.bootstrap.storage import build_data_store_specs
 from zhaoxi.config.settings import Settings
@@ -12,11 +10,6 @@ from zhaoxi.core.reply import parse_reply
 
 
 ROOT = Path(__file__).parents[2]
-
-
-def test_release_version_is_consistent():
-    metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert metadata["project"]["version"] == zhaoxi.__version__ == "1.4.7"
 
 
 def test_datastore_registry_covers_active_and_legacy_sources(tmp_path):

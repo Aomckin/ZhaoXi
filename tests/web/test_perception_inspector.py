@@ -2,7 +2,7 @@ import base64
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
-from test_web import FakeAgent
+from web_fixture import FakeAgent
 
 from zhaoxi.config.settings import Settings
 from zhaoxi.perception.models import Observation, ObservationPart, ObservationStatus

@@ -54,12 +54,12 @@ def attach_proactive_runtime(agent, settings: Settings, proactive, proactive_sch
                     signal_providers.extend(signal_factory())
                 except Exception as exc:
                     tool_package_errors.append({"source": f"{package.package_id}:state_signals", "error": type(exc).__name__})
-        agent.proactive_heartbeat = TidalHeartbeat(
+        agent.runtime.proactive_heartbeat = TidalHeartbeat(
             proactive, proactive_scheduler, proactive_state, settings, agent.metrics, sensors,
             signal_providers=signal_providers,
         )
         from zhaoxi.proactive.beat import ConversationBeatLoop
-        agent.conversation_continuation = ConversationBeatLoop(
+        agent.runtime.conversation_continuation = ConversationBeatLoop(
             settings, proactive_state.interaction, agent.conversation,
             pending_work=lambda: any(not p.resolved for p in agent.tool_executor.gateway.store.pending.values()),
         )
@@ -68,4 +68,4 @@ def attach_proactive_runtime(agent, settings: Settings, proactive, proactive_sch
         decision = ModelDecision(provider, context_builder.character_prompt,
                                  agent.conversation, agent.conversation_continuation)
         decision.attention_retriever = getattr(agent, "attention_retriever", None)
-        agent.proactive_worker = DecisionWorker(agent.proactive_heartbeat, decision)
+        agent.runtime.proactive_worker = DecisionWorker(agent.proactive_heartbeat, decision)

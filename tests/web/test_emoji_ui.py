@@ -5,8 +5,11 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
+from zhaoxi.config.settings import Settings
 from zhaoxi.core.conversation import Conversation
 from zhaoxi.core.agent import ZhaoxiAgent
+from zhaoxi.core.context import ContextBuilder
+from conftest import FakeProvider
 from zhaoxi.expression import EmojiManager, EmojiService
 from zhaoxi.session.base import Session
 from zhaoxi.session.sqlite import SQLiteSessionStore
@@ -14,24 +17,17 @@ from zhaoxi.tools.registry import ToolRegistry
 from zhaoxi.web.app import create_app
 
 
-def test_image_only_messages_use_a_dedicated_component():
-    page = (Path(__file__).parents[2] / "src/zhaoxi/web/static/engineering.html").read_text(encoding="utf-8")
-    page += (Path(__file__).parents[2] / "src/zhaoxi/web/static/shell.js").read_text(encoding="utf-8")
-    assert "imageOnly=images.length>0" in page
-    assert "splitParts.length?splitParts:(images.length?['']:[])" in page
-    assert "async function renderMessage(message" in page
-    assert "for(const item of output)last=await renderMessage" in page
-    assert "else await renderMessage(m)" in page
-    assert "FRONTEND_BUILD_ID" in page
-    assert "直发测试表情" in page
-    assert "让模型发送测试表情" in page
-    assert 'class="image-only"' in page
-    assert "?'.image-only':'.bubble'" in page
-    assert "expression\\/emoji" in page
-    assert "window.open(src,'_blank','noopener')" in page
-    assert "row.querySelector('.bubble,.image-only').append(recall)" in page
-    desktop = (Path(__file__).parents[2] / "src/zhaoxi/web/static/desktop.js").read_text(encoding="utf-8")
-    assert "row.querySelector('.bubble,.image-only')" in desktop
+def test_reply_renderer_is_served_before_the_shell():
+    from web_fixture import FakeAgent
+
+    with TestClient(create_app(agent=FakeAgent(), settings=Settings(dev_browser_ui=True, perception_enabled=False))) as client:
+        for route in ("/", "/static/engineering.html"):
+            response = client.get(route)
+            assert response.status_code == 200
+            assert response.text.index('/static/reply-renderer.js') < response.text.index('/static/shell.js')
+        response = client.get("/static/reply-renderer.js")
+        assert response.status_code == 200
+        assert "javascript" in response.headers["content-type"]
 
 
 def test_emoji_debug_and_guarded_image_endpoint(tmp_path):
@@ -91,15 +87,13 @@ def test_debug_direct_send_is_stable_for_ten_runs_and_acknowledged(tmp_path):
     registry = ToolRegistry()
     store = SQLiteSessionStore(tmp_path / 'sessions.db')
     conversation = Conversation()
-    agent = object.__new__(ZhaoxiAgent)
-    agent.conversation = conversation
-    agent.registry = registry
+    agent = ZhaoxiAgent(provider=FakeProvider([]), registry=registry,
+                        context_builder=ContextBuilder("Test"), conversation=conversation)
     agent.emoji_service = service
     agent.emoji_manager = EmojiManager(service)
     agent.session_store = store
     agent.session_record = Session(id='local', conversation=conversation)
     agent.last_emoji_trace = {}
-    agent.emoji_service = service
     agent.proactive = None
     agent.proactive_scheduler = None
     agent.proactive_state = None

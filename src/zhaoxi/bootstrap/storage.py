@@ -91,7 +91,7 @@ def build_data_store_specs(settings: Settings, *, archive_enabled: bool) -> list
     specs.append(DataStoreSpec("internal_activity", activity_path))
     specs.append(DataStoreSpec("runtime_settings", activity_path.with_name(activity_path.stem + "-settings.json"), kind="file"))
     specs.append(DataStoreSpec("perception", Path(settings.perception_db_path)))
-    specs.append(DataStoreSpec("experience", Path(".zhaoxi/experience.db")))
+    specs.append(DataStoreSpec("experience", Path(settings.experience_db_path)))
     # Legacy backup/restore only; neither source enters the current Context.
     specs.append(DataStoreSpec("short_term_memory", Path(settings.short_term_memory_db_path)))
     specs.append(DataStoreSpec("working_notes", Path(settings.working_notes_db_path)))

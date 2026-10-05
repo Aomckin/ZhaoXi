@@ -1,3 +1,5 @@
+import httpx
+
 from zhaoxi.config.settings import Settings
 from zhaoxi.reliability.startup import startup_diagnostics
 
@@ -19,6 +21,14 @@ def test_startup_diagnostics_explains_missing_model_without_exposing_secrets(tmp
 
 def test_startup_diagnostics_lists_lifehud_package_without_user_content(tmp_path, monkeypatch):
     monkeypatch.setenv("ZHAOXI_TOOL_LIFEHUD_ENABLED", "true")
+    monkeypatch.setenv("ZHAOXI_TOOL_LIFEHUD_BASE_URL", "http://lifehud.test")
+    requested = []
+
+    def health_response(url, **kwargs):
+        requested.append(url)
+        return httpx.Response(200, json={"schemaVersion": "1"}, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr("tools.lifehud_tool.package.httpx.get", health_response)
     settings = Settings(
         model_api_key="secret-canary",
         model_name="test-model",
@@ -33,7 +43,7 @@ def test_startup_diagnostics_lists_lifehud_package_without_user_content(tmp_path
     assert package["tools"] == ["lifehud"]
     assert package["requires_sdk"] == ">=1,<2"
     assert "state_signal_provider" in package["capabilities"]
-    assert isinstance(package["reachable"], bool)
-    assert isinstance(package["healthy"], bool)
+    assert package["reachable"] is package["healthy"] is True
+    assert requested == ["http://lifehud.test/api/agent/context/status"]
     assert "secret-canary" not in str(result)
     assert result["effective_settings"]["model_api_key"] == "<configured>"

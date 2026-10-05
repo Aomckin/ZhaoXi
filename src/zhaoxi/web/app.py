@@ -6,24 +6,16 @@ import asyncio
 import json
 import logging
 import mimetypes
-import re
 import secrets
-from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import Any, Callable
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, RedirectResponse
-from pydantic import BaseModel, Field, ConfigDict, StrictBool, model_validator
 from zhaoxi.tools.manifest import group_inventory, inventory_summary
-from zhaoxi.tools.filesystem_access import (
-    load_filesystem_access,
-    resolve_access_directories,
-    save_filesystem_access,
-    validate_write_subset,
-)
+from zhaoxi.tools.filesystem_access import load_filesystem_access
 from zhaoxi.tools.router import safe_resolve_tool_context
 
 from zhaoxi.cli import build_agent
@@ -32,201 +24,48 @@ from zhaoxi.config.settings import Settings
 from zhaoxi.errors import ZhaoxiError
 from zhaoxi.interfaces.setup import StartupUnavailableAgent
 from zhaoxi.reflection.models import ReflectionKind, ReflectionRecord
-from zhaoxi.reliability import CorrelationContext, correlation_scope, provider_budget_scope
+from zhaoxi.reliability import provider_budget_scope
 from zhaoxi.reliability.startup import effective_settings_snapshot, startup_diagnostics
 from zhaoxi.web.adapter import WebInterfaceAdapter, WebResult
 from zhaoxi.web.events import EventBroadcaster
 from zhaoxi.voice.policy import SpeechAction, SpeechContext, SpeechPolicy
-from zhaoxi.reliability import TaskSupervisor
-from zhaoxi.core.message import Message, Role
-from zhaoxi.expression import EmojiMetadata
-from zhaoxi.expression.emoji_manager import decode_image_data_url
+
+# Retain request/response imports here for existing app module callers.
+from .schemas import (
+    ChatRequest,
+    ThinkingRequest,
+    RegenerateRequest,
+    ReplyRenderedRequest,
+    ToolControlRequest,
+    ToolCapabilityRequest,
+    InterfaceSettingsRequest,
+    FilesystemAccessRequest,
+    EmojiControlRequest,
+    EmojiTraceAckRequest,
+    RecentContextControlRequest,
+    InternalActivityDebugRequest,
+    DecisionDebugRequest,
+    PresenceDebugRequest,
+    EmojiMetadataRequest,
+    EmojiCreateRequest,
+    EmojiPendingRequest,
+    EmojiAnalyzeRequest,
+    ChatResponse,
+    VoiceConfirmRequest,
+    VoiceSpeakRequest,
+)
+from .settings_api import (
+    settings_api_router,
+    _load_interface_settings,
+    _apply_request_timeout,
+    _apply_force_fast_chat,
+)
+from .perception_api import perception_api_router
+from .emoji_api import emoji_api_router
+from .memory_api import memory_api_router
+from .runtime import build_external_runtime, web_lifespan
 
 logger = logging.getLogger("WEB")
-
-
-from zhaoxi.core.attachments import ImageList
-
-
-from zhaoxi.interfaces.models import DisplayPart
-
-
-class ChatRequest(BaseModel):
-    message: str = Field(default="", max_length=20_000)
-    display_parts: list[DisplayPart] = Field(default_factory=list, max_length=1000)
-    images: ImageList = Field(default_factory=list)
-    request_id: str | None = Field(default=None, min_length=1, max_length=128)
-
-
-class ThinkingRequest(BaseModel):
-    mode: Literal["off", "disabled", "enabled"]
-
-
-class RegenerateRequest(BaseModel):
-    message_id: str = Field(min_length=1, max_length=128)
-    request_id: str | None = Field(default=None, min_length=1, max_length=128)
-
-
-class ReplyRenderedRequest(BaseModel):
-    request_id: str = Field(min_length=1, max_length=128)
-    message_id: str = Field(min_length=1, max_length=128)
-    first_render_ms: float | None = Field(default=None, ge=0, le=300_000)
-    fully_rendered_ms: float | None = Field(default=None, ge=0, le=300_000)
-
-
-class ToolControlRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    scope: Literal["tool", "group", "all"]
-    target: str | None = None
-    enabled: StrictBool | None = None
-    force_expose: StrictBool | None = None
-    confirm_write: StrictBool | None = None
-    reset: bool = False
-
-    @model_validator(mode="after")
-    def validate_target(self):
-        if self.scope != "all" and not self.target:
-            raise ValueError("必须指定钥匙或组")
-        if self.scope == "all" and self.target:
-            raise ValueError("全部操作不接受 target")
-        if self.reset and (self.enabled is not None or self.force_expose is not None or self.confirm_write is not None):
-            raise ValueError("恢复默认不能同时指定开关")
-        if not self.reset and self.enabled is None and self.force_expose is None and self.confirm_write is None:
-            raise ValueError("没有指定修改")
-        return self
-
-
-class ToolCapabilityRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    tool: str = Field(min_length=1)
-    capability: str = Field(min_length=1)
-    enabled: StrictBool
-
-
-class InterfaceSettingsRequest(BaseModel):
-    input_merge_seconds: int = Field(default=15, ge=0, le=30)
-    reply_interval_seconds: int = Field(default=5, ge=0, le=15)
-    external_input_debounce_seconds: float = Field(default=5, ge=0, le=15)
-    external_reply_interval_seconds: float = Field(default=0.5, ge=0, le=5)
-    long_wait_enabled: StrictBool = False
-    force_fast_chat: StrictBool = False
-    show_normal_regenerate: StrictBool = False
-
-
-class FilesystemAccessRequest(BaseModel):
-    read_directories: list[str] = Field(min_length=1, max_length=20)
-    write_directories: list[str] = Field(min_length=1, max_length=20)
-
-
-class EmojiControlRequest(BaseModel):
-    enabled: StrictBool | None = None
-    reload: bool = False
-    intent: str | None = Field(default=None, max_length=500)
-    emotion: str | None = Field(default=None, max_length=80)
-    intensity: float | None = Field(default=None, ge=0, le=1)
-
-
-class EmojiTraceAckRequest(BaseModel):
-    trace_id: str = Field(min_length=1, max_length=128)
-    received: bool = True
-    rendered: bool = True
-
-
-class RecentContextControlRequest(BaseModel):
-    agenda_enabled: StrictBool | None = None
-
-
-class InternalActivityDebugRequest(BaseModel):
-    activity: Literal["tick", "current_cognition_consolidation", "memory_maintenance",
-                      "agenda_maintenance", "proactive_check", "perception_cognition", "fast_digest",
-                      "cognition_gardening", "memory_gardening", "cluster_gardening",
-                      "memory_reminiscence", "social_lurk", "social_wander"] = "tick"
-    confirm_social_write: StrictBool = False
-
-
-class DecisionDebugRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=1000)
-    forced_level: Literal["L0", "L1", "L2"] | None = None
-
-
-class PresenceDebugRequest(BaseModel):
-    state: Literal["ACTIVE", "SEMI_ACTIVE", "IDLE", "AWAY", "SLEEP"] | None = Field(...)
-
-
-class EmojiMetadataRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    description: str = Field(min_length=2, max_length=2000)
-    tags: list[str] = Field(min_length=1, max_length=50)
-    emotion: str | None = Field(default=None, max_length=80)
-    intensity: float | None = Field(default=None, ge=0, le=1)
-    enabled: bool = True
-
-    def metadata(self) -> EmojiMetadata:
-        return EmojiMetadata.model_validate(self.model_dump())
-
-
-class EmojiCreateRequest(EmojiMetadataRequest):
-    data_url: str = Field(min_length=32)
-
-
-class EmojiPendingRequest(BaseModel):
-    data_url: str = Field(min_length=32)
-
-
-class EmojiAnalyzeRequest(BaseModel):
-    data_url: str = Field(min_length=32)
-    hint: str = Field(default="", max_length=1000)
-
-
-def _load_interface_settings(path: Path) -> InterfaceSettingsRequest:
-    try:
-        return InterfaceSettingsRequest.model_validate_json(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return InterfaceSettingsRequest()
-
-
-def _save_interface_settings(path: Path, value: InterfaceSettingsRequest) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(value.model_dump_json(indent=2), encoding="utf-8")
-    temporary.replace(path)
-
-
-def _apply_request_timeout(core, *, enabled: bool, default_seconds: float) -> None:
-    timeout = 120 if enabled else default_seconds
-    if hasattr(core, "timeout_seconds"):
-        core.timeout_seconds = timeout
-    provider = getattr(core, "provider", None)
-    providers = getattr(provider, "providers", [provider] if provider is not None else [])
-    for item in providers:
-        if hasattr(item, "timeout"):
-            item.timeout = timeout
-
-
-def _apply_force_fast_chat(core, *, enabled: bool) -> None:
-    cognitive = getattr(core, "cognitive", None)
-    if cognitive is not None:
-        cognitive.force_fast_chat = enabled
-
-class ChatResponse(BaseModel):
-    timestamp: datetime | None = None
-    content: str
-    activity: dict[str, Any] = Field(default_factory=dict)
-    permission: dict[str, Any] | None = None
-    request_id: str | None = None
-    trace_id: str | None = None
-    status: str = "completed"
-    message_id: str | None = None
-    output_messages: list[dict[str, Any]] = Field(default_factory=list)
-
-
-class VoiceConfirmRequest(BaseModel):
-    text: str = Field(min_length=1, max_length=20_000)
-    request_id: str | None = Field(default=None, min_length=1, max_length=128)
-
-
-class VoiceSpeakRequest(BaseModel):
-    text: str = Field(min_length=1, max_length=20_000)
 
 
 def _response(result: WebResult) -> ChatResponse:
@@ -294,56 +133,7 @@ def create_app(
     adapter.gateway.event_sink = events.publish_nowait
     static_dir = Path(__file__).with_name("static")
     speech_policy = SpeechPolicy()
-    supervisor = TaskSupervisor()
-    perception = None
-    source_runtime = None
-    if configured.perception_enabled and not isinstance(core, StartupUnavailableAgent):
-        try:
-            from zhaoxi.perception import PerceptionRuntime
-            from zhaoxi.plugins.runtime import PluginRuntime
-            from zhaoxi.plugins.source_router import PerceptionSink
-            from zhaoxi.plugins.loader import discover
-            import tomllib
-            perception = PerceptionRuntime(configured, core)
-            core.perception = perception
-            source_runtime = PluginRuntime(None)
-            source_runtime.sink = PerceptionSink(perception, source_runtime)
-            perception.sources = source_runtime
-            plugin_dir = Path(__file__).resolve().parents[2] / "zhaoxi_ext"
-            discovery_errors = []
-            manifests = discover(plugin_dir, discovery_errors)
-            for plugin_id, manifest in discover(Path("plugins/external_sources"), discovery_errors).items():
-                if plugin_id in manifests:
-                    discovery_errors.append((plugin_id, "DuplicatePluginId"))
-                else:
-                    manifests[plugin_id] = manifest
-            for bad_id, error in discovery_errors:
-                from zhaoxi.plugins.manifests import PluginManifest
-                safe_id = "invalid_" + re.sub(r"[^a-z0-9_]", "_", bad_id.lower())
-                broken = PluginManifest(id=safe_id, name=bad_id, version="invalid",
-                                        entrypoint="invalid:Invalid")
-                if safe_id in source_runtime._state:
-                    continue
-                source_runtime.register(broken)
-                source_runtime._state[safe_id]["status"] = "degraded"
-                source_runtime._state[safe_id]["last_error"] = error
-                logger.warning("external source manifest failed id=%s error=%s", bad_id, error)
-            for manifest in manifests.values():
-                config_path = Path("config/plugins") / (manifest.id + ".toml")
-                try:
-                    if config_path.is_file():
-                        with config_path.open("rb") as stream:
-                            enabled = bool(tomllib.load(stream).get("enabled", False))
-                    else:
-                        enabled = False
-                    source_runtime.register(manifest, enabled=enabled)
-                except Exception as exc:
-                    source_runtime.register(manifest)
-                    state = source_runtime._state[manifest.id]
-                    state["status"] = "degraded"
-                    state["last_error"] = type(exc).__name__
-        except Exception as exc:
-            logger.warning("perception startup degraded type=%s", type(exc).__name__)
+    perception, source_runtime = build_external_runtime(configured, core)
     current_time = now_provider or (lambda: datetime.now().astimezone())
     interface_settings_path = Path(configured.interface_settings_path)
     filesystem_access_path = Path(configured.filesystem_access_path)
@@ -376,88 +166,8 @@ def create_app(
             text_length=len(text),
         ))
 
-    async def proactive_loop() -> None:
-        while True:
-            await asyncio.sleep(1)
-            scheduler = getattr(core, "proactive_scheduler", None)
-            runtime = getattr(core, "proactive", None)
-            state = getattr(core, "proactive_state", None)
-            if scheduler is None or runtime is None or state is None:
-                continue
-            try:
-                emitted = await scheduler.tick()
-                for event in emitted:
-                    deliveries = await runtime.process(event, datetime.now(UTC), state)
-                    for delivery in deliveries:
-                        await events.publish({
-                            "type": "proactive",
-                            "delivery": delivery.model_dump(mode="json"),
-                        })
-            except Exception as exc:
-                logger.warning("proactive web loop failed type=%s", type(exc).__name__)
 
-    async def internal_activity_loop() -> None:
-        while True:
-            activity = getattr(core, "internal_activity", None)
-            if activity is not None:
-                try:
-                    if activity.control.presence()["heartbeat_enabled"]:
-                        await activity.run_tick()
-                except Exception as exc:
-                    logger.warning("internal activity loop failed type=%s", type(exc).__name__)
-            if activity is not None:
-                await activity.control.wait_interval()
-            else:
-                await asyncio.sleep(configured.proactive_heartbeat_seconds)
-
-    @asynccontextmanager
-    async def lifespan(_: FastAPI):
-        supervisor.start()
-        adapter.gateway.maintenance_queue().start()
-        if getattr(core, "internal_activity", None):
-            core.internal_activity.publish_status = events.publish_nowait
-        heartbeat = getattr(core, "proactive_heartbeat", None)
-        worker = getattr(core, "proactive_worker", None)
-        if heartbeat is not None and worker is not None:
-            if getattr(heartbeat.presence, "run", None):
-                supervisor.create(heartbeat.presence.run(), name="zhaoxi-desktop-activity")
-            supervisor.create(heartbeat.run(), name="zhaoxi-tidal-heartbeat")
-            supervisor.create(worker.run(events.publish), name="zhaoxi-tidal-decisions")
-        else:
-            supervisor.create(proactive_loop(), name="zhaoxi-proactive-web")
-            supervisor.create(internal_activity_loop(), name="zhaoxi-internal-activity")
-        if perception is not None:
-            supervisor.create(perception.run(), name="zhaoxi-perception")
-        if source_runtime is not None:
-            for source in source_runtime.diagnostics():
-                if source["enabled"]:
-                    await source_runtime.enable(source["plugin_id"])
-        try:
-            yield
-        finally:
-            if source_runtime is not None:
-                await source_runtime.stop()
-            if perception is not None:
-                try:
-                    await asyncio.wait_for(perception.flush(force=True), timeout=5)
-                except Exception as exc:
-                    logger.warning("perception shutdown flush deferred type=%s", type(exc).__name__)
-            if voice_runtime is not None:
-                await voice_runtime.cancel("application_shutdown")
-            await adapter.gateway.maintenance_queue().shutdown(configured.shutdown_grace_seconds)
-            result = await supervisor.shutdown(
-                configured.shutdown_grace_seconds, cancel_immediately=True
-            )
-            registry = getattr(core, "registry", None)
-            provider_errors = registry.close_providers() if registry is not None else []
-            if provider_errors:
-                logger.warning("ToolProvider shutdown failures=%s", provider_errors)
-            logger.info(
-                "runtime shutdown completed=%s cancelled=%s",
-                result["completed"],
-                result["cancelled"],
-            )
-
+    supervisor, lifespan = web_lifespan(core, configured, adapter, events, voice_runtime, perception, source_runtime)
     app = FastAPI(title="Zhaoxi Local Shell", docs_url="/api/docs", lifespan=lifespan)
 
     from .local_access import local_browser_request
@@ -484,6 +194,10 @@ def create_app(
 
     mimetypes.add_type("image/webp", ".webp")
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    app.include_router(settings_api_router(core, configured, events))
+    app.include_router(perception_api_router(core, configured, perception, source_runtime))
+    app.include_router(emoji_api_router(core, configured, adapter, delivered))
+    app.include_router(memory_api_router(core, configured))
     from .dashboard import dashboard_router
     app.include_router(dashboard_router(core, static_dir, desktop_open_callback=desktop_open_callback))
     from .decision_learning import decision_learning_router
@@ -559,57 +273,6 @@ def create_app(
     async def favicon():
         return FileResponse(static_dir / "zhaoxi.ico", media_type="image/x-icon")
 
-    def thinking_provider():
-        provider = getattr(core, "provider", None)
-        return provider.providers[0] if getattr(provider, "providers", None) else provider
-
-    def thinking_mode() -> str:
-        enabled = getattr(thinking_provider(), "thinking_enabled", None)
-        if enabled is None:
-            return "off"
-        return "enabled" if enabled else "disabled"
-
-    @app.get("/api/settings/thinking")
-    async def thinking_settings():
-        return {"mode": thinking_mode()}
-
-    @app.put("/api/settings/thinking")
-    async def change_thinking(request: ThinkingRequest):
-        provider = thinking_provider()
-        if not hasattr(provider, "set_thinking"):
-            raise HTTPException(status_code=409, detail="模型接口尚未就绪")
-        enabled = {"off": None, "disabled": False, "enabled": True}[request.mode]
-        provider.set_thinking(enabled)
-        return {"mode": thinking_mode()}
-
-    @app.get("/api/settings/interface")
-    async def interface_settings():
-        return _load_interface_settings(interface_settings_path)
-
-    async def persist_interface_settings(request: InterfaceSettingsRequest):
-        try:
-            _save_interface_settings(interface_settings_path, request)
-        except OSError as exc:
-            logger.warning("interface settings persistence failed type=%s", type(exc).__name__)
-            raise HTTPException(status_code=500, detail="界面设置保存失败。") from exc
-        _apply_request_timeout(
-            core,
-            enabled=request.long_wait_enabled,
-            default_seconds=configured.request_timeout_seconds,
-        )
-        _apply_force_fast_chat(core, enabled=request.force_fast_chat)
-        await events.publish({"type": "interface_settings", "settings": request.model_dump()})
-        return request
-
-    @app.put("/api/settings/interface")
-    async def change_interface_settings(request: InterfaceSettingsRequest):
-        return await persist_interface_settings(request)
-
-    @app.patch("/api/settings/interface")
-    async def patch_interface_settings(request: InterfaceSettingsRequest):
-        saved = _load_interface_settings(interface_settings_path)
-        updated = saved.model_copy(update=request.model_dump(exclude_unset=True))
-        return await persist_interface_settings(updated)
 
     @app.post("/api/proactive/active/poke")
     async def poke():
@@ -692,99 +355,6 @@ def create_app(
             "external_sources": source_runtime.diagnostics() if source_runtime else [],
         }
 
-    @app.get("/api/perception/inspect")
-    async def perception_inspect():
-        return perception.diagnostics() if perception else {"enabled": False}
-
-    @app.post("/api/perception/flush")
-    async def perception_flush():
-        if perception is None:
-            raise HTTPException(status_code=503, detail="Perception 未启用")
-        return {"batches": await perception.flush(force=True)}
-
-    @app.post("/api/perception/clear-expired")
-    async def perception_clear_expired():
-        if perception is None:
-            raise HTTPException(status_code=503, detail="Perception 未启用")
-        return {"deleted": perception.store.clear_expired(configured.perception_observation_ttl_hours)}
-
-    @app.get("/api/perception/recent")
-    async def perception_recent():
-        if perception is None:
-            raise HTTPException(status_code=503, detail="Perception 未启用")
-        return {"observations": perception.store.inspect_recent_observations(),
-                "snapshots": [x.model_dump(mode="json") for x in perception.store.recent_all_snapshots()],
-                "media_payloads_included": False}
-
-    @app.get("/api/perception/sessions")
-    async def perception_sessions():
-        if perception is None:
-            raise HTTPException(status_code=503, detail="Perception 未启用")
-        sessions = await core.session_store.list()
-        return {"sessions": [{"id": item.id, "updated_at": item.updated_at.isoformat(),
-                              "messages": len(item.conversation.messages)}
-                             for item in sessions if item.id.count("/") >= 2 and not item.id.startswith("local/")][:30]}
-
-    @app.get("/api/perception/self-events")
-    async def perception_self_events():
-        if perception is None:
-            raise HTTPException(status_code=503, detail="Perception 未启用")
-        return {"events": [item.model_dump(mode="json") for item in perception.ledger.recent(20)]}
-
-    @app.post("/api/perception/process-pending")
-    async def perception_process_pending():
-        if perception is None:
-            raise HTTPException(status_code=503, detail="Perception 未启用")
-        return {"processed": await perception.process_pending_snapshot()}
-
-    @app.post("/api/perception/clear-ledger")
-    async def perception_clear_ledger():
-        if perception is None:
-            raise HTTPException(status_code=503, detail="Perception 未启用")
-        return {"deleted": perception.ledger.clear_expired()}
-
-    @app.post("/api/perception/resolve-last-image")
-    async def perception_resolve_last_image():
-        if perception is None:
-            raise HTTPException(status_code=503, detail="Perception 未启用")
-        item = next((x for x in perception.store.recent_observations(30)
-                     if any(part.type == "image" for part in x.effective_parts)), None)
-        if item is None:
-            return {"status": "none"}
-        images = await perception._images(item)
-        return {"status": perception.images.last_status, "resolved_count": len(images),
-                "raw_ref": item.raw_ref}
-
-    @app.get("/api/perception/expression")
-    async def perception_expression():
-        from zhaoxi.perception.context import ChannelExpressionPolicy
-        return {"private": ChannelExpressionPolicy.prompt("private"),
-                "group": ChannelExpressionPolicy.prompt("group")}
-
-    @app.get("/api/external-sources")
-    async def external_sources():
-        return source_runtime.diagnostics() if source_runtime else []
-
-    @app.post("/api/external-sources/{plugin_id}/enable")
-    async def enable_external_source(plugin_id: str):
-        if source_runtime is None or plugin_id not in source_runtime._state:
-            raise HTTPException(status_code=404, detail="Source unavailable")
-        await source_runtime.enable(plugin_id)
-        return source_runtime.diagnostics()
-
-    @app.post("/api/external-sources/{plugin_id}/disable")
-    async def disable_external_source(plugin_id: str):
-        if source_runtime is None or plugin_id not in source_runtime._state:
-            raise HTTPException(status_code=404, detail="Source unavailable")
-        await source_runtime.disable(plugin_id)
-        return source_runtime.diagnostics()
-
-    @app.post("/api/external-sources/{plugin_id}/restart")
-    async def restart_external_source(plugin_id: str):
-        if source_runtime is None or plugin_id not in source_runtime._state:
-            raise HTTPException(status_code=404, detail="Source unavailable")
-        await source_runtime.restart(plugin_id)
-        return source_runtime.diagnostics()
 
     @app.get("/api/capabilities")
     async def capabilities():
@@ -828,74 +398,6 @@ def create_app(
                 "maintenance": adapter.gateway.maintenance_queue().diagnostics(),
                 "render_receipts": dict(adapter.gateway.render_receipts)}
 
-    @app.get("/api/debug/memory-retrieval")
-    async def debug_memory_retrieval(query: str, limit: int = 10, retrieval_mode: str = "ASSOCIATIVE", memory_id: str | None = None):
-        if not configured.memory_retrieval_debug_enabled:
-            raise HTTPException(status_code=404, detail="Memory Inspector 未启用。")
-        service = getattr(core, "memory_service", None)
-        if service is None:
-            raise HTTPException(status_code=409, detail="Memory 尚未就绪。")
-        from zhaoxi.memory.models import MemoryQuery, RetrievalMode
-        try: mode=RetrievalMode(retrieval_mode)
-        except ValueError: raise HTTPException(status_code=422,detail="Invalid retrieval_mode")
-        items = await service.inspect_retrieval(MemoryQuery(text=query[:1000], limit=max(1, min(limit, 30)),retrieval_mode=mode))
-        observation=dict(service.last_retrieval)
-        if memory_id:
-            record=await service.get(memory_id)
-            if record:
-                selected=next((x for x in observation.get('selected',[]) if x['memory_id']==memory_id),None)
-                excluded=next((x for x in observation.get('excluded',[]) if x['memory_id']==memory_id),None)
-                observation['requested_memory']={'id':memory_id,'status':record.status.value,'source_event_id':record.source_event_id,
-                    'evidence_reference':record.evidence_reference,'source_message_id':record.source_message_id,
-                    'activation_history':record.metadata.get('activation_history',[]),'lifecycle_reason':record.metadata.get('lifecycle_reason'),
-                    'cluster_reason':record.metadata.get('cluster_reason'),
-                    'write_decision':record.metadata.get('decision'),'write_reason':record.metadata.get('reason'),
-                    'evidence_refs':record.metadata.get('evidence_refs',[]),'evidence_scope':record.metadata.get('evidence_scope'),'evidence_provenance':record.metadata.get('evidence_provenance',[]),'why':selected or excluded or
-                    {'why_excluded':'status filter' if record.status.value not in observation.get('status_filter',[]) else 'outside bounded candidate sources'}}
-            else:observation['requested_memory']={'id':memory_id,'why_excluded':'memory does not exist'}
-        return {"query": query[:1000], **observation, "candidates": [{
-            "content": item["record"]["content"], "final_score": item["score"],
-            "contextual_relevance": item["contextual_relevance"],
-            "text_score": item["text_score"], "semantic_score": item["semantic_score"],
-            "graph_score": item["graph_score"], "time_score": item["time_score"],
-            "activation_score": item["activation_score"], "importance_score": item["importance_score"],
-            "status": item["record"]["status"], "importance": item["record"]["importance"],
-            "activation": item["record"]["activation"], "why_selected": item["why_selected"],
-            "source_event_id":item["record"].get("source_event_id"),
-            "source_message_id":item["record"].get("source_message_id"),
-            "evidence_reference":item["record"].get("evidence_reference"),
-            **{key:item["record"].get("metadata",{}).get(key) for key in
-               ("decision","reason","evidence_refs","evidence_scope","evidence_provenance","activation_history","lifecycle_reason","cluster_reason")},
-            "memory_id":item["record"]["id"],"cluster":item["cluster"],"cluster_score":item["cluster_score"],
-            "cluster_rank":item["cluster_rank"],"candidate_source":item["candidate_source"],"retrieval_mode":item["retrieval_mode"],
-        } for item in items]}
-
-    @app.get("/api/debug/memory-clusters")
-    async def debug_memory_clusters():
-        service=getattr(core,"memory_service",None)
-        if not service: raise HTTPException(status_code=409,detail="Memory not ready")
-        return {"clusters":[c.model_dump(mode='json',exclude={'centroid_embedding'}) for c in await service.repository.list_clusters()],
-                "diagnostics":await service.diagnostics()}
-
-    @app.get("/api/debug/database-maintenance")
-    async def debug_database_maintenance():
-        from zhaoxi.reliability.media import database_metrics, MediaBlobStore
-        from pathlib import Path
-        from zhaoxi.reliability.sqlite import connect
-        paths={'memory':configured.memory_db_path,'experience':str(Path(configured.memory_db_path).parent/'experience.db'),
-               'perception':configured.perception_db_path,'session':configured.session_db_path,'archive':configured.archive_db_path}
-        stats={name:database_metrics(path) for name,path in paths.items()}
-        media=MediaBlobStore(configured.media_directory).stats()
-        refs=0
-        for name,table,column in [('experience','events','payload'),('perception','observations','payload'),('session','sessions','messages_json')]:
-            path=Path(paths[name])
-            if not path.exists():continue
-            with connect(path.resolve().as_uri()+'?mode=ro',uri=True) as db:
-                if db.execute("SELECT 1 FROM sqlite_master WHERE name=?",(table,)).fetchone():
-                    refs+=db.execute(f"SELECT COALESCE(SUM((length({column})-length(replace({column},'\"$media\"','')))/8),0) FROM {table}").fetchone()[0]
-        media['references']=refs
-        media['dedup_ratio']=round(max(0,1-media['media_blobs']/refs),4) if refs else 0
-        return {'databases':stats,'media':media,'maintenance':'offline CLI; default dry-run'}
 
     @app.get("/api/debug/tools")
     async def debug_tools():
@@ -1194,208 +696,6 @@ def create_app(
             raise HTTPException(status_code=409, detail="Tool 设置保存失败，运行状态未修改。") from exc
         return tool_snapshot()
 
-    def emoji_service():
-        service = getattr(core, "emoji_service", None)
-        if service is None:
-            raise HTTPException(status_code=409, detail="Emoji Module 尚未就绪。")
-        return service
-
-    def emoji_manager():
-        manager = getattr(core, "emoji_manager", None)
-        if manager is None:
-            raise HTTPException(status_code=409, detail="表情柜尚未就绪。")
-        return manager
-
-    @app.get("/api/debug/emoji")
-    async def debug_emoji():
-        manager = getattr(core, "emoji_manager", None)
-        return {**emoji_service().diagnostics(), **(manager.diagnostics() if manager else {})}
-
-    @app.post("/api/debug/emoji")
-    async def control_emoji(body: EmojiControlRequest):
-        service = emoji_service()
-        if body.enabled is not None:
-            service.enabled = body.enabled
-        if body.reload:
-            service.reload()
-        if body.intent and body.intent.strip():
-            service.search(body.intent, body.emotion, body.intensity)
-        manager = getattr(core, "emoji_manager", None)
-        return {**service.diagnostics(), **(manager.diagnostics() if manager else {})}
-
-    @app.get("/api/debug/emoji/trace")
-    async def emoji_trace():
-        return getattr(core, "last_emoji_trace", {})
-
-    @app.post("/api/debug/emoji/trace/ack")
-    async def acknowledge_emoji_trace(body: EmojiTraceAckRequest):
-        trace = getattr(core, "last_emoji_trace", {})
-        if trace.get("trace_id") != body.trace_id:
-            raise HTTPException(status_code=409, detail="该表情 Trace 已不是最近一次请求。")
-        trace["frontend_received"] = body.received
-        trace["frontend_rendered"] = body.rendered
-        logger.info(
-            "emoji frontend_received=%s frontend_rendered=%s",
-            body.received,
-            body.rendered,
-        )
-        return trace
-
-    @app.post("/api/debug/emoji/direct")
-    async def debug_emoji_direct():
-        """Exercise Reply DSL -> Resolver -> Message -> Store -> Gateway."""
-        trace_id = f"emoji_direct_{uuid4().hex}"
-        async with adapter.gateway._lock:
-            with correlation_scope(CorrelationContext(trace_id=trace_id, request_id=trace_id, session_id="local")):
-                service = emoji_service()
-                sample = service.entries[0]
-                previous = {id(item) for item in core.conversation.messages}
-                core._commit_model_reply(f"[emoji:{','.join(sample.tags[:3])}]")
-                await adapter.gateway._persist_session()
-                messages = [
-                    adapter.gateway._message_view(item)
-                    for item in core.conversation.messages
-                    if id(item) not in previous and item.role.value == "assistant"
-                ]
-                core.last_emoji_trace["persisted"] = True
-                core.last_emoji_trace["gateway_emitted"] = bool(messages)
-                return {"trace_id": trace_id, "trace": core.last_emoji_trace, "messages": messages}
-
-    @app.post("/api/debug/emoji/model")
-    async def debug_emoji_model():
-        result = await adapter.chat(
-            "请在完整回复中使用 Reply DSL 表达此刻测试成功的心情。",
-            request_id=f"emoji_model_{uuid4().hex}",
-        )
-        return delivered(result)
-
-    @app.get("/api/emoji")
-    async def list_emoji(q: str = "", enabled: bool | None = None):
-        values = emoji_manager().list_all(q, enabled)
-        return {"items": values, "count": len(values), **emoji_manager().diagnostics()}
-
-    @app.post("/api/emoji")
-    async def create_emoji(body: EmojiCreateRequest):
-        try:
-            return emoji_manager().add_data_url(body.data_url, body.metadata())
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    @app.post("/api/emoji/reload")
-    async def reload_emoji():
-        return {"status": "reloaded", "loaded_emojis": emoji_service().reload()}
-
-    @app.get("/api/emoji/pending")
-    async def list_pending_emoji():
-        values = emoji_manager().list_pending()
-        return {"items": values, "count": len(values)}
-
-    @app.post("/api/emoji/pending")
-    async def add_pending_emoji(body: EmojiPendingRequest):
-        try:
-            return emoji_manager().add_pending(body.data_url)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    @app.get("/api/emoji/pending/{pending_id}/image", include_in_schema=False)
-    async def pending_emoji_image(pending_id: str):
-        path = emoji_manager().pending_path(pending_id)
-        if path is None:
-            raise HTTPException(status_code=404, detail="待整理图片不存在。")
-        return FileResponse(path, headers={"Cache-Control": "no-store"})
-
-    @app.delete("/api/emoji/pending/{pending_id}")
-    async def delete_pending_emoji(pending_id: str):
-        result = emoji_manager().delete_pending(pending_id)
-        if result.status == "not_found":
-            raise HTTPException(status_code=404, detail="待整理图片不存在。")
-        return result
-
-    @app.post("/api/emoji/pending/{pending_id}/commit")
-    async def commit_pending_emoji(pending_id: str, body: EmojiMetadataRequest):
-        result = emoji_manager().commit_pending(pending_id, body.metadata())
-        if result.status == "not_found":
-            raise HTTPException(status_code=404, detail="待整理图片不存在。")
-        return result
-
-    @app.post("/api/emoji/analyze")
-    async def analyze_emoji(body: EmojiAnalyzeRequest):
-        try:
-            decode_image_data_url(body.data_url)
-            provider = getattr(core, "provider", None)
-            if provider is None:
-                raise ValueError("当前模型不可用")
-            prompt = (
-                "分析这张表情图片，并结合用户提示生成其表达含义和适用语境。只返回 JSON："
-                '{"description":"...","tags":["..."],"emotion":"...","intensity":0.5}。'
-                "description 不要只描述画面；tags 使用自然中文短词；不要过度脑补。\n用户提示："
-                + (body.hint or "无")
-            )
-            with provider_budget_scope(configured.request_max_model_calls, configured.request_max_total_tokens):
-                response = await provider.generate([
-                    Message(role=Role.SYSTEM, content="你负责为本地表情收藏生成简洁、可靠的语义元数据。"),
-                    Message(role=Role.USER, content=prompt, images=[body.data_url]),
-                ])
-            text = (response.content or "").strip()
-            if text.startswith("```"):
-                text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.IGNORECASE)
-            value = json.loads(text)
-            return EmojiMetadata.model_validate(value).model_dump(mode="json")
-        except Exception as exc:
-            logger.warning("emoji analysis failed type=%s", type(exc).__name__)
-            raise HTTPException(status_code=422, detail="表情识别失败，请手工填写或稍后重试。") from exc
-
-    @app.get("/api/emoji/{emoji_id}")
-    async def get_emoji(emoji_id: str):
-        item = emoji_manager().get(emoji_id)
-        if item is None:
-            raise HTTPException(status_code=404, detail="表情不存在。")
-        return {**item.model_dump(mode="json"), "url": f"/api/expression/emoji/{emoji_id}"}
-
-    @app.patch("/api/emoji/{emoji_id}")
-    async def update_emoji(emoji_id: str, body: EmojiMetadataRequest):
-        result = emoji_manager().update_metadata(emoji_id, body.metadata())
-        if result.status == "not_found":
-            raise HTTPException(status_code=404, detail="表情不存在。")
-        return result
-
-    @app.delete("/api/emoji/{emoji_id}")
-    async def delete_emoji(emoji_id: str):
-        result = emoji_manager().delete(emoji_id)
-        if result.status == "not_found":
-            raise HTTPException(status_code=404, detail="表情不存在。")
-        return result
-
-    @app.get("/api/expression/emoji/{emoji_id}", include_in_schema=False)
-    async def emoji_image(emoji_id: str):
-        manager = getattr(core, "emoji_manager", None)
-        path = manager.image_path(emoji_id) if manager is not None else emoji_service().image_path(emoji_id)
-        if path is None:
-            raise HTTPException(status_code=404, detail="表情不存在或已停用。")
-        return FileResponse(path, headers={"Cache-Control": "no-store"})
-
-    @app.put("/api/tools/filesystem-access")
-    async def change_filesystem_access(body: FilesystemAccessRequest):
-        try:
-            read_directories = resolve_access_directories(body.read_directories)
-            write_directories = resolve_access_directories(body.write_directories)
-            validate_write_subset(read_directories, write_directories)
-            save_filesystem_access(
-                filesystem_access_path,
-                read_directories=read_directories,
-                write_directories=write_directories,
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        except OSError as exc:
-            logger.warning("filesystem access persistence failed type=%s", type(exc).__name__)
-            raise HTTPException(status_code=500, detail="允许目录保存失败。") from exc
-        return {
-            "read_directories": read_directories,
-            "write_directories": write_directories,
-            "restart_required": True,
-            "message": "已保存，重启 Core 后生效。",
-        }
 
     @app.get("/api/reflections")
     async def reflections(limit: int = 20):

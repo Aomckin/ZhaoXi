@@ -5,7 +5,7 @@ from zhaoxi.current_cognition.store import CurrentCognitionStore
 from zhaoxi.current_cognition.service import CurrentCognitionService
 from zhaoxi.internal_activity.runtime import InternalActivityRuntime
 from zhaoxi.proactive.interaction import Interaction
-from test_web import FakeAgent
+from web_fixture import FakeAgent
 
 def dashboard_core(path):
     settings=Settings(_env_file=None,dev_browser_ui=True,perception_enabled=False,

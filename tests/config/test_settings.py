@@ -69,7 +69,7 @@ def test_voice_provider_and_audio_limits_are_validated():
 def test_reflection_defaults_are_bounded_and_automatic_delivery_is_opt_in():
     settings = Settings(_env_file=None)
     assert settings.reflection_enabled
-    assert settings.reflection_db_path == ".zhaoxi/reflection.db"
+    assert Settings.model_fields["reflection_db_path"].default == ".zhaoxi/reflection.db"
     assert settings.reflection_timezone == "Asia/Shanghai"
     assert settings.reflection_max_evidence == 200
     assert not settings.reflection_auto_daily

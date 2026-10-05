@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 from zhaoxi.web.app import create_app
 from zhaoxi.config.settings import Settings
-from test_web import FakeAgent
+from web_fixture import FakeAgent
 
 
 def test_prod_browser_denied_desktop_cookie_allowed():

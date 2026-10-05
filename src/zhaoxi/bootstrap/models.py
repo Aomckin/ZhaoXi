@@ -12,7 +12,7 @@ def build_model_runtime(settings: Settings):
         base_url=settings.model_base_url,
         api_key=settings.model_api_key,
         model=settings.model_name,
-        thinking_settings_path=".zhaoxi/model-settings.json",
+        thinking_settings_path=settings.model_settings_path,
         timeout=settings.request_timeout_seconds,
         temperature=settings.temperature,
         max_tokens=settings.max_tokens,

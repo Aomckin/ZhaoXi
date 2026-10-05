@@ -6,6 +6,9 @@
 
 - [当前运行状态](current/CURRENT_STATUS.md)
 - [代码库状态](current/CODEBASE_STATUS.md)
+- [当前架构](current/ARCHITECTURE.md)
+- [测试指南](guides/testing.md)
+- [2026-10-04 架构与测试维护记录](maintenance/2026-10-04-architecture-and-tests.md)
 - [未来开发计划](<roadmap/Zhaoxi 未来开发计划.md>)
 - [常驻与自启动](guides/presence-autostart.md)
 

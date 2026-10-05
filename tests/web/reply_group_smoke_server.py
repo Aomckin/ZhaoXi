@@ -1,7 +1,8 @@
 """Isolated HTTP fixture for reply-group rendering and retry; no real model."""
 from pathlib import Path
 from types import SimpleNamespace
-from uuid import uuid4
+from tempfile import mkdtemp
+import os
 import uvicorn
 from dashboard_fixture import dashboard_core
 from zhaoxi.core.agent import AgentResponse
@@ -9,7 +10,11 @@ from zhaoxi.core.reply.renderer import commit_reply
 from zhaoxi.web.app import create_app
 
 if __name__ == "__main__":
-    path = Path(".zhaoxi/reply-group-browser") / uuid4().hex
+    port = int(os.environ.get("ZHAOXI_TEST_PORT", "18768"))
+    for key in tuple(os.environ):
+        if key.startswith(("ZHAOXI_", "MCP_")):
+            os.environ.pop(key)
+    path = Path(mkdtemp(prefix="zhaoxi-reply-browser-"))
     path.mkdir(parents=True, exist_ok=True)
     core, settings = dashboard_core(path)
     core.internal_activity.control.update("presence", {"heartbeat_enabled": False})
@@ -23,4 +28,4 @@ if __name__ == "__main__":
         sequence, _ = commit_reply(core.conversation, f"before retry {calls[0]}[emoji:test]after retry {calls[0]}\n\nlast paragraph", service)
         return AgentResponse(content=sequence.visible_text, request_id=f"fixture-{calls[0]}", steps=1)
     core.run_natural = reply
-    uvicorn.run(create_app(agent=core, settings=settings), host="127.0.0.1", port=18768)
+    uvicorn.run(create_app(agent=core, settings=settings), host="127.0.0.1", port=port)

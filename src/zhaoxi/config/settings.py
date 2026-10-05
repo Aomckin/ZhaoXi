@@ -105,6 +105,8 @@ class Settings(BaseSettings):
     temperature: float = Field(default=0.7, ge=0, le=2)
     max_tokens: int | None = Field(default=None, ge=1)
     media_directory: str = ".zhaoxi/media"
+    experience_db_path: str = ".zhaoxi/experience.db"
+    model_settings_path: str = ".zhaoxi/model-settings.json"
     memory_db_path: str = ".zhaoxi/memory.db"
     memory_retrieval_limit: int = Field(default=6, ge=1, le=50)
     memory_context_max_chars: int = Field(default=4000, ge=200, le=50_000)

@@ -7,13 +7,6 @@ from zhaoxi.permission.sqlite import SQLitePermissionStore
 from zhaoxi.planner.sqlite import SQLitePlanStore
 from zhaoxi.reflection.sqlite import SQLiteReflectionRepository
 from zhaoxi.session.sqlite import SQLiteSessionStore
-import pytest
-
-@pytest.fixture(autouse=True)
-def isolate_experience_stream(tmp_path, monkeypatch):
-    from zhaoxi.cognitive_stream.store import ExperienceStream
-    monkeypatch.setattr('zhaoxi.bootstrap.runtime.ExperienceStream',
-        lambda path, **kwargs: ExperienceStream(tmp_path/'experience.db',media_directory=tmp_path/'media'))
 
 
 def test_build_agent_uses_persistent_reliability_stores(tmp_path, monkeypatch):

@@ -10,16 +10,6 @@ import sys
 
 from zhaoxi import __version__
 from zhaoxi.config.settings import Settings
-from zhaoxi.tools.packages import (
-    capability_enabled,
-    config_for_package,
-    create_package_tool_providers,
-    create_package_tools,
-    declared_capabilities,
-    discover_tool_packages,
-    package_enabled,
-    sdk_compatible,
-)
 
 
 _SECRET_SETTING_MARKERS = ("api_key", "token", "secret", "password")
@@ -45,6 +35,18 @@ def _check(ok: bool, *, code: str, message: str, action: str | None = None) -> d
 
 def startup_diagnostics(settings: Settings, *, tool_root: str | Path = "tools") -> dict[str, object]:
     """Return bounded diagnostics without exposing secrets or user content."""
+    # Discovery is a runtime dependency; importing it here avoids SDK startup cycles.
+    from zhaoxi.tools.packages import (
+        capability_enabled,
+        config_for_package,
+        create_package_tool_providers,
+        create_package_tools,
+        declared_capabilities,
+        discover_tool_packages,
+        package_enabled,
+        sdk_compatible,
+    )
+
     checks: dict[str, dict[str, object]] = {}
     checks["python"] = _check(
         sys.version_info >= (3, 12),

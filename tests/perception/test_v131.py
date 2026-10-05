@@ -117,7 +117,7 @@ async def test_third_party_candidate_rejected_and_ambient_once(tmp_path):
     group.directed_to_zhaoxi = True
     assert await runtime.ingest(group) is None
     assert runtime.planner.rejected_candidate_count == 0
-    assert not hasattr(agent, "memory_service")
+    assert agent.memory_service is None
     runtime.settings.perception_batch_max_messages = 2
     for n in (6, 7):
         await runtime.ingest(decode(qq_event(n, text="群消息", kind="group"), self_id="42"))

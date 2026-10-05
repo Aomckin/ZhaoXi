@@ -126,8 +126,11 @@ python scripts/benchmark_memory_v143.py --semantic --output .zhaoxi/memory-v143-
 ## 测试
 
 ```powershell
-python -m pytest
+python scripts/test.py              # Core、Tool 和 Node 离线回归
+python scripts/test.py --suite core # 仅 Core Python
 ```
+
+环境要求、测试隔离与浏览器验收见 [测试指南](docs/guides/testing.md)。
 
 ## 文档
 

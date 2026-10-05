@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
-from test_web import FakeAgent
+from web_fixture import FakeAgent
 
 from zhaoxi.config.settings import Settings
 from zhaoxi.decision.awareness import DecisionAwareness

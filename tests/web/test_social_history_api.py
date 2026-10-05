@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from fastapi.testclient import TestClient
-from test_web import FakeAgent
+from web_fixture import FakeAgent
 from zhaoxi.config.settings import Settings
 from zhaoxi.cognitive_stream import ExperienceStream
 from zhaoxi.perception.models import Observation, ObservationStatus

@@ -1,0 +1,100 @@
+{
+  "completed_at": "2026-10-05T00:21:44.767217+08:00",
+  "source_version": "1.4.7",
+  "baseline_commit": "b1bf2518997ded16a7776b3c663019fd690121d2",
+  "full_command": ".venv/Scripts/python.exe scripts/test.py",
+  "full_regression": {
+    "core_python": {
+      "passed": 1312,
+      "skipped": 1,
+      "seconds": 237.74,
+      "warnings": [
+        "Starlette TestClient httpx deprecation"
+      ]
+    },
+    "tool_python": {
+      "lifehud": 33,
+      "career": 4,
+      "mcp": 8,
+      "markitdown": 2,
+      "total_passed": 47
+    },
+    "web_node": {
+      "passed": 94,
+      "failed": 0
+    },
+    "career_node": {
+      "smoke_assertions_passed": 266,
+      "smoke_assertions_failed": 0,
+      "api_end_to_end": "passed"
+    },
+    "suite_exit_codes": {
+      "Core Python": 0,
+      "Tool Python: lifehud": 0,
+      "Tool Python: career": 0,
+      "Tool Python: mcp": 0,
+      "Tool Python: markitdown": 0,
+      "Web Node": 0,
+      "Career Node: smoke-test.js": 0,
+      "Career Node: career-api-test.js": 0
+    }
+  },
+  "final_checks": {
+    "startup_and_runtime_tests": {
+      "passed": 6,
+      "seconds": 1.65
+    },
+    "web_and_reliability_composition_after_import_cleanup": {
+      "passed": 41,
+      "seconds": 9.69
+    },
+    "startup_and_sovereignty_after_mocking_health_request": {
+      "passed": 14,
+      "seconds": 2.92
+    },
+    "reply_group_edge_browser": {
+      "checks": [
+        "saved unresolved emoji text shares one reply group",
+        "regeneration replaces whole text emoji text response",
+        "reload preserves group and image ordering",
+        "image-only tail has whole-reply retry button",
+        "no browser script errors"
+      ],
+      "errors": []
+    },
+    "python_syntax_files": 430,
+    "wheel": {
+      "filename": "zhaoxi-1.4.7-py3-none-any.whl",
+      "source_and_resource_files_matched": 315,
+      "sha256": "1d69f650eb584ba1f6e2b2c0d2bbc1de7d91d7683aa97785ef2111fd12f372ec",
+      "builder": "bundled Python 3.12 setuptools.build_meta; offline"
+    },
+    "git_diff_check": {
+      "root": "passed",
+      "tools/career": "passed"
+    }
+  },
+  "failed_attempts": [
+    {
+      "stage": "initial full regression",
+      "result": "2 Core failures and 4 Tool collection failures",
+      "resolution": "Use None for optional Runtime service, fix asset route/dev mode, defer startup Tool discovery imports to remove SDK cycle"
+    },
+    {
+      "stage": "last test import cleanup",
+      "result": "test_web.py collection IndentationError",
+      "resolution": "Remove duplicate import and rerun 41 affected tests plus all syntax checks"
+    },
+    {
+      "stage": "wheel through project venv pip",
+      "result": "Cannot import setuptools.build_meta",
+      "resolution": "Build offline with the existing bundled Python runtime; no dependencies installed"
+    }
+  ],
+  "boundaries": [
+    "No production instance restart",
+    "No commit or publication",
+    "No real model or QQ acceptance",
+    "Career changes are in an uncommitted Git submodule worktree"
+  ]
+}

@@ -48,21 +48,22 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         tool_router_mode=settings.tool_router_mode,
         decision_mode=settings.decision_mode,
     )
-    agent.settings = settings
-    agent.experience_stream = ExperienceStream(Path(".zhaoxi") / "experience.db",media_directory=settings.media_directory)
+    runtime = agent.runtime
+    runtime.settings = settings
+    runtime.experience_stream = ExperienceStream(settings.experience_db_path, media_directory=settings.media_directory)
     agent.experience_stream.clear_expired()
     from zhaoxi.tools.builtin.social_context import ReadSocialContextTool
     registry.register(ReadSocialContextTool(agent.experience_stream,perception_path=settings.perception_db_path,max_output_chars=min(8000,settings.permission_max_tool_output_chars)))
-    agent.cognitive_ingress = CognitiveIngress(agent.experience_stream)
+    runtime.cognitive_ingress = CognitiveIngress(agent.experience_stream)
     if planner is not None:
         planner.cognitive_ingress = agent.cognitive_ingress
         from zhaoxi.cognitive_stream.turn import current_turn
         planner.current_trigger_provider = lambda: (current_turn().trigger_event if current_turn() else None)
-    agent.attention_retriever = AttentionRetriever(agent.experience_stream)
-    agent.session_projector = SessionProjector(agent.experience_stream)
+    runtime.attention_retriever = AttentionRetriever(agent.experience_stream)
+    runtime.session_projector = SessionProjector(agent.experience_stream)
     context_builder.attention_retriever = agent.attention_retriever
-    agent.session_store = session_store
-    agent.session_record = session_record
+    runtime.session_store = session_store
+    runtime.session_record = session_record
     if settings.perception_enabled:
         import json
         from zhaoxi.perception.ledger import InteractionLedger
@@ -75,13 +76,13 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     agent.tool_packages = package_records
     agent.tool_package_instances = {package.package_id: package for package in tool_packages}
     agent.tool_package_errors = tool_package_errors
-    agent.reflection = reflection_service
-    agent.reflection_periods = reflection_periods
-    agent.archive = archive_service
-    agent.agenda = agenda_service
-    agent.current_cognition = current_cognition_service
+    runtime.reflection = reflection_service
+    runtime.reflection_periods = reflection_periods
+    runtime.archive = archive_service
+    runtime.agenda = agenda_service
+    runtime.current_cognition = current_cognition_service
     from zhaoxi.decision import DecisionService
-    agent.decision_service = DecisionService(
+    runtime.decision_service = DecisionService(
         provider,
         rule_directory=Path(__file__).resolve().parents[3] / "data" / "decisions" / "rules",
         data_directory=settings.decision_data_directory,
@@ -106,15 +107,15 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         awareness.user_principles = UserPrincipleStore(settings.decision_user_principles_directory)
         awareness.principle_archive = DecisionPrincipleArchiveProvider(settings.archive_directory, settings.decision_principle_archive_paths)
         awareness.journal = DecisionJournalStore(settings.decision_data_directory)
-        agent.decision_learning = DecisionLearning(awareness.history, awareness.journal, awareness.user_principles, provider)
+        runtime.decision_learning = DecisionLearning(awareness.history, awareness.journal, awareness.user_principles, provider)
         from zhaoxi.decision.follow_up import DecisionFollowUp
-        agent.decision_follow_up = DecisionFollowUp(awareness.history, settings)
+        runtime.decision_follow_up = DecisionFollowUp(awareness.history, settings)
         awareness.follow_up = agent.decision_follow_up
-    agent.current_cognition_maintainer = CurrentCognitionMaintainer(
+    runtime.current_cognition_maintainer = CurrentCognitionMaintainer(
         current_cognition_service, provider, timezone=settings.proactive_timezone,
     )
-    agent.emoji_service = emoji_service
-    agent.emoji_manager = emoji_manager
+    runtime.emoji_service = emoji_service
+    runtime.emoji_manager = emoji_manager
     agent.capability_catalog = {
         "status": "ready",
         "tools": [
@@ -153,12 +154,12 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         proactive.sink.on_delivered = record_delivery
     attach_proactive_runtime(agent, settings, proactive, proactive_scheduler, proactive_state, tool_packages, package_capabilities, tool_package_errors, provider, context_builder)
     data_stores = build_data_store_specs(settings, archive_enabled=archive_service is not None)
-    agent.backup_manager = BackupManager(
+    runtime.backup_manager = BackupManager(
         settings.backup_directory,
         data_stores,
         retention_count=settings.backup_retention_count,
     )
-    agent.memory_service = memory_service
+    runtime.memory_service = memory_service
     unhealthy = [
         name for name, status in agent.backup_manager.health().items()
         if status["exists"] and not status["healthy"]
@@ -181,7 +182,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
                 routing_hints.extend(package.routing_hints())
             except Exception as exc:
                 tool_package_errors.append({"source": f"{package.package_id}:router_hints", "error": type(exc).__name__})
-        agent.cognitive = CognitiveCoordinator(
+        runtime.cognitive = CognitiveCoordinator(
             agent=agent,
             router=CognitiveRouter(
                 provider,
@@ -205,7 +206,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
                 ),
             ) if settings.auto_memory_enabled else None),
         )
-    agent.internal_activity = InternalActivityRuntime(agent, settings, settings.internal_activity_db_path)
+    runtime.internal_activity = InternalActivityRuntime(agent, settings, settings.internal_activity_db_path)
     if getattr(agent, "decision_follow_up", None):
         agent.decision_follow_up.runtime = agent.internal_activity
     if getattr(agent, "proactive_worker", None) is not None:

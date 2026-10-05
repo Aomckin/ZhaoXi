@@ -1,19 +1,11 @@
 import asyncio
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-from zhaoxi.core.conversation import Conversation
-from zhaoxi.core.agent import AgentResponse
 from zhaoxi.errors import AgentLoopError
-from zhaoxi.permission.models import (
-    InvocationOrigin,
-    PendingConfirmation,
-    PermissionLevel,
-    PermissionRequest,
-)
 from zhaoxi.reflection.models import (
     EvidenceRef,
     ReflectionKind,
@@ -29,72 +21,7 @@ from zhaoxi.interfaces.models import UnifiedResponse
 from zhaoxi.models.openai_compatible import OpenAICompatibleProvider
 from zhaoxi.voice.models import Transcript, VoiceStatus
 from zhaoxi.config.settings import Settings
-
-
-class FakeAgent:
-    def __init__(self) -> None:
-        self.conversation = Conversation()
-        self.pending = {}
-        self.tool_executor = SimpleNamespace(
-            gateway=SimpleNamespace(store=SimpleNamespace(pending=self.pending))
-        )
-        self.proactive = None
-        self.proactive_scheduler = None
-        self.proactive_state = None
-        self._pending_permissions = {}
-        self.planner = None
-        self.workflow = None
-
-    async def run_natural(self, message: str):
-        if message == "boom":
-            raise RuntimeError("secret traceback")
-        if message == "需要权限":
-            request = PermissionRequest(
-                request_id="request-1",
-                tool_name="write_test",
-                permission=PermissionLevel.WRITE,
-                arguments={"secret": "not-for-ui"},
-                arguments_digest="digest",
-                resource_scope="test:item",
-                action_summary="写入测试项目",
-                origin=InvocationOrigin.AGENT,
-            )
-            pending = PendingConfirmation(
-                confirmation_id="confirm-1",
-                request=request,
-                question="允许吗？",
-                risk_summary="会修改本地状态",
-                expires_at=datetime.now(UTC) + timedelta(minutes=5),
-            )
-            self.pending[pending.confirmation_id] = pending
-            self._pending_permissions[pending.confirmation_id] = True
-            self.conversation.add_user(message)
-            self.conversation.add_assistant("需要你的确认。")
-            return AgentResponse(
-                content="需要你的确认。",
-                request_id="request-1",
-                steps=1,
-                permission_confirmation=pending,
-            )
-        if message in {"确认", "拒绝"}:
-            pending = next(item for item in self.pending.values() if not item.resolved)
-            pending.resolved = True
-            pending.approved = message == "确认"
-            content = "操作已完成。" if pending.approved else "已拒绝，没有执行。"
-            self.conversation.add_user(message)
-            self.conversation.add_assistant(content)
-            return AgentResponse(content=content, request_id="resolved", steps=1)
-        self.conversation.add_user(message)
-        self.conversation.add_assistant("你好，暗苟酱。")
-        return AgentResponse(content="你好，暗苟酱。", request_id="chat-1", steps=1)
-
-    async def approve_permission(self, confirmation_id: str):
-        assert confirmation_id in self._pending_permissions
-        return await self.run_natural("确认")
-
-    async def deny_permission(self, confirmation_id: str):
-        assert confirmation_id in self._pending_permissions
-        return await self.run_natural("拒绝")
+from web_fixture import FakeAgent
 
 
 def test_web_preserves_budget_error_code_and_trace_id():
@@ -487,7 +414,6 @@ def test_failed_chat_persists_user_turn_for_session_restore():
 
 
 def test_web_shell_has_keyboard_and_live_status_accessibility_baseline():
-    from zhaoxi.config.settings import Settings
     app = create_app(agent=FakeAgent(), settings=Settings(dev_browser_ui=True))
     with TestClient(app) as client:
         page = client.get("/").text

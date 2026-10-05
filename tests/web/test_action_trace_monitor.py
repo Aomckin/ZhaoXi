@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-from test_web import FakeAgent
+from web_fixture import FakeAgent
 
 from zhaoxi.config.settings import Settings
 from zhaoxi.web.app import create_app
