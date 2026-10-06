@@ -180,6 +180,8 @@ class PerceptionRuntime:
                 self.last_reply_gate = {"observation_id": item.observation_id,
                                         "blocked": bool(gate_reason), "reason": gate_reason}
                 self.last_fast_gate = None
+                if item.actor_role == "OWNER":
+                    self.agent.tool_retry_context = None  # A channel switch invalidates the local retry.
                 fast_owner_reply = False
                 force_fast = False
                 cognitive = getattr(self.agent, "cognitive", None)
@@ -191,6 +193,7 @@ class PerceptionRuntime:
                     and bool((item.content or "").strip()) and not images
                 )
                 if (not gate_reason and owner_private_text and not pending_permission
+                        and not getattr(cognitive, "force_non_fast_chat", False)
                         and fast_gate is not None and fast_runtime is not None):
                     force_fast = bool(getattr(cognitive, "force_fast_chat", False))
                     recent_context = cognitive._recent_routing_context(

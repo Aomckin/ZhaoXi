@@ -198,11 +198,11 @@ async def test_warning_allows_explicit_required_primary_tool():
     assert a.registry.get("probe").calls==["q"] and result.content=="主任务已查询。"
 
 
-async def test_validated_fast_upgrade_has_stricter_limits_without_trace():
-    a,p=agent([call(),call(query="unexpected"),ModelResponse(content="不应到此")])
+async def test_validated_fast_upgrade_inherits_standard_limits_without_trace():
+    a,p=agent([call(),call(query="second"),ModelResponse(content="两项查询完成")])
     result=await a.run("查询",fast_escalated=True)
-    assert len(p.calls)==2 and a.registry.get("probe").calls==["q"]
-    assert p.tool_schemas[-1] is None and result.result_status=="partial_success"
+    assert len(p.calls)==3 and a.registry.get("probe").calls==["q", "second"]
+    assert p.tool_schemas[-1] is None and result.result_status=="completed"
 
 
 async def test_normal_bounded_final_reply_can_report_completed_task():
@@ -334,3 +334,34 @@ def test_productive_discovery_credit_is_bounded_and_actual_calls_still_counted()
     assert safety.model_limit_reached
     assert safety.metrics()["standard_model_round"] == 4
     assert safety.metrics()["discovery_round"] == 1
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+async def test_debug_multi_model_calls_allows_control_rounds_before_business_tool(enabled):
+    controls = [ModelResponse(tool_calls=[ToolCall(id=str(i), name="inspect_tool_catalog", arguments={"action": action})])
+                for i, action in enumerate(["summary", "list_groups"])]
+    a, provider = agent([*controls, call(), ModelResponse(content="已核验。")])
+    a.max_steps = 5
+    a.allow_multi_model_calls = enabled
+    with action_trace_scope():
+        response = await a.run("查询", fast_escalated=True)
+    if enabled:
+        assert a.registry.get("probe").calls == ["q"]
+        assert len(provider.calls) == 4 and response.content == "已核验。"
+    else:
+        assert a.registry.get("probe").calls == []
+        assert len(provider.calls) == 3 and provider.tool_schemas[-1] is None
+
+
+def test_multi_model_debug_preserves_other_guards_and_existing_request_snapshot():
+    from zhaoxi.tools.discovery import ToolDiscoveryState
+    a, _ = agent([])
+    a.max_steps = 5
+    a.allow_multi_model_calls = True
+    discovery = ToolDiscoveryState(a._tool_context("查询"))
+    safety = a._safety_state(discovery, fast_escalated=True)
+    assert safety.model_limit == 5
+    assert (safety.tool_limit, safety.repair_limit, safety.discovery_limit) == (2, 1, 1)
+    a.allow_multi_model_calls = False
+    assert a._safety_state(discovery, fast_escalated=True) is safety
+    assert a._safety_state(ToolDiscoveryState(a._tool_context("查询")), fast_escalated=True).model_limit == 3

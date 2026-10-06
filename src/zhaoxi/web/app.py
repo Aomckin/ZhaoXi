@@ -58,7 +58,9 @@ from .settings_api import (
     settings_api_router,
     _load_interface_settings,
     _apply_request_timeout,
-    _apply_force_fast_chat,
+    _apply_debug_settings,
+    _apply_budget_settings,
+    _effective_budget_policy,
 )
 from .perception_api import perception_api_router
 from .emoji_api import emoji_api_router
@@ -116,6 +118,7 @@ def create_app(
         try:
             core = build_agent(configured)
         except ZhaoxiError as exc:
+            logger.error("core initialization failed: %s", exc)
             core = StartupUnavailableAgent(startup_diagnostics(configured), str(exc))
     adapter = WebInterfaceAdapter(core)
 
@@ -143,7 +146,8 @@ def create_app(
         enabled=interface_settings_value.long_wait_enabled,
         default_seconds=configured.request_timeout_seconds,
     )
-    _apply_force_fast_chat(core, enabled=interface_settings_value.force_fast_chat)
+    _apply_debug_settings(core, interface_settings_value)
+    _apply_budget_settings(core, interface_settings_value, configured)
 
     def voice_policy(*, text: str, explicit: bool, permission_pending: bool = False):
         now = current_time()
@@ -267,7 +271,8 @@ def create_app(
 
     @app.get("/api/health")
     async def health():
-        return {"status": "ok", "version": __version__}
+        return {"status": "ok", "version": __version__,
+                "core_ready": getattr(core, "provider", None) is not None}
 
     @app.get("/favicon.ico", include_in_schema=False)
     async def favicon():
@@ -622,7 +627,7 @@ def create_app(
 
     @app.get("/api/debug/budget-context")
     async def debug_budget_context():
-        policy = configured.request_budget_policy
+        policy = _effective_budget_policy(core, configured)
         return {
             "configuration": {
                 "base_budget": policy.base_budget,

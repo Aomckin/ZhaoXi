@@ -1,6 +1,6 @@
 # 测试指南
 
-更新：2026-10-05。从仓库根目录运行；使用装有 dev 依赖的 Python，以及 Node.js。
+更新：2026-10-06。从仓库根目录运行；使用装有 dev 依赖的 Python，以及 Node.js。
 
 ## 统一入口
 
@@ -26,7 +26,7 @@
 
 对仓库 `.zhaoxi/`、`data/`、`config/` 的 SQLite 打开及 `Path.open` 写入增加失败保护，避免默认路径遗漏时覆盖真实状态。保护覆盖常用存储入口，不能替代正确注入路径；其他文件 API、子进程以及独立浏览器脚本仍须自行隔离。不要把备份恢复到真实目录作为测试清理方式。
 
-pytest 临时目录为 `.pytest-tmp/`，缓存为 `.pytest_cache/`，均已忽略。`--basetemp` 每次会由 pytest 清空，所以仅用于测试；并行的独立运行须分别指定 `--basetemp=.pytest-tmp-<名字>`。
+pytest 临时目录统一放在 `.pytest_cache/tmp/`，缓存和浏览器报告也放在已忽略的 `.pytest_cache/` 下。`--basetemp` 每次会由 pytest 清空，所以仅用于测试；并行的独立运行分别指定 `--basetemp=.pytest_cache/tmp-<名字>`，不要在根目录新建 `.pytest-tmp-*`。所有测试进程退出后，可删除整个 `.pytest_cache/` 清理生成物；需要长期保留的验收结论应记录到 `docs/maintenance/`。
 
 Career Node 测试只复制代码和空模板到系统临时目录，不复制用户配置或岗位数据；测试服务使用临时端口，关闭子进程后删除受路径检查保护的夹具目录。招聘 API 失败用合成异常验证降级。
 

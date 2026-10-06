@@ -49,7 +49,8 @@ def dashboard_router(core, static_dir, *, desktop_open_callback=None):
         cognition = getattr(core,"current_cognition",None)
         counts = r._day() if r else {}
         return {"version":__version__,"core":{"healthy":getattr(core,"provider",None) is not None,
-            "activity_available":r is not None,"activity_enabled":r.settings.internal_activity_enabled if r else False},
+            "activity_available":r is not None,"activity_enabled":r.settings.internal_activity_enabled if r else False,
+            "startup_error":getattr(core,"startup_error",None)},
             "presence":r.presence_status() if r else None,"recent_activity":r.history(8)["items"] if r else [],
             "today":{"activities":sum(counts.get(spec.name,0) for spec in r.registry) if r else 0,"resources":r._daily.get("resources",{}) if r else {},
                      "changed":r._daily.get("changed",0) if r else 0,"external_messages":r._daily.get("external_messages",0) if r else 0},

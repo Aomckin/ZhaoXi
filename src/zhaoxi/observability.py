@@ -404,6 +404,10 @@ class ActionTrace:
     def task_status(self) -> str:
         if self.terminal_status is not None:
             return self.terminal_status
+        if not self.actions and self.result_status in {"failed", "budget_exhausted"}:
+            return "failed"
+        if self.result_status == "partial_success":
+            return "partial"
         statuses = {action.status for action in self.actions if action.status != "superseded"}
         if "failed" in statuses or "unknown" in statuses:
             return "partial" if "completed" in statuses else "failed"

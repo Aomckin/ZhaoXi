@@ -465,8 +465,9 @@ async def test_direct_repeated_lookup_promise_returns_with_notice(tmp_path):
     ])
     agent = make_cognitive(provider, service)
     result = await agent.run_natural('猜猜晚饭')
+    assert agent.tool_retry_context is None  # A model promise is not an Owner task.
     assert result.content == (
-        '我马上去查。\n\n'
+        '本次任务尚未执行所需工具，未完成任何工具操作。\n\n'
         '（提醒：这次没有实际调用工具，回复未经工具核验。）'
     )
     assert result.route == CognitiveRoute.DIRECT

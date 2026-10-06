@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from zhaoxi.tools.filesystem_access import resolve_access_directories, save_filesystem_access, validate_write_subset
-from .schemas import InterfaceSettingsRequest, ThinkingRequest, FilesystemAccessRequest
+from .schemas import InterfaceSettingsRequest, BudgetSettingsRequest, ThinkingRequest, FilesystemAccessRequest
 logger = logging.getLogger("WEB")
 
 
@@ -32,10 +32,33 @@ def _apply_request_timeout(core, *, enabled: bool, default_seconds: float) -> No
             item.timeout = timeout
 
 
-def _apply_force_fast_chat(core, *, enabled: bool) -> None:
+def _apply_debug_settings(core, settings: InterfaceSettingsRequest) -> None:
+    core.allow_multi_model_calls = settings.allow_multi_model_calls
     cognitive = getattr(core, "cognitive", None)
     if cognitive is not None:
-        cognitive.force_fast_chat = enabled
+        cognitive.force_fast_chat = settings.force_fast_chat
+        cognitive.force_non_fast_chat = settings.force_non_fast_chat
+
+
+def _effective_budget_policy(core, configured):
+    return (getattr(core, "request_budget_policy", None)
+            or getattr(getattr(core, "provider", None), "budget_policy", None)
+            or configured.request_budget_policy)
+
+
+def _apply_budget_settings(core, settings: InterfaceSettingsRequest, configured) -> None:
+    from dataclasses import replace
+    policy = configured.request_budget_policy
+    if settings.request_budget is not None:
+        value = settings.request_budget
+        policy = replace(policy, base_budget=value.base_budget, hard_limit=value.hard_limit,
+                         finalization_reserve=value.finalization_reserve,
+                         extension_1_limit=value.planner_extension_limit, extension_2_limit=0)
+    core.request_budget_policy = policy
+    provider = getattr(core, "provider", None)
+    if provider is not None and hasattr(provider, "max_total_tokens"):
+        provider.budget_policy = policy
+        provider.max_total_tokens = policy.base_budget
 
 
 def settings_api_router(core, configured, events):
@@ -86,7 +109,8 @@ def settings_api_router(core, configured, events):
             enabled=request.long_wait_enabled,
             default_seconds=configured.request_timeout_seconds,
         )
-        _apply_force_fast_chat(core, enabled=request.force_fast_chat)
+        _apply_debug_settings(core, request)
+        _apply_budget_settings(core, request, configured)
         await events.publish({"type": "interface_settings", "settings": request.model_dump()})
         return request
 
@@ -99,8 +123,35 @@ def settings_api_router(core, configured, events):
     @router.patch("/api/settings/interface")
     async def patch_interface_settings(request: InterfaceSettingsRequest):
         saved = _load_interface_settings(interface_settings_path)
-        updated = saved.model_copy(update=request.model_dump(exclude_unset=True))
+        patch = request.model_dump(exclude_unset=True)
+        if patch.get("force_non_fast_chat"):
+            patch["force_fast_chat"] = False
+        elif patch.get("force_fast_chat"):
+            patch["force_non_fast_chat"] = False
+        updated = InterfaceSettingsRequest.model_validate({**saved.model_dump(), **patch})
         return await persist_interface_settings(updated)
+
+
+    @router.get("/api/settings/budget")
+    async def budget_settings():
+        policy = _effective_budget_policy(core, configured)
+        return BudgetSettingsRequest(base_budget=policy.base_budget, hard_limit=policy.hard_limit,
+                                     finalization_reserve=policy.finalization_reserve,
+                                     planner_extension_limit=policy.extension_1_limit)
+
+
+    @router.put("/api/settings/budget")
+    async def change_budget_settings(request: BudgetSettingsRequest):
+        saved = _load_interface_settings(interface_settings_path)
+        await persist_interface_settings(saved.model_copy(update={"request_budget": request}))
+        return request
+
+
+    @router.delete("/api/settings/budget")
+    async def reset_budget_settings():
+        saved = _load_interface_settings(interface_settings_path)
+        await persist_interface_settings(saved.model_copy(update={"request_budget": None}))
+        return await budget_settings()
 
 
     @router.put("/api/tools/filesystem-access")

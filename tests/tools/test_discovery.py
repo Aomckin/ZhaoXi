@@ -79,7 +79,8 @@ async def test_discovery_alone_does_not_count_as_business_lookup():
     provider = FakeProvider([call("request_tool_group", group="archive"), ModelResponse(content="好了")])
     agent = ZhaoxiAgent(provider=provider, registry=make_registry(), context_builder=ContextBuilder("朝汐"))
     result = await agent.run("找那把钥匙", require_tool_call=True)
-    assert result.content == "好了\n\n（提醒：这次没有实际调用工具，回复未经工具核验。）"
+    assert result.content == "本次任务尚未执行所需工具，未完成任何工具操作。\n\n（提醒：这次没有实际调用工具，回复未经工具核验。）"
+    assert result.result_status == "failed"
     assert result.used_tool_path is False
     assert not any(m.role.value == "tool" for m in provider.calls[1])
 

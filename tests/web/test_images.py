@@ -252,3 +252,42 @@ async def test_historical_images_survive_tool_finalization_without_image_keyword
     assert final == initial
     assert stream.get(trigger.event_id).content == question
     assert old.images == [PNG, PNG]
+
+
+async def test_five_model_previews_still_upload_five_full_originals_after_confirmation(tmp_path, five_large_photos):
+    import base64
+    from zhaoxi.core.image_thumbnails import ImageThumbnailCache
+    original_bytes = [base64.b64decode(photo.split(',', 1)[1]) for photo in five_large_photos]
+    uploads, writes = [], []
+    def handler(request):
+        if request.url.path == '/api/images':
+            index = len(uploads)
+            assert original_bytes[index] in request.content
+            uploads.append(index)
+            return httpx.Response(200, json={'path': f'/uploads/photo-{index}.jpg'})
+        if request.method == 'POST':
+            body = json.loads(request.content)
+            assert body['images'] == [f'/uploads/photo-{i}.jpg' for i in range(5)]
+            writes.append(body)
+            return httpx.Response(201, json={'id': 'meal-five'})
+        return httpx.Response(200, json={'id': 'meal-five', 'images': [f'/uploads/photo-{i}.jpg' for i in range(5)]})
+    registry = ToolRegistry()
+    registry.register(LifeHudTool(LifeHudClient('http://lifehud.test', transport=httpx.MockTransport(handler))))
+    call = ToolCall(id='five-images', name='lifehud', arguments={'operation': 'record', 'arguments': {
+        'action': 'create', 'type': 'meal', 'description': '五张照片',
+        'images': [f'<current-message-image:{i}>' for i in range(1, 6)],
+    }})
+    provider = FakeProvider([ModelResponse(tool_calls=[call]), ModelResponse(content='五张原图已经记下。')])
+    builder = ContextBuilder('朝汐', image_thumbnail_cache=ImageThumbnailCache(tmp_path / 'previews'))
+    agent = ZhaoxiAgent(provider=provider, registry=registry, context_builder=builder, tool_router_mode='all')
+    waiting = await agent.run('把这五张照片填入 LifeHUD', images=list(five_large_photos))
+    assert waiting.permission_confirmation is not None and not uploads and not writes
+    assert all(photo not in str(call.arguments) for photo in five_large_photos)
+    result = await agent.approve_permission(waiting.permission_confirmation.confirmation_id)
+    assert result.content == '五张原图已经记下。'
+    assert uploads == list(range(5)) and len(writes) == 1
+    for messages in provider.calls:
+        pictures = [image for message in messages for image in message.images]
+        assert len(pictures) == 5
+        assert all(len(base64.b64decode(image.split(',', 1)[1])) <= 512 * 1024 for image in pictures)
+    assert next(m for m in agent.conversation.messages if m.role == Role.USER).images == list(five_large_photos)

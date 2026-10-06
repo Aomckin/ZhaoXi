@@ -14,19 +14,29 @@ def references_image(text: str) -> bool:
 
 
 class ImageThumbnailCache:
+    MODEL_MAX_EDGE = 1600
+    MODEL_MAX_BYTES = 512 * 1024
+
     def __init__(self, directory: str | Path | None = None) -> None:
         self.directory = Path(directory) if directory is not None else None
 
     @staticmethod
-    def _name(message_id: str, index: int, image: str) -> str:
+    def _name(message_id: str, index: int, image: str, *, model: bool = False) -> str:
         identity = hashlib.sha256(message_id.encode("utf-8")).hexdigest()[:24]
         digest = hashlib.sha256(image.encode("ascii")).hexdigest()[:24]
-        return f"{identity}-{index}-{digest}.jpg"
+        return f"{identity}-{index}-{digest}{'-model' if model else ''}.jpg"
 
     def thumbnail(self, message_id: str, index: int, image: str) -> str | None:
+        return self._preview(message_id, index, image, model=False)
+
+    def model_preview(self, message_id: str, index: int, image: str) -> str | None:
+        """Bound current model inputs while retaining full originals for tools."""
+        return self._preview(message_id, index, image, model=True)
+
+    def _preview(self, message_id: str, index: int, image: str, *, model: bool) -> str | None:
         if not image.startswith("data:image/") or ";base64," not in image:
             return None
-        path = self.directory / self._name(message_id, index, image) if self.directory else None
+        path = self.directory / self._name(message_id, index, image, model=model) if self.directory else None
         try:
             payload = path.read_bytes() if path is not None and path.is_file() else None
         except OSError:
@@ -38,8 +48,11 @@ class ImageThumbnailCache:
 
                 raw = base64.b64decode(image.partition(",")[2], validate=True)
                 with Image.open(BytesIO(raw)) as source:
+                    if model and max(source.size) <= self.MODEL_MAX_EDGE and len(raw) <= self.MODEL_MAX_BYTES:
+                        return image
                     frame = ImageOps.exif_transpose(source)
-                    frame.thumbnail((512, 512))
+                    edge = self.MODEL_MAX_EDGE if model else 512
+                    frame.thumbnail((edge, edge))
                     if frame.mode != "RGB":
                         rgb = Image.new("RGB", frame.size, "white")
                         if "A" in frame.getbands():
@@ -47,9 +60,14 @@ class ImageThumbnailCache:
                         else:
                             rgb.paste(frame.convert("RGB"))
                         frame = rgb
-                    output = BytesIO()
-                    frame.save(output, format="JPEG", quality=65, optimize=True)
-                    payload = output.getvalue()
+                    while True:
+                        output = BytesIO()
+                        frame.save(output, format="JPEG", quality=85 if model else 65, optimize=True)
+                        payload = output.getvalue()
+                        if not model or len(payload) <= self.MODEL_MAX_BYTES:
+                            break
+                        edge = max(1, int(max(frame.size) * 0.8))
+                        frame.thumbnail((edge, edge))
             except (ImportError, OSError, ValueError, DecompressionBombError, UnidentifiedImageError):
                 return None
             if path is not None:
@@ -67,9 +85,10 @@ class ImageThumbnailCache:
         if self.directory is None or not self.directory.is_dir():
             return
         keep = {
-            self._name(message.message_id, index, image)
+            self._name(message.message_id, index, image, model=model)
             for message in messages
             for index, image in enumerate(message.images)
+            for model in (False, True)
             if message.source != "emoji" and image.startswith("data:image/")
         }
         for path in self.directory.glob("*.jpg"):

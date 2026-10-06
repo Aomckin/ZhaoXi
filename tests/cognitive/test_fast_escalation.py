@@ -197,3 +197,160 @@ async def test_failed_standard_reply_never_publishes_discarded_draft():
     assert "失败也不能泄漏" not in json.dumps(events, ensure_ascii=False)
     assert not any(m.role.value == "assistant" for m in agent.conversation.messages)
     assert len(inner.calls) == 1
+
+
+class LookupInput(BaseModel):
+    query: str
+
+
+class RepairLookup(Tool):
+    name = "repair_lookup"
+    description = "查找隔离验收记录的 ID"
+    group = "filesystem_write"
+    input_model = LookupInput
+
+    def __init__(self):
+        self.calls = []
+
+    async def execute(self, arguments):
+        self.calls.append(arguments.query)
+        return ToolResult(success=True, content="记录 ID 为 fixture-7", data={"id": "fixture-7"})
+
+
+async def test_fast_upgrade_discovers_reads_then_writes_once_with_default_guards():
+    from dataclasses import replace
+    agent, provider = make_agent([
+        ModelResponse(content="[escalate:tool]"),
+        call("request_tool_group", {"group": "filesystem_write"}),
+        call("repair_lookup", {"query": "隔离记录"}),
+        call("guarded_write", {"content": "fixture-7"}),
+        ModelResponse(content="记录已保存。"),
+    ])
+    reader = agent.registry.register(RepairLookup())
+    writer = agent.registry.register(GuardedWrite())
+    original = agent._tool_context
+    agent._tool_context = lambda intent: replace(original(intent), exposed_tools=())
+    gateway = InterfaceGateway(agent)
+    pending = await gateway.chat(UnifiedMessage(channel=InterfaceChannel.WEB, content="请查询记录 ID 再写入记录"))
+    assert pending.status == "waiting_for_permission" and writer.executions == []
+    assert reader.calls == ["隔离记录"]
+    before = agent.last_action_trace["runtime_metrics"]
+    assert before["discovery_round"] == 1 and before["standard_model_round"] == 3
+    assert len(provider.calls) == 4 and not agent.allow_multi_model_calls
+    completed = await gateway.resolve_permission(pending.permission.confirmation_id, approve=True, request_id="repair-confirm")
+    assert completed.status == "completed" and writer.executions == ["fixture-7"]
+    assert reader.calls == ["隔离记录"] and len(provider.calls) == 5
+    assert provider.tool_schemas[-1] is None
+    assert sum("当前处于 FAST_CHAT" in (messages[0].content or "") for messages in provider.calls) == 1
+
+
+def unexecuted_agent():
+    return make_agent([ModelResponse(content="[escalate:tool]"),
+                       *[ModelResponse(content="已经保存成功。") for _ in range(3)]])
+
+
+async def test_explicit_retry_restores_unexecuted_task_without_fast_or_false_completion():
+    agent, provider = unexecuted_agent()
+    gateway = InterfaceGateway(agent)
+    events = []
+    gateway.event_sink = events.append
+    failed = await gateway.chat(UnifiedMessage(channel=InterfaceChannel.WEB, content="请查询当前时间"))
+    assert failed.status == "failed" and "已经保存成功" not in failed.content
+    assert "未完成任何工具操作" in failed.content
+    assert failed.activity["result_status"] == "failed"
+    assert agent.last_action_trace["runtime_metrics"]["result_status"] == "failed"
+    assert agent.tool_retry_context is not None
+    previous = agent.tool_retry_context.request_id
+    provider.responses.clear()
+    provider.responses.extend([call("current_time"), ModelResponse(content="已核验时间。")])
+    agent.cognitive.router.route = AsyncMock(side_effect=AssertionError("retry must not re-enter Router"))
+    retried = await gateway.chat(UnifiedMessage(channel=InterfaceChannel.WEB,
+                                content="你现在再试一次，这个我可不想自己写。"))
+    assert retried.status == "completed" and retried.content == "已核验时间。"
+    assert agent.tool_retry_context is None
+    assert len(provider.calls) == 5 and provider.tool_schemas[-2]
+    assert "原始请求为" in provider.calls[-2][0].content and "请查询当前时间" in provider.calls[-2][0].content
+    assert [m.content for m in agent.conversation.messages if m.role.value == "user"] == [
+        "请查询当前时间", "你现在再试一次，这个我可不想自己写。"]
+    resumed = next(e["event"] for e in events if e.get("type") == "agent_event"
+                   and e["event"]["event_type"] == "tool_retry_resumed")
+    assert resumed["metadata"]["previous_request_id"] == previous
+
+
+@pytest.mark.parametrize("change", ["channel", "session", "expired", "cancel", "quoted", "expanded"])
+async def test_retry_scope_cannot_be_borrowed_or_extended(change):
+    from dataclasses import replace
+    from zhaoxi.core.tool_retry import RETRY_TTL_SECONDS
+    agent, provider = unexecuted_agent()
+    gateway = InterfaceGateway(agent)
+    await gateway.chat(UnifiedMessage(channel=InterfaceChannel.WEB, content="请查询当前时间"))
+    assert agent.tool_retry_context
+    text = {"cancel": "不用重试了", "quoted": "只是引用“再试一次”", "expanded": "再试一次，把另外的文件删了"}.get(change, "再试一次")
+    if change == "expired":
+        agent.tool_retry_context = replace(agent.tool_retry_context,
+            created_at=agent.tool_retry_context.created_at - RETRY_TTL_SECONDS - 1)
+    provider.responses.clear()
+    provider.responses.append(ModelResponse(content="收到。"))
+    result = await gateway.chat(UnifiedMessage(channel=InterfaceChannel.CLI if change == "channel" else InterfaceChannel.WEB,
+        session_id="another-session" if change == "session" else "local", content=text))
+    assert agent.tool_retry_context is None
+    assert agent.last_action_trace["runtime_metrics"]["route_source"] != "scoped_tool_retry"
+    assert not result.permission and result.activity["result_status"] == "completed"
+
+
+@pytest.mark.parametrize("result_kind", ["completed", "unknown", "denied", "failed_write"])
+async def test_attempted_write_does_not_create_retry_context(result_kind):
+    class ResultWrite(GuardedWrite):
+        async def execute(self, arguments):
+            self.executions.append(arguments.content)
+            return ToolResult(success=result_kind == "completed", content="隔离结果",
+                              error=None if result_kind == "completed" else "write_failed",
+                              metadata={"unknown_outcome": result_kind == "unknown"})
+    agent, provider = make_agent([ModelResponse(content="[escalate:tool]"),
+        call("guarded_write", {"content": "one"}), ModelResponse(content="如实说明结果。")])
+    writer = agent.registry.register(ResultWrite())
+    agent.registry.update_tools(name=writer.name, confirm_write=False)
+    gateway = InterfaceGateway(agent)
+    if result_kind == "denied":
+        agent.registry.update_tools(name=writer.name, confirm_write=True)
+        pending = await gateway.chat(UnifiedMessage(channel=InterfaceChannel.WEB, content="请写入受控记录"))
+        await gateway.resolve_permission(pending.permission.confirmation_id, approve=False, request_id="repair-decline")
+    else:
+        await gateway.chat(UnifiedMessage(channel=InterfaceChannel.WEB, content="请写入受控记录"))
+    assert agent.tool_retry_context is None
+    provider.responses.clear()
+    provider.responses.append(ModelResponse(content="收到。"))
+    before = len(writer.executions)
+    await gateway.chat(UnifiedMessage(channel=InterfaceChannel.WEB, content="再试一次"))
+    assert len(writer.executions) == before
+    assert agent.last_action_trace["runtime_metrics"]["route_source"] != "scoped_tool_retry"
+
+
+async def test_productive_discovery_credit_does_not_consume_final_step_with_another_action():
+    agent, provider = make_agent([ModelResponse(content="[escalate:tool]"),
+        call("request_tool_group", {"group": "filesystem_write"}),
+        call("repair_lookup", {"query": "one"}),
+        call("guarded_write", {"content": "must not execute"})])
+    agent.max_steps = 3
+    reader = agent.registry.register(RepairLookup())
+    writer = agent.registry.register(GuardedWrite())
+    gateway = InterfaceGateway(agent)
+    result = await gateway.chat(UnifiedMessage(channel=InterfaceChannel.WEB, content="请查询记录 ID 再写入记录"))
+    assert result.status == "partial" and not result.permission
+    assert reader.calls == ["one"] and not writer.executions
+    assert len(provider.calls) == 4 and provider.tool_schemas[-1] is None
+
+
+async def test_restored_unexecuted_write_still_requires_new_confirmation():
+    agent, provider = unexecuted_agent()
+    writer = agent.registry.register(GuardedWrite())
+    gateway = InterfaceGateway(agent)
+    await gateway.chat(UnifiedMessage(channel=InterfaceChannel.WEB, content="请写入受控记录"))
+    assert agent.tool_retry_context
+    provider.responses.clear()
+    provider.responses.extend([call("guarded_write", {"content": "newly validated"}), ModelResponse(content="写入已确认。")])
+    result = await gateway.chat(UnifiedMessage(channel=InterfaceChannel.WEB, content="再试一次"))
+    assert result.status == "waiting_for_permission" and writer.executions == []
+    assert agent.tool_retry_context is None
+    await gateway.resolve_permission(result.permission.confirmation_id, approve=True, request_id="retry-write-confirm")
+    assert writer.executions == ["newly validated"]

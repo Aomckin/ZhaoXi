@@ -1,0 +1,112 @@
+{
+  "date": "2026-10-05",
+  "scope": "debug_controls_and_repair_plan_only",
+  "root_fix_implemented": false,
+  "production_restarted": false,
+  "production_settings_changed": false,
+  "real_model_calls": 0,
+  "real_external_sends": false,
+  "debug_defaults": {
+    "allow_multi_model_calls": false,
+    "force_non_fast_chat": false
+  },
+  "validation": {
+    "targeted_python": {
+      "passed": 91,
+      "failed": 0
+    },
+    "core_first_run": {
+      "passed": 1317,
+      "failed": 1,
+      "skipped": 1,
+      "seconds": 245.56,
+      "failure": "tests/web/test_web.py::test_interface_settings_persist_across_app_rebuilds expected dict omitted two new default fields"
+    },
+    "web_after_expected_response_update": {
+      "passed": 77,
+      "failed": 0,
+      "seconds": 12.97
+    },
+    "full_core_repeated_after_test_only_update": false,
+    "frontend_node": {
+      "passed": 94,
+      "failed": 0
+    },
+    "python_syntax": {
+      "files": 430,
+      "passed": true
+    },
+    "git_diff_check": true,
+    "edge_two_surface_browser": {
+      "checks": [
+        "desktop_shortcuts_visible",
+        "dashboard_settings_debug_visible",
+        "dashboard_runtime_debug_visible",
+        "bidirectional_sse_settings",
+        "both_new_switches_visible_and_live",
+        "fast_mode_mutual_exclusion",
+        "new_switches_restored_after_reload",
+        "normal_regenerate_shown_and_hidden",
+        "reload_restores_settings",
+        "partial_update_preserves_timings",
+        "poke_both_surfaces",
+        "poke_busy_guard",
+        "no_page_errors"
+      ],
+      "mock_proactive_requests": 2,
+      "real_model_calls": 0,
+      "real_social_send": false,
+      "errors": []
+    }
+  },
+  "log_samples": [
+    {
+      "source": ".zhaoxi/logs/zhaoxi.log.1",
+      "line": 49876,
+      "trace_id": "8a71ebb2-4442-4dad-b0fa-9130f8c67959",
+      "started_at": "2026-10-05T07:10:57.241915+00:00",
+      "finished_at": "2026-10-05T07:11:40.476351+00:00",
+      "route": "tool",
+      "runtime_lane": "standard",
+      "llm_call_count": 3,
+      "foreground_llm_calls": 3,
+      "tool_call_count": 0,
+      "control_call_count": 2,
+      "standard_model_round": 2,
+      "discovery_round": 0,
+      "standard_tool_round": 0,
+      "fast_escalation_validated": true,
+      "fast_escalation_rejected_reason": null,
+      "forced_finalization_reason": "round_limit",
+      "budget_state": "NORMAL",
+      "result_status": "completed"
+    },
+    {
+      "source": ".zhaoxi/logs/zhaoxi.log.1",
+      "line": 50047,
+      "trace_id": "a527c398-e8ae-487b-8cbe-128ffae4ba74",
+      "started_at": "2026-10-05T07:14:19.064127+00:00",
+      "finished_at": "2026-10-05T07:14:40.946655+00:00",
+      "route": "fast_chat",
+      "runtime_lane": "fast",
+      "llm_call_count": 2,
+      "foreground_llm_calls": 2,
+      "tool_call_count": 0,
+      "control_call_count": 0,
+      "standard_model_round": 0,
+      "discovery_round": 0,
+      "standard_tool_round": 0,
+      "fast_escalation_validated": false,
+      "fast_escalation_rejected_reason": "no_current_turn_evidence",
+      "forced_finalization_reason": null,
+      "budget_state": "NORMAL",
+      "result_status": "completed"
+    }
+  ],
+  "notes": [
+    "Core first-run failure was an expected response fixture requiring the two new default fields; all Web tests passed after correction.",
+    "Browser setup first used wrong health path, then lacked session authentication; corrected isolated server passed.",
+    "No raw dialogue, tool parameters or credentials are persisted in this record.",
+    "Default runtime limits and permissions remain unchanged when debug flags are off."
+  ]
+}

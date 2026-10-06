@@ -11,7 +11,6 @@ import re
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from zhaoxi.cognitive.fast_gate import is_reply_emoji_request
 from zhaoxi.core.image_thumbnails import references_image
 from zhaoxi.core.reply import ReplySequence
 from zhaoxi.core.message import Message, Role, is_cognition_message, strip_echoed_timeline_header
@@ -203,6 +202,7 @@ class FastChatRuntime:
 
     @staticmethod
     def current_evidence(text, kind):
+        from zhaoxi.cognitive.fast_gate import is_reply_emoji_request
         # Validate intent from current text only. An explicit question can require
         # a read or recall; a nickname or quoted/negated action cannot authorize it.
         text = re.sub(r'“[^”]*”|"[^"]*"|「[^」]*」|`[^`]*`', "", text).strip()

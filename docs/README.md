@@ -9,6 +9,7 @@
 - [当前架构](current/ARCHITECTURE.md)
 - [测试指南](guides/testing.md)
 - [2026-10-04 架构与测试维护记录](maintenance/2026-10-04-architecture-and-tests.md)
+- [2026-10-06 运行修复与调试维护总览](maintenance/2026-10-06-runtime-repair-summary.md)
 - [未来开发计划](<roadmap/Zhaoxi 未来开发计划.md>)
 - [常驻与自启动](guides/presence-autostart.md)
 

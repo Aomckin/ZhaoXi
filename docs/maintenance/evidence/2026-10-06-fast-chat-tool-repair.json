@@ -1,0 +1,129 @@
+{
+  "date": "2026-10-06",
+  "base_commit": "9ca034230adb2096cfd41f9fb161b0fc12948add",
+  "scope": "FAST standard budget, truthful outcome, scoped unexecuted task retry and shared UI status",
+  "root_fix_implemented": true,
+  "production_restarted": false,
+  "production_settings_changed": false,
+  "real_model_calls": 0,
+  "real_external_sends": false,
+  "debug_switches_default": false,
+  "retry_policy": {
+    "ttl_seconds": 300,
+    "single_next_turn": true,
+    "storage": "one in-memory record per Agent",
+    "scope": [
+      "Owner",
+      "source",
+      "channel",
+      "session",
+      "conversation",
+      "reply_target"
+    ],
+    "requires_original_tool_requirement": true,
+    "requires_no_business_attempts": true,
+    "supports_retry_of_already_attempted_read_failures": false,
+    "replays_saved_arguments": false,
+    "bypasses_write_confirmation": false
+  },
+  "validation": {
+    "targeted_final": {
+      "passed": 279,
+      "failed": 0,
+      "seconds": 21.92
+    },
+    "full_core_before_last_test_expectation_reload": {
+      "passed": 1343,
+      "failed": 1,
+      "skipped": 1,
+      "seconds": 246.69,
+      "failure": "tests/tools/test_discovery.py::test_discovery_alone_does_not_count_as_business_lookup expected the old unchecked draft"
+    },
+    "last_failed_recheck": {
+      "passed": 1,
+      "failed": 0,
+      "note": "After updating the old discovery reply expectation; the added public-scope case was verified in the 279-case targeted run."
+    },
+    "frontend_node": {
+      "passed": 96,
+      "failed": 0
+    },
+    "edge_both_surfaces": {
+      "checks": [
+        "desktop_shortcuts_visible",
+        "dashboard_settings_debug_visible",
+        "dashboard_runtime_debug_visible",
+        "bidirectional_sse_settings",
+        "both_new_switches_visible_and_live",
+        "fast_mode_mutual_exclusion",
+        "new_switches_restored_after_reload",
+        "normal_regenerate_shown_and_hidden",
+        "reload_restores_settings",
+        "partial_update_preserves_timings",
+        "poke_both_surfaces",
+        "poke_busy_guard",
+        "failed_task_retained_on_both_surfaces",
+        "partial_task_retained_on_both_surfaces",
+        "no_page_errors"
+      ],
+      "mock_proactive_requests": 2,
+      "real_model_calls": 0,
+      "real_social_send": false,
+      "errors": []
+    },
+    "python_syntax": {
+      "files": 432,
+      "passed": true
+    },
+    "git_diff_check": true
+  },
+  "earlier_attempts": [
+    {
+      "scope": "First targeted regression run",
+      "passed": 163,
+      "failed": 14,
+      "resolution": "Updated expected FAST limits and schema retention; fixed confirmation request IDs and event sink assertions; preserved completed writes when only reply generation exhausts budget."
+    },
+    {
+      "scope": "Targeted routing, permission, trace and scope recheck",
+      "passed": 189,
+      "failed": 0
+    },
+    {
+      "scope": "Expanded cognitive and integration recheck",
+      "passed": 244,
+      "failed": 0
+    },
+    {
+      "scope": "First full Core run",
+      "passed": 1339,
+      "failed": 3,
+      "skipped": 1,
+      "resolution": "Updated repeated unchecked promise, partial agenda task and control-only discovery expectations."
+    },
+    {
+      "scope": "Independent FAST runtime import",
+      "issue": "circular import via cognitive package",
+      "resolution": "Defer the FAST Gate emoji helper import until validation."
+    }
+  ],
+  "commands": [
+    ".venv/Scripts/python.exe scripts/test.py --suite core",
+    ".venv/Scripts/python.exe -m pytest tests/core/test_loop_safety.py tests/core/test_tool_retry.py tests/cognitive tests/perception/test_v131.py tests/observability tests/interfaces tests/integration/test_agent.py tests/tools/test_discovery.py tests/web/test_quick_debug.py",
+    ".venv/Scripts/python.exe -m pytest tests --lf --last-failed-no-failures none",
+    ".venv/Scripts/python.exe scripts/test.py --suite web",
+    "node tests/web/quick_debug_smoke.cjs (isolated temp fixture; environment supplies base URL and Playwright)"
+  ],
+  "source_sha256": {
+    "src/zhaoxi/core/agent.py": "0218a4dadaae573f9485876877844dbfb050d7b8ac33d27080a45223d5c0c01e",
+    "src/zhaoxi/core/loop_safety.py": "cff6bb4c4129f78563ceebbab0964ca8af146a3c5c422f8c30bd9bf80f425b43",
+    "src/zhaoxi/core/tool_retry.py": "22f8c2b457dd8feefdc855c9d5d76be1864a9f81f5f622392f743bfbdaca7da0",
+    "src/zhaoxi/core/runtime.py": "218615fd6be6790b037a1f92c2d0fb8b959369fbc8ba4ed64bc9de60dc79de5b",
+    "src/zhaoxi/core/fast_chat.py": "2af68fb5c029d9661c1fc277ddd073519f5d8e73c841da95aec7b1ba73e36d57",
+    "src/zhaoxi/cognitive/coordinator.py": "4f012c25533552820b289e106d50cdebcdb57de925551527d293d6799de12ba5",
+    "src/zhaoxi/interfaces/gateway.py": "8b3a5487f010d107a224cc4a21f8161bddcede111efac07192600c99bec5aff5",
+    "src/zhaoxi/perception/runtime.py": "9694060958bb23243f0c9d411726b464fb0fc4540cb7023ca11740a60e3c651e",
+    "src/zhaoxi/observability.py": "c8f66c1926c8b3c26a1202dbda48de3a855319aa05a31a19d63d1ff70a7b57dd",
+    "src/zhaoxi/web/static/shell.js": "4ab2bf18bc61d8f98014523a0776b482af4d1759fcf61cd9e3f0fb5af7f2f2d0"
+  }
+}

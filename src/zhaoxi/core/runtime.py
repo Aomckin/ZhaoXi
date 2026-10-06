@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Generic, TypeVar, overload
 
 if TYPE_CHECKING:
+    from zhaoxi.core.tool_retry import ToolRetryContext
     from zhaoxi.config.settings import Settings
     from zhaoxi.memory.service import MemoryService
     from zhaoxi.archive.service import ArchiveService
@@ -32,6 +33,8 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class AgentRuntime:
+    allow_multi_model_calls: bool = False
+    tool_retry_context: ToolRetryContext | None = None
     settings: Settings | None = None
     memory_service: MemoryService | None = None
     archive: ArchiveService | None = None

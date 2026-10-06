@@ -57,3 +57,21 @@ def context_builder() -> ContextBuilder:
 @pytest.fixture
 def conversation() -> Conversation:
     return Conversation()
+
+
+@pytest.fixture(scope="session")
+def five_large_photos():
+    """Five distinct synthetic 2-3 MB photos; no user files or external service."""
+    import base64
+    import random
+    from io import BytesIO
+    from PIL import Image, ImageDraw
+    source = Image.frombytes("RGB", (2000, 1600), random.Random(42).randbytes(2000 * 1600 * 3))
+    photos = []
+    for index in range(5):
+        frame = source.copy()
+        ImageDraw.Draw(frame).rectangle((0, 0, 100, 100), fill=(30 + index * 40, 80, 100))
+        output = BytesIO()
+        frame.save(output, format="JPEG", quality=90)
+        photos.append("data:image/jpeg;base64," + base64.b64encode(output.getvalue()).decode("ascii"))
+    return tuple(photos)

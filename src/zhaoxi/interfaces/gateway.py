@@ -12,6 +12,7 @@ from time import monotonic
 from typing import Any
 
 from zhaoxi.core.agent import ZhaoxiAgent
+from zhaoxi.core.tool_retry import local_retry_scope
 from zhaoxi.cognitive_stream.models import CognitiveEventType
 from zhaoxi.core.message import Message, Role, is_user_visible_message, is_cognition_message
 from zhaoxi.core.reply.renderer import catalog_emoji_prefix
@@ -115,7 +116,7 @@ class InterfaceGateway:
                 max_calls = getattr(provider, "max_calls", 12)
                 max_total_tokens = getattr(provider, "max_total_tokens", 100_000)
                 bootstrap_ms = 0
-                with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens, policy=getattr(provider, "budget_policy", None)) as budget, action_trace_scope(self.event_sink) as trace:
+                with correlation_scope(context), local_retry_scope(message.channel.value, message.session_id), provider_budget_scope(max_calls, max_total_tokens, policy=getattr(provider, "budget_policy", None)) as budget, action_trace_scope(self.event_sink) as trace:
                     self._configure_trace(trace)
                     trace.started_monotonic = received_monotonic
                     trace.started_at = message.created_at.isoformat()
@@ -143,7 +144,8 @@ class InterfaceGateway:
                     trace.emit("task_" + trace.task_status, "task", trace.task_outcome,
                                "等待操作确认" if trace.task_status == "waiting_for_permission" else
                                "已完成的操作均已保留" if trace.response_status == "failed" and trace.task_status == "completed" else
-                               "本次操作已完成" if trace.task_status == "completed" else "本次操作部分完成")
+                               "本次操作已完成" if trace.task_status == "completed" else
+                               "本次任务未完成" if trace.task_status == "failed" else "本次操作部分完成")
                 beat = getattr(getattr(state, "interaction", None), "beat_loop", None)
                 if beat:
                     beat.note_assistant(datetime.now(UTC))
@@ -303,7 +305,8 @@ class InterfaceGateway:
                     trace.emit("task_" + trace.task_status, "task", trace.task_outcome,
                                "等待操作确认" if trace.task_status == "waiting_for_permission" else
                                "已完成的操作均已保留" if trace.response_status == "failed" and trace.task_status == "completed" else
-                               "本次操作已完成" if trace.task_status == "completed" else "本次操作部分完成")
+                               "本次操作已完成" if trace.task_status == "completed" else
+                               "本次任务未完成" if trace.task_status == "failed" else "本次操作部分完成")
                 if not resume_in_place:
                     self._restore_user_metadata(source_user, previous_messages)
                 result = self._result(

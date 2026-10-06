@@ -488,7 +488,10 @@ def test_interface_settings_persist_across_app_rebuilds(tmp_path):
             "external_reply_interval_seconds": 0.5,
             "long_wait_enabled": True,
             "force_fast_chat": True,
+            "force_non_fast_chat": False,
+            "allow_multi_model_calls": False,
             "show_normal_regenerate": False,
+            "request_budget": None,
         }
 
 
@@ -808,3 +811,32 @@ def test_social_trace_api_expands_raw_and_validates_parameters(tmp_path):
         bad=client.get("/api/debug/cognitive-stream/social-trace",params={"reference":summary.event_id,"limit":999},headers=headers)
         assert bad.status_code==422
         assert client.get("/api/debug/cognitive-stream/social-trace",params={"reference":summary.event_id}).status_code==401
+
+
+def test_initialization_failure_is_visible_even_when_model_is_configured(monkeypatch, caplog):
+    from zhaoxi.errors import ConfigError
+    reason = "数据健康检查失败：internal_activity。请从已验证备份恢复。"
+    def fail(settings):
+        raise ConfigError(reason)
+    monkeypatch.setattr("zhaoxi.web.app.build_agent", fail)
+    monkeypatch.setattr("zhaoxi.web.app.startup_diagnostics", lambda settings: {
+        "status": "ready", "checks": {"model": {"ok": True}},
+    })
+    with TestClient(create_app(settings=Settings())) as client:
+        health = client.get("/api/health").json()
+        startup = client.get("/api/diagnostics").json()["startup"]
+        core = client.get("/api/dashboard/overview").json()["core"]
+        reply = client.post("/api/chat", json={"message": "你好"}).json()
+    assert health["status"] == "ok" and health["core_ready"] is False
+    assert startup["status"] == "blocked"
+    assert startup["checks"]["runtime"]["message"] == reason
+    assert core["healthy"] is False and core["startup_error"] == reason
+    assert reply["content"] == "Core 启动失败：" + reason
+    assert reason in caplog.text
+
+
+def test_health_distinguishes_ready_core_from_live_server():
+    agent = FakeAgent()
+    agent.provider = object()
+    with TestClient(create_app(agent=agent)) as client:
+        assert client.get("/api/health").json()["core_ready"] is True

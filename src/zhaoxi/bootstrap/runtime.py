@@ -1,6 +1,7 @@
 """ZhaoXi runtime composition."""
 
 from pathlib import Path
+import sqlite3
 from zhaoxi.config.settings import Settings
 from zhaoxi.cognitive_stream import ExperienceStream, CognitiveIngress, AttentionRetriever, SessionProjector
 from zhaoxi.cognitive.coordinator import CognitiveCoordinator
@@ -160,12 +161,6 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         retention_count=settings.backup_retention_count,
     )
     runtime.memory_service = memory_service
-    unhealthy = [
-        name for name, status in agent.backup_manager.health().items()
-        if status["exists"] and not status["healthy"]
-    ]
-    if unhealthy:
-        raise ConfigError(f"数据健康检查失败：{', '.join(unhealthy)}。请从已验证备份恢复。")
     # Ad-hoc Agent waits cannot safely reconstruct the exact provider tool-call
     # transcript after a crash. Fail them closed; Planner and Workflow waits
     # retain their own recoverable state.
@@ -206,7 +201,20 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
                 ),
             ) if settings.auto_memory_enabled else None),
         )
-    runtime.internal_activity = InternalActivityRuntime(agent, settings, settings.internal_activity_db_path)
+    try:
+        runtime.internal_activity = InternalActivityRuntime(agent, settings, settings.internal_activity_db_path)
+    except sqlite3.Error as exc:
+        raise ConfigError(
+            f"内部活动数据初始化失败（{type(exc).__name__}）。请检查数据库权限、锁定与完整性。"
+        ) from exc
+    # Open every active store before read-only health checks. SQLite must be
+    # allowed to recover a hot rollback journal after an interrupted shutdown.
+    unhealthy = [
+        name for name, status in agent.backup_manager.health().items()
+        if status["exists"] and not status["healthy"]
+    ]
+    if unhealthy:
+        raise ConfigError(f"数据健康检查失败：{', '.join(unhealthy)}。请从已验证备份恢复。")
     if getattr(agent, "decision_follow_up", None):
         agent.decision_follow_up.runtime = agent.internal_activity
     if getattr(agent, "proactive_worker", None) is not None:

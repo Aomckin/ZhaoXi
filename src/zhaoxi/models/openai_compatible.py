@@ -20,6 +20,41 @@ from zhaoxi.models.types import ModelResponse, ToolCall
 logger = logging.getLogger("MODEL")
 
 
+def _ordered_tool_messages(messages: Sequence[Message]) -> list[Message]:
+    """Keep native result batches contiguous; defer only recalled social image observations.
+
+    Old live turns can contain image observations between completed tool results.
+    Preserve their data and provenance without moving actual user input or
+    inventing missing results. Caller-owned conversation history stays unchanged.
+    """
+    ordered: list[Message] = []
+    index = 0
+    while index < len(messages):
+        head = messages[index]
+        pending = {call.id for call in head.tool_calls}
+        if pending and head.metadata.get("tool_call_transport") != "text":
+            results, images = [], []
+            end = index + 1
+            while pending and end < len(messages):
+                item = messages[end]
+                if item.role.value == "tool" and item.tool_call_id in pending:
+                    results.append(item)
+                    pending.remove(item.tool_call_id)
+                elif (item.message_id.startswith("social-image:")
+                      and item.metadata.get("image_timeline_scope") == "attention"):
+                    images.append(item)
+                else:
+                    break
+                end += 1
+            if not pending:
+                ordered.extend([head, *results, *images])
+                index = end
+                continue
+        ordered.append(head)
+        index += 1
+    return ordered
+
+
 def _provider_messages(messages: Sequence[Message]) -> list[dict[str, Any]]:
     """Replay normalized text-protocol calls without inventing native transcripts."""
     outgoing: list[dict[str, Any]] = []
@@ -94,6 +129,7 @@ class OpenAICompatibleProvider(ModelProvider):
         tools: list[dict[str, Any]] | None = None,
         **kwargs: Any,
     ) -> ModelResponse:
+        messages = _ordered_tool_messages(messages)
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": _provider_messages(messages),

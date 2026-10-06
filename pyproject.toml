@@ -44,7 +44,7 @@ where = ["src"]
 zhaoxi = ["personality/*.yaml", "web/static/*.html", "web/static/*.png", "web/static/*.ico", "web/static/*.css", "web/static/*.js", "web/static/*.webp", "web/static/*.svg"]
 
 [tool.pytest.ini_options]
-addopts = "-q --basetemp=.pytest-tmp"
+addopts = "-q --basetemp=.pytest_cache/tmp"
 cache_dir = ".pytest_cache"
 testpaths = ["tests"]
 markers = ["asyncio: run an asynchronous test with the standard-library event loop"]

@@ -47,23 +47,35 @@ class CognitiveCoordinator:
         self.fast_gate = fast_gate
         self.fast_chat = fast_chat or (FastChatRuntime(agent) if fast_gate is not None else None)
         self.force_fast_chat = False
+        self.force_non_fast_chat = False
 
     async def run(self, user_message: str, *, images: list[str] | None = None) -> CognitiveResponse:
         # The text-only router cannot interpret attachments. Use the existing
         # tool-capable loop so the main model sees the image and retains tools.
         trace = current_trace()
+        retry = getattr(self.agent, "tool_retry_context", None)
+        self.agent.tool_retry_context = None  # Unrelated turns invalidate the one-turn retry.
+        force_non_fast_chat = self.force_non_fast_chat
+        if trace and force_non_fast_chat:
+            trace.emit("debug_standard_runtime", "routing", "info", "本轮强制使用标准通道")
         decision_service = (getattr(self.agent, "decision_service", None)
                             if getattr(self.agent, "decision_mode", "legacy") == "legacy" else None)
         if decision_service is not None and not images and decision_service.is_override(user_message):
             decision_service.accept_override(user_message)
             reply = await self.agent.run_decision_override_reply(user_message)
             return CognitiveResponse(content=reply.content, route=CognitiveRoute.DIRECT)
-        decision = None
+        retry = retry if retry and not images and not self.agent._pending_permissions and retry.matches(user_message) else None
+        decision = RouteDecision(route=CognitiveRoute.TOOL, requires_tool_call=True,
+                                 reason="scoped_tool_retry") if retry else None
+        if trace and retry:
+            trace.route_source = "scoped_tool_retry"
+            trace.emit("tool_retry_resumed", "routing", "info", "正在重试未执行的任务",
+                       metadata={"previous_request_id": retry.request_id})
         result = None
         gate = None
         fast_escalation_kind = None
         recent_context = ""
-        if self.fast_gate is not None and self.fast_chat is not None:
+        if decision is None and not force_non_fast_chat and self.fast_gate is not None and self.fast_chat is not None:
             recent_context = self._recent_routing_context(
                 limit=self.fast_chat.recent_limit, max_chars=self.fast_chat.max_chars)
             pending_permission = bool(self.agent._pending_permissions)
@@ -117,9 +129,10 @@ class CognitiveCoordinator:
                     decision = await self.router.route(user_message,
                         recent_context=recent_context or self._recent_routing_context(user_message))
                     hard_condition = bool(images or self.agent._pending_permissions)
-                    if decision.route is CognitiveRoute.FAST_CHAT and (self.fast_chat is None or hard_condition):
+                    if decision.route is CognitiveRoute.FAST_CHAT and (force_non_fast_chat or self.fast_chat is None or hard_condition):
                         decision = decision.model_copy(update={"route": CognitiveRoute.DIRECT,
-                            "reason": "hard condition requires standard runtime" if hard_condition else decision.reason})
+                            "reason": "debug_force_non_fast_chat" if force_non_fast_chat else
+                            "hard condition requires standard runtime" if hard_condition else decision.reason})
                     if trace:
                         trace.router_final_lane = decision.route.value
                         trace.router_override = decision.route is CognitiveRoute.FAST_CHAT
@@ -150,7 +163,7 @@ class CognitiveCoordinator:
             trace.route = decision.route.value
             if trace.runtime_lane is None:
                 trace.runtime_lane = ("deep" if decision.route in {CognitiveRoute.PLAN, CognitiveRoute.WORKFLOW} else "standard")
-        if decision_service is not None and not images and decision.route is not CognitiveRoute.FAST_CHAT:
+        if decision_service is not None and not retry and not images and decision.route is not CognitiveRoute.FAST_CHAT:
             planner_requested = (decision.route == CognitiveRoute.PLAN and
                                  any(marker in user_message for marker in ("还是", "或者", "选", "方向")))
             if trace:
@@ -236,6 +249,7 @@ class CognitiveCoordinator:
             result = await self.agent.run(
                 user_message, require_tool_call=decision.requires_tool_call,
                 required_tool=decision.required_tool,
+                **({"retry_intent": retry.intent} if retry else {}),
                 **({"fast_escalated":True} if fast_escalation_kind is not None else {}),
                 **({"images": images} if images else {}),
                 **({"no_tools": True} if images and user_message.strip() == "请查看这些图片。" else {}),

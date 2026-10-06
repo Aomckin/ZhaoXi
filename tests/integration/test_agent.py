@@ -328,7 +328,8 @@ async def test_agenda_lookup_update_and_verify_continue_after_success(
             assert [action.tool_name for action in trace.actions] == ["agenda_list"]
         else:
             assert agenda.require(item.id).note == "唐超科是候选人"
-            assert trace.task_status == "completed"
+            assert trace.task_status == "partial"
+            assert all(action.status == "completed" for action in trace.actions)
             assert "已完成" in response.content and "已完成的操作会保留" in response.content
             assert response.result_status=="partial_success"
             assert len(provider.calls)==3 and provider.tool_schemas[-1] is None
@@ -388,3 +389,39 @@ async def test_model_discovery_lists_reads_and_answers_within_bounded_rounds(con
     assert "verified file body" in provider.calls[3][-1].content
     assert result.content == "已阅读正文：Decision 2.0。"
     assert result.result_status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_repeated_reply_only_failure_does_not_accumulate_notices(registry, context_builder, conversation):
+    from zhaoxi.core.agent import PROVIDER_DEGRADED_NOTICE
+    from zhaoxi.core.message import Message, Role
+    from zhaoxi.interfaces.gateway import InterfaceGateway
+    calls = [ToolCall(id="one", name="calculator", arguments={"expression": "1+1"}),
+             ToolCall(id="two", name="calculator", arguments={"expression": "2+2"})]
+    conversation.add_user("看一下两个结果")
+    conversation.add_assistant(None, tool_calls=calls)
+    for call in calls:
+        conversation.add_tool('{"success":true}', tool_call_id=call.id, name=call.name)
+        conversation.add(Message(role=Role.USER, message_id="social-image:" + call.id,
+                                 content="历史图片", metadata={"image_timeline_scope": "attention"}))
+    target = conversation.add_assistant("已完成：calculator ×2\n\n" + (PROVIDER_DEGRADED_NOTICE + "\n") * 3,
+                                        visibility="notice", tool_turn=True)
+    requests = []
+    async def fail(messages, tools=None, **kwargs):
+        requests.append(messages)
+        assert not tools  # Reply-only recovery must never repeat business operations.
+        raise ProviderError("invalid request", code="provider_http_400", retryable=False)
+    provider = FakeProvider([])
+    provider.generate = fail
+    from zhaoxi.tools.discovery import ToolDiscoveryState
+    agent = make_agent(provider, registry, context_builder, conversation)
+    agent._tool_discovery_state = ToolDiscoveryState(agent._tool_context("计算两个结果"))
+    agent._tool_discovery_state.business_tool_called = True
+    gateway = InterfaceGateway(agent)
+    for index in range(3):
+        result = await gateway.regenerate(target.message_id, request_id=f"failure-retry-{index}")
+        assert result.content.count(PROVIDER_DEGRADED_NOTICE) == 1
+        assert "calculator ×2" in result.content
+        target = next(m for m in conversation.messages if m.message_id == result.message_id)
+    assert len(requests) == 3
+    assert len([m for m in conversation.messages if m.role is Role.TOOL]) == 2

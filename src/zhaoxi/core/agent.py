@@ -34,6 +34,7 @@ from zhaoxi.tools.router import ToolContext, safe_resolve_tool_context
 from zhaoxi.tools.manifest import is_action_request, resolve_capability
 
 if TYPE_CHECKING:
+    from zhaoxi.core.tool_retry import ToolRetryContext
     from zhaoxi.config.settings import Settings
     from zhaoxi.memory.service import MemoryService
     from zhaoxi.archive.service import ArchiveService
@@ -107,6 +108,8 @@ class PendingAgentInvocation:
 class ZhaoxiAgent:
     """Run model/tool iterations without knowing any concrete provider or tool."""
 
+    allow_multi_model_calls = RuntimeService[bool]("allow_multi_model_calls")
+    tool_retry_context = RuntimeService["ToolRetryContext | None"]("tool_retry_context")
     settings = RuntimeService["Settings | None"]("settings")
     memory_service = RuntimeService["MemoryService | None"]("memory_service")
     archive = RuntimeService["ArchiveService | None"]("archive")
@@ -527,6 +530,7 @@ class ZhaoxiAgent:
         images: list[str] | None = None,
         no_tools: bool = False,
         fast_escalated: bool = False,
+        retry_intent: str = "",
     ) -> AgentResponse:
         """Accept one user turn and return a final natural-language response."""
         if not user_message.strip():
@@ -546,7 +550,7 @@ class ZhaoxiAgent:
             if trace:
                 trace.emit("memory_search_started", "memory_search", "running", "正在检索相关记忆…")
             try:
-                memories = await self.context_builder.memory_retriever.retrieve(clean_message)
+                memories = await self.context_builder.memory_retriever.retrieve(retry_intent or clean_message)
                 if trace:
                     trace.record_memory_candidates(memories)
                     trace.emit("memory_search_finished", "memory_search", "success", "已检索相关记忆", metadata={"hit_count": len(memories)})
@@ -564,7 +568,8 @@ class ZhaoxiAgent:
                 self._run_loop(
                     request_id,
                     memories,
-                    clean_message,
+                    retry_intent or clean_message,
+                    retry_intent=retry_intent,
                     require_tool_call=require_tool_call,
                     required_tool=required_tool,
                     turn_images=tuple(images or ()),
@@ -806,9 +811,12 @@ class ZhaoxiAgent:
             body = "工具操作已经完成，但模型没能整理成自然语言回复。"
         else:
             body = draft
+        # Reply-only retries may use the prior recovery notice as their draft.
+        # Keep its status text while adding this notice exactly once.
+        body = body.replace(notice, "").rstrip()
         if not body:
             return None
-        return f"{body.rstrip()}\n\n{notice}"
+        return f"{body}\n\n{notice}"
 
     def _return_degraded(self, request_id: str, step: int, notice: str) -> AgentResponse | None:
         trace = current_trace()
@@ -888,12 +896,16 @@ class ZhaoxiAgent:
         if discovery.safety is None:
             settings = getattr(self, "settings", None)
             trace = current_trace()
-            escalated = fast_escalated or bool(trace and trace.fast_escalation_count)
+            multi_model_calls = getattr(self, "allow_multi_model_calls", False)
+            model_limit = self.max_steps if multi_model_calls else getattr(settings, "standard_model_round_limit", 3)
+            if trace and multi_model_calls:
+                trace.emit("debug_model_round_limit", "runtime", "info", "已启用多轮模型调试",
+                           metadata={"model_limit": min(self.max_steps, model_limit)})
             discovery.safety = LoopSafety(
-                model_limit=min(self.max_steps, 2 if escalated else getattr(settings, "standard_model_round_limit", 3)),
-                tool_limit=1 if escalated else getattr(settings, "standard_tool_round_limit", 2),
+                model_limit=min(self.max_steps, model_limit),
+                tool_limit=getattr(settings, "standard_tool_round_limit", 2),
                 repair_limit=getattr(settings, "standard_repair_round_limit", 1),
-                discovery_limit=0 if escalated else 1)
+                discovery_limit=1)
         return discovery.safety
 
     @staticmethod
@@ -941,6 +953,7 @@ class ZhaoxiAgent:
         output_channel: str = "desktop",
         audience: str = "owner",
         expression_policy: str = "",
+        retry_intent: str = "",
     ) -> AgentResponse:
         if getattr(self, "decision_mode", "legacy") == "agency" and audience == "owner":
             allowed_read_tools = allowed_read_tools | {"read_decision_context", "search_memories"}
@@ -963,6 +976,7 @@ class ZhaoxiAgent:
             item.message_id for item in reversed(self.conversation.messages) if item.role == Role.USER
         ), None)
         self._tool_discovery_state = discovery
+        explicit_tool_requirement = require_tool_call
         capability_retry = False
         resolution_message = ""
         tool_called = discovery.business_tool_called
@@ -988,7 +1002,7 @@ class ZhaoxiAgent:
                 trace.emit("model_step_started", "model", "running", "正在思考下一步…", step_id=step)
             try:
                 budget_stage, final_only = self._budget_mode(tool_called, trace, step)
-                final_only = final_only or bool(safety.forced_reason) or safety.model_limit_reached or safety.tool_round >= safety.tool_limit
+                final_only = final_only or bool(safety.forced_reason) or safety.model_limit_reached or step == self.max_steps or safety.tool_round >= safety.tool_limit
                 if final_only and not safety.forced_reason:
                     safety.force("budget_danger" if budget and budget.state is BudgetState.DANGER else "round_limit")
                 if final_only:
@@ -1071,6 +1085,12 @@ class ZhaoxiAgent:
                 messages[0].metadata.setdefault("prompt_components", []).append(
                     {"name": "runtime.capability_catalog", "chars": len(catalog)}
                 )
+                if retry_intent:
+                    messages[0].content += (
+                        "\n当前 Owner 明确重试同一会话中尚未执行的任务，原始请求为："
+                        + json.dumps(retry_intent, ensure_ascii=False)
+                        + "\n只能处理原请求范围；这不是工具参数或新增权限，写入仍须通过权限检查。"
+                    )
                 if lookup_commitment and not tool_called and not final_only:
                     messages[0].content = (messages[0].content or "") + (
                         "\n上一草稿提出了查询意图（仅作为待核实意图，不是授权或已执行事实）："
@@ -1226,7 +1246,7 @@ class ZhaoxiAgent:
                         "request=%s required tool call missing after retry; returning response with notice",
                         request_id,
                     )
-                    content = f"{content.rstrip()}\n\n{TOOL_QUERY_NOT_COMPLETED_NOTICE}"
+                    content = "本次任务尚未执行所需工具，未完成任何工具操作。\n\n" + TOOL_QUERY_NOT_COMPLETED_NOTICE
                 if trace and not response_started:
                     trace.emit("response_generation_started", "response_generation", "running", "正在整理回复…", step_id=step)
                 try:
@@ -1252,7 +1272,15 @@ class ZhaoxiAgent:
                     trace.response_status = "succeeded"
                 logger.info("request=%s final response step=%d", request_id, step)
                 self._sync_safety(safety)
-                result_status = "partial_success" if any(r.success for _, r in safety.outcomes) and any(not r.success and not r.metadata.get("resolved_by_retry") for _, r in safety.outcomes) else "failed" if safety.outcomes and not any(r.success for _, r in safety.outcomes) else "completed"
+                result_status = safety.result_status(require_tool_call=require_tool_call, tool_called=tool_called)
+                if require_tool_call and not tool_called:
+                    from zhaoxi.core.tool_retry import ToolRetryContext
+                    self.tool_retry_context = (ToolRetryContext.capture(request_id, user_intent)
+                                               if explicit_tool_requirement and not no_tools and not safety.outcomes else None)
+                    if trace:
+                        trace.emit("required_tool_not_executed", "runtime", "failed", "本轮未执行所需工具",
+                                   error_code="required_tool_not_executed",
+                                   metadata={"reason": safety.forced_reason or "required_tool_missing"})
                 if trace:
                     trace.result_status = result_status
                 return AgentResponse(

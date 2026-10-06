@@ -23,6 +23,14 @@ def _protected(path):
     return any(resolved.is_relative_to(root) for root in PROTECTED)
 
 
+def pytest_configure(config):
+    # tmp_path is created before pytest writes its cache at session end.
+    # Ensure the shared parent exists after a full cache cleanup.
+    cache = Path(config.getini("cache_dir")).resolve()
+    if config.option.basetemp and Path(config.option.basetemp).resolve().is_relative_to(cache):
+        cache.mkdir(parents=True, exist_ok=True)
+
+
 @pytest.fixture(autouse=True)
 def isolated_runtime(tmp_path, monkeypatch):
     """Redirect default state, ignore local credentials, and reject production writes."""

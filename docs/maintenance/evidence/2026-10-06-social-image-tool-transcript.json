@@ -1,0 +1,56 @@
+{
+  "date": "2026-10-06",
+  "status": "source_fixed_live_verification_pending",
+  "model": "deepseek/deepseek-v4-flash",
+  "failures": [
+    {
+      "time": "10:54:24",
+      "request_id": "d889c023-6754-410f-880e-d912636928f0",
+      "successful_social_reads": 2,
+      "image_count": 5
+    },
+    {
+      "time": "10:56:05",
+      "request_id": "afcb747c-d799-48b7-a95d-42fd20d11c36",
+      "kind": "reply_regeneration",
+      "image_count": 6
+    },
+    {
+      "time": "10:56:26",
+      "request_id": "75ef4003-a489-4b89-8c22-1ace3fa5b6bb",
+      "kind": "reply_regeneration",
+      "image_count": 6
+    }
+  ],
+  "common_failure": {
+    "http_status": 400,
+    "provider_error_type": "invalid_request_error",
+    "retryable": false,
+    "announced_calls": 2,
+    "matched_results": 2,
+    "invalid_role_suffix": [
+      "assistant(tool_calls)",
+      "tool",
+      "user(social_image)",
+      "tool",
+      "user(social_image)"
+    ],
+    "upstream_error_message_not_logged": true
+  },
+  "validation": {
+    "pytest_passed": 101,
+    "diff_check": "passed",
+    "real_social_image_batch": "passed",
+    "three_legacy_history_requests": "passed",
+    "three_failed_reply_only_retries": "passed",
+    "genuine_user_input_preserved": "passed",
+    "missing_results_not_invented": "passed",
+    "cold_cache_initialization": "passed"
+  },
+  "boundaries": {
+    "live_model_calls": false,
+    "production_tool_replay": false,
+    "production_restarted": false,
+    "production_history_modified": false
+  }
+}

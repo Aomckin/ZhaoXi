@@ -130,6 +130,13 @@ class LoopSafety:
         return {"tool_failure_fingerprint": fingerprint, "tool_retry_count": retry,
                 "tool_locked": call.name in self.locked}
 
+    def result_status(self, *, require_tool_call=False, tool_called=False):
+        succeeded = any(result.success for _, result in self.outcomes)
+        failed = any(not result.success and not result.metadata.get("resolved_by_retry")
+                     for _, result in self.outcomes)
+        missing = require_tool_call and not tool_called
+        return "partial_success" if succeeded and (failed or missing) else "failed" if failed or missing else "completed"
+
     def metrics(self):
         return {"standard_model_round": self.model_round, "discovery_round": self.discovery_round, "standard_tool_round": self.tool_round,
                 "repair_round": self.repair_round, "forced_finalization_reason": self.forced_reason or None,

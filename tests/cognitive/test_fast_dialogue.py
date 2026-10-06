@@ -162,7 +162,7 @@ async def test_fast_action_commitment_escalates_only_once():
     assert response.route is CognitiveRoute.TOOL
     assert len(provider.calls) == 3
     assert provider.tool_schemas[0] is None
-    assert provider.tool_schemas[-1] is None
+    assert provider.tool_schemas[-1]  # STANDARD retains another tool-capable round.
 
 async def test_fast_trace_reports_v141_lane_counters():
     inner = FakeProvider([ModelResponse(content="在呢。")])
@@ -276,3 +276,25 @@ async def test_fast_visual_followup_replays_latest_historical_thumbnail_from_str
     with Image.open(BytesIO(base64.b64decode(pictured[0].images[0].partition(",")[2]))) as image:
         assert max(image.size) <= 512
     assert [part.url for part in stream.get(picture.event_id).parts] == [original]
+
+
+async def test_debug_non_fast_mode_overrides_gate_and_router_without_losing_tools():
+    from unittest.mock import AsyncMock
+    from zhaoxi.cognitive.router import RouteDecision
+    provider = FakeProvider([call("current_time"), ModelResponse(content="标准通道核验完成。")])
+    agent = make_agent(provider)
+    agent.cognitive = CognitiveCoordinator(agent=agent, router=CognitiveRouter(provider), fast_gate=FastDialogueGate())
+    agent.cognitive.force_fast_chat = True  # Defensive precedence even if set outside the API.
+    agent.cognitive.force_non_fast_chat = True
+    agent.cognitive.router.route = AsyncMock(return_value=RouteDecision(route=CognitiveRoute.FAST_CHAT))
+    agent.cognitive.fast_gate.decide = lambda *args, **kwargs: pytest.fail("FAST Gate must be bypassed")
+    agent.cognitive.fast_chat.run_fast_chat = AsyncMock(side_effect=AssertionError("FAST must be bypassed"))
+    with correlation_scope(CorrelationContext(trace_id="debug-standard", request_id="debug-standard")), action_trace_scope() as trace:
+        response = await agent.run_natural("帮我查询当前时间")
+    assert response.content == "标准通道核验完成。"
+    assert response.route is CognitiveRoute.TOOL
+    assert len(provider.calls) == 2
+    assert any(schema["function"]["name"] == "current_time" for schema in provider.tool_schemas[0])
+    assert trace.runtime_lane == "standard"
+    agent.cognitive.router.route.assert_awaited_once()
+    agent.cognitive.fast_chat.run_fast_chat.assert_not_awaited()

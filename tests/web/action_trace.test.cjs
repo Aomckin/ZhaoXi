@@ -220,3 +220,16 @@ test('existing completed runtime timeline is restored when the live cache is emp
   assert.equal(s.nodes['#actionTraceSummary'].textContent,'行动记录 · 已完成');
   assert.match(s.nodes['#actionRuntimeSummary'].textContent,/42.00 ms/);
 });
+
+
+for(const [status,title] of [['failed','行动记录 · 未完成'],['partial','行动记录 · 部分完成']]){
+ test(`task ${status} is retained when its explanation succeeds`,()=>{
+  const s=setup();s.context.beginActionTrace();
+  s.emit('task_'+status,'task',status==='failed'?'failed':'warning','如实说明任务结果',{
+   metadata:{task_status:status,response_status:'succeeded'},
+  });
+  s.emit('runtime_finished','runtime','success','运行已结束');
+  s.context.endActionTraceFallback('回复已交付');
+  assert.equal(s.nodes['#actionTraceSummary'].textContent,title);
+ });
+}

@@ -1,0 +1,168 @@
+{
+  "date": "2026-10-06",
+  "status": "source_fixed_live_verification_pending",
+  "reported_scenario": {
+    "current_images": 5,
+    "each_mb": "2-3",
+    "operation": "LifeHUD photo record"
+  },
+  "historical_log": ".zhaoxi/logs/zhaoxi.log.1",
+  "historical_requests": [
+    {
+      "request_id": "0a8048dc-b336-4773-98b4-ad951cb1c71c",
+      "date": "2026-10-04",
+      "input_time": "16:04:48.870",
+      "input_images": 5,
+      "model_images": 29,
+      "image_payload_chars": 15768003,
+      "first_llm_ms": 65859.24,
+      "second_llm_ms": 51802.06,
+      "total_ms": 120566.77,
+      "error_code": "agent_timeout",
+      "first_llm_http_status": 503,
+      "second_llm_kind": "retry_after_provider_failure",
+      "model_images_meaning": "image_url_parts_per_request_not_original_files_or_retry_total",
+      "historical_image_parts_inferred_from_context": 24
+    },
+    {
+      "request_id": "dc60c9ae-75bf-40b8-b94a-335e94e49212",
+      "date": "2026-10-04",
+      "input_time": "16:06:55.574",
+      "input_images": 5,
+      "model_images": 35,
+      "image_payload_chars": 15917949,
+      "first_llm_ms": 91968.13,
+      "second_llm_ms": 25288.71,
+      "observation": "second_call_cancelled_at_about_120s",
+      "first_llm_http_status": 503,
+      "second_llm_kind": "retry_after_provider_failure",
+      "model_images_meaning": "image_url_parts_per_request_not_original_files_or_retry_total",
+      "historical_image_parts_inferred_from_context": 30
+    },
+    {
+      "request_id": "482dac8d-f413-423f-907f-dbb446bbe341",
+      "date": "2026-10-05",
+      "input_time": "15:25:16",
+      "input_images": 2,
+      "model_images": 3,
+      "image_payload_chars": 650235,
+      "first_llm_ms": 94256.89,
+      "second_llm_ms": 24227.97,
+      "error_code": "agent_timeout"
+    }
+  ],
+  "model_input_limits": {
+    "current_max_edge_px": 1600,
+    "current_max_encoded_bytes": 524288,
+    "historical_max_images": null,
+    "historical_max_edge_px": 512,
+    "originals_for_tools_and_persistence": "unchanged",
+    "decode_failure": "existing_current_image_fallback_preserved",
+    "historical_count_limit_removed_at_user_request": true
+  },
+  "synthetic_measurement": {
+    "original_bytes": [
+      2860676,
+      2860616,
+      2860758,
+      2860736,
+      2860611
+    ],
+    "preview_bytes": [
+      365860,
+      365766,
+      365784,
+      365815,
+      365751
+    ],
+    "preview_dimensions": [
+      [
+        1024,
+        819
+      ],
+      [
+        1024,
+        819
+      ],
+      [
+        1024,
+        819
+      ],
+      [
+        1024,
+        819
+      ],
+      [
+        1024,
+        819
+      ]
+    ],
+    "original_payload_chars": 19071315,
+    "model_payload_chars": 2438755,
+    "first_build_ms": 830.82,
+    "cached_build_ms": 20.02,
+    "originals_unchanged": true
+  },
+  "validation": {
+    "pytest_passed": 161,
+    "new_regressions": 4,
+    "lifehud_mock_uploads": 5,
+    "lifehud_mock_record_writes": 1,
+    "no_upload_before_confirmation": true,
+    "original_image_order_and_bytes_preserved": true,
+    "repeated_round_uses_preview_cache": true,
+    "historical_omission_summary_tool_batch": "passed",
+    "all_30_historical_images_retained_as_thumbnails": true,
+    "pytest_passed_after_limit_removal": 161
+  },
+  "boundaries": {
+    "live_model_calls": false,
+    "production_tool_replay": false,
+    "production_restarted": false,
+    "timeout_settings_changed": false
+  },
+  "causality_limit": "Large input observed; upstream 503 then retry timeout observed; image size causing 503 is not established.",
+  "request_body_measurement": {
+    "kind": "offline_http_mock_request_body_measurement",
+    "history_sample_count": 1,
+    "history_samples_repeated_for_sizing_only": true,
+    "historical_sample_data_url_chars": 60247,
+    "current_input": "five deterministic synthetic JPEGs about 2.86 MB each",
+    "text_and_tools": "ContextBuilder runtime rules, minimal personality, short synthetic conversation text, LifeHUD schema",
+    "production_exact_payload": false,
+    "live_model_calls": false,
+    "scenarios": [
+      {
+        "historical_images": 0,
+        "total_images": 5,
+        "historical_image_chars": 0,
+        "current_image_chars": 2438755,
+        "request_body_utf8_bytes": 2466940,
+        "non_image_json_bytes": 28185,
+        "request_body_mb_decimal": 2.467,
+        "request_body_mib": 2.353
+      },
+      {
+        "historical_images": 24,
+        "total_images": 29,
+        "historical_image_chars": 1444776,
+        "current_image_chars": 2438755,
+        "request_body_utf8_bytes": 3923290,
+        "non_image_json_bytes": 39759,
+        "request_body_mb_decimal": 3.923,
+        "request_body_mib": 3.742
+      },
+      {
+        "historical_images": 30,
+        "total_images": 35,
+        "historical_image_chars": 1805970,
+        "current_image_chars": 2438755,
+        "request_body_utf8_bytes": 4287034,
+        "non_image_json_bytes": 42309,
+        "request_body_mb_decimal": 4.287,
+        "request_body_mib": 4.088
+      }
+    ],
+    "current_five_max_data_url_chars": 3495375
+  }
+}

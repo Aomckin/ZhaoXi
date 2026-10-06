@@ -1,0 +1,70 @@
+{
+  "date": "2026-10-06",
+  "status": "source_fixed_live_restart_pending",
+  "launcher": {
+    "target": ".venv/Scripts/pythonw.exe",
+    "entry": "main.py --desktop",
+    "working_directory": "project_root"
+  },
+  "processes": {
+    "venv_launcher_pid": 6488,
+    "interpreter_pid": 29688,
+    "listener": "127.0.0.1:4913",
+    "listener_pid": 29688,
+    "server_started_local": "2026-10-06 09:57:02"
+  },
+  "live_readonly_api": {
+    "dashboard_http": 200,
+    "core_healthy": false,
+    "activity_available": false,
+    "startup_status": "ready",
+    "model_configured": true,
+    "storage_entries": 0
+  },
+  "sqlite": {
+    "mode": "ro",
+    "healthy_stores": 14,
+    "failure_store": "internal_activity",
+    "error": "OperationalError: attempt to write a readonly database",
+    "journal_bytes": 8720,
+    "recovered_copy_integrity": [
+      "ok"
+    ],
+    "recovered_copy_tables": [
+      "activity_state",
+      "activity_events",
+      "activity_history"
+    ],
+    "original_hashes_unchanged": true,
+    "original_sha256": {
+      "database": "3c8f278d860bde8aa745147770dcb671458123402d702f5794592ae061a55279",
+      "journal": "912c03127ce1a7f427657a9b47d72b43baf3a5512f20aff3712716a029e400e8"
+    },
+    "private_evidence_directory": ".zhaoxi/diagnostics/startup-check-20261006"
+  },
+  "validation": {
+    "pytest_passed": 57,
+    "pytest_final_composition_rerun_passed": 4,
+    "node_passed": 98,
+    "node_failed": 0,
+    "syntax_check": "passed",
+    "diff_check": "passed",
+    "regressions": [
+      "real_hot_journal_recovery_before_health",
+      "committed_data_preserved_after_recovery",
+      "corrupt_database_rejected_without_overwrite",
+      "desktop_logs_failure",
+      "configured_model_does_not_hide_runtime_failure",
+      "dashboard_displays_startup_error",
+      "health_distinguishes_server_and_core"
+    ]
+  },
+  "boundaries": {
+    "production_restarted": false,
+    "production_database_modified": false,
+    "production_journal_deleted": false,
+    "real_model_called": false,
+    "external_message_sent": false,
+    "journal_origin_known": false
+  }
+}

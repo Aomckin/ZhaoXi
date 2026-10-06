@@ -1,5 +1,5 @@
 
-const FRONTEND_BUILD_ID='v1.4.7-reply-groups-20261004',FRONTEND_LOADED_AT=new Date().toISOString();
+const FRONTEND_BUILD_ID='v1.4.7-startup-recovery-20261006',FRONTEND_LOADED_AT=new Date().toISOString();
 const shellInertNodes=new Map();
 const $=s=>{const found=document.querySelector(s);if(found)return found;
   if(!shellInertNodes.has(s)){const node=document.createElement('div');node.value='';node.checked=false;shellInertNodes.set(s,node)}
@@ -107,6 +107,10 @@ function renderAgentEvent(event,replay=false){
     const state=event.metadata||{};
     if(state.response_status==='failed'){
       $('#actionTraceSummary').textContent='行动记录 · 回复未完成';traceTerminated=true;
+    }else if(state.task_status==='failed'){
+      $('#actionTraceSummary').textContent='行动记录 · 未完成';traceTerminated=true;
+    }else if(state.task_status==='partial'){
+      $('#actionTraceSummary').textContent='行动记录 · 部分完成';traceTerminated=true;
     }else if(state.task_status==='waiting_for_permission'){
       $('#actionTraceSummary').textContent='行动记录 · 等待确认';traceTerminated=true;
     }
@@ -267,7 +271,7 @@ function renderInteractionBadge(presence){
   badge.hidden=false;badge.className=`interaction-badge ${view.className}`;badge.textContent=view.label;badge.title=view.title;badge.setAttribute('aria-label',`当前互动状态：${view.label}`);
 }
 let setupNoticeShown=false;
-async function setupDiagnostics(){try{const data=await request('/api/diagnostics');debug.textContent=JSON.stringify(data,null,2);renderInteractionBadge(data.presence);renderPresenceActivity(data.presence_activity);renderDebugPresenceControls(data.presence);if(data.startup&&data.startup.status!=='ready'){const model=data.startup.checks?.model||{};$('#connection').textContent='需要完成首次配置';input.placeholder='完成配置后即可和朝汐对话';if(!setupNoticeShown){addMessage('assistant',`朝汐尚未完成启动配置。${model.action||'请运行 python main.py --doctor 查看具体问题。'}`);setupNoticeShown=true}}}catch(e){renderInteractionBadge(null);$('#connection').textContent='启动诊断不可用'}if(document.querySelector("#runtimeDebugPanel")?.open)await refreshRuntimeDebug()}
+async function setupDiagnostics(){try{const data=await request('/api/diagnostics');debug.textContent=JSON.stringify(data,null,2);renderInteractionBadge(data.presence);renderPresenceActivity(data.presence_activity);renderDebugPresenceControls(data.presence);if(data.startup&&data.startup.status!=='ready'){const model=data.startup.checks?.model||{},needsConfiguration=data.startup.status==='needs_configuration';$('#connection').textContent=needsConfiguration?'需要完成首次配置':'Core 启动失败';input.placeholder=needsConfiguration?'完成配置后即可和朝汐对话':'请处理启动错误后重启 Core';if(!setupNoticeShown){addMessage('assistant',needsConfiguration?`朝汐尚未完成启动配置。${model.action||'请运行 python main.py --doctor 查看具体问题。'}`:`Core 启动失败：${data.startup.checks?.runtime?.message||'请查看启动诊断。'}`);setupNoticeShown=true}}else{$('#connection').textContent='本地 Core 已连接'}}catch(e){renderInteractionBadge(null);$('#connection').textContent='启动诊断不可用'}if(document.querySelector("#runtimeDebugPanel")?.open)await refreshRuntimeDebug()}
 const agendaTypeNames={event:'约定',window:'时间窗口',deadline:'截止',focus:'主线',expectation:'期待'};
 const cognitionSectionNames={active_thread:'还挂着',recent_change:'刚变化',unresolved:'需要留意'};
 function deskText(tag,value,className=''){const node=document.createElement(tag);node.textContent=value;if(className)node.className=className;return node}
@@ -373,7 +377,7 @@ async function refreshInternalActivity(){try{$('#internalActivityDebug').textCon
 $('#internalActivityRefresh').onclick=refreshInternalActivity;
 $('#internalActivityPanel').addEventListener('toggle',event=>{if(event.target.open)void refreshInternalActivity()});
 document.querySelectorAll('.runInternalActivity').forEach(button=>button.onclick=async()=>{button.disabled=true;try{$('#internalActivityDebug').textContent=JSON.stringify(await request('/api/debug/internal-activity',{method:'POST',body:JSON.stringify({activity:button.dataset.activity,confirm_social_write:button.dataset.activity==='social_wander'&&window.confirm('允许本次调试在授权群发言吗？仍会检查隐私、冷却和每日限额。取消则只看不说。')})}),null,2)}catch(e){$('#internalActivityDebug').textContent=e.message}finally{button.disabled=false}});
-async function setupBudgetDebug(){try{$('#budgetDebug').textContent=JSON.stringify(await request('/api/debug/budget-context'),null,2)}catch(e){$('#budgetDebug').textContent=e.message}}
+async function setupBudgetDebug(){if(!$('#budgetDebug'))return;try{$('#budgetDebug').textContent=JSON.stringify(await request('/api/debug/budget-context'),null,2)}catch(e){$('#budgetDebug').textContent=e.message}}
 $('#budgetDebugRefresh').onclick=setupBudgetDebug;
 $('#budgetDebugPanel').addEventListener('toggle',event=>{if(event.target.open)void setupBudgetDebug()});
 let pendingDeliveryTimer=null;
@@ -408,14 +412,41 @@ function applySettings(event,persist=false){
   if(persist){const key=INTERFACE_SETTING_KEYS[event?.target?.id];if(key){const node=event.target,value=node.type==='checkbox'?node.checked:Number(node.value);void request('/api/settings/interface',{method:'PATCH',body:JSON.stringify({[key]:value})}).then(applyInterfaceSettings).catch(()=>{$('#pokeStatus').textContent='界面设置保存失败';void setupInterfaceSettings()})}}
   if(event?.target===$('#mergeRange')&&inputTimer!==null){clearTimeout(inputTimer);inputTimer=setTimeout(()=>{inputTimer=null;flushInput()},INPUT_MERGE_MS)}
 }
-const INTERFACE_SETTING_KEYS={mergeRange:'input_merge_seconds',replyRange:'reply_interval_seconds',externalDebounceRange:'external_input_debounce_seconds',externalReplyRange:'external_reply_interval_seconds',longWaitToggle:'long_wait_enabled',forceFastChatToggle:'force_fast_chat',regenerateDebugToggle:'show_normal_regenerate'};
+const INTERFACE_SETTING_KEYS={mergeRange:'input_merge_seconds',replyRange:'reply_interval_seconds',externalDebounceRange:'external_input_debounce_seconds',externalReplyRange:'external_reply_interval_seconds',longWaitToggle:'long_wait_enabled',forceFastChatToggle:'force_fast_chat',forceNonFastChatToggle:'force_non_fast_chat',allowMultiModelCallsToggle:'allow_multi_model_calls',regenerateDebugToggle:'show_normal_regenerate'};
 function renderNormalRegeneration(enabled){normalRegenerationEnabled=!!enabled;$('#regenerateDebugToggle').checked=normalRegenerationEnabled;document.querySelectorAll('.normal-regenerate').forEach(button=>button.hidden=!normalRegenerationEnabled)}
+const BUDGET_SETTING_KEYS={tokenBaseBudget:'base_budget',tokenHardLimit:'hard_limit',tokenFinalizationReserve:'finalization_reserve',plannerExtensionLimit:'planner_extension_limit'};
+let budgetSettingsDirty=false;
+function applyBudgetSettings(saved){
+  if(!$('#budgetSettingsForm')||budgetSettingsDirty)return;
+  for(const [id,key] of Object.entries(BUDGET_SETTING_KEYS))$('#'+id).value=saved[key];
+  $('#budgetSettingsFields').disabled=false;
+}
+async function setupBudgetSettings(){if(!$('#budgetSettingsForm'))return;try{applyBudgetSettings(await request('/api/settings/budget'))}catch(e){$('#budgetSettingsStatus').textContent='预算读取失败：'+e.message}}
+if($('#budgetSettingsForm')){
+$('#budgetSettingsForm').oninput=()=>{budgetSettingsDirty=true;$('#budgetSettingsStatus').textContent='有未保存的预算修改'};
+$('#budgetSettingsForm').onsubmit=async e=>{
+  e.preventDefault();const values=Object.fromEntries(Object.entries(BUDGET_SETTING_KEYS).map(([id,key])=>[key,Number($('#'+id).value)]));
+  if(values.hard_limit<values.base_budget||values.finalization_reserve>=values.base_budget){$('#budgetSettingsStatus').textContent='总硬上限不能小于基础预算，收尾预留必须小于基础预算';return}
+  $('#budgetSettingsFields').disabled=true;
+  try{const saved=await request('/api/settings/budget',{method:'PUT',body:JSON.stringify(values)});budgetSettingsDirty=false;applyBudgetSettings(saved);$('#budgetSettingsStatus').textContent='预算已保存，下一次请求生效';void setupBudgetDebug()}
+  catch(e){$('#budgetSettingsStatus').textContent='预算保存失败：'+e.message}
+  finally{$('#budgetSettingsFields').disabled=false}
+};
+$('#resetBudgetSettings').onclick=async()=>{
+  $('#budgetSettingsFields').disabled=true;
+  try{const saved=await request('/api/settings/budget',{method:'DELETE'});budgetSettingsDirty=false;applyBudgetSettings(saved);$('#budgetSettingsStatus').textContent='已恢复配置默认预算，下一次请求生效';void setupBudgetDebug()}
+  catch(e){$('#budgetSettingsStatus').textContent='预算恢复失败：'+e.message}
+  finally{$('#budgetSettingsFields').disabled=false}
+};
+}
 function applyInterfaceSettings(saved){
   $('#mergeRange').value=saved.input_merge_seconds;$('#replyRange').value=saved.reply_interval_seconds;
   $('#externalDebounceRange').value=saved.external_input_debounce_seconds??5;$('#externalReplyRange').value=saved.external_reply_interval_seconds??0.5;
   $('#longWaitToggle').checked=!!saved.long_wait_enabled;$('#forceFastChatToggle').checked=!!saved.force_fast_chat;
+  $('#forceNonFastChatToggle').checked=!!saved.force_non_fast_chat;$('#allowMultiModelCallsToggle').checked=!!saved.allow_multi_model_calls;
   renderNormalRegeneration(saved.show_normal_regenerate);
-  for(const id of ['longWaitToggle','forceFastChatToggle','regenerateDebugToggle'])$('#'+id).disabled=false;
+  if(saved.request_budget)applyBudgetSettings(saved.request_budget);else void setupBudgetSettings();
+  for(const id of ['longWaitToggle','forceFastChatToggle','forceNonFastChatToggle','allowMultiModelCallsToggle','regenerateDebugToggle'])$('#'+id).disabled=false;
   applySettings();
 }
 async function setupInterfaceSettings(){
@@ -448,7 +479,7 @@ $('#restartCore').onclick=async()=>{
 const THINKING_STATUS={off:'由服务端默认决定',disabled:'已关闭思考',enabled:'已开启思考'};let savedThinkingMode='off';
 async function setupThinking(){try{const s=await request('/api/settings/thinking');const select=$('#thinkingMode');savedThinkingMode=s.mode;select.value=s.mode;select.disabled=false;$('#thinkingStatus').textContent=THINKING_STATUS[s.mode]||''}catch{$('#thinkingStatus').textContent='读取失败'}}
 $('#thinkingMode').onchange=async()=>{const select=$('#thinkingMode');select.disabled=true;try{await request('/api/settings/thinking',{method:'PUT',body:JSON.stringify({mode:select.value})});await setupThinking()}catch(e){select.value=savedThinkingMode;select.disabled=false;$('#thinkingStatus').textContent=e.message}};
-async function start(){const token=new URLSearchParams(location.hash.slice(1)).get('token')||'';if(token){const boot=await fetch('/api/bootstrap',{method:'POST',headers:{'X-Zhaoxi-Token':token}});history.replaceState(null,'',location.pathname+location.search);if(!boot.ok)throw new Error('Desktop 会话初始化失败')}const es=new EventSource('/api/events');es.onmessage=e=>{const data=JSON.parse(e.data);if(data.type==='agent_event')renderAgentEvent(data.event);if(data.type==='interim_reply')renderInterimReply(data);if(data.type==='maintenance_status'&&data.request_id===activeTraceId){const node=$('#actionMaintenance');if(node)node.textContent='后台维护：'+data.status;}if(data.type==='activity'&&(!busy||!activeTraceId))activity.textContent=data.label||'';if(data.type==='presence_activity')renderPresenceActivity(data.presence);if(data.type==='activity_finished')renderRecentActivityReceipt(data.receipt);if(data.type==='interface_settings')applyInterfaceSettings(data.settings);if(data.type==='proactive')receiveDelivery(data.delivery)};es.onerror=()=>{$('#connection').textContent='事件通道正在重连…'};es.onopen=()=>{$('#connection').textContent='本地 Core 已连接';void setupActionTrace()};await setupInterfaceSettings();if(document.querySelector("#thinkingMode"))await setupThinking();await setupVoice();await restore();const pendingDelivery=sessionStorage.getItem("zhaoxiPendingDelivery");if(pendingDelivery){sessionStorage.removeItem("zhaoxiPendingDelivery");await openDelivery(pendingDelivery)}await setupDiagnostics();await setupRecentContextBoard();await setupActionTrace();setInterval(()=>{void setupDiagnostics();void setupRecentContextBoard();void setupInterfaceSettings();void setupActionTrace()},30000);input.focus()};window.addEventListener('focus',()=>{void setupInterfaceSettings();void setupActionTrace()});start().catch(()=>{$('#connection').textContent='Desktop 会话初始化失败'});
+async function start(){const token=new URLSearchParams(location.hash.slice(1)).get('token')||'';if(token){const boot=await fetch('/api/bootstrap',{method:'POST',headers:{'X-Zhaoxi-Token':token}});history.replaceState(null,'',location.pathname+location.search);if(!boot.ok)throw new Error('Desktop 会话初始化失败')}const es=new EventSource('/api/events');es.onmessage=e=>{const data=JSON.parse(e.data);if(data.type==='agent_event')renderAgentEvent(data.event);if(data.type==='interim_reply')renderInterimReply(data);if(data.type==='maintenance_status'&&data.request_id===activeTraceId){const node=$('#actionMaintenance');if(node)node.textContent='后台维护：'+data.status;}if(data.type==='activity'&&(!busy||!activeTraceId))activity.textContent=data.label||'';if(data.type==='presence_activity')renderPresenceActivity(data.presence);if(data.type==='activity_finished')renderRecentActivityReceipt(data.receipt);if(data.type==='interface_settings')applyInterfaceSettings(data.settings);if(data.type==='proactive')receiveDelivery(data.delivery)};es.onerror=()=>{$('#connection').textContent='事件通道正在重连…'};es.onopen=()=>{$('#connection').textContent='事件通道已连接，正在检查 Core…';void setupDiagnostics();void setupActionTrace()};await setupInterfaceSettings();if(document.querySelector("#thinkingMode"))await setupThinking();await setupVoice();await restore();const pendingDelivery=sessionStorage.getItem("zhaoxiPendingDelivery");if(pendingDelivery){sessionStorage.removeItem("zhaoxiPendingDelivery");await openDelivery(pendingDelivery)}await setupDiagnostics();await setupRecentContextBoard();await setupActionTrace();setInterval(()=>{void setupDiagnostics();void setupRecentContextBoard();void setupInterfaceSettings();void setupActionTrace()},30000);input.focus()};window.addEventListener('focus',()=>{void setupInterfaceSettings();void setupActionTrace()});start().catch(()=>{$('#connection').textContent='Desktop 会话初始化失败'});
 async function refreshRuntimeDebug(){
   try{
     const data=await request('/api/debug/runtime'),m=data.runtime_metrics||{};

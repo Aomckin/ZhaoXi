@@ -1,6 +1,8 @@
 // Two real browser surfaces share settings; model and proactive sends are mocked.
 const {chromium}=require(process.env.ZHAOXI_PLAYWRIGHT||'playwright');
-const assert=require('node:assert/strict'),fs=require('node:fs');
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const base=process.env.ZHAOXI_TEST_BASE_URL||'http://127.0.0.1:18765';
+const output=process.env.ZHAOXI_TEST_OUTPUT||'.pytest_cache/quick-debug-acceptance.json';fs.mkdirSync(path.dirname(output),{recursive:true});
 (async()=>{const browser=await chromium.launch({channel:'msedge',headless:true});
 try{
  const context=await browser.newContext({viewport:{width:1440,height:1000}}),errors=[];
@@ -10,23 +12,49 @@ try{
  let pokes=0;
  const mockPoke=r=>{assert.equal(r.request().method(),'POST');pokes++;return r.fulfill({json:{delivered:false,trace:{gate_reason:'回归测试：选择沉默'}}})};
  await desktop.route('**/api/proactive/active/poke',mockPoke);
- await desktop.goto('http://127.0.0.1:18765/desktop-entry?token=dashboard-ui-test');
+ await desktop.goto(base+'/desktop-entry?token=dashboard-ui-test');
  await desktop.waitForFunction(()=>!document.querySelector('#longWaitToggle').disabled);
- await desktop.evaluate(async()=>{const r=await fetch('/api/settings/interface',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({input_merge_seconds:7,reply_interval_seconds:2,external_input_debounce_seconds:3,external_reply_interval_seconds:1.2,long_wait_enabled:false,force_fast_chat:false,show_normal_regenerate:false})});if(!r.ok)throw Error('baseline settings failed')});
+ await desktop.evaluate(async()=>{const r=await fetch('/api/settings/interface',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({input_merge_seconds:7,reply_interval_seconds:2,external_input_debounce_seconds:3,external_reply_interval_seconds:1.2,long_wait_enabled:false,force_fast_chat:false,force_non_fast_chat:false,allow_multi_model_calls:false,show_normal_regenerate:false})});if(!r.ok)throw Error('baseline settings failed')});
  await desktop.locator('#sideToggle').click();
  await desktop.locator('#quickDebugPanel').waitFor();
  assert.equal(await desktop.locator('.normal-regenerate').count(),1);
  await desktop.locator('.normal-regenerate').waitFor({state:'hidden'});
  const dashboard=await context.newPage();dashboard.on('pageerror',e=>errors.push(e.message));await dashboard.route('**/api/proactive/active/poke',mockPoke);
- await dashboard.goto('http://127.0.0.1:18765/dashboard#settings');
+ await dashboard.goto(base+'/dashboard#settings');
  const frame=dashboard.frameLocator('iframe');
  await frame.locator('#debugPanel>summary').click();
  await frame.locator('#longWaitToggle').waitFor({state:'visible'});
  await dashboard.waitForFunction(()=>{const f=document.querySelector('iframe');return f.contentDocument&&!f.contentDocument.querySelector('#longWaitToggle').disabled});
+ assert.equal(await desktop.locator('#budgetSettingsForm').count(),0);
+ await dashboard.waitForFunction(()=>!document.querySelector('iframe').contentDocument.querySelector('#budgetSettingsFields').disabled);
+ await frame.locator('#tokenBaseBudget').fill('200000');await frame.locator('#tokenHardLimit').fill('260000');
+ await frame.locator('#tokenFinalizationReserve').fill('10000');await frame.locator('#plannerExtensionLimit').fill('40000');
+ await frame.locator('#budgetSettingsForm button[type="submit"]').click();
+ await frame.locator('#budgetSettingsStatus').filter({hasText:'预算已保存'}).waitFor();
+ assert.equal(await frame.locator('#tokenBaseBudget').inputValue(),'200000');
+ // Desktop events must not overwrite an unsaved Dashboard budget draft.
+ await frame.locator('#tokenBaseBudget').fill('220000');
+ await desktop.locator('#regenerateDebugToggle').check();
+ await dashboard.waitForFunction(()=>document.querySelector('iframe').contentDocument.querySelector('#regenerateDebugToggle').checked);
+ assert.equal(await frame.locator('#tokenBaseBudget').inputValue(),'220000');
+ await desktop.locator('#regenerateDebugToggle').uncheck();
+ await frame.locator('#plannerExtensionLimit').fill('0');await frame.locator('#budgetSettingsForm button[type="submit"]').click();
+ await frame.locator('#budgetSettingsStatus').filter({hasText:'预算已保存'}).waitFor();
+ await dashboard.waitForFunction(()=>document.querySelector('iframe').contentDocument.querySelector('#plannerExtensionLimit').value==='0');
+ const liveBudget=await desktop.evaluate(async()=>{const r=await fetch('/api/debug/budget-context');return r.json()});
+ assert.equal(liveBudget.configuration.base_budget,220000);assert.equal(liveBudget.configuration.extension_1_limit,0);
  await frame.locator('#longWaitToggle').check();
  await desktop.waitForFunction(()=>document.querySelector('#longWaitToggle').checked);
  await desktop.locator('#forceFastChatToggle').check();
  await dashboard.waitForFunction(()=>document.querySelector('iframe').contentDocument.querySelector('#forceFastChatToggle').checked);
+ await frame.locator('#forceNonFastChatToggle').check();
+ await desktop.waitForFunction(()=>document.querySelector('#forceNonFastChatToggle').checked&&!document.querySelector('#forceFastChatToggle').checked);
+ await desktop.locator('#allowMultiModelCallsToggle').check();
+ await dashboard.waitForFunction(()=>document.querySelector('iframe').contentDocument.querySelector('#allowMultiModelCallsToggle').checked);
+ await desktop.locator('#forceFastChatToggle').check();
+ await dashboard.waitForFunction(()=>!document.querySelector('iframe').contentDocument.querySelector('#forceNonFastChatToggle').checked);
+ await frame.locator('#forceNonFastChatToggle').check();
+ await desktop.waitForFunction(()=>document.querySelector('#forceNonFastChatToggle').checked&&!document.querySelector('#forceFastChatToggle').checked);
  await frame.locator('#regenerateDebugToggle').check();
  await desktop.locator('.normal-regenerate').waitFor({state:'visible'});
  assert.equal(await desktop.locator('#regenerateDebugToggle').isChecked(),true);
@@ -36,14 +64,34 @@ try{
  await desktop.locator('#pokeStatus').filter({hasText:'请等当前消息处理完成'}).waitFor();assert.equal(pokes,2);await desktop.evaluate(()=>{busy=false});
  const settings=await desktop.evaluate(async()=>{const r=await fetch('/api/settings/interface');return r.json()});
  assert.equal(settings.input_merge_seconds,7);assert.equal(settings.reply_interval_seconds,2);assert.equal(settings.external_input_debounce_seconds,3);assert.equal(settings.external_reply_interval_seconds,1.2);
- assert.equal(settings.long_wait_enabled,true);assert.equal(settings.force_fast_chat,true);assert.equal(settings.show_normal_regenerate,true);
- await desktop.screenshot({path:'.zhaoxi/quick-debug-desktop.png',fullPage:true});await dashboard.screenshot({path:'.zhaoxi/quick-debug-dashboard.png',fullPage:true});
+ assert.equal(settings.long_wait_enabled,true);assert.equal(settings.force_fast_chat,false);assert.equal(settings.force_non_fast_chat,true);assert.equal(settings.allow_multi_model_calls,true);assert.equal(settings.show_normal_regenerate,true);
+ await desktop.screenshot({path:path.join(path.dirname(output),'quick-debug-desktop.png'),fullPage:true});await dashboard.screenshot({path:path.join(path.dirname(output),'quick-debug-dashboard.png'),fullPage:true});
  await desktop.reload();await desktop.waitForFunction(()=>!document.querySelector('#regenerateDebugToggle').disabled);await desktop.locator('.normal-regenerate').waitFor({state:'visible'});
- await desktop.locator('#sideToggle').click();await desktop.locator('#regenerateDebugToggle').uncheck();
+ assert.equal(await desktop.locator('#forceNonFastChatToggle').isChecked(),true);assert.equal(await desktop.locator('#allowMultiModelCallsToggle').isChecked(),true);
+ assert.equal(await desktop.locator('#budgetSettingsForm').count(),0);
+ await dashboard.reload();await frame.locator('#debugPanel>summary').click();
+ await dashboard.waitForFunction(()=>document.querySelector('iframe').contentDocument.querySelector('#tokenBaseBudget').value==='220000');
+ assert.equal(await frame.locator('#plannerExtensionLimit').inputValue(),'0');
+ await desktop.locator('#sideToggle').click();
+ await frame.locator('#resetBudgetSettings').click();await frame.locator('#budgetSettingsStatus').filter({hasText:'已恢复配置默认预算'}).waitFor();
+ await dashboard.waitForFunction(()=>document.querySelector('iframe').contentDocument.querySelector('#tokenBaseBudget').value==='100000');
+ await desktop.locator('#regenerateDebugToggle').uncheck();
  await desktop.locator('.normal-regenerate').waitFor({state:'hidden'});
  await dashboard.waitForFunction(()=>!document.querySelector('iframe').contentDocument.querySelector('#regenerateDebugToggle').checked);
- await dashboard.goto('http://127.0.0.1:18765/dashboard#runtime');const runtime=dashboard.frameLocator('iframe');await runtime.locator('#debugPanel>summary').click();await runtime.locator('#poke').waitFor({state:'visible'});
+ await dashboard.goto(base+'/dashboard#runtime');const runtime=dashboard.frameLocator('iframe');await runtime.locator('#debugPanel>summary').click();await runtime.locator('#poke').waitFor({state:'visible'});
+ for(const [status,title] of [['failed','行动记录 · 未完成'],['partial','行动记录 · 部分完成']]){
+  for(const surface of [desktop.locator('body'),runtime.locator('body')]){
+   await surface.evaluate((_,status)=>{
+    const request_id=beginActionTrace();
+    renderAgentEvent({request_id,event_type:'task_'+status,stage:'task',outcome:status==='failed'?'failed':'warning',display_message:'隔离验收结果',metadata:{task_status:status,response_status:'succeeded'}});
+    renderAgentEvent({request_id,event_type:'runtime_finished',stage:'runtime',outcome:'success',display_message:'运行已结束'});
+    endActionTraceFallback('回复已交付');
+   },status);
+  }
+  assert.equal(await desktop.locator('#actionTraceSummary').textContent(),title);
+  assert.equal(await runtime.locator('#actionTraceSummary').textContent(),title);
+ }
  assert.deepEqual(errors,[]);
- const evidence={checks:['desktop_shortcuts_visible','dashboard_settings_debug_visible','dashboard_runtime_debug_visible','bidirectional_sse_settings','normal_regenerate_shown_and_hidden','reload_restores_settings','partial_update_preserves_timings','poke_both_surfaces','poke_busy_guard','no_page_errors'],mock_proactive_requests:pokes,real_model_calls:0,real_social_send:false,errors};
- fs.writeFileSync('.zhaoxi/quick-debug-acceptance.json',JSON.stringify(evidence,null,2));console.log(JSON.stringify(evidence));
+ const evidence={checks:['budget_controls_dashboard_only','desktop_budget_controls_absent','dashboard_budget_save','draft_survives_unrelated_sse','zero_disables_planner_extension','budget_reload_restored','budget_reset_defaults','desktop_shortcuts_visible','dashboard_settings_debug_visible','dashboard_runtime_debug_visible','bidirectional_sse_settings','both_new_switches_visible_and_live','fast_mode_mutual_exclusion','new_switches_restored_after_reload','normal_regenerate_shown_and_hidden','reload_restores_settings','partial_update_preserves_timings','poke_both_surfaces','poke_busy_guard','failed_task_retained_on_both_surfaces','partial_task_retained_on_both_surfaces','no_page_errors'],mock_proactive_requests:pokes,real_model_calls:0,real_social_send:false,errors};
+ fs.writeFileSync(output,JSON.stringify(evidence,null,2));console.log(JSON.stringify(evidence));
 }finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});

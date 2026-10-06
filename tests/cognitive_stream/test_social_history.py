@@ -294,3 +294,43 @@ async def test_group_model_can_search_legacy_messages_and_see_history_images(tmp
     trigger=agent.cognitive_ingress.observation(decode(qq_event(2,text="搜索之前群里的图片",kind="group"),self_id="42"),session_id="qq/group/123")
     result=await agent.run_channel_reply(trigger.content,trigger_event=trigger,audience="public")
     assert result.content=="找到了保存的旧群消息和图片。" and len(calls)==2
+
+
+async def test_two_social_image_reads_emit_valid_native_transcript(tmp_path):
+    import json
+    import httpx
+    from test_social_trace import make_runtime, qq_event, PIC
+    from zhaoxi_ext.qq_napcat.codec import decode
+    from zhaoxi.models.openai_compatible import OpenAICompatibleProvider
+    payloads = []
+    def handler(request):
+        payload = json.loads(request.content)
+        payloads.append(payload)
+        pending = set()
+        for item in payload["messages"]:
+            if item["role"] == "tool":
+                assert item["tool_call_id"] in pending
+                pending.remove(item["tool_call_id"])
+            else:
+                assert not pending, "an image observation interrupted the native result batch"
+                pending = {c["id"] for c in item.get("tool_calls", [])}
+        assert not pending
+        if len(payloads) == 1:
+            calls = [{"id": str(i), "type": "function", "function": {
+                "name": "read_social_context", "arguments": json.dumps({"query": "旧图线索", "include_images": True})
+            }} for i in (1, 2)]
+            return httpx.Response(200, json={"choices": [{"message": {"content": None, "tool_calls": calls}}]})
+        assert sum(m["role"] == "tool" for m in payload["messages"]) == 2
+        assert any(isinstance(m.get("content"), list) and "attention" in str(m["content"]) for m in payload["messages"])
+        return httpx.Response(200, json={"choices": [{"message": {"content": "两次回查完成，图片都保留了。"}}]})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = OpenAICompatibleProvider(base_url="https://example.test/v1", api_key="test", model="test", client=client)
+        runtime, agent = make_runtime(tmp_path, lambda messages, tools: provider.generate(messages, tools))
+        runtime.store.media = agent.experience_stream.media
+        old = decode(qq_event(1, text="旧图线索", kind="group", image=PIC), self_id="42")
+        runtime.store.insert(old, ObservationStatus.PROCESSED)
+        agent.registry.register(ReadSocialContextTool(agent.experience_stream, perception_path=runtime.store.path))
+        trigger = agent.cognitive_ingress.observation(decode(qq_event(2, text="回查之前群里的图片", kind="group"), self_id="42"), session_id="qq/group/123")
+        result = await agent.run_channel_reply(trigger.content, trigger_event=trigger, audience="public")
+    assert result.content == "两次回查完成，图片都保留了。"
+    assert len(payloads) == 2

@@ -1,7 +1,7 @@
 """Validated request/response contracts shared by Web API routers."""
 from datetime import datetime
 from typing import Any, Literal
-from pydantic import BaseModel, Field, ConfigDict, StrictBool, model_validator
+from pydantic import BaseModel, Field, ConfigDict, StrictBool, StrictInt, model_validator
 from zhaoxi.core.attachments import ImageList
 from zhaoxi.interfaces.models import DisplayPart
 from zhaoxi.expression import EmojiMetadata
@@ -58,6 +58,22 @@ class ToolCapabilityRequest(BaseModel):
     enabled: StrictBool
 
 
+class BudgetSettingsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    base_budget: StrictInt = Field(ge=1_000, le=10_000_000)
+    hard_limit: StrictInt = Field(ge=1_000, le=10_000_000)
+    finalization_reserve: StrictInt = Field(ge=0, le=1_000_000)
+    planner_extension_limit: StrictInt = Field(ge=0, le=10_000_000)
+
+    @model_validator(mode="after")
+    def validate_budget(self):
+        if self.hard_limit < self.base_budget:
+            raise ValueError("总硬上限不能小于基础 Token 预算。")
+        if self.finalization_reserve >= self.base_budget:
+            raise ValueError("收尾预留必须小于基础 Token 预算。")
+        return self
+
+
 class InterfaceSettingsRequest(BaseModel):
     input_merge_seconds: int = Field(default=15, ge=0, le=30)
     reply_interval_seconds: int = Field(default=5, ge=0, le=15)
@@ -65,7 +81,16 @@ class InterfaceSettingsRequest(BaseModel):
     external_reply_interval_seconds: float = Field(default=0.5, ge=0, le=5)
     long_wait_enabled: StrictBool = False
     force_fast_chat: StrictBool = False
+    force_non_fast_chat: StrictBool = False
+    allow_multi_model_calls: StrictBool = False
     show_normal_regenerate: StrictBool = False
+    request_budget: BudgetSettingsRequest | None = None
+
+    @model_validator(mode="after")
+    def mutually_exclusive_chat_modes(self):
+        if self.force_fast_chat and self.force_non_fast_chat:
+            raise ValueError("FAST_CHAT 与非 FAST_CHAT 强制模式不能同时开启。")
+        return self
 
 
 class FilesystemAccessRequest(BaseModel):

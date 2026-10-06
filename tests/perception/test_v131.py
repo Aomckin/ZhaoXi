@@ -566,3 +566,27 @@ async def test_owner_private_fast_upgrade_discards_draft_and_retains_external_bo
     assert runtime.last_fast_gate["final_lane"] == "standard"
     assert all("这段 QQ 草稿" not in (m.content or "") for m in seen[1][0])
     assert all("这段 QQ 草稿" not in (m.content or "") for m in agent.conversation.messages)
+
+
+@pytest.mark.asyncio
+async def test_debug_non_fast_applies_to_owner_private_without_relaxing_channel_boundary(tmp_path):
+    seen = []
+    async def generate(messages, tools):
+        seen.append((messages, tools))
+        return ModelResponse(content="标准外部回复。")
+    runtime, agent = make_runtime(tmp_path, generate)
+    runtime.settings.external_cognition_enabled = False
+    from zhaoxi.core.tool_retry import ToolRetryContext
+    from time import monotonic
+    agent.tool_retry_context = ToolRetryContext("previous-web", ("desktop", "web", "local", "", "owner", ""), "请查询记录", monotonic())
+    agent.cognitive = CognitiveCoordinator(agent=agent, router=CognitiveRouter(agent.provider), fast_gate=FastDialogueGate())
+    agent.cognitive.force_fast_chat = True
+    agent.cognitive.force_non_fast_chat = True
+    item = decode(qq_event(580, text="在吗？"), self_id="42", owner_id="8")
+    assert await runtime.ingest(item) == "标准外部回复。"
+    assert runtime.last_fast_gate is None
+    assert agent.tool_retry_context is None
+    assert len(seen) == 1
+    assert "当前处于 FAST_CHAT" not in seen[0][0][0].content
+    assert "外部频道输出边界" in seen[0][0][0].content
+    assert not any(schema["function"]["name"] in {"write_file", "lifehud"} for schema in seen[0][1] or [])

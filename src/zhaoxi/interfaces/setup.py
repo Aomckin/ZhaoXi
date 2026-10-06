@@ -11,7 +11,12 @@ class StartupUnavailableAgent:
     """Keep local interfaces open while preventing normal Agent execution."""
 
     def __init__(self, diagnostics: dict[str, object], reason: str) -> None:
-        self.startup_diagnostics = diagnostics
+        self.startup_diagnostics = {**diagnostics, "checks": {**diagnostics["checks"]}}
+        self.startup_diagnostics["checks"]["runtime"] = {
+            "ok": False, "code": "core_initialization_failed", "message": reason,
+        }
+        if diagnostics.get("status") == "ready":
+            self.startup_diagnostics["status"] = "blocked"
         self.startup_error = reason
         self.conversation = Conversation()
         self.metrics = MetricRegistry()
@@ -40,5 +45,8 @@ class StartupUnavailableAgent:
     async def run_natural(self, message: str, *, images: list[str] | None = None) -> AgentResponse:
         model = self.startup_diagnostics["checks"]["model"]
         action = model.get("action") or "运行 python main.py --doctor 查看启动诊断。"
-        content = f"朝汐尚未完成启动配置。{action}"
+        content = (
+            f"朝汐尚未完成启动配置。{action}" if not model.get("ok")
+            else f"Core 启动失败：{self.startup_error}"
+        )
         return AgentResponse(content=content, request_id="startup-unavailable", steps=0)

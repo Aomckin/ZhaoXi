@@ -121,6 +121,7 @@ class DesktopHost:
             try:
                 agent = build_agent(settings)
             except ZhaoxiError as exc:
+                logger.error("desktop core initialization failed: %s", exc)
                 agent = StartupUnavailableAgent(startup_diagnostics(settings), str(exc))
         self.agent = agent
         self.voice = None

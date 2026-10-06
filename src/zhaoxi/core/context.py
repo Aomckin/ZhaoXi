@@ -340,7 +340,8 @@ class ContextBuilder:
                     previews = []
                     self.last_compaction["images_released"] += len(item.images)
                 elif is_current_image:
-                    previews = item.images
+                    previews = [self.image_thumbnail_cache.model_preview(item.message_id, image_index, image) or image
+                                for image_index, image in enumerate(item.images)]
                 else:
                     previews = [
                         preview for image_index, image in enumerate(item.images)

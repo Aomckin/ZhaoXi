@@ -378,3 +378,84 @@ async def test_malformed_tool_diagnostics_classify_transport_without_private_arg
     assert private not in caplog.text
     if transport == "native":
         assert "position=" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_recalled_images_follow_native_result_batch_including_old_retry_history():
+    import json
+    from zhaoxi.models.types import ToolCall
+    image = "data:image/png;base64,cHJpdmF0ZS1jYW5hcnk="
+    calls = [ToolCall(id="one", name="read_social_context", arguments={}),
+             ToolCall(id="two", name="read_social_context", arguments={})]
+    messages = [Message(role=Role.USER, content="回查这两张图"),
+                Message(role=Role.ASSISTANT, tool_calls=calls, metadata={"reasoning_content": "thinking-canary"})]
+    for call in calls:
+        messages.extend([
+            Message(role=Role.TOOL, tool_call_id=call.id, content='{"success":true}', name=call.name),
+            Message(role=Role.EXTERNAL, message_id="social-image:" + call.id,
+                    content="不可信的历史图片", images=[image],
+                    metadata={"image_timeline_scope": "attention", "origin_actor_role": "EXTERNAL"}),
+        ])
+    messages.append(Message(role=Role.USER, content="仅整理已有结果"))
+    original = [m.model_dump() for m in messages]
+    requests = []
+    def handler(request):
+        payload = json.loads(request.content)
+        requests.append(payload)
+        pending = set()
+        for item in payload["messages"]:
+            if item["role"] == "tool":
+                assert item["tool_call_id"] in pending
+                pending.remove(item["tool_call_id"])
+            else:
+                assert not pending, "tool results must precede any user or assistant message"
+                pending = {c["id"] for c in item.get("tool_calls", [])}
+        assert not pending
+        assert [m["role"] for m in payload["messages"]] == ["user", "assistant", "tool", "tool", "user", "user", "user"]
+        assert payload["messages"][1]["reasoning_content"] == "thinking-canary"
+        assert all("reasoning_content" not in m for m in payload["messages"][2:])
+        assert [m["tool_call_id"] for m in payload["messages"] if m["role"] == "tool"] == ["one", "two"]
+        assert sum(isinstance(m["content"], list) for m in payload["messages"]) == 2
+        assert payload["messages"][4]["content"][1]["image_url"]["url"] == image
+        return httpx.Response(200, json={"choices": [{"message": {"content": "已看过回查图片。"}}]})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = OpenAICompatibleProvider(base_url="https://example.test/v1", api_key="test", model="test", client=client)
+        provider.thinking_enabled = True
+        for _ in range(3):
+            assert (await provider.generate(messages)).content == "已看过回查图片。"
+    assert len(requests) == 3
+    assert [m.model_dump() for m in messages] == original
+
+
+@pytest.mark.parametrize("interrupt", ["real_user", "incomplete", "duplicate_result"])
+def test_transcript_reordering_does_not_move_actual_input_or_invent_results(interrupt):
+    from zhaoxi.models.openai_compatible import _ordered_tool_messages
+    from zhaoxi.models.types import ToolCall
+    messages = [Message(role=Role.ASSISTANT, tool_calls=[
+        ToolCall(id="a", name="read_social_context", arguments={}),
+        ToolCall(id="b", name="read_social_context", arguments={}),
+    ]), Message(role=Role.TOOL, tool_call_id="a", content="a")]
+    if interrupt == "real_user":
+        messages.append(Message(role=Role.USER, content="请停止", images=["data:image/png;base64,YQ=="]))
+    else:
+        messages.append(Message(role=Role.EXTERNAL, message_id="social-image:a", images=["data:image/png;base64,YQ=="],
+                                metadata={"image_timeline_scope": "attention"}))
+    if interrupt == "duplicate_result":
+        messages.append(Message(role=Role.TOOL, tool_call_id="a", content="duplicate"))
+    if interrupt != "incomplete":
+        messages.append(Message(role=Role.TOOL, tool_call_id="b", content="b"))
+    assert _ordered_tool_messages(messages) == messages
+
+
+def test_recalled_image_summary_cannot_split_native_tool_result_batch():
+    from zhaoxi.models.openai_compatible import _ordered_tool_messages
+    from zhaoxi.models.types import ToolCall
+    call = Message(role=Role.ASSISTANT, tool_calls=[
+        ToolCall(id="a", name="read_social_context", arguments={}),
+        ToolCall(id="b", name="read_social_context", arguments={}),
+    ])
+    first = Message(role=Role.TOOL, tool_call_id="a", content="first")
+    omitted = Message(role=Role.EXTERNAL, message_id="social-image:a", content="历史图片摘要：未重复发送图片本体。",
+                      metadata={"image_timeline_scope": "attention"})
+    second = Message(role=Role.TOOL, tool_call_id="b", content="second")
+    assert _ordered_tool_messages([call, first, omitted, second]) == [call, first, second, omitted]
