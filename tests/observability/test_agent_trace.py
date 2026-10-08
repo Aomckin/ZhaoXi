@@ -163,6 +163,10 @@ async def test_timeout_after_write_returns_tool_status_instead_of_losing_result(
     assert "最终回复未能生成" in result.content
     assert agent.last_action_trace["task_status"] == "completed"
     assert agent.last_action_trace["response_status"] == "failed"
+    assert agent.last_action_trace["runtime_metrics"]["result_status"] == "failed"
+    assert result.activity["task_status"] == "completed"
+    assert result.activity["result_status"] == "failed"
+    assert result.activity["partial_success"] is False
     assert any(item["event"]["error_code"] == "agent_timeout" for item in emitted)
 
 

@@ -18,6 +18,7 @@ from zhaoxi.core.message import (
     Role,
     assistant_persistence_violations,
     strip_echoed_timeline_header,
+    clean_image_input_text,
 )
 from zhaoxi.session.base import Session, SessionStore
 
@@ -87,6 +88,11 @@ class SQLiteSessionStore(SessionStore):
         changed = False
         for item in messages:
             content = item.get("content")
+            if item.get("role") == Role.USER.value and item.get("source") in {None, "desktop", "web"}:
+                clean = clean_image_input_text(content, has_images=bool(item.get("images")), input_text_present=item.get("input_text_present"))
+                if clean != content:
+                    item["content"] = clean
+                    changed = True
             if item.get("role") == Role.ASSISTANT.value and isinstance(content, str):
                 clean = strip_echoed_timeline_header(content)
                 if clean != content:

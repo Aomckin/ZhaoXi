@@ -319,3 +319,124 @@ async def test_beat_accepts_normal_context_above_old_token_budget():
     worker.decision.provider = ResilientProvider([provider])
     assert await worker.tick(NOW+timedelta(minutes=3))
     assert loop.last_trace['delivered'] and len(provider.calls) == 1
+
+
+
+def image_stream(tmp_path, images):
+    from zhaoxi.cognitive_stream import CognitiveIngress, ExperienceStream
+    stream = ExperienceStream(tmp_path / 'experience.db')
+    event = CognitiveIngress(stream).desktop('', images=images, channel='web')
+    return stream, event
+
+
+async def test_beat_receives_actual_historical_thumbnails_for_image_only_input(tmp_path, five_large_photos):
+    import base64
+    from io import BytesIO
+    from PIL import Image
+    loop, worker, provider, state, store = setup()
+    stream, event = image_stream(tmp_path, list(five_large_photos))
+    loop.experience_stream = stream
+    assert await worker.tick(NOW + timedelta(minutes=3))
+    context = json.loads(provider.calls[0][1].content)
+    row = context['recent_conversation'][0]
+    assert context['last_user_message'] == row['content'] == ''
+    assert row['event_id'] == event.event_id and row['image_count'] == row['image_attached_count'] == 5
+    assert row['image_indexes'] == [1, 2, 3, 4, 5] and row['actor_role'] == 'OWNER' and row['channel'] == 'web'
+    assert 'data:image/' not in provider.calls[0][1].content
+    reference = provider.calls[0][2]
+    assert event.event_id in reference.content
+    assert len(reference.images) == 5 and provider.tool_schemas == [None]
+    for preview, original in zip(reference.images, five_large_photos):
+        assert preview != original
+        with Image.open(BytesIO(base64.b64decode(preview.split(',', 1)[1]))) as frame:
+            assert max(frame.size) <= 512
+    assert stream.get(event.event_id).content == ''
+    assert [part.url for part in stream.get(event.event_id).parts] == list(five_large_photos)
+
+
+async def test_beat_forwards_more_than_twenty_history_images_without_adding_count_cap(tmp_path):
+    from zhaoxi.cognitive_stream import CognitiveIngress
+    image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9S8AAAAASUVORK5CYII='
+    loop, worker, provider, state, store = setup()
+    stream, first = image_stream(tmp_path, [image] * 20)
+    second = CognitiveIngress(stream).desktop('', images=[image] * 10, channel='web')
+    loop.experience_stream = stream
+    assert await worker.tick(NOW + timedelta(minutes=3))
+    references = provider.calls[0][2:]
+    assert [len(message.images) for message in references] == [20, 10]
+    assert first.event_id in references[0].content and second.event_id in references[1].content
+    assert sum(len(message.images) for message in provider.calls[0]) == 30
+
+
+async def test_beat_unavailable_image_is_marked_as_historical_unreadable(tmp_path):
+    loop, worker, provider, state, store = setup()
+    loop.experience_stream, event = image_stream(tmp_path, ['https://example.test/unavailable.jpg'])
+    assert await worker.tick(NOW + timedelta(minutes=3))
+    row = json.loads(provider.calls[0][1].content)['recent_conversation'][0]
+    assert row['image_count'] == 1 and row['image_attached_count'] == 0 and row['image_indexes'] == []
+    assert '不可用' in row['content']
+    assert not any(message.images for message in provider.calls[0])
+    assert 'https://example.test' not in provider.calls[0][1].content
+
+
+@pytest.mark.parametrize('continuation', [False, True])
+async def test_other_proactive_decisions_also_receive_historical_picture(tmp_path, continuation):
+    from zhaoxi.cognitive_stream import AttentionRetriever
+    loop, worker, provider, state, store = setup()
+    image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9S8AAAAASUVORK5CYII='
+    stream, event = image_stream(tmp_path, [image])
+    model = worker.decision
+    model.attention_retriever = AttentionRetriever(stream)
+    provider.responses[0] = ModelResponse(content='{"action":"speak","content":"看到之前的图了。"}')
+    if continuation:
+        result = await model.decide_continuation(SimpleNamespace(user_text='', summary='之前的图片'), NOW, state)
+    else:
+        result = await model.decide([], NOW, state)
+    assert result.action == 'speak'
+    row = json.loads(provider.calls[0][1].content)['recent_conversation'][0]
+    assert row['event_id'] == event.event_id and row['content'] == '' and row['image_attached_count'] == 1
+    assert len(provider.calls[0][2].images) == 1 and provider.tool_schemas == [None]
+
+
+def test_proactive_picture_context_keeps_external_author_and_excludes_emoji():
+    from zhaoxi.core.message import Message, Role
+    from zhaoxi.core.image_thumbnails import ImageThumbnailCache
+    from zhaoxi.proactive.vision import visual_history
+    image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9S8AAAAASUVORK5CYII='
+    recent, attachments = visual_history([
+        Message(role=Role.EXTERNAL, content='', images=[image], source='qq',
+                metadata={'channel':'qq', 'actor_role':'THIRD_PARTY'}),
+        Message(role=Role.ASSISTANT, content='', images=[image], source='emoji'),
+    ], ImageThumbnailCache())
+    assert recent[0]['actor_role'] == 'THIRD_PARTY' and recent[0]['source'] == 'qq'
+    assert len(attachments) == 1 and 'THIRD_PARTY' in attachments[0].content
+    assert 'image_count' not in recent[1]
+
+
+async def test_image_only_user_reply_renews_beat_budget_without_fabricated_text():
+    from zhaoxi.core.agent import AgentResponse
+    from zhaoxi.interfaces import InterfaceGateway, UnifiedMessage
+    loop, worker, provider, state, store = setup()
+    assert await worker.tick(NOW + timedelta(minutes=3))
+    assert loop.session.awaiting_reply and loop.session.initiative_budget == 1
+    image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9S8AAAAASUVORK5CYII='
+    # Preserve the live ACTIVE session while using the gateway's actual clock.
+    from unittest.mock import patch
+    moment = NOW + timedelta(minutes=4)
+    class Clock:
+        @staticmethod
+        def now(_timezone):
+            return moment
+    class Agent:
+        conversation = Conversation()
+        proactive_state = state
+        conversation_continuation = loop
+        async def run_natural(self, content, *, images):
+            assert content == '' and images == [image]
+            self.conversation.add_user(content, images=images)
+            self.conversation.add_assistant('看到了')
+            return AgentResponse(content='看到了', request_id='picture-reply', steps=1)
+    with patch('zhaoxi.interfaces.gateway.datetime', Clock):
+        await InterfaceGateway(Agent()).chat(UnifiedMessage(channel='web', content='', images=[image]))
+    assert not loop.session.awaiting_reply and loop.session.initiative_budget == 2
+    assert loop.session.last_user_at == moment and loop.open_thread is None

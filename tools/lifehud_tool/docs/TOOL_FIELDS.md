@@ -41,7 +41,7 @@ operation=record；默认 create；get/update 必须 id；只用当前类别字�
 | `action` | string：list, get, create, update | 操作：list=查询列表；get=读取详情；create=新增记录；update=修改已有记录 |
 | `type` | string：sleep | 记录类别：饮食用 meal，不使用 diet/food/meals |
 | `id` | string | 已有资源 id；先查询获取，不能编造 |
-| `images` | array 或 null | 关联图片数组；可用 /uploads/ 路径、本地绝对路径、data URL。当前消息第一张用 <current-message-image>，第二张用 <current-message-image:2>。更新省略/null 保留，[] 清空 |
+| `images` | array 或 null | 关联图片数组；可用 /uploads/ 路径、本地绝对路径、data URL。当前消息第一张用 <current-message-image>，第二张用 <current-message-image:2>；历史图使用上下文提供的 <conversation-image:消息ID:序号>。更新省略/null 保留，[] 清空 |
 | `note` | string | 额外备注，如用餐感受、身体反应、特殊情况；不是记录正文。具体吃了什么填 description，日记正文填 content，作品/专注名称填 title |
 | `quality` | integer ≥ 1 ≤ 5 | 睡眠质量，依据用户提供的评分 |
 | `sleepTime` | string | 入睡时间；带时区的 ISO-8601，例如 2026-09-29T18:25:00+08:00 |
@@ -58,7 +58,7 @@ operation=record；默认 create；get/update 必须 id；只用当前类别字�
 | `type` | string：meal | 记录类别：饮食用 meal，不使用 diet/food/meals |
 | `id` | string | 已有资源 id；先查询获取，不能编造 |
 | `description` | string | 具体吃了什么：食物名称、分量、搭配，如老干妈蛋炒饭吃了一半、肉肠一根；不要放进 note |
-| `images` | array 或 null | 关联图片数组；可用 /uploads/ 路径、本地绝对路径、data URL。当前消息第一张用 <current-message-image>，第二张用 <current-message-image:2>。更新省略/null 保留，[] 清空 |
+| `images` | array 或 null | 关联图片数组；可用 /uploads/ 路径、本地绝对路径、data URL。当前消息第一张用 <current-message-image>，第二张用 <current-message-image:2>；历史图使用上下文提供的 <conversation-image:消息ID:序号>。更新省略/null 保留，[] 清空 |
 | `mealType` | string：BREAKFAST, LUNCH, DINNER, SNACK, OTHER | 餐次：BREAKFAST=早餐，LUNCH=午餐，DINNER=晚餐，SNACK=加餐，OTHER=其他；arguments.type 仍填 meal |
 | `note` | string | 额外备注，如用餐感受、身体反应、特殊情况；不是记录正文。具体吃了什么填 description，日记正文填 content，作品/专注名称填 title |
 | `satisfaction` | integer ≥ 1 ≤ 5 | 饮食满意度 1–5；不是 rating 或 score |
@@ -75,7 +75,7 @@ operation=record；默认 create；get/update 必须 id；只用当前类别字�
 | `id` | string | 已有资源 id；先查询获取，不能编造 |
 | `durationMinutes` | integer ≥ 0 | 时长（分钟） |
 | `exerciseType` | string：STRENGTH, WALK, CYCLING, MAIMAI, RUNNING, OTHER | 运动子类型：STRENGTH=力量，WALK=散步，CYCLING=骑行，MAIMAI=舞萌，RUNNING=跑步，OTHER=其他；arguments.type 仍填 exercise |
-| `images` | array 或 null | 关联图片数组；可用 /uploads/ 路径、本地绝对路径、data URL。当前消息第一张用 <current-message-image>，第二张用 <current-message-image:2>。更新省略/null 保留，[] 清空 |
+| `images` | array 或 null | 关联图片数组；可用 /uploads/ 路径、本地绝对路径、data URL。当前消息第一张用 <current-message-image>，第二张用 <current-message-image:2>；历史图使用上下文提供的 <conversation-image:消息ID:序号>。更新省略/null 保留，[] 清空 |
 | `intensity` | string：LOW, MEDIUM, HIGH | 运动强度：LOW=低，MEDIUM=中，HIGH=高 |
 | `note` | string | 额外备注，如用餐感受、身体反应、特殊情况；不是记录正文。具体吃了什么填 description，日记正文填 content，作品/专注名称填 title |
 | `startTime` | string | 开始时间；带时区的 ISO-8601，例如 2026-09-29T18:25:00+08:00 |
@@ -92,7 +92,7 @@ operation=record；默认 create；get/update 必须 id；只用当前类别字�
 | `energy` | integer ≥ 1 ≤ 10 | 精力评分 1–10；只能依据用户明确表达，不推测 |
 | `fatigue` | integer ≥ 1 ≤ 10 | 疲劳程度评分 1–10；只能依据用户明确表达，不推测 |
 | `focusDesire` | integer ≥ 1 ≤ 10 | 专注意愿评分 1–10；只能依据用户明确表达，不推测 |
-| `images` | array 或 null | 关联图片数组；可用 /uploads/ 路径、本地绝对路径、data URL。当前消息第一张用 <current-message-image>，第二张用 <current-message-image:2>。更新省略/null 保留，[] 清空 |
+| `images` | array 或 null | 关联图片数组；可用 /uploads/ 路径、本地绝对路径、data URL。当前消息第一张用 <current-message-image>，第二张用 <current-message-image:2>；历史图使用上下文提供的 <conversation-image:消息ID:序号>。更新省略/null 保留，[] 清空 |
 | `mood` | integer ≥ 1 ≤ 10 | 心情评分 1–10；只能依据用户明确表达，不推测 |
 | `note` | string | 额外备注，如用餐感受、身体反应、特殊情况；不是记录正文。具体吃了什么填 description，日记正文填 content，作品/专注名称填 title |
 | `time` | string | 记录实际发生时间；补录使用当时日期，不能用当前日期替代；带时区的 ISO-8601，例如 2026-09-29T18:25:00+08:00 |
@@ -107,7 +107,7 @@ operation=record；默认 create；get/update 必须 id；只用当前类别字�
 | `action` | string：list, get, create, update | 操作：list=查询列表；get=读取详情；create=新增记录；update=修改已有记录 |
 | `type` | string：life_record | 记录类别：饮食用 meal，不使用 diet/food/meals |
 | `id` | string | 已有资源 id；先查询获取，不能编造 |
-| `images` | array 或 null | 关联图片数组；可用 /uploads/ 路径、本地绝对路径、data URL。当前消息第一张用 <current-message-image>，第二张用 <current-message-image:2>。更新省略/null 保留，[] 清空 |
+| `images` | array 或 null | 关联图片数组；可用 /uploads/ 路径、本地绝对路径、data URL。当前消息第一张用 <current-message-image>，第二张用 <current-message-image:2>；历史图使用上下文提供的 <conversation-image:消息ID:序号>。更新省略/null 保留，[] 清空 |
 | `label` | string | 通用生活记录标签 |
 | `metadata` | object | 通用记录附加信息 |
 | `note` | string | 额外备注，如用餐感受、身体反应、特殊情况；不是记录正文。具体吃了什么填 description，日记正文填 content，作品/专注名称填 title |
@@ -136,7 +136,7 @@ operation=journal；默认 read；create 必须 content；update 必须 id
 | `id` | string | 已有资源 id；先查询获取，不能编造 |
 | `content` | string | 日记正文 |
 | `occurredAt` | string | 日记对应的发生时间；带时区的 ISO-8601，例如 2026-09-29T18:25:00+08:00 |
-| `images` | array 或 null | 关联图片数组；可用 /uploads/ 路径、本地绝对路径、data URL。当前消息第一张用 <current-message-image>，第二张用 <current-message-image:2>。更新省略/null 保留，[] 清空 |
+| `images` | array 或 null | 关联图片数组；可用 /uploads/ 路径、本地绝对路径、data URL。当前消息第一张用 <current-message-image>，第二张用 <current-message-image:2>；历史图使用上下文提供的 <conversation-image:消息ID:序号>。更新省略/null 保留，[] 清空 |
 | `tags` | array | 标签 |
 | `limit` | integer ≥ 1 ≤ 100 | journal 查询条数，默认 20 |
 

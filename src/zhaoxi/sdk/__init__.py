@@ -17,7 +17,7 @@ from zhaoxi.sdk.protocols import (
     ToolProtocol,
 )
 from zhaoxi.sdk.signals import SignalAggregator, SignalPriority, StateSignal
-from zhaoxi.tools.execution_context import current_turn_images
+from zhaoxi.tools.execution_context import current_turn_images, resolve_image_reference
 
 SDK_VERSION = "1.1.0"
 
@@ -48,4 +48,5 @@ __all__ = [
     "ToolProtocol",
     "ToolResult",
     "current_turn_images",
+    "resolve_image_reference",
 ]

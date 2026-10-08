@@ -157,12 +157,12 @@ async function request(url,options={}){const r=await fetch(url,{headers:{'Conten
 async function acknowledgeEmojiTrace(traceId,rendered){if(!traceId)return;try{await request('/api/debug/emoji/trace/ack',{method:'POST',body:JSON.stringify({trace_id:traceId,received:true,rendered:!!rendered})})}catch{}}
 let INPUT_MERGE_MS=15000;
 let pendingInput=[], inputTimer=null;
-function addRetryableError(content){
+function addRetryableError(content,requestId){
   const rows=addMessage('assistant',content);
   const group={element:rows[0]?.parentElement};
   void request('/api/session').then(data=>{
-    const latest=[...(data.messages||[])].reverse().find(item=>item.role==='user'||item.role==='assistant');
-    if(latest?.message_id)attachRegenerate(group,latest.message_id,false);
+    const target=[...(data.messages||[])].reverse().find(item=>item.role==='user'&&item.request_id===requestId);
+    if(target?.message_id)attachRegenerate(group,target.message_id,false);
   }).catch(()=>{});
 }
 function recallInput(item){
@@ -238,7 +238,7 @@ async function flushInput(){
     acknowledgeReply(data,renderStartedAt);
     if(data.permission)permissionCard(data.permission);
     debug.textContent=JSON.stringify(data.activity,null,2);void setupDiagnostics();endActionTraceFallback('本次任务已完成');
-  }catch(e){endActionTraceFallback(e.message,true);addRetryableError(e.message)}
+  }catch(e){endActionTraceFallback(e.message,true);addRetryableError(e.message,requestId)}
   finally{finishTurn();input.focus()}
 }
 async function resolve(id,action,box){if(busy)return;busy=true;$('#clear').disabled=true;box.querySelectorAll('button').forEach(b=>b.disabled=true);activity.textContent=action==='approve'?'正在执行已允许的操作…':'正在处理拒绝…';const requestId=beginActionTrace();try{const data=await request(`/api/permission/${id}/${action}?request_id=${encodeURIComponent(requestId)}`,{method:'POST'}),renderStartedAt=performance.now();box.remove();await (data.output_messages?.length?renderResponse(data):sendReply(data.content,data.timestamp,data.message_id));acknowledgeReply(data,renderStartedAt);if(data.permission)permissionCard(data.permission);debug.textContent=JSON.stringify(data.activity,null,2);void setupDiagnostics();endActionTraceFallback('本次任务已完成')}catch(e){endActionTraceFallback(e.message,true);addMessage('assistant',e.message)}finally{finishTurn()}}

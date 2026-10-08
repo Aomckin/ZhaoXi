@@ -83,7 +83,8 @@ class LifeHudTool(Tool):
         "饮食的 description 填食物名称、分量和搭配，note 只填额外备注，satisfaction 填用户给的1–5分。其他字段是 mealType,time,images。"
         "完整字段和枚举见 arguments schema；参数出错按 input_hint 修正，不向用户索取字段名。可记录睡眠、饮食、运动、状态、饮水、咖啡因、"
         "日记及图片，也可管理专注、任务、媒体进度、仪式和梦想。图片使用 images=['<current-message-image>']，"
-        "多图可用 <current-message-image:2> 等序号。只在用户有记录/查询意图或既定主动记录策略时使用；"
+        "多图可用 <current-message-image:2> 等序号。历史图片仅用上下文给出的 <conversation-image:消息ID:序号>，"
+        "续办任务时按原图引用关联，不把历史图当当前图或自行猜引用。只在用户有记录/查询意图或既定主动记录策略时使用；"
         "普通闲聊提到活动不应自动落库。兼容旧版 context.* 与 focus.start/complete。"
     )
     input_model = LifeHudInput

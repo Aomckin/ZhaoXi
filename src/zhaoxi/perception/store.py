@@ -29,6 +29,11 @@ class PerceptionStore:
                 CREATE TABLE IF NOT EXISTS snapshot_cognition (
                     snapshot_id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'PENDING');
             """)
+            columns = {row[1] for row in db.execute("PRAGMA table_info(snapshot_cognition)")}
+            for name, definition in (("attempt_count", "INTEGER NOT NULL DEFAULT 0"),
+                                     ("next_retry_at", "TEXT"), ("last_error", "TEXT")):
+                if name not in columns:
+                    db.execute(f"ALTER TABLE snapshot_cognition ADD COLUMN {name} {definition}")
 
     def fail_inflight(self) -> None:
         """Mark direct calls interrupted by a previous process as failed at startup."""
@@ -141,17 +146,46 @@ class PerceptionStore:
         with self._connect() as db:
             return {row[0]: row[1] for row in db.execute("SELECT status, COUNT(*) FROM observations GROUP BY status")}
 
-    def pending_snapshots(self, limit: int = 5) -> list[SocialSnapshot]:
+    def pending_snapshots(self, limit: int = 5, *, now: datetime | None = None) -> list[SocialSnapshot]:
+        """Ready items only; a deferred or quarantined head never blocks later items."""
+        at = (now or datetime.now(UTC)).astimezone(UTC).isoformat()
         with self._connect() as db:
             rows = db.execute("""SELECT s.payload FROM snapshots s
                 JOIN snapshot_cognition c ON c.snapshot_id=s.id
-                WHERE c.status='PENDING' ORDER BY s.window_end LIMIT ?""", (limit,)).fetchall()
+                WHERE c.status='PENDING' AND (c.next_retry_at IS NULL OR c.next_retry_at<=?)
+                ORDER BY s.window_end, s.id LIMIT ?""", (at, limit)).fetchall()
         return [SocialSnapshot.model_validate_json(row[0]) for row in rows]
+
+    def snapshot_cognition_counts(self) -> dict[str, int]:
+        with self._connect() as db:
+            return {row[0]: row[1] for row in db.execute(
+                "SELECT status, COUNT(*) FROM snapshot_cognition GROUP BY status")}
+
+    def record_snapshot_failure(self, snapshot_id: str, error: str, *, max_attempts: int = 3,
+                                retry_seconds: int = 300, now: datetime | None = None) -> dict:
+        at = (now or datetime.now(UTC)).astimezone(UTC)
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT attempt_count FROM snapshot_cognition WHERE snapshot_id=? AND status='PENDING'",
+                             (snapshot_id,)).fetchone()
+            if row is None:
+                raise ValueError("snapshot_not_pending")
+            attempts = row[0] + 1
+            status = "FAILED" if attempts >= max_attempts else "PENDING"
+            retry = (at + timedelta(seconds=min(86_400, retry_seconds * 2 ** (attempts - 1)))).isoformat() if status == "PENDING" else None
+            db.execute("UPDATE snapshot_cognition SET status=?,attempt_count=?,next_retry_at=?,last_error=? WHERE snapshot_id=?",
+                       (status, attempts, retry, error[:160], snapshot_id))
+        return {"status": status, "attempt_count": attempts, "next_retry_at": retry, "last_error": error[:160]}
 
     def set_snapshot_cognition(self, snapshot_id: str, status: str) -> None:
         with self._connect() as db:
-            db.execute("UPDATE snapshot_cognition SET status=? WHERE snapshot_id=?",
-                       (status, snapshot_id))
+            if status == "PENDING":
+                # Explicit reset can requeue a quarantined item after the cause is fixed.
+                db.execute("UPDATE snapshot_cognition SET status=?,attempt_count=0,next_retry_at=NULL,last_error=NULL WHERE snapshot_id=?",
+                           (status, snapshot_id))
+            else:
+                db.execute("UPDATE snapshot_cognition SET status=?,next_retry_at=NULL,last_error=NULL WHERE snapshot_id=?",
+                           (status, snapshot_id))
 
 
     def social_observations(self, plugin_id, group_id, *, limit=20, since):

@@ -62,6 +62,8 @@ Example:
 
 For a photo in the current user message, use `<current-message-image>` for the first image or `<current-message-image:2>` for the second (1-based index). The Agent passes these attachments to the Tool outside model-generated arguments and audit logs; the Tool uploads the original bytes. A caller may also pass a readable path or data URL. The parent's Tool argument limit is 50,000 characters, so ordinary photos should use the placeholder or a path.
 
+For an earlier photo in the same local Owner conversation, use the exact `<conversation-image:message-id:index>` handle shown next to that historical message. The runtime resolves it to the original attachment, including after a permission confirmation. Do not guess handles, use thumbnail bytes, or substitute the latest image for a missing reference. Unavailable or foreign references fail before any upload or record write.
+
 Omitting `images` on update leaves existing images untouched; `images: null` also preserves them; `images: []` removes them. The Tool does no visual recognition. The multimodal model supplies descriptions and measured values.
 
 ## Permissions and reliability

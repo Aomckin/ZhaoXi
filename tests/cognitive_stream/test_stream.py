@@ -110,3 +110,44 @@ def test_cross_channel_reply_survives_bounded_render(tmp_path):
     rendered = result.render(600)
     assert "主窗口刚刚明确说：现在还是单向同步" in rendered
     assert "无关群聊" not in rendered
+
+
+
+def test_image_only_ingress_and_legacy_reload_preserve_author_intent(tmp_path):
+    import json
+    from zhaoxi.cognitive_stream import CognitiveIngress
+    from zhaoxi.cognitive_stream.timeline import project_event
+    image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9S8AAAAASUVORK5CYII='
+    stream = ExperienceStream(tmp_path / 'experience.db')
+    ingress = CognitiveIngress(stream)
+    picture = ingress.desktop('', images=[image])
+    real = ingress.desktop('请查看这些图片。', images=[image])
+    assert stream.get(picture.event_id).metadata['input_text_present'] is False
+    assert stream.get(real.event_id).content == '请查看这些图片。'
+    with stream._connect() as db:
+        payload = json.loads(db.execute('SELECT payload FROM events WHERE event_id=?', (picture.event_id,)).fetchone()[0])
+        payload['content'] = '请查看这些图片。'
+        payload['metadata'].pop('input_text_present')
+        serialized = json.dumps(payload)
+        db.execute('UPDATE events SET payload=? WHERE event_id=?', (serialized, picture.event_id))
+    reopened = ExperienceStream(tmp_path / 'experience.db')
+    event = reopened.get(picture.event_id)
+    assert event.content == '' and event.parts == picture.parts and event.event_id == picture.event_id
+    projected = project_event(event)
+    assert projected.content == '' and projected.images == [image]
+    assert project_event(reopened.get(real.event_id)).content == '请查看这些图片。'
+    # Experience raw evidence is immutable; compatibility happens at the read boundary.
+    with stream._connect() as db:
+        assert db.execute('SELECT payload FROM events WHERE event_id=?', (picture.event_id,)).fetchone()[0] == serialized
+
+
+def test_legacy_cleanup_does_not_rewrite_external_or_text_only_messages():
+    from zhaoxi.cognitive_stream.models import EventPart
+    image = EventPart(type='image', url='unavailable')
+    for kind, source, parts in [(CognitiveEventType.EXTERNAL_MESSAGE, 'qq', [image]),
+                               (CognitiveEventType.USER_MESSAGE, 'desktop', [])]:
+        item = CognitiveEvent(event_type=kind, source=source, actor_role='OWNER',
+                              content='请查看这些图片。', parts=parts)
+        assert item.content == '请查看这些图片。'
+        from zhaoxi.cognitive_stream.timeline import project_event
+        assert project_event(item).content.startswith('请查看这些图片。')

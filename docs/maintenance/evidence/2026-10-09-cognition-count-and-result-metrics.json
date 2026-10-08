@@ -1,0 +1,88 @@
+{
+  "recorded_at": "2026-10-09T00:32:37.559442+08:00",
+  "scope": [
+    "B03: empty-content text cognition counts",
+    "B04: failed requests reported as completed"
+  ],
+  "behavior": {
+    "text_cognition": "Count nonblank Owner USER_MESSAGE/EXTERNAL_MESSAGE text; retain image events; no filler injected",
+    "overall_result": "Reply or runtime terminal failure => failed; preserve separate task_status and response_status",
+    "other_states_preserved": [
+      "partial_success",
+      "budget_exhausted",
+      "waiting_for_permission"
+    ],
+    "snapshot_context_compatibility": "Restore SocialTrace label on bounded ambient snapshot evidence"
+  },
+  "regression": {
+    "command": ".venv/Scripts/python.exe -B -X utf8 -m pytest tests/observability tests/internal_activity tests/interfaces tests/core/test_loop_safety.py tests/current_cognition tests/cognitive_stream tests/perception tests/web/test_action_trace_monitor.py tests/web/test_perception_inspector.py tests/models/test_budget_context_integration.py tests/reliability/test_budget_policy.py --basetemp=.pytest_cache/confirmed-bugs-repair/run-3 --junitxml=.pytest_cache/confirmed-bugs-repair/results-final.xml -q",
+    "exit_code": 0,
+    "tests": 434,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "new_status_tests": [
+      "test_overall_status_matches_progress_and_reply[actions0-succeeded-completed-None-completed-completed]",
+      "test_overall_status_matches_progress_and_reply[actions1-failed-completed-None-failed-failed]",
+      "test_overall_status_matches_progress_and_reply[actions2-failed-completed-None-failed-completed]",
+      "test_overall_status_matches_progress_and_reply[actions3-failed-completed-None-failed-partial]",
+      "test_overall_status_matches_progress_and_reply[actions4-succeeded-completed-None-partial_success-partial]",
+      "test_overall_status_matches_progress_and_reply[actions5-succeeded-completed-None-failed-failed]",
+      "test_overall_status_matches_progress_and_reply[actions6-waiting_for_permission-completed-waiting_for_permission-waiting_for_permission-waiting_for_permission]",
+      "test_overall_status_matches_progress_and_reply[actions7-succeeded-budget_exhausted-None-budget_exhausted-completed]",
+      "test_overall_status_matches_progress_and_reply[actions8-succeeded-budget_exhausted-None-budget_exhausted-failed]",
+      "test_runtime_failure_overrides_success_default_without_losing_tool_record",
+      "test_metrics_disabled_still_finalizes_correct_result",
+      "test_gateway_endpoint_failure_exports_failed_metrics[False]",
+      "test_gateway_endpoint_failure_exports_failed_metrics[True]"
+    ],
+    "new_count_tests": [
+      "test_pending_text_count_accepts_empty_image_events[None-USER_MESSAGE]",
+      "test_pending_text_count_accepts_empty_image_events[None-EXTERNAL_MESSAGE]",
+      "test_pending_text_count_accepts_empty_image_events[-USER_MESSAGE]",
+      "test_pending_text_count_accepts_empty_image_events[-EXTERNAL_MESSAGE]",
+      "test_pending_text_count_accepts_empty_image_events[ \\t\\n-USER_MESSAGE]",
+      "test_pending_text_count_accepts_empty_image_events[ \\t\\n-EXTERNAL_MESSAGE]",
+      "test_only_images_do_not_trigger_text_cognition_bootstrap",
+      "test_pending_text_count_honors_cursor_with_image_events"
+    ],
+    "existing_warning": "Starlette/httpx deprecation"
+  },
+  "additional_integration_assertions": {
+    "command": ".venv/Scripts/python.exe -B -X utf8 -m pytest tests/observability/test_agent_trace.py::test_timeout_after_write_returns_tool_status_instead_of_losing_result --basetemp=.pytest_cache/confirmed-bugs-repair/run-4 --junitxml=.pytest_cache/confirmed-bugs-repair/result-integration.xml -q",
+    "exit_code": 0,
+    "tests": 1,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "not_added_to_unique_regression_count": true,
+    "checks": [
+      "single write retained",
+      "tool task completed",
+      "response failed",
+      "overall metrics failed",
+      "response activity overall failed"
+    ]
+  },
+  "source_sha256": {
+    "src/zhaoxi/internal_activity/runtime.py": "6c552c0db762b58ad377395fe59fe6271bef76c2535349caf95cf324395da6fd",
+    "src/zhaoxi/internal_activity/activities/legacy.py": "b2345f9a2f93f02d245475f020bd1152257943ebd90b5b92ca61db98b645a09d",
+    "src/zhaoxi/observability.py": "9b6e6f863245af0c48050be032fd1ac576e3f54a3c94a37aba85d28e07b84237",
+    "src/zhaoxi/interfaces/gateway.py": "4c1814ee6144b630dd05fd240ffd3a561c7dfcc47a2ef343aa05ba792d4c71be",
+    "src/zhaoxi/perception/context.py": "e99a68a1c84b3dfcf52de1fb259c9ba6255d5965463d4951e78f123cb795e946",
+    "tests/internal_activity/test_internal_activity_runtime.py": "adbc770438301225044800cce832a5b09b810beb26c27b9cee108a00b85c4d4f",
+    "tests/observability/test_result_status.py": "c6b3091dae9bc5e4796e46e9176e36f9d4400e84a23403624b180b60da605a4b",
+    "tests/observability/test_agent_trace.py": "88c5a36394ad66f9c8ed11c23f8bc21b300e813ae8c26ee2b515293087ddc87d"
+  },
+  "checks": {
+    "python_ast": "passed",
+    "git_diff_check": "passed"
+  },
+  "live_verification": {
+    "core_restarted": false,
+    "real_provider_invoked": false,
+    "production_database_modified": false,
+    "past_logs_rewritten": false
+  },
+  "outstanding": "B05 and B07-B09 root causes need further evidence; B06 is historical model configuration failure; B10 is connection/environment recovery work."
+}

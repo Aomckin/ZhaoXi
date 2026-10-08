@@ -7,7 +7,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from zhaoxi.core.attachments import ImageList
 
 
@@ -38,7 +38,7 @@ class UnifiedMessage(BaseModel):
     session_id: str = Field(default="local", min_length=1, max_length=128)
     channel: InterfaceChannel
     origin: MessageOrigin = MessageOrigin.USER
-    content: str = Field(min_length=1, max_length=20_000)
+    content: str = Field(default="", max_length=20_000)
     images: ImageList = Field(default_factory=list)
     display_parts: list[DisplayPart] = Field(default_factory=list, max_length=1000)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -48,11 +48,14 @@ class UnifiedMessage(BaseModel):
 
     @field_validator("content")
     @classmethod
-    def content_must_not_be_blank(cls, value: str) -> str:
-        normalized = value.strip()
-        if not normalized:
+    def strip_content(cls, value: str) -> str:
+        return value.strip()
+
+    @model_validator(mode="after")
+    def require_text_or_images(self):
+        if not self.content and not self.images:
             raise ValueError("消息内容不能为空")
-        return normalized
+        return self
 
     @field_validator("capabilities")
     @classmethod

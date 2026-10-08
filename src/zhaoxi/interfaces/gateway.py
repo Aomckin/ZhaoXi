@@ -91,7 +91,8 @@ class InterfaceGateway:
                 state.interaction.interact(state.last_interaction_at)
                 continuation = getattr(self.agent, "conversation_continuation", None)
                 if continuation is not None:
-                    continuation.note_user_message(message.content, state.last_interaction_at)
+                    continuation.note_user_message(message.content, state.last_interaction_at,
+                                                   **({"has_images": True} if message.images else {}))
             started = monotonic()
             self.metrics.increment("interface.chat.started")
             previous_messages = {id(item) for item in self.agent.conversation.messages}
@@ -195,8 +196,11 @@ class InterfaceGateway:
                     trace.finish()
                     self.agent.last_action_trace = trace.summary()
                 self.metrics.increment("interface.chat.failed")
-                # The model/tool path may fail after accepting the user turn.
-                # Preserve that turn so a session refresh cannot make it disappear.
+                # FAST can fail before committing any input. Preserve exactly
+                # one accepted user turn, even when no model reply was produced.
+                if not any(id(item) not in previous_messages and item.role == Role.USER
+                           for item in self.agent.conversation.messages):
+                    self.agent.conversation.add_user(message.content, images=message.images)
                 self._attach_display_parts(message, previous_messages)
                 if any(id(item) not in previous_messages for item in self.agent.conversation.messages):
                     try:
@@ -290,11 +294,11 @@ class InterfaceGateway:
                     trace.emit("request_started", "request", "running", "正在重新生成…")
                     if resume_in_place:
                         response = await self.agent.resume_current_turn(
-                            source_user.content or "请查看这些图片。"
+                            source_user.content or ""
                         )
                     else:
                         response = await self.agent.run_natural(
-                            source_user.content or "请查看这些图片。",
+                            source_user.content or "",
                             **({"images": source_user.images} if source_user.images else {}),
                         )
                     if getattr(response, "permission_confirmation", None) is not None:
@@ -701,13 +705,13 @@ class InterfaceGateway:
             trace.record_interval("session_persist", started)
 
     def _attach_display_parts(self, message: UnifiedMessage, previous_messages: set[int]) -> None:
-        if not message.display_parts:
-            return
         for item in self.agent.conversation.messages:
             if id(item) not in previous_messages and item.role == Role.USER:
-                item.metadata["display_parts"] = [
-                    part.model_dump(mode="json") for part in message.display_parts
-                ]
+                item.metadata["request_id"] = message.request_id
+                if message.display_parts:
+                    item.metadata["display_parts"] = [
+                        part.model_dump(mode="json") for part in message.display_parts
+                    ]
                 return
 
     def _restore_user_metadata(self, source: Message, previous_messages: set[int]) -> None:
@@ -753,6 +757,7 @@ class InterfaceGateway:
             "reply_group_id": item.reply_group_id,
             "timestamp": item.timestamp.isoformat(),
             "delivery_id": item.delivery_id,
+            "request_id": item.metadata.get("request_id") if item.role == Role.USER else None,
             "kind": item.metadata.get("kind", ""),
             "regeneratable": regeneratable,
             "display_parts": item.metadata.get("display_parts", []) if item.role == Role.USER else [],
@@ -790,8 +795,8 @@ class InterfaceGateway:
                 trace.final_reply_ready_ms = (monotonic() - trace.started_monotonic) * 1000
             activity["task_status"] = trace.task_status
             activity["response_status"] = trace.response_status
-            activity["result_status"] = trace.result_status
-            activity["partial_success"] = trace.partial_success
+            activity["result_status"] = trace.overall_result_status()
+            activity["partial_success"] = activity["result_status"] == "partial_success"
             activity["deterministic_fallback_used"] = trace.deterministic_fallback_used
         permission_view = None
         if permission is not None:

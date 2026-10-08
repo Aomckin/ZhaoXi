@@ -9,12 +9,13 @@ from zhaoxi.internal_activity.foreground import external_foreground
 from zhaoxi.cognitive.fast_gate import FastGateLane
 from pydantic import ValidationError
 
+from zhaoxi.errors import ProviderError
 from zhaoxi.core.message import Message, Role
 from zhaoxi.core.reply import ResolvedReply
 from zhaoxi.cognitive_stream.provenance import from_observation, project_current_trigger
 from zhaoxi.core.conversation import Conversation
 from zhaoxi.cognitive_stream.models import CognitiveEventType
-from zhaoxi.perception.context import ChannelExpressionPolicy, session_key
+from zhaoxi.perception.context import ChannelExpressionPolicy, session_key, ambient_snapshot_context
 from zhaoxi.perception.digest import digest, make_batch
 from zhaoxi.perception.images import ImageResolver
 from zhaoxi.perception.ledger import InteractionLedger
@@ -50,6 +51,7 @@ class PerceptionRuntime:
         self.known_bot_ids: set[str] = set()
         self._lock = asyncio.Lock()
         self._direct_lock = asyncio.Lock()
+        self._snapshot_lock = asyncio.Lock()
         self._recent_owner_image: dict[tuple[str, str | None], tuple[datetime, list[str], str, str | None]] = {}
         self._last_runtime_key = None
         agent.context_builder.self_activity_provider = self.shared_context
@@ -161,7 +163,7 @@ class PerceptionRuntime:
                     planner_view.add(project_current_trigger(trigger, images))
                 else:
                     planner_view.add(Message(role=Role.USER if item.actor_role=="OWNER" else Role.EXTERNAL,
-                        content=item.content or "请查看图片。", images=images, source=item.source,
+                        content=item.content or "", images=images, source=item.source,
                         metadata={**from_observation(item).metadata(), "timeline_scope":"current_trigger"}))
                 async with self.agent.conversation_lock:
                     builder = self.agent.context_builder
@@ -216,6 +218,10 @@ class PerceptionRuntime:
                     should_reply = False
                 elif fast_owner_reply:
                     should_reply = True
+                elif owner_private_text and getattr(cognitive, "force_non_fast_chat", False):
+                    # Debug selects STANDARD delivery, not an extra Planner
+                    # admission gate for an Owner's direct private message.
+                    should_reply = True
                 elif item.actor_role != "OWNER":
                     # One qualifying external request gets the shared reply path directly.
                     should_reply = True
@@ -223,11 +229,11 @@ class PerceptionRuntime:
                     try:
                         async with self.agent.conversation_lock:
                             plan = await asyncio.wait_for(self.planner.decide(item, messages), timeout=60)
-                    except (json.JSONDecodeError, ValidationError) as exc:
-                        # A malformed Planner response must not discard an Owner's picture.
-                        # No cognition or memory candidate is applied on this path.
+                    except (json.JSONDecodeError, ValidationError, TimeoutError, ProviderError) as exc:
+                        # Planner failure must not discard a directed Owner
+                        # message. No cognition/memory candidate is applied.
                         self.last_error = type(exc).__name__
-                        logger.warning("planner format failed type=%s", type(exc).__name__)
+                        logger.warning("direct planner failed type=%s fallback=owner_reply", type(exc).__name__)
                         should_reply = item.actor_role == "OWNER"
                     else:
                         if ingress:
@@ -268,14 +274,14 @@ class PerceptionRuntime:
                                 "escalation_reason": response.escalation_reason,
                                 "final_lane": "standard"})
                             response = await self.agent.run_channel_reply(
-                                item.content or "请查看图片。", trigger_event=trigger,
+                                item.content or "", trigger_event=trigger,
                                 fast_escalated=True,
                                 images=images, audience=audience,
                                 expression_policy=safe_expression_policy,
                             )
                     else:
                         response = await self.agent.run_channel_reply(
-                            item.content or "请查看图片。", trigger_event=trigger,
+                            item.content or "", trigger_event=trigger,
                             images=images, audience=audience,
                             expression_policy=safe_expression_policy,
                         )
@@ -362,42 +368,37 @@ class PerceptionRuntime:
     async def process_pending_snapshot(self) -> int:
         if not self.settings.external_cognition_ambient_enabled:
             return 0
-        pending = self.store.pending_snapshots(1)
-        if not pending:
-            return 0
-        snap = pending[0]
-        # Snapshot content is untrusted and cannot become Owner evidence.
-        item = Observation(source=snap.source, source_kind="social_snapshot",
-            conversation_id=snap.conversation_id, conversation_kind="group",
-            content=snap.summary, raw_ref="snapshot:" + snap.snapshot_id)
-        try:
-            async with self.agent.conversation_lock:
-                builder = self.agent.context_builder
-                stream = getattr(self.agent, "experience_stream", None)
-                refs = stream.query_refs(["snapshot:" + snap.snapshot_id], 1) if stream else []
-                from zhaoxi.cognitive_stream.turn import CognitiveTurnContext,set_current_turn,reset_current_turn
-                view=Conversation()
-                if refs:
-                    view.add(project_current_trigger(refs[0]))
-                    item.source_plugin=refs[0].metadata.get("source_plugin")
-                token=set_current_turn(CognitiveTurnContext(trigger_event=refs[0],output_channel=item.source,audience="public")) if refs else None
-                try:
-                    messages = builder.build(view, output_channel=item.source, audience="public",
-                        expression_policy=ChannelExpressionPolicy.prompt("group"))
-                finally:
-                    if token is not None:reset_current_turn(token)
-                plan = await asyncio.wait_for(self.planner.decide(item, messages, ambient=True), timeout=60)
-            await self.planner.apply_candidates(item, plan)
-            self.store.set_snapshot_cognition(snap.snapshot_id, "PROCESSED")
-            if plan.record_self_event and self.settings.interaction_ledger_enabled:
-                self.ledger.record("snapshot_reviewed", snap.source,
-                    "朝汐整理了一次外部群聊摘要", conversation_id=snap.conversation_id,
-                    source_refs=snap.raw_refs[:20])
-            return 1
-        except Exception as exc:
-            self.last_error = type(exc).__name__
-            logger.warning("snapshot cognition failed type=%s", type(exc).__name__)
-            return 0
+        async with self._snapshot_lock:
+            pending = self.store.pending_snapshots(1)
+            if not pending:
+                return 0
+            snap = pending[0]
+            # The summary is third-party evidence, never Owner instructions or private context.
+            item = Observation(source=snap.source, source_kind="social_snapshot",
+                conversation_id=snap.conversation_id, conversation_kind="group",
+                content=snap.summary, raw_ref="snapshot:" + snap.snapshot_id)
+            try:
+                async with self.agent.conversation_lock:
+                    messages = ambient_snapshot_context(snap)
+                    plan = await asyncio.wait_for(self.planner.decide(item, messages, ambient=True), timeout=60)
+                await self.planner.apply_candidates(item, plan)
+                if plan.record_self_event and self.settings.interaction_ledger_enabled:
+                    self.ledger.record("snapshot_reviewed", snap.source,
+                        "朝汐整理了一次外部群聊摘要", conversation_id=snap.conversation_id,
+                        source_refs=snap.raw_refs[:20])
+                self.store.set_snapshot_cognition(snap.snapshot_id, "PROCESSED")
+                self.last_error = None
+                return 1
+            except Exception as exc:
+                error = getattr(exc, "code", None) or type(exc).__name__
+                self.last_error = str(error)
+                retry = self.store.record_snapshot_failure(snap.snapshot_id, str(error),
+                    max_attempts=self.settings.perception_cognition_max_attempts,
+                    retry_seconds=self.settings.perception_cognition_retry_seconds)
+                logger.warning("snapshot cognition failed snapshot_id=%s type=%s error_code=%s attempts=%s status=%s next_retry_at=%s",
+                    snap.snapshot_id, type(exc).__name__, error, retry["attempt_count"], retry["status"], retry["next_retry_at"])
+                # Propagate failure to the activity scheduler instead of reporting NO_CHANGE.
+                raise
 
     async def flush(self, bucket: str | None = None, *, force: bool = False) -> int:
         made = 0
@@ -459,11 +460,13 @@ class PerceptionRuntime:
         if sessions and hasattr(sessions, "_connect"):
             with sessions._connect() as db:
                 session_count = db.execute("SELECT COUNT(*) FROM sessions WHERE session_id LIKE '%/%'").fetchone()[0]
+        cognition_counts = self.store.snapshot_cognition_counts()
         return {"enabled": True, "status": self.status,
                 "source_count": len(self.sources.diagnostics()) if self.sources else 0,
                 "pending_observation_count": self.store.counts().get("PENDING", 0),
                 "buffered_conversation_count": len(self.store.buckets()),
-                "pending_perception_cognition": len(self.store.pending_snapshots(100)),
+                "pending_perception_cognition": cognition_counts.get("PENDING", 0),
+                "snapshot_cognition_counts": cognition_counts,
                 "external_session_count": session_count,
                 "recent_self_events": [x.model_dump(mode="json") for x in self.ledger.recent(8)],
                 "runtime_self_state": self.runtime_self_state(),

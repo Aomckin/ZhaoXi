@@ -146,7 +146,8 @@ class InternalActivityRuntime:
         return timedelta(minutes=self.control.config(name)["min_interval_minutes"])
 
     def _cooldown(self, name):
-        failures = self.state.get(name, {}).get("failure_count", 0)
+        # Snapshot retries are per item; a bad head must not back off the entire queue.
+        failures = 0 if name == PERCEPTION_COGNITION else self.state.get(name, {}).get("failure_count", 0)
         return self._interval(name) * (min(8, 2 ** (failures - 1)) if failures >= 2 else 1)
 
     def _enabled(self, name):
@@ -188,9 +189,9 @@ class InternalActivityRuntime:
         stream = getattr(self.agent, "experience_stream", None)
         if stream is not None:
             marker = self.agent.current_cognition.state().last_processed_message_id
-            return sum(e.actor_role == "OWNER" and e.content and
-                       e.event_type.value in {"USER_MESSAGE", "EXTERNAL_MESSAGE"}
-                       for e in stream.events_after(marker, limit=200))
+            return sum(1 for e in stream.events_after(marker, limit=200)
+                       if e.actor_role == "OWNER" and (e.content or "").strip()
+                       and e.event_type.value in {"USER_MESSAGE", "EXTERNAL_MESSAGE"})
         return 0
 
     async def _memory_due(self, now):
@@ -238,7 +239,7 @@ class InternalActivityRuntime:
             last = self._last(name, "last_run_at")
             cooldown = self._cooldown(name)
             if last and now - last < cooldown and (not forced or spec.category == ActivityCategory.SOCIAL):
-                self._skip(name, "backoff" if failures >= 2 else "cooldown", now)
+                self._skip(name, "backoff" if failures >= 2 and name != PERCEPTION_COGNITION else "cooldown", now)
                 continue
             try:
                 due = await spec.candidate(self, now)
@@ -337,7 +338,7 @@ class InternalActivityRuntime:
                     receipt = None
                     try:
                         needs = TickBudget.resources(spec, kind)
-                        with provider_budget_scope(needs.get("llm", 0), 6000):
+                        with provider_budget_scope(needs.get("llm", 0), spec.max_total_tokens):
                             self._activity_task = asyncio.create_task(self._execute(name, kind))
                             raw = await self._activity_task
                         if isinstance(raw, list):
@@ -380,6 +381,10 @@ class InternalActivityRuntime:
                         failures = item["failure_count"] + 1
                         item.update(last_result="FAILED", failure_count=failures, dirty=True,
                                     last_error=type(exc).__name__, degraded=failures >= 3)
+                        perception = getattr(self.agent, "perception", None)
+                        if name == PERCEPTION_COGNITION and perception is not None:
+                            # Quarantined items are visible failures, not runnable maintenance debt.
+                            item["dirty"] = bool(perception.store.snapshot_cognition_counts().get("PENDING", 0))
                         self.event("ACTIVITY_FAILED", name, error=type(exc).__name__)
                     finally:
                         if receipt:
@@ -509,9 +514,8 @@ class InternalActivityRuntime:
             "timeline": [{"at": at, "kind": kind, "name": name, **json.loads(detail)} for at, kind, name, detail in rows],
             "activities": {s.name: {**self.state[s.name], "enabled": self._enabled(s.name), "priority": s.priority,
                 "category": s.category.value, "cost_class": s.cost_class.value, "presence_states": sorted(s.presence_states),
-                "min_interval_minutes": s.min_interval,
-                "next_eligible_at": ((self._last(s.name, "last_run_at") + self._interval(s.name) *
-                    (min(8, 2 ** (self.state[s.name]["failure_count"] - 1)) if self.state[s.name]["failure_count"] >= 2 else 1)) if self._last(s.name, "last_run_at") else now).isoformat(),
+                "min_interval_minutes": s.min_interval, "max_total_tokens": s.max_total_tokens,
+                "next_eligible_at": ((self._last(s.name, "last_run_at") + self._cooldown(s.name)) if self._last(s.name, "last_run_at") else now).isoformat(),
                 "can_message_user": s.can_message_user, "can_message_external": s.can_message_external,
                 "daily_limit": getattr(self.settings, s.daily_limit_setting, None) if s.daily_limit_setting else None}
                 for s in self.registry}}

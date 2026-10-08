@@ -1,0 +1,13 @@
+{
+  "trace_id": "d26b1da4-8e66-408d-8061-1f73e2767827",
+  "read_only_session_check": true,
+  "stored_content_matches_raw_reply": true,
+  "provider_finish_reason": "stop",
+  "provider_output_tokens": 1320,
+  "protocol_input_chars": 341,
+  "protocol_body_chars": 17,
+  "awareness": "missing",
+  "original_json_available": false,
+  "tests_passed": 214,
+  "production_restart_performed": false
+}

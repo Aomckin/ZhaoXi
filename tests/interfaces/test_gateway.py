@@ -380,3 +380,27 @@ async def test_tool_retry_hides_all_old_reply_segments_without_replaying_tools(s
     result = await InterfaceGateway(agent).regenerate(parts[segment_index].message_id, request_id="retry-tool-group")
     assert result.content == "new final" and agent.calls == 0
     assert [m["text"] for m in InterfaceGateway(agent).session()] == ["tool question", "new final"]
+
+
+@pytest.mark.parametrize("already_accepted", [False, True])
+async def test_early_provider_failure_keeps_retry_input_after_proactive_delivery(already_accepted):
+    from zhaoxi.errors import ProviderError
+    agent = FakeAgent()
+    agent.conversation.add_assistant("主动消息", delivery_id="beat-fixture")
+    gateway = InterfaceGateway(agent)
+    async def fail(content):
+        if already_accepted:
+            agent.conversation.add_user(content)
+        raise ProviderError("模型请求失败：HTTP 400", code="provider_http_400")
+    agent.run_natural = fail
+    with pytest.raises(ProviderError):
+        await gateway.chat(UnifiedMessage(channel="web", content="当前输入", request_id="failed-current"))
+    users = [m for m in agent.conversation.messages if m.role.value == "user"]
+    assert len(users) == 1 and users[0].content == "当前输入"
+    assert gateway.session()[-1]["request_id"] == "failed-current"
+    assert gateway.session()[-1]["message_id"] == users[0].message_id
+    agent.run_natural = FakeAgent.run_natural.__get__(agent)
+    reply = await gateway.regenerate(users[0].message_id, request_id="retry-current")
+    assert reply.content == "回复：当前输入"
+    assert sum(m.role.value == "user" for m in agent.conversation.messages) == 1
+    assert agent.conversation.messages[0].delivery_id == "beat-fixture"

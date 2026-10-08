@@ -18,6 +18,7 @@ from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.tools.registry import ToolRegistry
 from zhaoxi.core.message import Role
 from zhaoxi.models.types import ModelResponse
+from zhaoxi.errors import ProviderError
 from zhaoxi.perception.runtime import PerceptionRuntime
 from zhaoxi.reliability import MetricRegistry
 from zhaoxi.session.sqlite import SQLiteSessionStore
@@ -575,7 +576,8 @@ async def test_debug_non_fast_applies_to_owner_private_without_relaxing_channel_
         seen.append((messages, tools))
         return ModelResponse(content="标准外部回复。")
     runtime, agent = make_runtime(tmp_path, generate)
-    runtime.settings.external_cognition_enabled = False
+    runtime.settings.external_cognition_enabled = True
+    runtime.planner.decide = AsyncMock(side_effect=AssertionError("Debug STANDARD must not require Planner admission"))
     from zhaoxi.core.tool_retry import ToolRetryContext
     from time import monotonic
     agent.tool_retry_context = ToolRetryContext("previous-web", ("desktop", "web", "local", "", "owner", ""), "请查询记录", monotonic())
@@ -590,3 +592,43 @@ async def test_debug_non_fast_applies_to_owner_private_without_relaxing_channel_
     assert "当前处于 FAST_CHAT" not in seen[0][0][0].content
     assert "外部频道输出边界" in seen[0][0][0].content
     assert not any(schema["function"]["name"] in {"write_file", "lifehud"} for schema in seen[0][1] or [])
+
+
+@pytest.mark.parametrize("failure", [TimeoutError(), ProviderError("fixture")])
+@pytest.mark.parametrize("kind", ["private", "group"])
+async def test_owner_direct_planner_failure_still_generates_restricted_reply(tmp_path, failure, kind):
+    seen = []
+    async def generate(messages, tools):
+        seen.append((messages, tools))
+        return ModelResponse(content="标准频道回复。")
+    runtime, agent = make_runtime(tmp_path, generate)
+    runtime.settings.external_cognition_enabled = True
+    runtime.planner.decide = AsyncMock(side_effect=failure)
+    runtime.planner.apply_candidates = AsyncMock()
+    if kind == "group":
+        agent.cognitive = CognitiveCoordinator(agent=agent, router=CognitiveRouter(agent.provider), fast_gate=FastDialogueGate())
+        agent.cognitive.force_non_fast_chat = True
+    item = decode(qq_event(581, text="朝汐在吗？", kind=kind), self_id="42", owner_id="8")
+    item.directed_to_zhaoxi = True
+    assert await runtime.ingest(item) == "标准频道回复。"
+    runtime.planner.decide.assert_awaited_once()
+    runtime.planner.apply_candidates.assert_not_awaited()
+    assert len(seen) == 1 and "外部频道输出边界" in seen[0][0][0].content
+    assert not seen[0][1]
+    assert runtime.last_error == type(failure).__name__
+    assert runtime.store.counts().get("PROCESSED") == 1
+
+
+async def test_owner_group_planner_can_still_decline_reply_with_debug_non_fast(tmp_path):
+    from zhaoxi.perception.planner import ExternalCognitionDecision
+    async def generate(messages, tools):
+        raise AssertionError("Planner declined; no reply model call expected")
+    runtime, agent = make_runtime(tmp_path, generate)
+    agent.cognitive = CognitiveCoordinator(agent=agent, router=CognitiveRouter(agent.provider), fast_gate=FastDialogueGate())
+    agent.cognitive.force_non_fast_chat = True
+    runtime.settings.external_cognition_enabled = True
+    runtime.planner.decide = AsyncMock(return_value=ExternalCognitionDecision(reply=False))
+    item = decode(qq_event(582, text="谢谢", kind="group"), self_id="42", owner_id="8")
+    item.directed_to_zhaoxi = True
+    assert await runtime.ingest(item) is None
+    runtime.planner.decide.assert_awaited_once()

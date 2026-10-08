@@ -45,34 +45,83 @@ def _finish(response: ModelResponse, body: str, *, encoding: str,
 def decode_main_reply(response: ModelResponse, *, fast: bool = False) -> ModelResponse:
     if response.tool_calls:
         return response
+    if response.finish_reason in {"length", "max_tokens", "content_filter"}:
+        return _finish(response, "", encoding="incomplete", error_code="invalid_reply_protocol")
     raw = (response.content or "").strip()
     if not raw:
         return _finish(response, "", encoding="empty", error_code="empty_model_reply")
     if raw.startswith("```json") and raw.endswith("```"):
         raw = raw[7:-3].strip()
+    encoding = "json"
     try:
         arguments = json.loads(raw)
     except ValueError:
-        # Recover only a complete reply string, never unfinished/private metadata.
-        match = re.search(r'"reply"\s*:\s*(")', raw)
-        if raw.startswith("{") and match:
+        # Some providers append the reply envelope after already emitting its
+        # body. Accept only a complete trailing envelope repeating that body;
+        # conflicting or incomplete protocol must not become visible text.
+        for marker in re.finditer(r'\{\s*"reply"\s*:', raw):
+            if marker.start() == 0:
+                continue
             try:
-                value, _ = json.JSONDecoder().raw_decode(raw[match.start(1):])
-                if isinstance(value, str) and value.strip():
-                    return _finish(response, value, encoding="truncated_json", awareness="invalid")
+                candidate, end = json.JSONDecoder().raw_decode(raw[marker.start():])
             except ValueError:
-                pass
-            return _finish(response, "", encoding="truncated_json", error_code="invalid_reply_protocol")
-        if raw.startswith("{") and re.search(r'"(?:awareness|escalation)"\s*:', raw):
-            return _finish(response, "", encoding="truncated_json", error_code="invalid_reply_protocol")
-        return _finish(response, raw, encoding="text")
+                continue
+            if (not isinstance(candidate, dict) or not any(
+                    key in candidate for key in ("awareness", "escalation"))):
+                continue
+            prefix = raw[:marker.start()].strip()
+            suffix = raw[marker.start() + end:].strip()
+            body = candidate.get("reply")
+            if (isinstance(body, str) and body.strip() and not suffix
+                    and prefix == body.strip()):
+                arguments, encoding = candidate, "mixed_json"
+                break
+            return _finish(response, "", encoding="mixed_json", error_code="invalid_reply_protocol")
+        else:
+            return _decode_unparsed_reply(response, raw)
+    return _decode_reply_object(response, arguments, raw, fast=fast, encoding=encoding)
+
+
+def _decode_unparsed_reply(response: ModelResponse, raw: str) -> ModelResponse:
+    # A requested main-reply envelope must be complete before any body is saved.
+    if response.raw_metadata.get("main_reply_contract") and raw.startswith("{"):
+        return _finish(response, "", encoding="truncated_json", error_code="invalid_reply_protocol")
+    # Recover only a complete reply string, never unfinished/private metadata.
+    match = re.search(r'"reply"\s*:\s*(")', raw)
+    if raw.startswith("{") and match:
+        try:
+            value, _ = json.JSONDecoder().raw_decode(raw[match.start(1):])
+            if isinstance(value, str) and value.strip():
+                return _finish(response, value, encoding="truncated_json", awareness="invalid")
+        except ValueError:
+            pass
+        return _finish(response, "", encoding="truncated_json", error_code="invalid_reply_protocol")
+    if raw.startswith("{") and re.search(r'"(?:awareness|escalation)"\s*:', raw):
+        return _finish(response, "", encoding="truncated_json", error_code="invalid_reply_protocol")
+    if re.search(r'\{\s*"reply"\s*:', raw) and re.search(r'"(?:awareness|escalation)"\s*:', raw):
+        return _finish(response, "", encoding="mixed_json", error_code="invalid_reply_protocol")
+    return _finish(response, raw, encoding="text")
+
+
+def _decode_reply_object(response: ModelResponse, arguments, raw: str, *, fast: bool, encoding: str) -> ModelResponse:
     if not isinstance(arguments, dict) or "reply" not in arguments:
         if isinstance(arguments, dict) and any(key in arguments for key in ("awareness", "escalation")):
             return _finish(response, "", encoding="json", error_code="invalid_reply_protocol")
+        # A bare action envelope is an attempted tool call, not a final reply.
+        # Never guess a tool name or execute it from assistant content. JSON
+        # intentionally quoted to the user remains valid inside the reply field.
+        if (isinstance(arguments, dict) and isinstance(arguments.get("arguments"), dict)
+                and (isinstance(arguments.get("operation"), str)
+                     or isinstance(arguments.get("name"), str))):
+            return _finish(response, "", encoding="tool_arguments", error_code="invalid_reply_protocol")
         return _finish(response, raw, encoding="text")
     if fast and isinstance(arguments.get("escalation"), dict):
         return _finish(response, "", encoding="fast_escalation", content=
             "[escalate:" + json.dumps(arguments["escalation"], ensure_ascii=False) + "]")
+    if response.raw_metadata.get("main_reply_contract") and (
+            "awareness" not in arguments or arguments["awareness"] is None
+            or set(arguments) - {"reply", "awareness", "escalation"}):
+        return _finish(response, "", encoding=encoding, error_code="invalid_reply_protocol")
     body = arguments.get("reply")
     if not isinstance(body, str) or not body.strip():
         return _finish(response, "", encoding="json", error_code="empty_model_reply")
@@ -86,4 +135,4 @@ def decode_main_reply(response: ModelResponse, *, fast: bool = False) -> ModelRe
         except ValueError:
             awareness_state = "invalid"
             logging.getLogger("DECISION").warning("main reply has invalid awareness metadata")
-    return _finish(response, body, encoding="json", awareness=awareness_state, mode=mode, content=content)
+    return _finish(response, body, encoding=encoding, awareness=awareness_state, mode=mode, content=content)

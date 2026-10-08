@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-08",
+  "root_cause": "Model history thumbnails were available; Tool attachments only contained current-turn originals.",
+  "reference_format": "<conversation-image:message-id:1-based-index>",
+  "reference_scope": "same-session local Owner image history offered to this model/tool turn",
+  "validation": {
+    "targeted_passed": 340,
+    "new_cases": 9,
+    "actual_original_bytes_checked": true,
+    "historical_and_current_image_order_checked": true,
+    "confirmation_snapshot_checked": true,
+    "cognitive_event_projection_checked": true,
+    "missing_reference_blocks_upload_and_write": true,
+    "context_cleanup_checked": true,
+    "different_active_session_isolated": true
+  },
+  "production": {
+    "real_model_called": false,
+    "lifehud_calls_mocked": true,
+    "tasks_replayed": false,
+    "database_modified": false,
+    "restarted": false
+  },
+  "status": "source_fixed_not_live_verified_not_committed"
+}

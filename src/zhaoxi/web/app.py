@@ -763,7 +763,7 @@ def create_app(
             ):
                 raise HTTPException(status_code=422, detail="消息显示分段与内容不匹配")
             result = await adapter.chat(
-                request.message.strip() or "请查看这些图片。",
+                request.message.strip(),
                 request_id=request_id, images=request.images, display_parts=request.display_parts,
             )
         except HTTPException:

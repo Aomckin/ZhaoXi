@@ -1,0 +1,33 @@
+{
+  "request_id": "ad3bde32-f329-4a86-8f59-906153685040",
+  "time_local": "2026-10-06 20:44:14.997",
+  "observed_protocol": {
+    "encoding": "text",
+    "input_chars": 544,
+    "body_chars": 544,
+    "awareness": "missing",
+    "status": "decoded"
+  },
+  "read_only_session_probe": {
+    "raw_chars": 544,
+    "envelope_start": 168,
+    "reply_chars": 166,
+    "prefix_equals_reply": true
+  },
+  "offline_decode": {
+    "encoding": "mixed_json",
+    "input_chars": 544,
+    "body_chars": 166,
+    "awareness": "valid",
+    "mode": "NONE",
+    "status": "decoded",
+    "error_code": null
+  },
+  "offline_body_matches_envelope": true,
+  "validation": {
+    "targeted_tests_passed": 165,
+    "real_model_called": false,
+    "production_data_modified": false,
+    "production_restarted": false
+  }
+}

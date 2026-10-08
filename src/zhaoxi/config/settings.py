@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     interaction_ledger_context_max_chars: int = Field(default=1500, ge=100)
     external_cognition_enabled: bool = True
     external_cognition_ambient_enabled: bool = True
+    perception_cognition_max_total_tokens: int = Field(default=12_000, ge=4096, le=100_000)
+    perception_cognition_max_attempts: int = Field(default=3, ge=1, le=10)
+    perception_cognition_retry_seconds: int = Field(default=300, ge=1, le=86_400)
     perception_image_temp_dir: str = ".zhaoxi/tmp/perception"
     perception_image_max_bytes: int = Field(default=10_485_760, ge=1024)
     perception_image_ttl_hours: int = Field(default=24, ge=1)

@@ -436,3 +436,59 @@ async def test_invalid_awareness_preserves_valid_body_without_extra_model(tmp_pa
     assert agent.decision_awareness.history.list() == []
     assert agent.last_reply_protocol["awareness"] == "invalid"
     assert "reply" not in result.content and "UNKNOWN" not in result.content
+
+
+@pytest.mark.parametrize("fast", [False, True])
+@pytest.mark.parametrize("key", ["operation", "name"])
+def test_main_reply_rejects_bare_action_envelope(fast, key):
+    from zhaoxi.decision.reply import decode_main_reply
+    from zhaoxi.errors import AgentLoopError
+    with pytest.raises(AgentLoopError) as failure:
+        decode_main_reply(ModelResponse(content=json.dumps({key: "record", "arguments": {"action": "create"}})), fast=fast)
+    assert failure.value.code == "invalid_reply_protocol"
+
+
+@pytest.mark.parametrize("payload", [{"value": 1}, [1, 2], {"operation": "example"}])
+def test_main_reply_preserves_regular_json(payload):
+    from zhaoxi.decision.reply import decode_main_reply
+    raw = json.dumps(payload)
+    assert decode_main_reply(ModelResponse(content=raw)).content == raw
+
+
+def test_main_reply_can_quote_action_json_in_reply():
+    from zhaoxi.decision.reply import decode_main_reply
+    body = json.dumps({"operation": "record", "arguments": {"action": "create"}})
+    assert decode_main_reply(ModelResponse(content=json.dumps({"reply": body}))).content == body
+
+
+@pytest.mark.parametrize("fast", [False, True])
+async def test_repeated_body_before_reply_envelope_is_delivered_once(tmp_path, fast):
+    body = "挑喜欢的馆子就好。\n今晚想吃辣的还是清淡的？"
+    raw = body + "\n\n" + json.dumps({"reply": body, "awareness": {"mode": "NONE"}, "escalation": None}, ensure_ascii=False)
+    agent, provider = make_agent(tmp_path, [ModelResponse(content=raw)], fast=fast)
+    result = await agent.run_natural("晚上吃啥？") if fast else await agent.run_direct("晚上吃啥？")
+    assert result.content == body and len(provider.calls) == 1
+    assert agent.last_reply_protocol["encoding"] == "mixed_json"
+    assert agent.last_reply_protocol["awareness"] == "valid"
+    messages = [m for m in agent.conversation.messages if m.role.value == "assistant"]
+    assert messages and all('"reply"' not in m.content and '"awareness"' not in m.content for m in messages)
+    assert sum(m.content.count("挑喜欢的馆子就好。") for m in messages) == 1
+
+
+@pytest.mark.parametrize("raw", [
+    '前言与正文不同。{"reply":"另一段正文。","awareness":{"mode":"NONE"}}',
+    '正文。{"reply":"正文。","awareness":{"mode":',
+    '正文。{"reply":"正文。","awareness":{"mode":"NONE"}}尾部内容',
+])
+def test_ambiguous_mixed_reply_protocol_is_rejected(raw):
+    from zhaoxi.decision.reply import decode_main_reply
+    from zhaoxi.errors import AgentLoopError
+    with pytest.raises(AgentLoopError) as failure:
+        decode_main_reply(ModelResponse(content=raw))
+    assert failure.value.code == "invalid_reply_protocol"
+
+
+def test_reply_can_quote_full_protocol_example():
+    from zhaoxi.decision.reply import decode_main_reply
+    body = '格式示例：{"reply":"示例","awareness":{"mode":"NONE"}}'
+    assert decode_main_reply(ModelResponse(content=json.dumps({"reply": body}))).content == body

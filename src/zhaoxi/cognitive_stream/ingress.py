@@ -25,7 +25,8 @@ class CognitiveIngress:
             session_id=session_id, actor_id="owner", actor_role="OWNER", content=content,
             occurred_at=occurred_at or datetime.now(UTC),
             parts=[EventPart(type="image", url=image) for image in (images or [])], trust_level="TRUSTED",
-            source_refs=["desktop:" + message_id] if message_id else [], importance=0.7))
+            source_refs=["desktop:" + message_id] if message_id else [], importance=0.7,
+            metadata={"input_text_present": bool(content.strip())}))
 
     def observation(self, item, *, session_id: str | None = None,
                     images: list[str] | None = None) -> CognitiveEvent:

@@ -1,0 +1,35 @@
+{
+  "date": "2026-10-07",
+  "sources": [
+    ".zhaoxi/logs/zhaoxi.log",
+    ".zhaoxi/perception.db"
+  ],
+  "failure": {
+    "received_local": "2026-10-07 20:40:32.536930",
+    "failed_local": "2026-10-07 20:41:34.945",
+    "source": "qq",
+    "actor_role": "OWNER",
+    "conversation_kind": "group",
+    "parts": [
+      "mention",
+      "text"
+    ],
+    "status": "FAILED",
+    "error_type": "TimeoutError",
+    "log_message": "direct failed type=TimeoutError"
+  },
+  "debug_causality": {
+    "user_reported_force_non_fast_chat": true,
+    "saved_flag_when_inspected": false,
+    "group_fast_chat_eligible": false,
+    "conclusion": "Planner failure discards directed Owner reply; no evidence Debug caused the observed timeout."
+  },
+  "validation": {
+    "targeted_tests_passed": 74,
+    "production_replayed": false,
+    "real_model_called": false,
+    "external_messages_sent": false,
+    "production_data_modified": false,
+    "production_restarted": false
+  }
+}

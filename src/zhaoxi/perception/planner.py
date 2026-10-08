@@ -64,7 +64,9 @@ class ExternalCognitionPlanner:
         prompt = Message(role=Role.SYSTEM, content=PLANNER_RULES +
             ("\n当前是 Ambient Snapshot，reply 必须为 false。" if ambient else ""))
         messages = [prompt, *context]
-        response = await self.agent.provider.generate(messages, [])
+        options = {"max_tokens": 1024, "reasoning_budget_tokens": 2048,
+                   "thinking": {"type": "disabled"}} if ambient else {}
+        response = await self.agent.provider.generate(messages, [], **options)
         if response.tool_calls:
             raise ValueError("external planner attempted tool")
         decision = ExternalCognitionDecision.model_validate(_json_object(response.content or ""))

@@ -15,8 +15,9 @@ NAMES = (COGNITION, MEMORY, AGENDA, PERCEPTION_COGNITION, PROACTIVE)
 async def cognition_due(r, now):
     state = r.agent.current_cognition.state()
     stream = getattr(r.agent, "experience_stream", None)
-    users = sum(e.actor_role == "OWNER" and e.event_type.value in {"USER_MESSAGE", "EXTERNAL_MESSAGE"}
-                for e in stream.recent(200)) if stream else 0
+    users = sum(1 for e in stream.recent(200)
+                if e.actor_role == "OWNER" and (e.content or "").strip()
+                and e.event_type.value in {"USER_MESSAGE", "EXTERNAL_MESSAGE"}) if stream else 0
     pending = r._pending_turns()
     r.state[COGNITION]["pending_signal_count"] = pending
     if not state.overview and not state.threads and users >= r.settings.current_cognition_bootstrap_min_turns:
@@ -153,5 +154,7 @@ def build_registry(settings):
             interval = 5
         registry.register(ActivitySpec(name, category, cost, states, priority, interval, handler, candidate,
             enabled_setting=prefix + "_enabled", can_message_user=name == PROACTIVE,
-            label=label, preemptible=name != AGENDA))
+            label=label, preemptible=name != AGENDA,
+            max_total_tokens=getattr(settings, "perception_cognition_max_total_tokens", 12_000)
+                if name == PERCEPTION_COGNITION else 6000))
     return registry

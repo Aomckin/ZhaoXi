@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 from uuid import uuid4
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 class CognitiveEventType(StrEnum):
     USER_MESSAGE = "USER_MESSAGE"
@@ -49,6 +49,15 @@ class CognitiveEvent(BaseModel):
     importance: float = Field(default=0.5, ge=0, le=1)
     attention_score: float = Field(default=0.5, ge=0, le=1)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def clean_legacy_image_input(self):
+        if self.event_type == CognitiveEventType.USER_MESSAGE and self.source == "desktop" and self.actor_role == "OWNER":
+            from zhaoxi.core.message import clean_image_input_text
+            self.content = clean_image_input_text(self.content,
+                has_images=any(part.type == "image" for part in self.parts),
+                input_text_present=self.metadata.get("input_text_present"))
+        return self
 
     @field_validator("occurred_at", "received_at")
     @classmethod

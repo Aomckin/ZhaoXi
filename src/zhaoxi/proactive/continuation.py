@@ -35,7 +35,7 @@ class ConversationContinuation:
         self.background_intents: list[BackgroundIntent] = []
         self.last_decision_at: datetime | None = None
 
-    def note_user_message(self, text: str, now: datetime) -> None:
+    def note_user_message(self, text: str, now: datetime, *, has_images: bool = False) -> None:
         if self.OPEN_THREAD.search(text):
             self.open_thread = ConversationContinuationCandidate(
                 summary="最近对话留有一个尚未闭合的话题。",

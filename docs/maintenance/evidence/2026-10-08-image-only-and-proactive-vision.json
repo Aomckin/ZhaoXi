@@ -1,0 +1,51 @@
+{
+  "date": "2026-10-08",
+  "observed": {
+    "image_only_local_time": "2026-10-08 19:28:48 Asia/Shanghai",
+    "user_message_id": "7aaed6d4fb1e4c4395dfe158b5b9ffde",
+    "foreground_request_id": "6a1259aa-d591-4ec3-b74c-50ba65c49f32",
+    "stored_image_count": 1,
+    "synthetic_text_stored": true,
+    "beat_id": "59968d2e7ad44f7189917d7ba3469744",
+    "beat_observed_at": "2026-10-08T11:32:01.962213+00:00",
+    "beat_action": "COMMENT",
+    "beat_delivered": true,
+    "code_before": "Beat model request contained role/content JSON only, without image content blocks"
+  },
+  "changes": {
+    "empty_text_with_images_accepted": true,
+    "no_synthetic_image_view_request": true,
+    "explicit_authored_text_marker_persisted": true,
+    "legacy_local_exact_filler_cleaned_on_load": true,
+    "experience_raw_payload_immutable": true,
+    "qq_authored_text_preserved": true,
+    "proactive_history_thumbnail_max_edge": 512,
+    "proactive_history_thumbnail_jpeg_quality": 65,
+    "historical_images_per_event_messages": true,
+    "new_history_image_count_cap": null,
+    "historical_origin_and_attachment_availability_labelled": true,
+    "picture_only_interaction_renews_beat_budget": true
+  },
+  "validation": {
+    "associated_tests_passed": 546,
+    "final_compatibility_tests_passed": 183,
+    "final_beat_and_interface_tests_passed": 139,
+    "browser_checks_passed": 3,
+    "browser_errors": [],
+    "thirty_history_images_forwarded": true,
+    "five_original_photos_unchanged": true,
+    "scope_overlap": "Counts are overlapping targeted suites, not full-suite total."
+  },
+  "production": {
+    "real_model_called": false,
+    "database_modified": false,
+    "restarted": false,
+    "business_calls_mocked": true
+  },
+  "limits": [
+    "Recent timeline window and existing provider budgets/timeouts remain.",
+    "Unmarked legacy exact filler can be indistinguishable from the same manually authored phrase.",
+    "Live model visual interpretation is not verified."
+  ],
+  "status": "source_fixed_not_live_verified_not_committed"
+}

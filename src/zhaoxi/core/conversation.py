@@ -32,7 +32,7 @@ class Conversation:
         self._trim()
 
     def add_user(self, content: str, *, images: list[str] | None = None) -> Message:
-        return self.add(Message(role=Role.USER, content=content, images=images or []))
+        return self.add(Message(role=Role.USER, content=content, images=images or [], input_text_present=bool(content.strip())))
 
     def add_assistant(self, content: str | None, **kwargs: object) -> Message:
         return self.add(Message(role=Role.ASSISTANT, content=content, **kwargs))

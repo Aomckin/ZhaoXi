@@ -287,6 +287,13 @@ class ActionTrace:
     def finish(self) -> None:
         if self.finished_at is not None:
             return
+        # Freeze business progress before a failed reply changes the overall result.
+        task_status = self.task_status
+        status = self.overall_result_status()
+        if self.terminal_status is None:
+            self.terminal_status = "failed" if not self.actions and status == "failed" else task_status
+        self.result_status = status
+        self.partial_success = status == "partial_success"
         self.finished_at = datetime.now(UTC).isoformat()
         self.final_response_ms = round((time.monotonic() - self.started_monotonic) * 1000, 2)
         self.first_reply()
@@ -296,6 +303,23 @@ class ActionTrace:
         }
         self.emit("runtime_metrics_finalized", "metrics", "success", "运行指标已汇总",
                   metadata={"runtime_metrics": public_metrics})
+
+    def overall_result_status(self) -> str:
+        """Combine delivery and business outcomes without rewriting completed actions."""
+        terminal = next((event.outcome for event in reversed(self.events)
+                         if event.event_type == "runtime_finished"), None)
+        if self.response_status == "failed" or terminal == "failed":
+            return "failed"
+        task = self.task_status
+        if self.response_status == "waiting_for_permission" or task == "waiting_for_permission":
+            return "waiting_for_permission"
+        if self.result_status == "budget_exhausted":
+            return "budget_exhausted"
+        if task == "failed":
+            return "failed"
+        if task == "partial" or self.partial_success:
+            return "partial_success"
+        return self.result_status
 
     def metrics(self) -> dict[str, object]:
         if not self.metrics_enabled:
@@ -354,6 +378,9 @@ class ActionTrace:
                     "budget_remaining_ratio", "forced_finalization_reason", "partial_success",
                     "deterministic_fallback_used", "result_status")},
                 **self.fast_gate_details,
+                "result_status": self.overall_result_status(),
+                "partial_success": self.overall_result_status() == "partial_success",
+                "task_status": self.task_status, "response_status": self.response_status,
                 "router_required": self.router_required, "router_override": self.router_override,
                 "router_final_lane": self.router_final_lane, "router_to_fast_count": self.router_to_fast_count,
                 "extra_round_reason": self.extra_round_reason,
@@ -404,7 +431,7 @@ class ActionTrace:
     def task_status(self) -> str:
         if self.terminal_status is not None:
             return self.terminal_status
-        if not self.actions and self.result_status in {"failed", "budget_exhausted"}:
+        if not self.actions and (self.response_status == "failed" or self.result_status in {"failed", "budget_exhausted"}):
             return "failed"
         if self.result_status == "partial_success":
             return "partial"

@@ -7,7 +7,7 @@ import json
 import logging
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -103,6 +103,7 @@ class PendingAgentInvocation:
     batch_call_count: int = 1
     discovery: ToolDiscoveryState | None = None
     images: tuple[str, ...] = ()
+    image_references: dict[str, str] = field(default_factory=dict)
 
 
 class ZhaoxiAgent:
@@ -533,8 +534,9 @@ class ZhaoxiAgent:
         retry_intent: str = "",
     ) -> AgentResponse:
         """Accept one user turn and return a final natural-language response."""
-        if not user_message.strip():
+        if not user_message.strip() and not images:
             raise ValueError("消息不能为空。")
+        no_tools = no_tools or (bool(images) and not user_message.strip())
         correlation = current_correlation()
         request_id = correlation.request_id if correlation and correlation.request_id else uuid4().hex
         clean_message = user_message.strip()
@@ -898,12 +900,13 @@ class ZhaoxiAgent:
             trace = current_trace()
             multi_model_calls = getattr(self, "allow_multi_model_calls", False)
             model_limit = self.max_steps if multi_model_calls else getattr(settings, "standard_model_round_limit", 3)
+            tool_limit = max(0, self.max_steps - 1) if multi_model_calls else getattr(settings, "standard_tool_round_limit", 2)
             if trace and multi_model_calls:
                 trace.emit("debug_model_round_limit", "runtime", "info", "已启用多轮模型调试",
-                           metadata={"model_limit": min(self.max_steps, model_limit)})
+                           metadata={"model_limit": min(self.max_steps, model_limit), "tool_limit": tool_limit})
             discovery.safety = LoopSafety(
                 model_limit=min(self.max_steps, model_limit),
-                tool_limit=getattr(settings, "standard_tool_round_limit", 2),
+                tool_limit=tool_limit,
                 repair_limit=getattr(settings, "standard_repair_round_limit", 1),
                 discovery_limit=1)
         return discovery.safety
@@ -947,6 +950,7 @@ class ZhaoxiAgent:
         lookup_commitment: str = "",
         discovery: ToolDiscoveryState | None = None,
         turn_images: tuple[str, ...] = (),
+        image_references: dict[str, str] | None = None,
         no_tools: bool = False,
         allowed_read_tools: frozenset[str] = frozenset(),
         fast_escalated: bool = False,
@@ -972,6 +976,7 @@ class ZhaoxiAgent:
             exposed = {item["function"]["name"] for item in discovery.schemas(self.registry)}
             if required_tool not in exposed:
                 discovery.expanded.append(required_tool)
+        image_references = dict(image_references or {})
         current_image_message_id = next((
             item.message_id for item in reversed(self.conversation.messages) if item.role == Role.USER
         ), None)
@@ -1058,6 +1063,8 @@ class ZhaoxiAgent:
                 # ContextBuilder already thumbnails historical images; a tool
                 # result is not a replacement for those image parts.
                 context_options["current_image_message_id"] = current_image_message_id
+                if audience == "owner" and output_channel in {"desktop", "web"}:
+                    context_options["tool_image_references"] = image_references
                 context_started = time.monotonic()
                 messages = self.context_builder.build(
                     self.conversation, memories, output_channel=output_channel,
@@ -1128,6 +1135,8 @@ class ZhaoxiAgent:
                     messages[0].content = (messages[0].content or "") + (
                         "\n本轮只整理已经完成、失败或未知的操作并给出自然语言回复；"
                         "不再探索新工具，不得把尚未完成的动作说成完成。"
+                        "工具参数不是回复，不得用 operation/arguments 对象代替正文；"
+                        "需要展示 JSON 时放在 reply 字段内。"
                     )
                 forced_tool = required_tool if (
                     require_tool_call
@@ -1381,6 +1390,7 @@ class ZhaoxiAgent:
                     invocation_id=invocation_id,
                     step_id=str(step),
                     image_attachments=turn_images if call.name == "lifehud" else None,
+                    image_references=image_references if call.name == "lifehud" else None,
                 )
                 if execution.waiting_for_permission:
                     if trace:
@@ -1405,6 +1415,7 @@ class ZhaoxiAgent:
                         batch_call_count=batch_call_count,
                         discovery=discovery,
                         images=turn_images,
+                        image_references=dict(image_references),
                     )
                     return AgentResponse(
                         content=confirmation.question,
@@ -1494,6 +1505,7 @@ class ZhaoxiAgent:
                         confirmation_id if position > 1 else None
                     ),
                     image_attachments=pending.images if call.name == "lifehud" else None,
+                    image_references=pending.image_references if call.name == "lifehud" else None,
                 )
                 if execution.result is None:
                     raise AgentLoopError("授权未能匹配批量工具调用。")
@@ -1532,13 +1544,15 @@ class ZhaoxiAgent:
             batch_call_count=1,
             discovery=pending.discovery,
             images=pending.images,
+            image_references=dict(pending.image_references),
         )
         continued = await self._execute_remaining_calls(tail_pending)
         if continued is not None:
             return continued
         return await self._run_loop(pending.request_id, user_intent=pending.user_intent,
                                     discovery=pending.discovery,
-                                    turn_images=pending.images)
+                                    turn_images=pending.images,
+                                    image_references=pending.image_references)
 
     def _record_tool_result(self, call: ToolCall, result: ToolResult) -> None:
         provider_result = result
@@ -1638,6 +1652,7 @@ class ZhaoxiAgent:
                 user_intent=pending.user_intent,
                 invocation_id=invocation_id,
                 image_attachments=pending.images if call.name == "lifehud" else None,
+                image_references=pending.image_references if call.name == "lifehud" else None,
             )
             if execution.waiting_for_permission:
                 if trace:
@@ -1662,6 +1677,7 @@ class ZhaoxiAgent:
                     batch_call_count=batch_call_count,
                     discovery=pending.discovery,
                     images=pending.images,
+                    image_references=dict(pending.image_references),
                 )
                 return AgentResponse(
                     content=confirmation.question,

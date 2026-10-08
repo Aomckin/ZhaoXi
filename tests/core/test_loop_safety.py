@@ -361,7 +361,84 @@ def test_multi_model_debug_preserves_other_guards_and_existing_request_snapshot(
     discovery = ToolDiscoveryState(a._tool_context("查询"))
     safety = a._safety_state(discovery, fast_escalated=True)
     assert safety.model_limit == 5
-    assert (safety.tool_limit, safety.repair_limit, safety.discovery_limit) == (2, 1, 1)
+    assert (safety.tool_limit, safety.repair_limit, safety.discovery_limit) == (4, 1, 1)
     a.allow_multi_model_calls = False
     assert a._safety_state(discovery, fast_escalated=True) is safety
     assert a._safety_state(ToolDiscoveryState(a._tool_context("查询")), fast_escalated=True).model_limit == 3
+
+
+@pytest.mark.parametrize("fast_escalated", [False, True])
+async def test_multi_model_debug_executes_four_business_rounds_then_reserves_last_step(fast_escalated):
+    tool = Probe([ToolResult(success=True, content=f"事实 {i}", data={"value": i}) for i in range(4)])
+    a, provider = agent([*[call(query=str(i), id=f"call-{i}") for i in range(5)]], tool)
+    a.max_steps = 5
+    a.allow_multi_model_calls = True
+    with action_trace_scope() as trace:
+        await a.run("继续核验", fast_escalated=fast_escalated)
+    assert tool.calls == ["0", "1", "2", "3"]
+    assert len(provider.calls) == 5
+    assert all(provider.tool_schemas[i] for i in range(4))
+    assert provider.tool_schemas[4] is None
+    assert trace.standard_tool_round == 4
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+async def test_multi_model_debug_still_stops_on_repeated_tool_failures(enabled):
+    tool = Probe([ToolResult(success=False, content="失败", error="unavailable")])
+    a, provider = agent([call(query="first"), call(query="second"), ModelResponse(content="暂时无法核验。")], tool)
+    a.allow_multi_model_calls = enabled
+    with action_trace_scope() as trace:
+        await a.run("核验")
+    assert tool.calls == ["first", "second"]
+    assert provider.tool_schemas[-1] is None
+    assert trace.forced_finalization_reason == "tool_failure_limit"
+
+
+@pytest.mark.parametrize("final_only", [False, True])
+@pytest.mark.parametrize("fenced", [False, True])
+async def test_bare_tool_arguments_never_become_reply_or_execute_again(final_only, fenced):
+    payload = json.dumps({"operation": "record", "arguments": {
+        "action": "create", "resource": "meal", "description": "fixture"}})
+    raw = "```json\n" + payload + "\n```" if fenced else payload
+    tool = Probe([ToolResult(success=True, content="已查询", data={"value": 1})])
+    a, p = agent([call(), ModelResponse(content=raw), ModelResponse(content="只完成了查询，尚未录入。")], tool)
+    a.decision_mode = "agency"
+    if final_only:
+        a.max_steps = 2
+    with action_trace_scope() as trace:
+        result = await a.run("查询后录入")
+        assert any(e.event_type == "main_reply_protocol" and e.error_code == "invalid_reply_protocol"
+                   for e in trace.events)
+        if final_only:
+            assert len(p.calls) == 2 and trace.response_status == "failed"
+            assert "已完成" in result.content and "模型未能生成完整正文" in result.content
+        else:
+            assert len(p.calls) == 3 and p.tool_schemas[-1] is None
+            assert trace.forced_finalization_reason == "reply_protocol_recovery"
+            assert result.content == "只完成了查询，尚未录入。"
+    assert tool.calls == ["q"]
+    assert payload not in result.content
+    assert all(payload not in (m.content or "") for m in a.conversation.messages)
+
+
+@pytest.mark.parametrize("final_only", [False, True])
+async def test_incomplete_stop_envelope_preserves_tools_and_never_saves_partial(final_only):
+    partial = "比较到一半，接下来比"
+    invalid = ModelResponse(content=json.dumps({"reply": partial}), finish_reason="stop",
+                            raw_metadata={"main_reply_contract": True})
+    tool = Probe([ToolResult(success=True, content="已查询", data={"value": 1})])
+    a, p = agent([call(), invalid, ModelResponse(content="查询结果已确认。")], tool)
+    a.decision_mode = "agency"
+    if final_only:
+        a.max_steps = 2
+    with action_trace_scope() as trace:
+        result = await a.run("核验结果")
+    assert tool.calls == ["q"]
+    assert partial not in result.content
+    assert all(partial not in (m.content or "") for m in a.conversation.messages)
+    if final_only:
+        assert len(p.calls) == 2 and trace.response_status == "failed"
+        assert "模型未能生成完整正文" in result.content
+    else:
+        assert len(p.calls) == 3 and p.tool_schemas[-1] is None
+        assert result.content == "查询结果已确认。"

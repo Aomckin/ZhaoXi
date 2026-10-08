@@ -5,6 +5,8 @@ import json
 from typing import Literal
 from pydantic import BaseModel, Field
 from zhaoxi.core.message import Message, Role
+from zhaoxi.core.image_thumbnails import ImageThumbnailCache
+from zhaoxi.proactive.vision import VISION_GUIDANCE, visual_history
 from zhaoxi.reliability import provider_budget_scope
 
 
@@ -36,6 +38,14 @@ class ModelDecision:
         self.conversation = conversation
         self.continuation = continuation
         self.attention_retriever = None
+        self.image_thumbnail_cache = ImageThumbnailCache()
+
+    def recent_visual_context(self):
+        if self.attention_retriever is None:
+            return [], []
+        from zhaoxi.cognitive_stream.timeline import cognitive_timeline
+        return visual_history(cognitive_timeline(self.attention_retriever.stream, limit=12),
+                              self.image_thumbnail_cache)
 
     async def activity_context(self, state, now, conversation=''):
         activity = state.interaction.desktop_activity
@@ -69,6 +79,7 @@ class ModelDecision:
             '没有必要就 silent；时机不合适就 defer；speak 用当前人格自然表达，'
             '结合事件事实且不编造状态，不承诺未执行的操作。不调用工具。'
             '活动判断是概率推测，表达必须保留不确定性，不复述原始标题或路径。'
+            + VISION_GUIDANCE
         )
         ambient = await self.activity_context(state, now)
         payload = {'ambient_context': ambient, 'time': now.isoformat(), 'last_interaction': str(state.last_interaction_at),
@@ -76,11 +87,14 @@ class ModelDecision:
                    'events': [{'type': e.event_type, 'summary': str(e.payload.get('summary', e.payload.get('text', '')))[:600]}
                               for e in events[:20]]}
         try:
+            recent, image_messages = self.recent_visual_context()
+            payload["recent_conversation"] = recent
             # One actual provider attempt: no hidden retry/fallback cost for background decisions.
             with provider_budget_scope(1, 4000):
                 response = await asyncio.wait_for(self.provider.generate([
                     Message(role=Role.SYSTEM, content=prompt),
                     Message(role=Role.USER, content=json.dumps(payload, ensure_ascii=False, default=str)),
+                    *image_messages,
                 ]), timeout=30)
             result = Decision.model_validate_json(response.content or '')
             if result.action == 'speak' and not result.content.strip():
@@ -95,6 +109,7 @@ class ModelDecision:
             'action(silent/defer/speak)、priority、reason、content。'
             '只有自然延续未结束的话题才 speak；不要催促、编造进展或调用工具。'
             '活动判断是概率推测，表达必须保留不确定性，不复述原始标题或路径。'
+            + VISION_GUIDANCE
         )
         ambient = await self.activity_context(state, now, candidate.user_text)
         payload = {
@@ -104,10 +119,13 @@ class ModelDecision:
             'open_thread': {'summary': candidate.summary, 'last_user_message': candidate.user_text},
         }
         try:
+            recent, image_messages = self.recent_visual_context()
+            payload["recent_conversation"] = recent
             with provider_budget_scope(1, 3000):
                 response = await asyncio.wait_for(self.provider.generate([
                     Message(role=Role.SYSTEM, content=prompt),
                     Message(role=Role.USER, content=json.dumps(payload, ensure_ascii=False, default=str)),
+                    *image_messages,
                 ]), timeout=30)
             result = Decision.model_validate_json(response.content or '')
             if result.action == 'speak' and not result.content.strip():

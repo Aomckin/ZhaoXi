@@ -53,6 +53,13 @@ def assistant_persistence_violations(content: str) -> list[str]:
     return violations
 
 
+def clean_image_input_text(content: str | None, *, has_images: bool, input_text_present: bool | None = None) -> str | None:
+    """Remove legacy program-generated image filler, preserving marked real text."""
+    if has_images and input_text_present is not True and content in {"请查看这些图片。", "请查看图片。"}:
+        return ""
+    return content
+
+
 class Message(BaseModel):
     """Provider-independent message used throughout the core."""
 
@@ -61,6 +68,7 @@ class Message(BaseModel):
     message_id: str = Field(default_factory=lambda: uuid4().hex)
     role: Role
     content: str | None = None
+    input_text_present: bool | None = None
     images: list[str] = Field(default_factory=list, max_length=20)
     source: str | None = Field(default=None, max_length=80)
     emoji_id: str | None = Field(default=None, max_length=128)
@@ -78,6 +86,8 @@ class Message(BaseModel):
 
     @model_validator(mode="after")
     def classify_internal(self):
+        if self.role == Role.USER and self.source in {None, "desktop", "web"}:
+            self.content = clean_image_input_text(self.content, has_images=bool(self.images), input_text_present=self.input_text_present)
         if self.role in {Role.TOOL, Role.SYSTEM, Role.EXPERIENCE} or self.tool_calls:
             self.visibility = "internal"
         return self
@@ -95,7 +105,7 @@ class Message(BaseModel):
                                   "content": self.content}
         if self.images and self.source != "emoji":
             result["content"] = [
-                {"type": "text", "text": self.content or "请查看图片。"},
+                *([{"type": "text", "text": self.content}] if self.has_text else []),
                 *[{"type": "image_url", "image_url": {"url": image}} for image in self.images],
             ]
         if self.tool_calls:

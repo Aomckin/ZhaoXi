@@ -1,0 +1,27 @@
+{
+  "date": "2026-10-06",
+  "request_id": "5b29ad1c-7b91-4eb9-8e52-5d54aba7d29e",
+  "observed": {
+    "debug_model_limit": 8,
+    "model_rounds": 3,
+    "business_tool_rounds": 2,
+    "forced_reason": "round_limit",
+    "budget_state": "NORMAL",
+    "budget_remaining_ratio": 0.584775
+  },
+  "fix": {
+    "model_limit": "max_steps",
+    "business_tool_limit": "max_steps - 1",
+    "last_step_reserved": true,
+    "request_snapshot_preserved": true
+  },
+  "validation": {
+    "pytest_passed": 99,
+    "four_business_rounds_standard_and_fast_upgrade": true,
+    "last_step_has_no_tools": true,
+    "repeated_failure_guard_enabled_and_disabled": true
+  },
+  "live_model_calls": 0,
+  "production_tool_replay": false,
+  "production_restarted": false
+}

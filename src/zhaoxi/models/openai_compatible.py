@@ -245,6 +245,8 @@ class OpenAICompatibleProvider(ModelProvider):
                 usage=usage,
                 raw_metadata={"id": data.get("id"), "model": data.get("model"),
                               **({"tool_call_transport": tool_call_transport} if tool_call_transport else {}),
+                              **({"main_reply_contract": True} if response_format and
+                                 response_format.get("json_schema", {}).get("name") == "main_reply" else {}),
                               **({"reasoning_content": message["reasoning_content"]} if isinstance(message.get("reasoning_content"), str) else {})},
             )
         except ProviderError:

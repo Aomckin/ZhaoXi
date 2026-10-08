@@ -138,7 +138,7 @@ def render_for_context(message: Message, current: Provenance, stream=None) -> Me
         label += " [历史图片]"
     # Rendering is ephemeral and idempotent; never mutate ExperienceStream or session text.
     previous = message.metadata.get("rendered_source_label", "")
-    content = message.content or ("请查看图片。" if message.images else "")
+    content = message.content or ""
     if previous and content.startswith(previous + "\n"):
         content = content[len(previous) + 1:]
     if origin.conversation_kind=="group" and message.metadata.get("event_type") in {"EXTERNAL_MESSAGE","SOCIAL_SNAPSHOT"}:
@@ -168,7 +168,7 @@ def render_for_context(message: Message, current: Provenance, stream=None) -> Me
 def project_current_trigger(event, images=()) -> Message:
     from .timeline import project_event
     message = project_event(event)
-    return message.model_copy(update={"content":event.content or "请查看图片。", "images":list(images),
+    return message.model_copy(update={"content":event.content or "", "images":list(images),
         "metadata":{**message.metadata, "timeline_scope":"current_trigger",
                     **({"image_timeline_scope":event.metadata.get("image_timeline_scope", "current_trigger"),
                         "image_origin_event_id":event.metadata.get("image_origin_event_id", event.event_id)} if images else {})}})

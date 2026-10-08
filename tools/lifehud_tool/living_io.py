@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 from tools.lifehud_tool.client import LifeHudClient
 from tools.lifehud_tool.errors import LifeHudError
-from zhaoxi.sdk import current_turn_images
+from zhaoxi.sdk import current_turn_images, resolve_image_reference
 
 
 RECORD_PATHS = {
@@ -124,6 +124,11 @@ class LivingIO:
                 if index >= len(attachments):
                     raise _invalid("当前消息图片附件不存在。", "attachment_not_found")
                 source = attachments[index]
+            if source.startswith("<conversation-image:"):
+                resolved_source = resolve_image_reference(source)
+                if resolved_source is None:
+                    raise _invalid("历史图片引用不存在或不属于本次可用上下文。", "attachment_not_found")
+                source = resolved_source
             if source.startswith("/uploads/"):
                 prepared.append(source)
             else:

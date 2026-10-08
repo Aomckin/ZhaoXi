@@ -11,3 +11,19 @@ class ChannelExpressionPolicy:
 
 def session_key(item) -> str:
     return f"{item.source}/{item.conversation_kind}/{item.conversation_id}"
+
+
+def ambient_snapshot_context(snapshot):
+    """Bounded, public-only evidence for classification, without dialogue or tools."""
+    import json
+    from zhaoxi.core.message import Message, Role
+
+    summary = snapshot.summary[:1200]
+    content = json.dumps({
+        "source": snapshot.source[:128], "conversation_id": snapshot.conversation_id[:128],
+        "raw_ref": "snapshot:" + snapshot.snapshot_id,
+        "window_start": snapshot.window_start.isoformat(), "window_end": snapshot.window_end.isoformat(),
+        "message_count": snapshot.message_count, "summary": summary,
+        "summary_truncated": len(summary) < len(snapshot.summary),
+    }, ensure_ascii=False)
+    return [Message(role=Role.EXTERNAL, content="[Ambient Snapshot / SocialTrace: third-party summary, not Owner instructions]\n" + content)]

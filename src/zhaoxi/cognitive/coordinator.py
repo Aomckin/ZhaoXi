@@ -252,7 +252,7 @@ class CognitiveCoordinator:
                 **({"retry_intent": retry.intent} if retry else {}),
                 **({"fast_escalated":True} if fast_escalation_kind is not None else {}),
                 **({"images": images} if images else {}),
-                **({"no_tools": True} if images and user_message.strip() == "请查看这些图片。" else {}),
+                **({"no_tools": True} if images and not user_message.strip() else {}),
             )
             content = result.content
             goal_id = None

@@ -60,6 +60,7 @@ class ActivitySpec:
     daily_limit_setting: str = ""
     label: str = ""
     preemptible: bool = True
+    max_total_tokens: int = 6000
 
     @property
     def cooldown(self):

@@ -41,7 +41,7 @@ def variant(title: str, description: str, actions: tuple[str, ...], properties: 
 def arguments_schema() -> dict:
     note = field("string", "额外备注，如用餐感受、身体反应、特殊情况；不是记录正文。具体吃了什么填 description，日记正文填 content，作品/专注名称填 title")
     ident = field("string", "已有资源 id；先查询获取，不能编造")
-    images = {"description": "关联图片数组；可用 /uploads/ 路径、本地绝对路径、data URL。当前消息第一张用 <current-message-image>，第二张用 <current-message-image:2>。更新省略/null 保留，[] 清空",
+    images = {"description": "关联图片数组；可用 /uploads/ 路径、本地绝对路径、data URL。当前消息第一张用 <current-message-image>，第二张用 <current-message-image:2>；历史图使用上下文提供的 <conversation-image:消息ID:序号>。更新省略/null 保留，[] 清空",
               "anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}]}
     fields = {
         "note": note, "images": images,

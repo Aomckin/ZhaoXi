@@ -75,7 +75,8 @@ def test_http_image_only_reaches_agent_and_history():
     with TestClient(create_app(agent=agent)) as client:
         response = client.post('/api/chat', json={'images': [PNG]})
         assert response.status_code == 200, response.text
-        assert client.get('/api/session').json()['messages'][0]['images'] == [PNG]
+        message = client.get('/api/session').json()['messages'][0]
+        assert message['images'] == [PNG] and message['content'] == ''
         assert client.post('/api/chat', json={'images': ['bad']}).status_code == 422
         assert client.post('/api/chat', json={}).status_code == 422
 
@@ -170,7 +171,7 @@ def test_live_timeline_keeps_current_image_in_tool_free_finalization(tmp_path):
     conversation = Conversation()
     old = conversation.add_user("旧图片", images=[PNG])
     ingress.desktop("旧图片", message_id=old.message_id, images=[PNG], channel="web")
-    current = conversation.add_user("请查看这些图片。", images=[PNG])
+    current = conversation.add_user("", images=[PNG])
     trigger = ingress.desktop(current.content, message_id=current.message_id,
                               images=[PNG], channel="web")
     builder = ContextBuilder("人格")
@@ -193,7 +194,7 @@ async def test_image_only_request_is_one_vision_call_without_tools():
                         context_builder=ContextBuilder("朝汐"))
     router = SimpleNamespace(route=AsyncMock())
     agent.cognitive = CognitiveCoordinator(agent=agent, router=router)
-    reply = await agent.run_natural("请查看这些图片。", images=[PNG])
+    reply = await agent.run_natural("", images=[PNG])
     assert "看到了" in reply.content
     assert len(provider.calls) == 1
     assert provider.tool_schemas == [None]
@@ -291,3 +292,57 @@ async def test_five_model_previews_still_upload_five_full_originals_after_confir
         assert len(pictures) == 5
         assert all(len(base64.b64decode(image.split(',', 1)[1])) <= 512 * 1024 for image in pictures)
     assert next(m for m in agent.conversation.messages if m.role == Role.USER).images == list(five_large_photos)
+
+
+async def test_provider_image_only_request_has_no_invented_text_part():
+    async def handler(request):
+        content = json.loads(request.content)['messages'][0]['content']
+        assert content == [{'type': 'image_url', 'image_url': {'url': PNG}}]
+        return httpx.Response(200, json={'choices': [{'message': {'content': '看到了'}}]})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        provider = OpenAICompatibleProvider(base_url='https://example.test', api_key='test', model='vision', client=client)
+        await provider.generate([Message(role=Role.USER, content='', images=[PNG])])
+
+
+@pytest.mark.parametrize('legacy_text', ['请查看这些图片。', '请查看图片。'])
+def test_reload_cleans_legacy_filler_without_losing_image_identity(tmp_path, legacy_text):
+    store = SQLiteSessionStore(tmp_path / 'session.db')
+    session = Session()
+    original = session.conversation.add_user('', images=[PNG])
+    real = session.conversation.add_user(legacy_text, images=[PNG])
+    store.save_sync(session)
+    # Model the old on-disk record: synthetic text and no explicit authored-text marker.
+    with store._connect() as db:
+        data = json.loads(db.execute('SELECT messages_json FROM sessions WHERE session_id=?', (session.id,)).fetchone()[0])
+        data[0]['content'] = legacy_text
+        data[0].pop('input_text_present')
+        db.execute('UPDATE sessions SET messages_json=? WHERE session_id=?', (json.dumps(data), session.id))
+    restored = SQLiteSessionStore(tmp_path / 'session.db').get_sync(session.id)
+    picture, actual_text = restored.conversation.messages
+    assert picture.content == '' and picture.is_image_only
+    assert (picture.message_id, picture.timestamp, picture.images) == (original.message_id, original.timestamp, [PNG])
+    assert actual_text.content == real.content == legacy_text
+    with store._connect() as db:
+        data = json.loads(db.execute('SELECT messages_json FROM sessions WHERE session_id=?', (session.id,)).fetchone()[0])
+    assert data[0]['content'] == '' and data[1]['content'] == legacy_text
+    from zhaoxi.interfaces import InterfaceGateway
+    agent = SimpleNamespace(conversation=restored.conversation)
+    history = InterfaceGateway(agent).session()
+    assert history[0]['type'] == 'image' and history[0]['text'] == ''
+
+
+async def test_image_only_retry_preserves_empty_text_and_original_picture():
+    from zhaoxi.interfaces import InterfaceGateway, UnifiedMessage
+    provider = FakeProvider([ModelResponse(content='第一版'), ModelResponse(content='重新看到了')])
+    agent = ZhaoxiAgent(provider=provider, registry=ToolRegistry(), context_builder=ContextBuilder('朝汐'))
+    gateway = InterfaceGateway(agent)
+    response = await gateway.chat(UnifiedMessage(channel='web', content='', images=[PNG]))
+    original = agent.conversation.messages[0].model_copy(deep=True)
+    retried = await gateway.regenerate(response.message_id, request_id='image-only-retry')
+    assert retried.content == '重新看到了'
+    assert sum(m.role == Role.USER for m in agent.conversation.messages) == 1
+    user = agent.conversation.messages[0]
+    assert (user.content, user.images, user.message_id, user.timestamp) == ('', [PNG], original.message_id, original.timestamp)
+    assert provider.tool_schemas == [None, None]
+    assert all('请查看这些图片。' not in (m.content or '') for call in provider.calls for m in call)
+    assert all(sum(len(m.images) for m in call) == 1 for call in provider.calls)
