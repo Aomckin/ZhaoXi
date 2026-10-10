@@ -1,0 +1,90 @@
+{
+  "version": "1.4.8",
+  "date": "2026-10-10",
+  "status": "source_and_isolated_acceptance_complete",
+  "core_full": {
+    "passed": 1497,
+    "skipped": 1,
+    "duration_seconds": 255.26,
+    "command": "python -m pytest --basetemp=.pytest_cache/v148-final-full --tb=short"
+  },
+  "final_recovery_route_scope": {
+    "passed": 467,
+    "command": "pytest tests/reliability/test_v148.py tests/interfaces/test_gateway.py tests/cognitive tests/decision tests/workflow tests/desktop tests/observability"
+  },
+  "final_release_memory_background_scope": {
+    "passed": 290,
+    "command": "pytest tests/integration/test_release_scripts.py tests/web/test_web.py tests/core/test_timeline_suggestions.py tests/proactive/test_tidal.py tests/session tests/memory tests/internal_activity"
+  },
+  "node": {
+    "passed": 100,
+    "failed": 0,
+    "command": "node --test tests/web/*.test.cjs"
+  },
+  "wubu": {
+    "passed": 36,
+    "subtests_passed": 81
+  },
+  "lifehud": {
+    "passed": 33
+  },
+  "browser_history_and_workflows": {
+    "checks": [
+      "paged history retains both roles beyond 40-message model window",
+      "history is inserted before current replies in order",
+      "history survives browser reload",
+      "notification reply target opens without regeneration",
+      "workflow disable persists and catalog reflects availability",
+      "workflow can be enabled again",
+      "no browser script errors"
+    ],
+    "errors": []
+  },
+  "browser_principles": {
+    "checks": [
+      "model-written summary is labelled as agent abstraction",
+      "summary drills into actual user archive original",
+      "dashboard summary edits persist",
+      "summary revision history preserves model and owner authorship",
+      "new archive search supplies verified reference and quote",
+      "saved summaries survive page reload",
+      "no browser script errors"
+    ],
+    "errors": []
+  },
+  "wheels": [
+    {
+      "wheel": "zhaoxi-1.4.8-py3-none-any.whl",
+      "sha256": "f3c18b4febeb43f921ee3d7ff1842557a7ee07b84765c7a3ec8341fd187f4227",
+      "source_files_matched": 322
+    },
+    {
+      "wheel": "zhaoxi_lifehud_tool-2.0.0-py3-none-any.whl",
+      "sha256": "bcf2944cc022709e0628c7fb42459d61120717bc878f033d5361eecd38ea96e5",
+      "source_files_matched": 14
+    }
+  ],
+  "clean_install_import": "passed; loaded isolated wheel path and bundled wind_chime.wav",
+  "test_ranges_overlap": true,
+  "initial_failures_resolved": [
+    "old schema-v3 assertions",
+    "old INFO-no-popup expectations",
+    "old retry signature and request identity fixtures",
+    "build environment missing setuptools",
+    "stale build pycache rejected; clean isolated snapshot used"
+  ],
+  "production_actions": {
+    "restart": false,
+    "model_calls": false,
+    "qq_send": false,
+    "production_database_mutation": false,
+    "push_or_publish": false
+  },
+  "pending_acceptance": [
+    "native Windows focus, notification permission and audible chime",
+    "real model decision registration and interim selection",
+    "long-term background scheduling",
+    "original historical gaps not restored without original evidence",
+    "business workflow coverage beyond old demos"
+  ]
+}

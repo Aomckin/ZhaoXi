@@ -62,6 +62,8 @@ def build_cognition_runtime(settings: Settings, memory_retriever, emoji_service,
                             workflow_registry.register(definition)
                 except Exception as exc:
                     tool_package_errors.append({"source": f"{package.package_id}:workflow", "error": type(exc).__name__})
+        from pathlib import Path
+        workflow_registry.configure_management(Path(settings.workflow_db_path).with_suffix(".management.json"))
         workflow = WorkflowRuntime(
             workflow_registry,
             tool_executor,

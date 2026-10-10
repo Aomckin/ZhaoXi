@@ -345,11 +345,11 @@ class ContextBuilder:
                         and origin.actor_role == "OWNER" and origin.channel in {"desktop", "web"}
                         and origin.session_id in {None, current_context.session_id or "local"}
                         and (not current_context.actor_id or not origin.actor_id or origin.actor_id == current_context.actor_id)
-                        and item.metadata.get("timeline_scope") != "current_trigger"):
+                        ):
                     refs = [f"<conversation-image:{item.message_id}:{i + 1}>" for i in range(len(item.images))]
                     tool_image_references.update(zip(refs, item.images))
                     item = item.model_copy(update={"content": (item.content or "") +
-                        "\n[LifeHUD 历史原图引用（按原附件顺序）：" + ", ".join(refs) +
+                        "\n[会话原图引用（按原附件顺序，可用于 save_emoji 的 image_ref 或已授权 LifeHUD 图片关联）：" + ", ".join(refs) +
                         "；仅用户明确要求关联这些图时填入 images，缩略图不可代替原图。]"})
                 is_current_image = item.message_id == current_image_message_id
                 if release_images and not (preserve_current_image and is_current_image):

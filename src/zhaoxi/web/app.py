@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Callable
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, RedirectResponse
 from zhaoxi.tools.manifest import group_inventory, inventory_summary
 from zhaoxi.tools.filesystem_access import load_filesystem_access
@@ -110,6 +110,7 @@ def create_app(
     now_provider=None,
     restart_callback: Callable[[], bool] | None = None,
     desktop_open_callback: Callable[[], None] | None = None,
+    desktop_reply_callback: Callable | None = None,
 ) -> FastAPI:
     configured = settings or Settings()
     if agent is not None:
@@ -134,6 +135,7 @@ def create_app(
     core_started_at = datetime.now(UTC)
     events = EventBroadcaster()
     adapter.gateway.event_sink = events.publish_nowait
+    adapter.gateway.reply_notifier = desktop_reply_callback
     static_dir = Path(__file__).with_name("static")
     speech_policy = SpeechPolicy()
     perception, source_runtime = build_external_runtime(configured, core)
@@ -206,6 +208,8 @@ def create_app(
     app.include_router(dashboard_router(core, static_dir, desktop_open_callback=desktop_open_callback))
     from .decision_learning import decision_learning_router
     app.include_router(decision_learning_router(core))
+    from .workflows import workflow_router
+    app.include_router(workflow_router(core))
 
     @app.middleware("http")
     async def desktop_entry_guard(request: Request, call_next):
@@ -375,7 +379,7 @@ def create_app(
                 {**tool, "description": tool["summary"]}
                 for tool in (registry.manifest() if registry is not None else [])
             ],
-            "workflows": (catalog or {}).get("workflows", []),
+            "workflows": core.workflow.registry.catalog() if getattr(core, "workflow", None) else [],
             "packages": (catalog or {}).get("packages", []),
             "examples": (catalog or {}).get("examples", []),
         }
@@ -819,6 +823,10 @@ def create_app(
             return delivered(await adapter.resolve_permission(confirmation_id, approve=False, request_id=request_id))
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/session/history")
+    async def session_history(before: str | None = None, limit: int = Query(default=80, ge=1, le=200)):
+        return await adapter.gateway.history_page(before=before, limit=limit)
 
     @app.get("/api/session")
     async def session():

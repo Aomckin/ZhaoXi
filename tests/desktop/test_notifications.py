@@ -31,7 +31,7 @@ async def test_desktop_sink_persists_then_notifies_notice():
     assert (await store.list_deliveries())[0].delivery_id == result.delivery_id
 
 
-async def test_info_stays_in_inbox_without_desktop_popup():
+async def test_info_is_eligible_for_background_notification():
     store = InMemoryProactiveStore()
     calls = []
     sink = DesktopNotificationSink(InboxNotificationSink(store), lambda *args: calls.append(args))
@@ -44,7 +44,7 @@ async def test_info_stays_in_inbox_without_desktop_popup():
 
     await sink.deliver(delivery, datetime.now(UTC))
 
-    assert calls == []
+    assert calls == [("朝汐新消息", "普通信息", delivery.delivery_id)]
     assert len(await store.list_deliveries()) == 1
 
 

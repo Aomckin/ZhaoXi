@@ -10,6 +10,8 @@ import tomllib
 import zipfile
 
 
+BUNDLED_AUDIO = {"zhaoxi/desktop/assets/wind_chime.wav"}
+
 FORBIDDEN_SUFFIXES = (".env", ".db", ".sqlite", ".log", ".wav", ".mp3", ".pyc")
 
 
@@ -19,7 +21,7 @@ def _metadata_version(wheel: Path) -> str:
         metadata = archive.read(metadata_name).decode("utf-8")
         forbidden = [
             name for name in archive.namelist()
-            if name.lower().endswith(FORBIDDEN_SUFFIXES)
+            if (name.lower().endswith(FORBIDDEN_SUFFIXES) and name not in BUNDLED_AUDIO)
             or "/.zhaoxi/" in name.lower()
             or "/__pycache__/" in name.lower()
         ]

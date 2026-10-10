@@ -27,6 +27,9 @@ class Tool(ABC):
     permission: PermissionLevel = PermissionLevel.READ
     side_effects: frozenset[SideEffect] = frozenset({SideEffect.NONE})
     group: str | None = None
+    domain: str | None = None
+    domain_description: str | None = None
+    domain_boundaries: str | None = None
     source: str = "builtin"
     default_enabled: bool = True
     default_confirm_write: bool = True

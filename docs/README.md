@@ -4,6 +4,10 @@
 
 ## 当前事实源
 
+- [v1.4.8 清债开发与验收记录](v1.4.x/Zhaoxi_v1.4.8_开发记录.md)
+- [v1.4.8 版本说明](v1.4.x/Zhaoxi_v1.4.8_Release_Notes.md)
+- [动态能力域与工作流管理](guides/tool-domains-and-workflows.md)
+
 - [当前运行状态](current/CURRENT_STATUS.md)
 - [代码库状态](current/CODEBASE_STATUS.md)
 - [当前架构](current/ARCHITECTURE.md)
@@ -27,6 +31,7 @@
 ## v1.4.x
 
 - [v1.4.8 Reliability 已知问题与清债记录（待开发）](v1.4.x/Zhaoxi_v1.4.8_Reliability_已知问题与清债记录.md)
+- [v1.4.8 清债执行计划书（执行中）](v1.4.x/Zhaoxi_v1.4.8_清债执行计划书.md)
 
 - [v1.4.7 Decision Learning 任务书](v1.4.x/Zhaoxi_v1.4.7_Decision_Learning_Decision_Journal_开发任务书.md)
 - [v1.4.7 开发记录与验收边界](v1.4.x/Zhaoxi_v1.4.7_开发记录.md)

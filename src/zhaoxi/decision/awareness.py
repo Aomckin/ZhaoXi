@@ -16,7 +16,8 @@ AWARENESS_PROMPT = """先结合本轮文字、图片和前几轮对话确认正�
 当暗苟面临真正的选择时，先判断值不值得他继续花注意力。小而可逆的选择用 PICK 直接替他选，给一个答案且收住，不列备选、不补条件分支、不再询问偏好，也无需解释自己在盲选；没有明显差异也可主观拍一个，不因缺规则或不重要的信息升级、追问。能形成方向时用 ADVISE，先给明确建议，再给很短的原因。长期、高影响、不可逆或核心价值取舍用 FRAME，即使要求“直接替我决定”也不能退化成 PICK；可以给倾向，但不能替用户完成最后价值判断：先主动查齐能查的资料，压缩关键事实和真正冲突，只留下最后属于暗苟的价值判断，不能只说“你自己决定”。只陈述已核实事实，缺失标为未核实；不得臆造面试已到最后一轮、今日空闲、补丁已收尾、用户开销或公司/合同条件。反思或闲聊无需机械拍板。
 当前明确表达、现实事实、近期认识优先于长期偏好、原则、真实选择历史和暂时推测。历史选择是弱证据；一次选择或 Override 不能变成长期规则。可暂时推测但不能编造永久偏好；predicted_user_choice 和你的 agent_recommendation 可以不同。用户改变选择就接受，不引用旧规则争论。
 需要什么再查什么：涉及下午安排、是否打断今日主线等中等影响事项用 ADVISE，先确认本轮相关 Agenda/Current Cognition；已提供的相关近期摘要可使用，具体日程未知再按需读取（FAST 用 decision 升级），不能因完成一个补丁就猜今日主线全部完成或今天有空；Offer 用 FRAME，先按需查相关 Memory/Principles/岗位资料；可用 read_decision_context 选择 sources 查询，再按需使用其他工具。不要全量预读，不为小选择检索。建议购买不等于授权付款，自动行动仍经过 Permission/Guard/Confirmation。
-最终回复必须输出 JSON 对象 {"reply":"自然台词","awareness":{"mode":"PICK","agent_recommendation":"选择","context_sources":[]},"escalation":null}，不使用 XML。awareness 是同一回复的旁产物，不是额外分析。凡是你在替用户选择或给选择建议，mode 必须用 PICK/ADVISE/FRAME；只有真正没有选择的闲聊/反思用 NONE。无关键词但正在挑东西也可以 PICK。FAST 缺必要资料时填 escalation={"kind":"decision","reason":"缺什么","trigger_span":"本轮逐字原文"}，reply 留空；STANDARD 直接调用真实工具补资料，最终才给 JSON，不填 escalation。awareness 的 predicted_user_choice/agent_recommendation 是不超过200字的字符串或 null；context_sources/context_refs/principle_ids/guard_flags 是字符串数组（没有则 []），不是对象或解释文字；不要填无意义的占位字段。
+新决策必须填 decision_kind=NEW 与自足的 decision_question（情境、选择对象和必要约束），不把建议当问题。纠正事实填 CORRECTION、普通执行指令填 EXECUTION、同题承接填 CONTINUATION，这些不新增选择记录；闲聊填 NONE。不明确是否真实新取舍时 mode=NONE，不凭自己给了建议制造决策。只有 NEW 且问题足够明确才能登记。
+最终回复必须输出 JSON 对象 {"reply":"自然台词","awareness":{"mode":"PICK","decision_kind":"NEW","decision_question":"在明确情境下选择哪个方案","agent_recommendation":"选择","context_sources":[]},"escalation":null}，不使用 XML。awareness 是同一回复的旁产物，不是额外分析。凡是你在替用户选择或给选择建议，mode 必须用 PICK/ADVISE/FRAME；只有真正没有选择的闲聊/反思用 NONE。无关键词但正在挑东西也可以 PICK。FAST 缺必要资料时填 escalation={"kind":"decision","reason":"缺什么","trigger_span":"本轮逐字原文"}，reply 留空；STANDARD 直接调用真实工具补资料，最终才给 JSON，不填 escalation。awareness 的 predicted_user_choice/agent_recommendation 是不超过200字的字符串或 null；context_sources/context_refs/principle_ids/guard_flags 是字符串数组（没有则 []），不是对象或解释文字；不要填无意义的占位字段。
 mode 是 NONE/PICK/ADVISE/FRAME；可选 feedback={"decision_id":"本轮给出的待反馈ID","user_final_choice":"用户明确最终选择","overridden":true,"outcome":null}。NONE 可用于接受反馈。只引用本轮实际资料 ID，不伪造检索、Guard 或用户最终选择；普通闲聊不用标记。"""
 
 _MARKER = re.compile(r"<decision-awareness\b[^>]*>(.*?)(?:</decision-awareness\s*>|$)", re.S | re.I)
@@ -215,8 +216,9 @@ awareness 可填 journal_ids（仅实际读取的日记 ID）、follow_up_policy
                 trace.follow_up_asked_id = None
         row = {**trace.model_dump(mode="json"), "decision_id": uuid4().hex,
                "scope": scope, "timestamp": datetime.now(UTC).isoformat(),
-               "summary": (user.content or "")[:160], "suggestion": trace.agent_recommendation}
-        if trace.mode is not DecisionMode.NONE and self.history:
+               "summary": trace.decision_question or "", "suggestion": trace.agent_recommendation,
+               "registration_status": "recordable" if trace.decision_kind == "NEW" and trace.decision_question else "insufficient_decision_context"}
+        if trace.mode is not DecisionMode.NONE and trace.decision_kind == "NEW" and trace.decision_question and self.history:
             try:
                 self.history.record(row["decision_id"], trace, row["summary"], scope=scope)
             except OSError as exc:

@@ -190,7 +190,8 @@ class DesktopWindow:
         self._pending_delivery_id = delivery_id
         self.show()
         if self._loaded.is_set() and self._window:
-            self._window.evaluate_js(f'openDelivery({json.dumps(delivery_id)})')
+            handler = "openReply" if delivery_id.startswith("reply:") else "openDelivery"
+            self._window.evaluate_js(f'{handler}({json.dumps(delivery_id.removeprefix("reply:"))})')
             self._pending_delivery_id = None
 
     def _toggle_mode(self, mode: WindowMode):

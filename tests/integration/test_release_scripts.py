@@ -121,3 +121,16 @@ ConvertTo-Json -InputObject @($global:releaseTestCalls) -Depth 5 -Compress
         else:
             assert calls[1] == ["create-key", r"HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"]
             assert calls[2] == ["autostart", calls[1][1], "Zhaoxi", '"Invoke-TestPython" -m zhaoxi --desktop']
+
+
+
+def test_only_bundled_chime_is_allowed_in_release_audio(release):
+    root, dist = release
+    wheel = dist / 'zhaoxi-2.3.4-py3-none-any.whl'
+    with zipfile.ZipFile(wheel, 'a') as archive:
+        archive.writestr('zhaoxi/desktop/assets/wind_chime.wav', b'fixture')
+    assert verify(root, dist)['version'] == '2.3.4'
+    with zipfile.ZipFile(wheel, 'a') as archive:
+        archive.writestr('zhaoxi/user.wav', b'private audio')
+    with pytest.raises(RuntimeError, match='禁止'):
+        verify(root, dist)

@@ -185,6 +185,8 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
                 provider,
                 routing_hints=routing_hints,
                 tool_catalog=registry.manifest(),
+                tool_catalog_provider=registry.manifest,
+                workflow_catalog_provider=workflow.registry.catalog if workflow else None,
                 archive_enabled=archive_service is not None,
                 artifact_resolver=archive_service.artifact_reference_match if archive_service else None,
             ),

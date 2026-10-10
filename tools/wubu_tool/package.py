@@ -33,8 +33,13 @@ class WubuToolPackage:
     def create_tools(self, config):
         if self.client is None:
             self.configure(config)
-        return [RecordPurchaseTool(self.client), ValidatePurchaseTool(self.client),
-                InventoryEventTool(self.client), WubuTool(self.client)] + create_ledger_tools(self.client)
+        tools = [RecordPurchaseTool(self.client), ValidatePurchaseTool(self.client),
+                 InventoryEventTool(self.client), WubuTool(self.client)] + create_ledger_tools(self.client)
+        for tool in tools:
+            tool.domain = "物簿"
+            tool.domain_description = "金钱、商品、购买订单、库存与耐用品资产。"
+            tool.domain_boundaries = "购买记账写物簿；生活状态、任务、日程属于其他领域，不重复写入。"
+        return tools
 
     def capabilities(self):
         return {"id": self.package_id, "name": "物簿", "tool": "record_purchase",

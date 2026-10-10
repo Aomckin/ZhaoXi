@@ -58,6 +58,9 @@ class LifeHudInput(BaseModel):
 
 class LifeHudTool(Tool):
     name = "lifehud"
+    domain = "LifeHUD"
+    domain_description = "生活状态、任务、日程、梦想与主线管理。"
+    domain_boundaries = "金钱、商品、订单和资产应使用对应财务领域；不把普通记账写成生活任务。"
     aliases = ("Life HUD", "生活面板", "生活记录")
     intents = (
         "查看今天吃了什么",

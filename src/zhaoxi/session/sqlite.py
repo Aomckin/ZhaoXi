@@ -1,4 +1,4 @@
-"""Privacy-bounded SQLite storage for short-term sessions."""
+"""Privacy-bounded UI history and separate short-term model sessions."""
 
 from __future__ import annotations
 
@@ -23,10 +23,18 @@ from zhaoxi.core.message import (
 from zhaoxi.session.base import Session, SessionStore
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 logger = logging.getLogger("SESSION")
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS session_history (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    message_json TEXT NOT NULL,
+    UNIQUE(session_id, message_id)
+);
+CREATE INDEX IF NOT EXISTS session_history_page ON session_history(session_id, sequence);
 CREATE TABLE IF NOT EXISTS sessions (
     session_id TEXT PRIMARY KEY,
     created_at TEXT NOT NULL,
@@ -43,7 +51,7 @@ from zhaoxi.reliability.media import MediaBlobStore, database_metrics, vacuum_da
 
 
 class SQLiteSessionStore(SessionStore):
-    """Persist user/assistant text and image attachments; Tool payloads and metadata are excluded."""
+    """Persist visible messages and input identity; exclude internal tool/context payloads."""
 
     def __init__(self, path: str | Path, *, max_messages: int = 40, media_directory=None) -> None:
         self.path = Path(path)
@@ -184,7 +192,9 @@ class SQLiteSessionStore(SessionStore):
     def save_sync(self, session: Session) -> None:
         session.updated_at = datetime.now(UTC)
         safe_messages = []
-        for message in session.conversation.recent(self.max_messages):
+        evicted = list(session.conversation.evicted)
+        archived = []
+        for message in [*evicted, *session.conversation.recent(self.max_messages)]:
             if message.role not in {Role.USER, Role.EXTERNAL, Role.ASSISTANT} or message.content is None:
                 continue
             if message.visibility in {"internal", "interim"} or message.tool_calls:
@@ -199,13 +209,22 @@ class SQLiteSessionStore(SessionStore):
                         violations,
                     )
                 content = strip_echoed_timeline_header(content)
-            safe_messages.append(
+            destination = archived if any(message is old for old in evicted) else safe_messages
+            destination.append(
                 message.model_copy(update={"content": content, "background": ""}).model_dump(
                     mode="json",
                     exclude={"metadata", "tool_calls", "tool_call_id", "name", "background"},
                 )
             )
+        # Keep only UI/input identity metadata; internal tool/context payloads stay private.
+        originals = {message.message_id: message for message in [*evicted, *session.conversation.recent(self.max_messages)]}
+        for value in [*archived, *safe_messages]:
+            metadata = originals[value["message_id"]].metadata
+            value["metadata"] = {key: metadata[key] for key in ("request_id", "event_id", "display_parts") if key in metadata}
         with self._connect() as connection:
+            for value in archived:
+                connection.execute("INSERT OR IGNORE INTO session_history(session_id, message_id, message_json) VALUES (?, ?, ?)",
+                                   (session.id, value["message_id"], self.media.dumps(value)))
             connection.execute(
                 """INSERT INTO sessions(session_id, created_at, updated_at, max_messages, messages_json,
                     channel_metadata_json, recent_refs_json)
@@ -223,10 +242,24 @@ class SQLiteSessionStore(SessionStore):
                     json.dumps(session.recent_message_refs[-40:], ensure_ascii=False),
                 ),
             )
+        del session.conversation.evicted[:len(evicted)]
         try:
             self.thumbnail_cache(session.id).retain(session.conversation.recent(self.max_messages))
         except OSError as exc:
             logger.warning("thumbnail cache cleanup failed type=%s", type(exc).__name__)
+
+    async def history_page(self, session_id: str, *, before: str | None = None, limit: int = 80) -> dict:
+        return await asyncio.to_thread(self._history_page, session_id, before, max(1, min(limit, 200)))
+
+    def _history_page(self, session_id, before, limit):
+        with self._connect() as connection:
+            boundary = connection.execute("SELECT sequence FROM session_history WHERE session_id=? AND message_id=?",
+                                          (session_id, before)).fetchone() if before else None
+            rows = connection.execute("SELECT * FROM session_history WHERE session_id=? AND sequence < ? ORDER BY sequence DESC LIMIT ?",
+                                      (session_id, boundary["sequence"] if boundary else 9223372036854775807, limit + 1)).fetchall()
+        page = rows[:limit]
+        return {"messages": [Message.model_validate(self.media.loads(r["message_json"])) for r in reversed(page)],
+                "has_more": len(rows) > limit, "before": page[-1]["message_id"] if page else None}
 
     async def delete(self, session_id: str) -> bool:
         return await asyncio.to_thread(self._delete, session_id)
@@ -234,6 +267,7 @@ class SQLiteSessionStore(SessionStore):
     def _delete(self, session_id: str) -> bool:
         with self._connect() as connection:
             cursor = connection.execute("DELETE FROM sessions WHERE session_id=?", (session_id,))
+            connection.execute("DELETE FROM session_history WHERE session_id=?", (session_id,))
         if cursor.rowcount:
             try:
                 self.thumbnail_cache(session_id).retain([])

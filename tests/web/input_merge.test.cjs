@@ -45,7 +45,7 @@ test('reply completion does not shorten a pending debounce window',async()=>{
 test('empty input is ignored; errors release busy state without automatic retries',async()=>{
   const s=setup();s.submit('  ');assert.equal(s.timers.size,0);
   s.context.request=async url=>{
-    if(url==='/api/session')return {messages:[{role:'user',message_id:'failed-user'}]};
+    if(url==='/api/session')return {messages:[{role:'user',message_id:'failed-user',request_id:'test-request'}]};
     throw Error('离线');
   };s.submit('你好');await s.fire();
   assert.equal(s.context.busy,false);assert.equal(s.clear.disabled,false);
@@ -53,16 +53,16 @@ test('empty input is ignored; errors release busy state without automatic retrie
   assert.equal(s.retries[0][1],'failed-user');assert.equal(s.retries[0][2],false);assert.equal(s.timers.size,0);
 });
 
-test('errors after a tool call attach retry to the interrupted assistant turn',async()=>{
+test('errors after a tool call bind retry to its accepted user input',async()=>{
   const s=setup();s.context.request=async url=>{
     if(url==='/api/session')return {messages:[
-      {role:'user',message_id:'failed-user'},
-      {role:'assistant',content:'',message_id:'interrupted-assistant'},
+      {role:'user',message_id:'failed-user',request_id:'test-request'},
+      {role:'assistant',content:'',message_id:'interrupted-assistant',regeneratable:true},
     ]};
     throw Error('模型服务当前不可访问');
   };
   s.submit('记住这个');await s.fire();
-  assert.equal(s.retries[0][1],'interrupted-assistant');assert.equal(s.retries[0][2],false);
+  assert.equal(s.retries[0][1],'failed-user');assert.equal(s.retries[0][2],false);
 });
 
 test('error bubble appears before the session lookup completes',async()=>{
@@ -75,7 +75,7 @@ test('error bubble appears before the session lookup completes',async()=>{
   assert.equal(s.context.busy,false);
   assert.deepEqual(s.bubbles.at(-1).slice(0,2),['assistant','请求超时']);
   assert.equal(s.retries.length,0);
-  release({messages:[{role:'user',message_id:'failed-user'}]});
+  release({messages:[{role:'user',message_id:'failed-user',request_id:'test-request'}]});
   await Promise.resolve();await Promise.resolve();
   assert.equal(s.retries[0][1],'failed-user');
 });

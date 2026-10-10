@@ -7,8 +7,10 @@ class Conversation:
     """Hold and trim messages for one in-memory conversation."""
 
     def __init__(self, messages: list[Message] | None = None, max_messages: int = 40) -> None:
+        self.evicted: list[Message] = []
         self._messages = list(messages or [])
         self.max_messages = max_messages
+        self.replay_user: Message | None = None
         self._trim()
 
     @property
@@ -32,6 +34,9 @@ class Conversation:
         self._trim()
 
     def add_user(self, content: str, *, images: list[str] | None = None) -> Message:
+        if self.replay_user is not None:
+            original, self.replay_user = self.replay_user, None
+            return self.add(original.model_copy(deep=True))
         return self.add(Message(role=Role.USER, content=content, images=images or [], input_text_present=bool(content.strip())))
 
     def add_assistant(self, content: str | None, **kwargs: object) -> Message:
@@ -54,6 +59,7 @@ class Conversation:
 
     def clear(self) -> None:
         self._messages.clear()
+        self.evicted.clear()
 
     def replace(self, messages: list[Message]) -> None:
         """Replace the in-memory timeline while preserving this shared instance."""
@@ -63,6 +69,7 @@ class Conversation:
     def _trim(self) -> None:
         overflow = len(self._messages) - self.max_messages
         if overflow > 0:
+            self.evicted.extend(self._messages[:overflow])
             del self._messages[:overflow]
         self._messages[:] = self._without_orphan_tool_results(self._messages)
 

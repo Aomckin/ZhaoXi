@@ -183,6 +183,7 @@ class DesktopHost:
                 voice_runtime=self.voice,
                 restart_callback=self.request_restart,
                 desktop_open_callback=self.window.show_main,
+                desktop_reply_callback=lambda text, identity: self.notifier.show("朝汐回复", text[:256], "reply:" + identity),
             ),
             host=self.settings.web_host,
             port=self.settings.web_port,
@@ -247,15 +248,11 @@ class DesktopHost:
             logger.info("desktop window closed; core remains available from tray")
 
     def _notify_delivery(self, title, message, delivery_id):
-        mode = "main" if title in {"朝汐 · 重要提醒", "朝汐 · 紧急提醒"} else "companion"
-        self._notification_modes[delivery_id] = mode
-        while len(self._notification_modes) > 128:
-            self._notification_modes.pop(next(iter(self._notification_modes)))
         self.notifier.show(title, message, delivery_id)
 
     def _open_delivery(self, delivery_id: str) -> None:
         logger.info("desktop notification opened delivery_id=%s", delivery_id)
-        self.window.switch_mode(self._notification_modes.pop(delivery_id, "main"))
+        self.window.show_main()
         self.window.open_delivery(delivery_id)
 
     def _is_quiet(self) -> bool:

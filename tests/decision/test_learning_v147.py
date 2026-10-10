@@ -56,7 +56,7 @@ def test_feedback_all_labels_preserves_natural_text_and_cancels_followup(tmp_pat
     before = (learning.history.directory / 'choice_history.jsonl').read_bytes()
     event = learning.history.feedback('one', scope=SCOPE, outcome_label=label, outcome_text='真实反馈原话')
     after = (learning.history.directory / 'choice_history.jsonl').read_bytes()
-    assert after.startswith(before) and event['schema_version'] == 3
+    assert after.startswith(before) and event['schema_version'] == 4
     row = learning.history.get('one')
     assert row['feedback']['label'] == label and row['feedback']['text'] == '真实反馈原话'
     assert row['follow_up_status'] == 'ANSWERED' and row['user_final_choice'] is None
@@ -348,7 +348,7 @@ async def test_dashboard_api_auth_feedback_journal_reflection_queue(tmp_path):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://localhost') as client:
         assert (await client.get('/api/decision/journal')).status_code==401
         client.headers['X-Zhaoxi-Token']='test'
-        assert (await client.get('/api/decision/history')).json()['items'][0]['schema_version']==3
+        assert (await client.get('/api/decision/history')).json()['items'][0]['schema_version']==4
         response=await client.post('/api/decision/history/one/feedback',json={'outcome_label':'MIXED','outcome_text':'开心但赶工'})
         assert response.status_code==200 and response.json()['receipt']['status']=='SUCCESS'
         assert (await client.post('/api/decision/history/one/reflect')).status_code==200

@@ -317,6 +317,9 @@ class FastChatRuntime:
             components.append({"name": "runtime.emoji_context", "chars": len(emoji_context)})
         if image_note:
             components.append({"name": "runtime.fast_chat_image_rules", "chars": len(image_note)})
+        from zhaoxi.tools.domain_map import domain_prompt
+        if getattr(self.agent, "registry", None):
+            system += "\n" + domain_prompt(self.agent.registry.manifest())
         return [Message(role=Role.SYSTEM, content=system, metadata={"prompt_components": components, "decision_context_sources": {
             source: ["context:" + source] for source in ("agenda", "current_cognition")
             if builder.last_recent_context.get(source)}}), *recent]

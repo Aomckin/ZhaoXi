@@ -32,6 +32,7 @@ function addMessage(role,content,kind='',images=[],timestamp=null,messageId=null
   const group=role==='assistant'&&kind!=='system'?(replyGroup||{}):null;
   if(group&&regeneratable&&messageId)document.querySelectorAll('.regenerate').forEach(item=>item.remove());
   const rows=parts.map(part=>addMessageBubble(role,part,kind,images,timestamp,group));
+  for(const row of rows)if(messageId)row.dataset.messageId=messageId;
   if(group&&regeneratable)attachRegenerate(group,messageId,debugOnly);
   return rows;
 }

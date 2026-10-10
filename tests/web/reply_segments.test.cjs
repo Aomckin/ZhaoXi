@@ -144,7 +144,7 @@ function groupedRenderer(){
   const displayed=[],buttons=[];
   const ui=vm.createContext({replyIntervalMs:0,
     document:{querySelectorAll:()=>[]},acknowledgeEmojiTrace:()=>{},
-    addMessageBubble:(...args)=>{const group=args[5];if(group&&!group.element)group.element={};const row={parentElement:group?.element};displayed.push(args);return row},
+    addMessageBubble:(...args)=>{const group=args[5];if(group&&!group.element)group.element={};const row={dataset:{},parentElement:group?.element};displayed.push(args);return row},
     attachRegenerate:(group,id)=>buttons.push({group,id}),
   });
   vm.runInContext(source,ui);return {ui,displayed,buttons};

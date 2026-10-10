@@ -106,11 +106,15 @@ async def memory(r, kind):
     changes = await service.maintain(organize=False) if getattr(r.settings, "presence_v2_enabled", False) else await service.maintain()
     if auto is None or kind != "llm":
         return "UPDATE" if changes else "NO_CHANGE"
-    before = await service.repository.get_runtime("last_consolidation_check_at")
-    changed = await auto.auto_consolidator.maybe_run()
-    if before == await service.repository.get_runtime("last_consolidation_check_at"):
-        raise RuntimeError("memory_consolidation_failed")
-    return "UPDATE" if changed or changes else "NO_CHANGE"
+    outcome = await auto.auto_consolidator.run_result()
+    return ActivityResult(
+        status="FAILED" if outcome.status == "FAILED" else "UPDATE" if outcome.changed or changes else "NO_CHANGE",
+        changed=bool(outcome.changed or changes),
+        summary="本地记忆维护已保留，归纳未完成。" if outcome.status == "FAILED" else
+                "记忆维护已更新。" if outcome.changed or changes else "本轮无需更新记忆。",
+        details=[{"stage": "consolidation", "status": outcome.status,
+                  "reason": outcome.reason, "error_code": outcome.error_code}],
+    )
 
 async def agenda(r, kind):
     before = [(x.id, x.status) for x in r.agent.agenda.store.list()]

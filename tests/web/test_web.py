@@ -432,7 +432,7 @@ def test_web_shell_has_keyboard_and_live_status_accessibility_baseline():
     assert "button.textContent='🔄'" in script
     assert "'/api/chat/regenerate'" in script
     assert "aria-label','重新生成这条回复'" in script
-    assert "function addRetryableError(content)" in script
+    assert "function addRetryableError(content,requestId)" in script
     assert 'id="regenerateDebugToggle" type="checkbox"' in engineering
     assert 'id="longWaitToggle" type="checkbox"' in engineering
     assert 'id="forceFastChatToggle" type="checkbox"' in engineering

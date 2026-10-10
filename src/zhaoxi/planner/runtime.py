@@ -330,6 +330,8 @@ class PlannerRuntime:
                 planner_context=self._format_state(goal),
                 **({"release_images": True} if finalizing else {}),
             )
+            from zhaoxi.tools.domain_map import domain_prompt
+            messages[0].content = (messages[0].content or "") + "\n" + domain_prompt(self.registry.manifest())
             if finalizing:
                 messages[0].content = (messages[0].content or "") + "\n计划步骤已完成，只生成最终自然语言回复，不再调用工具。"
             if finalizing:

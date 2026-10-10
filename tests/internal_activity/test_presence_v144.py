@@ -423,10 +423,21 @@ async def test_debug_http_api_is_authenticated_and_supports_new_activities(tmp_p
         assert client.post("/api/debug/internal-activity", json={"activity": "unknown"}).status_code == 422
 
 
-async def test_maintenance_failure_backoff_still_blocks_leisure(tmp_path):
+async def test_maintenance_failure_backoff_does_not_block_leisure(tmp_path):
     r = runtime(tmp_path, social_lurk_enabled=True, social_wander_qq_allowed_groups=["123456"])
     social(r)
     r.state["memory_gardening"].update(dirty=True, failure_count=3, last_run_at=datetime.now(UTC).isoformat())
     await r.run_tick()
     assert r.last_skipped["memory_gardening"] == "backoff"
+    assert r.last_skipped.get("social_lurk") != "maintenance_pending"
+
+
+async def test_repeated_auto_skip_is_aggregated_and_remains_diagnostic(tmp_path):
+    r = runtime(tmp_path, social_lurk_enabled=True)
+    r._record_skips = True
+    r._skip("social_lurk", "maintenance_pending")
+    count = len(r.tick_receipts)
+    r._skip("social_lurk", "maintenance_pending")
+    assert len(r.tick_receipts) == count
+    assert r.state["social_lurk"]["auto_skip_count"] == 2
     assert r.last_skipped["social_lurk"] == "maintenance_pending"

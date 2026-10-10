@@ -80,10 +80,14 @@ class CognitiveRouter:
         *,
         routing_hints: list[dict[str, object]] | None = None,
         tool_catalog: list[dict[str, object]] | None = None,
+        tool_catalog_provider=None,
+        workflow_catalog_provider=None,
         archive_enabled: bool = False,
         artifact_resolver=None,
     ) -> None:
         self.provider = provider
+        self.tool_catalog_provider = tool_catalog_provider
+        self.workflow_catalog_provider = workflow_catalog_provider
         self.routing_hints = list(routing_hints or [])
         self.tool_catalog = [
             {
@@ -103,15 +107,23 @@ class CognitiveRouter:
         return [str(item["name"]) for item in self.tool_catalog if item.get("name")]
 
     def _system_prompt(self) -> str:
+        from zhaoxi.tools.domain_map import domain_prompt
+        live = self.tool_catalog_provider() if self.tool_catalog_provider else self.tool_catalog
+        self.tool_catalog = [{k: item.get(k) for k in ("name", "group", "summary", "usage")} for item in live
+                             if item.get("enabled", True) and item.get("available", True)]
+        workflows = self.workflow_catalog_provider() if self.workflow_catalog_provider else []
+        extra = "\n" + domain_prompt(live)
+        if workflows:
+            extra += "\n实际注册工作流（仅 enabled 且 available 的可选择；核对输入，不猜流程）：" + json.dumps(workflows, ensure_ascii=False, separators=(",", ":"))
         if not self.tool_catalog:
-            return self.SYSTEM_PROMPT
+            return self.SYSTEM_PROMPT + extra
         catalog = json.dumps(self.tool_catalog, ensure_ascii=False, separators=(",", ":"))
         return (
             self.SYSTEM_PROMPT
             + " 当前运行时可用工具目录如下；用户要求产生其中能力对应的真实效果时必须选择 TOOL，"
               "并设置 requires_tool_call=true 和 required_tool=最适合的确切工具名。"
               "DIRECT 只能用于无需执行工具即可诚实完成的回答："
-            + catalog
+            + catalog + extra
         )
 
     async def route(self, user_message: str, *, recent_context: str = "") -> RouteDecision:
@@ -138,7 +150,7 @@ class CognitiveRouter:
                 trace.emit("model_step_failed", "routing", "warning", "处理方式识别失败，已使用本地规则",
                            step_id=0, error_code="provider_error" if hasattr(exc, "code") else "agent_loop_error",
                            metadata={"error_type": type(exc).__name__})
-            return self._fallback(user_message)
+            return self._guard_simple_request(user_message, self._fallback(user_message), recent_context=recent_context)
         for call in response.tool_calls:
             if call.name != "route_cognition":
                 continue
@@ -153,7 +165,7 @@ class CognitiveRouter:
                 )
             except ValidationError:
                 break
-        return self._fallback(user_message)
+        return self._guard_simple_request(user_message, self._fallback(user_message), recent_context=recent_context)
 
     def _hint_decision(self, user_message: str) -> RouteDecision | None:
         text = user_message.casefold()
@@ -184,13 +196,21 @@ class CognitiveRouter:
                 value = re.sub(re.escape(matched), " ", value, count=1, flags=re.IGNORECASE).strip()
             input_name = hint.get("input")
             inputs = {str(input_name): value.strip() or hint.get("default_input")} if input_name else {}
-            return RouteDecision(
+            return self._validate_workflow(RouteDecision(
                 route=route,
                 reason="tool package routing hint",
                 workflow_id=str(hint.get("workflow_id")) if hint.get("workflow_id") else None,
                 workflow_inputs=inputs,
-            )
+            ))
         return None
+
+    def _validate_workflow(self, decision):
+        if decision.route == CognitiveRoute.WORKFLOW and self.workflow_catalog_provider:
+            available = {row["id"] for row in self.workflow_catalog_provider() if row["enabled"] and row["available"]}
+            if decision.workflow_id not in available:
+                return RouteDecision(route=CognitiveRoute.TOOL, requires_tool_call=True,
+                                     reason="workflow unavailable; use current tool capabilities")
+        return decision
 
     def _guard_simple_request(
         self,
@@ -199,6 +219,9 @@ class CognitiveRouter:
         *,
         recent_context: str = "",
     ) -> RouteDecision:
+        guarded = self._validate_workflow(decision)
+        if guarded is not decision:
+            return guarded
         text = user_message.casefold()
         archive = self._archive_decision(text)
         if archive is not None:

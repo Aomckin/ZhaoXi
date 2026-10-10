@@ -640,7 +640,7 @@ class ZhaoxiAgent:
                 timeout=self.timeout_seconds,
             )
         except TimeoutError as exc:
-            raise AgentLoopError(f"请求超过 {self.timeout_seconds:g} 秒，已停止。") from exc
+            raise AgentLoopError(f"请求超过 {self.timeout_seconds:g} 秒，已停止。", code="agent_timeout") from exc
 
     @property
     def conversation(self) -> Conversation:
@@ -759,7 +759,7 @@ class ZhaoxiAgent:
                 timeout=self.timeout_seconds,
             )
         except TimeoutError as exc:
-            raise AgentLoopError(f"请求超过 {self.timeout_seconds:g} 秒，已停止。") from exc
+            raise AgentLoopError(f"请求超过 {self.timeout_seconds:g} 秒，已停止。", code="agent_timeout") from exc
 
     def _recent_tool_context(self, limit: int = 6) -> list[str]:
         stream = getattr(self, "experience_stream", None)
@@ -1035,12 +1035,11 @@ class ZhaoxiAgent:
                                and schema["function"]["name"] not in {"request_tool_group", "inspect_tool_catalog", "search_memories"}]
                 interim_available = bool(trace and schemas and (not budget or budget.state is BudgetState.NORMAL) and trace.interim_enabled
                     and trace.interim_replies < trace.interim_max_count
-                    and (tool_called or step > 1)
-                    and time.monotonic() - trace.started_monotonic >= trace.interim_threshold_seconds)
+                    and (tool_called or step > 1))
                 if interim_available:
                     schemas.append({"type": "function", "function": {
                         "name": "emit_interim_reply",
-                        "description": "任务还要继续时，先向用户说一句自然、简短且不提前宣布结果的话；这不是最终回复。",
+                        "description": f"当前已运行 {time.monotonic() - trace.started_monotonic:.1f} 秒，发送阈值 {trace.interim_threshold_seconds:g} 秒。仅在已经取得真实进展且任务仍需继续时使用。运行时间达到阈值后先自然简短回应，不宣布最终结果；未到阈值会拒绝，不能为了发送而等待。",
                         "parameters": {"type": "object", "properties": {
                             "content": {"type": "string", "maxLength": 180}},
                             "required": ["content"], "additionalProperties": False}}})
@@ -1069,6 +1068,9 @@ class ZhaoxiAgent:
                 messages = self.context_builder.build(
                     self.conversation, memories, output_channel=output_channel,
                     audience=audience, expression_policy=expression_policy, **context_options)
+                from zhaoxi.tools.domain_map import domain_prompt
+                if domain_text := domain_prompt(self.registry.manifest()):
+                    messages[0] = messages[0].model_copy(update={"content": (messages[0].content or "") + "\n" + domain_text})
                 if trace:
                     trace.record_interval("context_build", context_started)
                 compaction = getattr(self.context_builder, "last_compaction", {})
@@ -1363,7 +1365,14 @@ class ZhaoxiAgent:
                 if call.name == "emit_interim_reply":
                     if trace:
                         from zhaoxi.decision.awareness import split_awareness
-                        trace.emit_interim(split_awareness(str(call.arguments.get("content", "")))[0], reason="agent")
+                        emitted = trace.emit_interim(split_awareness(str(call.arguments.get("content", "")))[0], reason="agent")
+                        if not emitted:
+                            elapsed = time.monotonic() - trace.started_monotonic
+                            trace.emit("interim_response_skipped", "interim_response", "info", "本次中间回复未满足发送条件",
+                                       metadata={"elapsed_seconds": round(elapsed, 2),
+                                                 "threshold_seconds": trace.interim_threshold_seconds,
+                                                 "already_sent": trace.interim_replies,
+                                                 "reason": "threshold" if elapsed < trace.interim_threshold_seconds else "progress_content_or_limit"})
                     continue
                 if call.name in {"request_tool_group", "inspect_tool_catalog"}:
                     if trace and call.name == "inspect_tool_catalog":
@@ -1389,8 +1398,8 @@ class ZhaoxiAgent:
                     user_intent=user_intent,
                     invocation_id=invocation_id,
                     step_id=str(step),
-                    image_attachments=turn_images if call.name == "lifehud" else None,
-                    image_references=image_references if call.name == "lifehud" else None,
+                    image_attachments=turn_images if call.name in {"lifehud", "save_emoji"} else None,
+                    image_references=image_references if call.name in {"lifehud", "save_emoji"} else None,
                 )
                 if execution.waiting_for_permission:
                     if trace:
@@ -1504,8 +1513,8 @@ class ZhaoxiAgent:
                     approved_batch_confirmation_id=(
                         confirmation_id if position > 1 else None
                     ),
-                    image_attachments=pending.images if call.name == "lifehud" else None,
-                    image_references=pending.image_references if call.name == "lifehud" else None,
+                    image_attachments=pending.images if call.name in {"lifehud", "save_emoji"} else None,
+                    image_references=pending.image_references if call.name in {"lifehud", "save_emoji"} else None,
                 )
                 if execution.result is None:
                     raise AgentLoopError("授权未能匹配批量工具调用。")
@@ -1651,8 +1660,8 @@ class ZhaoxiAgent:
                 origin=InvocationOrigin.AGENT,
                 user_intent=pending.user_intent,
                 invocation_id=invocation_id,
-                image_attachments=pending.images if call.name == "lifehud" else None,
-                image_references=pending.image_references if call.name == "lifehud" else None,
+                image_attachments=pending.images if call.name in {"lifehud", "save_emoji"} else None,
+                image_references=pending.image_references if call.name in {"lifehud", "save_emoji"} else None,
             )
             if execution.waiting_for_permission:
                 if trace:

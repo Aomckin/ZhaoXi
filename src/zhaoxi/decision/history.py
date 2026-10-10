@@ -67,8 +67,9 @@ class ChoiceHistory:
         require_owner()
         if not scope.startswith('owner:'):
             raise PermissionError('Owner scope required')
-        row = {'event': 'decision', 'decision_id': decision_id, 'schema_version': 3,
-            'timestamp': datetime.now(UTC).isoformat(), 'scope': scope, 'summary': summary[:160],
+        row = {'event': 'decision', 'decision_id': decision_id, 'schema_version': 4,
+            'timestamp': datetime.now(UTC).isoformat(), 'scope': scope, 'summary': (trace.decision_question or summary)[:500],
+            'decision_kind': trace.decision_kind, 'decision_question': trace.decision_question,
             'mode': trace.mode.value, 'suggestion': trace.agent_recommendation,
             'predicted_user_choice': trace.predicted_user_choice, 'context_refs': trace.context_refs,
             'context_sources': trace.context_sources, 'principle_ids': trace.principle_ids,
@@ -181,7 +182,7 @@ class ChoiceHistory:
         with self._lock:
             if not self.get(decision_id, scope=scope):
                 raise ValueError('Unknown choice in this conversation')
-            row = {'event': event, 'schema_version': 3, 'decision_id': decision_id,
+            row = {'event': event, 'schema_version': 4, 'decision_id': decision_id,
                 'scope': scope, 'timestamp': datetime.now(UTC).isoformat(), **fields}
             self._append(row)
             return row

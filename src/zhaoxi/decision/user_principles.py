@@ -38,7 +38,13 @@ class UserPrincipleStore:
                 indexed[row['id']] = row
             except ValueError:
                 logging.getLogger('DECISION').warning('invalid principle revision')
-        return list(indexed.values())
+        rows = list(indexed.values())
+        if self.archive:
+            for row in rows:
+                row["source_status"] = self.archive.source_status(row)
+                row["effective_status"] = ("retired" if row["status"] != "active" else
+                                           "active" if row["source_status"] == "current" else "needs_update")
+        return rows
 
     def save(self, values, *, actor):
         require_owner()
@@ -49,7 +55,7 @@ class UserPrincipleStore:
             if path.resolve().parent != self.directory.resolve():
                 raise ValueError('准则路径超出索引目录。')
             before = next((r for r in self.list() if r['id'] == row['id']), None)
-            if before and {k: v for k, v in before.items() if k != 'updated_at'} == {k: v for k, v in row.items() if k != 'updated_at'}:
+            if before and {k: v for k, v in before.items() if k not in {'updated_at', 'source_status', 'effective_status'}} == {k: v for k, v in row.items() if k != 'updated_at'}:
                 return before
             append_row(self.directory / 'revisions.jsonl', {
                 'timestamp': datetime.now(UTC).isoformat(), 'actor': actor, 'before': before, 'after': row})
@@ -78,7 +84,7 @@ class UserPrincipleStore:
 
     def retrieve(self, query, limit=5):
         rows = [(relevance(query, ' '.join([r['statement'], r['domain'], *r['tags']])), r)
-                for r in self.list() if r['status'] == 'active']
+                for r in self.list() if r['status'] == 'active' and r.get('source_status', 'current') == 'current']
         rows.sort(key=lambda x: -x[0])
         return [r for score, r in rows if score][:limit]
 

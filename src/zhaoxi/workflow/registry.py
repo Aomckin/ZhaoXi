@@ -22,6 +22,42 @@ class WorkflowRegistry:
         self._definitions[key] = definition
         return definition
 
+    def configure_management(self, path):
+        """Load owner overrides without editing installed package definitions."""
+        import json
+        from pathlib import Path
+        self.management_path = Path(path)
+        self.management = json.loads(self.management_path.read_text(encoding="utf-8")) if self.management_path.exists() else {}
+        for identity, payload in self.management.items():
+            if payload is None:
+                self._definitions = {key: value for key, value in self._definitions.items() if key[0] != identity}
+            else:
+                definition = WorkflowDefinition.model_validate(payload)
+                self._validate(definition)
+                self._definitions[(definition.id, definition.version)] = definition
+
+    def manage(self, identity, definition=None):
+        import json
+        if not hasattr(self, "management_path"):
+            raise WorkflowValidationError("Workflow 管理存储尚未配置")
+        if definition is not None:
+            if definition.id != identity:
+                raise WorkflowValidationError("Workflow ID 与路径不一致")
+            self._validate(definition)
+            latest = max((d.version for d in self.list() if d.id == identity), default=0)
+            if definition.version < latest:
+                raise WorkflowValidationError("不能覆盖更高版本的流程")
+        values = {**self.management, identity: definition.model_dump(mode="json") if definition else None}
+        self.management_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.management_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(values, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.replace(self.management_path)
+        self.management = values
+        if definition is None:
+            self._definitions = {key: value for key, value in self._definitions.items() if key[0] != identity}
+        else:
+            self._definitions[(definition.id, definition.version)] = definition
+
     def get(self, workflow_id: str, version: int | None = None) -> WorkflowDefinition:
         matches = [item for (name, _), item in self._definitions.items() if name == workflow_id]
         if version is not None:
@@ -35,6 +71,17 @@ class WorkflowRegistry:
 
     def list(self) -> list[WorkflowDefinition]:
         return sorted(self._definitions.values(), key=lambda item: (item.id, item.version))
+
+    def catalog(self) -> list[dict]:
+        latest = {}
+        usable_tools = {item["name"] for item in self.tools.manifest() if item["enabled"] and item["available"]} if self.tools else None
+        for definition in self.list():
+            latest[definition.id] = definition
+        return [{"id": d.id, "version": d.version, "name": d.name, "description": d.description,
+                 "aliases": d.aliases, "tags": d.tags, "enabled": d.enabled,
+                 "available": d.enabled and (usable_tools is None or all(step.tool in usable_tools
+                     for step in d.steps if step.type == WorkflowStepType.TOOL)),
+                 "inputs": {name: value.model_dump(mode="json") for name, value in d.inputs.items()}} for d in latest.values()]
 
     def _validate(self, definition: WorkflowDefinition) -> None:
         ids = [item.id for item in definition.steps]

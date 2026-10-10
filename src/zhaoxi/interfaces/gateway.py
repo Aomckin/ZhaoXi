@@ -225,7 +225,13 @@ class InterfaceGateway:
     @foreground_activity
     async def regenerate(self, message_id: str, *, request_id: str) -> UnifiedResponse:
         """Regenerate the latest assistant turn without forging a second user turn."""
+        cached = self._responses.get(request_id)
+        if cached is not None:
+            return cached.model_copy(deep=True)
         async with self._lock:
+            cached = self._responses.get(request_id)
+            if cached is not None:
+                return cached.model_copy(deep=True)
             messages = self.agent.conversation.messages
             target_index = next(
                 (index for index, item in enumerate(messages) if item.message_id == message_id),
@@ -284,7 +290,21 @@ class InterfaceGateway:
             )
             trace = None
             budget = None
+            turn_token = None
             try:
+                from zhaoxi.cognitive_stream.turn import CognitiveTurnContext, set_current_turn, reset_current_turn
+                stream = getattr(self.agent, "experience_stream", None)
+                event_id = source_user.metadata.get("event_id")
+                trigger = stream.get(event_id) if stream is not None and event_id else None
+                if trigger is None and stream is not None:
+                    trigger = next((e for e in stream.recent(200) if e.event_type == CognitiveEventType.USER_MESSAGE
+                                    and ("desktop:" + source_user.message_id in e.source_refs
+                                         or e.turn_id == source_user.message_id)), None)
+                if trigger:
+                    turn_token = set_current_turn(CognitiveTurnContext(trigger_event=trigger, request_id=request_id,
+                        output_channel=trigger.channel or "desktop", images=tuple(source_user.images)))
+                if not resume_in_place:
+                    self.agent.conversation.replay_user = source_user
                 provider = getattr(self.agent, "provider", None)
                 max_calls = getattr(provider, "max_calls", 12)
                 max_total_tokens = getattr(provider, "max_total_tokens", 100_000)
@@ -360,6 +380,9 @@ class InterfaceGateway:
             finally:
                 if budget is not None:
                     self.agent.last_budget_snapshot = budget.snapshot()
+                self.agent.conversation.replay_user = None
+                if turn_token is not None:
+                    reset_current_turn(turn_token)
                 self.metrics.observe_duration("interface.regenerate", monotonic() - started)
 
     @foreground_activity
@@ -417,6 +440,17 @@ class InterfaceGateway:
             await self._sync_deliveries()
             await self._persist_session()
             return self.session()
+
+    async def history_page(self, *, before=None, limit=80):
+        async with self._lock:
+            await self._persist_session()
+            store = getattr(self.agent, "session_store", None)
+            session = getattr(self.agent, "session_record", None)
+            if store is None or session is None or not hasattr(store, "history_page"):
+                return {"messages": [], "has_more": False, "before": None}
+            page = await store.history_page(session.id, before=before, limit=limit)
+            page["messages"] = [self._message_view(m) for m in page["messages"] if is_user_visible_message(m)]
+            return page
 
     @foreground_activity
     async def resolve_permission(
@@ -708,6 +742,10 @@ class InterfaceGateway:
         for item in self.agent.conversation.messages:
             if id(item) not in previous_messages and item.role == Role.USER:
                 item.metadata["request_id"] = message.request_id
+                from zhaoxi.cognitive_stream.turn import current_turn
+                turn = current_turn()
+                if turn:
+                    item.metadata["event_id"] = turn.trigger_event.event_id
                 if message.display_parts:
                     item.metadata["display_parts"] = [
                         part.model_dump(mode="json") for part in message.display_parts
@@ -764,6 +802,13 @@ class InterfaceGateway:
         }
 
     def _cache(self, response: UnifiedResponse) -> None:
+        # Fresh replies notify once here; cached request replay never enters this path.
+        notifier = getattr(self, "reply_notifier", None)
+        if notifier and response.message_id and response.content:
+            try:
+                notifier(response.content, response.message_id)
+            except Exception:
+                logger.exception("Reply notification failed; response remains available")
         self._responses[response.request_id] = response.model_copy(deep=True)
         self._responses.move_to_end(response.request_id)
         while len(self._responses) > self._response_cache_size:

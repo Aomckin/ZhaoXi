@@ -26,6 +26,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def reply(content, mode=None, **values):
+    if mode and mode != "NONE":
+        values = {"decision_kind": "NEW", "decision_question": "在当前约束下应选择哪个方案？", **values}
     marker = ("<decision-awareness>" + json.dumps({"mode": mode, **values}, ensure_ascii=False)
               + "</decision-awareness>") if mode else ""
     return ModelResponse(content=content + marker)
@@ -69,7 +71,7 @@ async def test_fast_pick_has_no_classifier_rule_or_extra_model(tmp_path, questio
     assert agent.decision_awareness.diagnostics()["latest"]["mode"] == "PICK"
     assert agent.last_reply_protocol["awareness"] == "valid" and agent.last_reply_protocol["mode"] == "PICK"
     row = agent.decision_awareness.history.list()[0]
-    assert row["suggestion"] == answer and row["schema_version"] == 3
+    assert row["suggestion"] == answer and row["schema_version"] == 4
     assert row["context_refs"] == [] and row["user_final_choice"] is None
     assert "<decision-awareness>" not in json.dumps(
         [m.model_dump(mode="json") for m in agent.conversation.messages], ensure_ascii=False)
@@ -240,7 +242,7 @@ def test_settings_default_agency_and_explicit_legacy_is_available():
     assert Settings(_env_file=None, decision_mode="legacy").decision_mode == "legacy"
 
 async def test_json_reply_and_trace_share_one_main_call(tmp_path):
-    payload = {"reply":"两瓶。", "awareness":{"mode":"PICK","agent_recommendation":"两瓶"}, "escalation":None}
+    payload = {"reply":"两瓶。", "awareness":{"mode":"PICK","decision_kind":"NEW","decision_question":"本次购买多少瓶无糖可乐？","agent_recommendation":"两瓶"}, "escalation":None}
     agent, provider = make_agent(tmp_path, [ModelResponse(content=json.dumps(payload,ensure_ascii=False))],fast=True)
     result = await agent.run_natural("无糖可乐买几瓶？")
     assert result.content == "两瓶。" and len(provider.calls) == 1

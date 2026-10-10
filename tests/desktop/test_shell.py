@@ -85,7 +85,7 @@ def test_notification_focused_suppression_and_route(tmp_path):
     host._notification_modes = {}
     host._notify_delivery('朝汐提醒','message','conversation')
     host._open_delivery('conversation')
-    assert window.mode == WindowMode.COMPANION
+    assert window.mode == WindowMode.MAIN
     host._notify_delivery('朝汐 · 重要提醒','message','important')
     host._open_delivery('important')
     assert window.mode == WindowMode.MAIN

@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 import re
 import logging
 from uuid import uuid4
@@ -30,6 +31,9 @@ class ChoiceFeedback(BaseModel):
 class DecisionAwarenessTrace(BaseModel):
     """Side effect of the main reply; never a classifier or verdict lock."""
     mode: DecisionMode = DecisionMode.NONE
+    decision_kind: Literal["NEW", "CONTINUATION", "CORRECTION", "EXECUTION", "NONE"] | None = None
+    decision_question: str | None = Field(default=None, min_length=4, max_length=500,
+        description="NEW 才登记：结合上下文用一两句说明在什么情境下要决定什么，不复制承接句或建议。")
     predicted_user_choice: str | None = Field(default=None, max_length=200)
     agent_recommendation: str | None = Field(default=None, max_length=200)
     context_sources: list[str] = Field(default_factory=list, max_length=20)

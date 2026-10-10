@@ -89,6 +89,9 @@ def tool_metadata(tool, source: str, override: dict, exposed: set[str]) -> dict:
     safe_read = type(tool).permission_for is Tool.permission_for and tool.permission == PermissionLevel.READ and tool.side_effects == frozenset({SideEffect.NONE})
     return {
         "name": tool.name, "group": group, "source": source,
+        "domain": getattr(tool, "domain", None) or group,
+        "domain_description": getattr(tool, "domain_description", None),
+        "domain_boundaries": getattr(tool, "domain_boundaries", None),
         "display_name": TOOL_LABELS.get(tool.name, tool.name),
         "summary": raw_summary,
         "usage": TOOL_USAGE.get(tool.name, str(raw_summary).removeprefix(f"[{source}] ")[:160]),

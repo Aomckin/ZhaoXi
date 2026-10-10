@@ -177,14 +177,14 @@ async def test_reminder_once_survives_restart_and_bypasses_buffer(tmp_path):
     assert not model.calls
 
 
-async def test_inbox_does_not_popup_or_call_model():
+async def test_info_inbox_can_notify_without_calling_model():
     h, worker, model = setup()
     popups = []
     h.runtime.sink = DesktopNotificationSink(h.runtime.sink, lambda *args: popups.append(args))
     await h.buffer.add(candidate(priority=Priority.INFO))
     result = await worker.tick(NOW)
     assert result[0].priority == Priority.INFO
-    assert not model.calls and not popups
+    assert not model.calls and len(popups) == 1
 
 
 async def test_notification_retry_does_not_repeat_popup():

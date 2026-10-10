@@ -161,3 +161,17 @@ def test_user_archive_reads_do_not_label_parent_path_as_user_data(tmp_path):
     awareness.principle_archive.paths=('user/../zhaoxi/agent.md',)
     values=awareness.principle_archive.fragments('低精力',user_only=True)
     assert all(v['path'].startswith('user/') and 'agent.md' not in v['path'] for v in values)
+
+
+async def test_missing_source_is_removed_from_active_index_and_recovers(tmp_path):
+    awareness = setup(tmp_path)
+    assert (await WriteUserPrinciple(awareness).run(arguments())).success
+    path = tmp_path / 'archive/user/new-v2.md'
+    original = path.read_text(encoding='utf-8')
+    path.unlink()
+    row = awareness.user_principles.list()[0]
+    assert row['source_status'] == 'missing' and row['effective_status'] == 'needs_update'
+    assert awareness.user_principles.retrieve('低精力') == []
+    path.write_text(original, encoding='utf-8')
+    assert awareness.user_principles.list()[0]['effective_status'] == 'active'
+    assert awareness.user_principles.retrieve('低精力')

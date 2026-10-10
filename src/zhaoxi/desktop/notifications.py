@@ -24,13 +24,11 @@ class DesktopNotificationSink(NotificationSink):
         delivered = await self.durable_sink.deliver(delivery, now)
         if delivered is not delivery:
             return delivered
-        if delivered.priority is not Priority.INFO:
-            title = {
-                Priority.NOTICE: "朝汐提醒",
-                Priority.IMPORTANT: "朝汐 · 重要提醒",
-                Priority.URGENT: "朝汐 · 紧急提醒",
-            }[delivered.priority]
-            self.notifier(title, delivered.content[:256], delivered.delivery_id)
+        title = {
+            Priority.INFO: "朝汐新消息", Priority.NOTICE: "朝汐提醒",
+            Priority.IMPORTANT: "朝汐 · 重要提醒", Priority.URGENT: "朝汐 · 紧急提醒",
+        }[delivered.priority]
+        self.notifier(title, delivered.content[:256], delivered.delivery_id)
         return delivered
 
 
@@ -48,9 +46,9 @@ class WindowsToastNotifier:
         self._toaster = WindowsToaster("朝汐 Zhaoxi")
 
     def show(self, title: str, message: str, delivery_id: str) -> None:
-        from windows_toasts import Toast
+        from windows_toasts import Toast, ToastAudio
 
-        toast = Toast([title[:64], message[:256]])
+        toast = Toast([title[:64], message[:256]], audio=ToastAudio(silent=True))
         toast.on_activated = lambda _: self.on_open(delivery_id)
         self._toaster.show_toast(toast)
 
@@ -62,10 +60,11 @@ class NativeNotifier:
         self._card = None
         self._timer = None
         self._fallback = None
+        self._seen = {}
 
     def show(self, title, message, delivery_id):
         import logging
-        if self.window.focused():
+        if delivery_id in self._seen or self.window.focused():
             return
         try:
             if self.system_mode or not self.window._native:
@@ -124,14 +123,29 @@ class NativeNotifier:
                 self._card, self._timer = card, timer
                 timer.Start()
             invoke(self.window._window, create)
+            self._shown(delivery_id)
         except Exception:
             logging.getLogger('DESKTOP').warning('Native notification unavailable; using Windows Toast', exc_info=True)
             try:
                 if self._fallback is None:
                     self._fallback = WindowsToastNotifier(self.on_open)
                 self._fallback.show(title,message,delivery_id)
+                self._shown(delivery_id)
             except Exception:
                 logging.getLogger('DESKTOP').exception('Notification unavailable; delivery remains in inbox')
+
+    def _shown(self, identity):
+        self._seen[identity] = True
+        while len(self._seen) > 256:
+            self._seen.pop(next(iter(self._seen)))
+        try:
+            import winsound
+            from pathlib import Path
+            winsound.PlaySound(str(Path(__file__).with_name("assets") / "wind_chime.wav"),
+                               winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
+        except (ImportError, RuntimeError, OSError):
+            import logging
+            logging.getLogger("DESKTOP").warning("Notification sound unavailable")
 
     def stop(self):
         if self.window._native and self._card:

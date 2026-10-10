@@ -162,7 +162,15 @@ class InternalActivityRuntime:
 
     def _skip(self, name, reason, now=None):
         self.last_skipped[name] = reason
-        self.event("ACTIVITY_SKIPPED", name, reason=reason)
+        item = self.state.setdefault(name, {})
+        repeated = self._trigger == "AUTO" and item.get("auto_skip_reason") == reason
+        if self._trigger == "AUTO":
+            item.update(auto_skip_reason=reason, auto_skip_count=item.get("auto_skip_count", 0) + 1 if repeated else 1,
+                        auto_skip_last_at=(now or datetime.now(UTC)).isoformat())
+            self._save(name)
+        self.event("ACTIVITY_SKIPPED", name, reason=reason, repeat_count=item.get("auto_skip_count", 1))
+        if repeated and reason != "candidate_error":
+            return
         if self._trigger == "AUTO" and not getattr(self, "_record_skips", True) and reason != "candidate_error":
             return
         blocked = reason in {"disabled", "runtime_disabled", "foreground", "social_write_confirmation"} or reason.startswith("presence:")
@@ -301,9 +309,10 @@ class InternalActivityRuntime:
                 self._record_skips = False
                 candidates = await self._candidates(now, force)
                 self._record_skips = True
-                # Maintenance debt blocks leisure even when it cannot fit the budget.
-                debt = any(spec.priority >= 60 and self._enabled(spec.name) and self.state[spec.name]["dirty"]
-                           for spec in self.registry)
+                # Only runnable debt blocks leisure; cooling/disabled/quarantined work
+                # remains visible in state without permanently starving idle activities.
+                debt = any(self.registry.get(name).priority >= 60 and self.state[name]["dirty"]
+                           for _, name, _, _ in candidates)
                 for name, kind, reason, skipped in self.scheduler.select_registered(candidates, self.effective_registry(), budget,
                                                                                    maintenance_pending=debt):
                     spec = self.registry.get(name)
@@ -326,6 +335,8 @@ class InternalActivityRuntime:
                     self.event("ACTIVITY_SELECTED", name, reason=reason)
                     item = self.state[name]
                     item["last_run_at"] = now.isoformat()
+                    item.pop("auto_skip_reason", None)
+                    item.pop("auto_skip_count", None)
                     item["selection_streak"] = item.get("selection_streak", 0) + 1 if name in self._previous_selected else 1
                     self.current_activity = name
                     self.publish_presence()
@@ -348,7 +359,10 @@ class InternalActivityRuntime:
                         else:
                             result = ActivityResult(status=raw, changed=raw == "UPDATE")
                         if result.status in {"FAILED", "REJECTED", "PENDING_BOOTSTRAP"}:
-                            raise RuntimeError(result.status)
+                            failure = RuntimeError(result.status)
+                            failure.activity_result = result
+                            failure.code = next((d.get("error_code") for d in result.details if isinstance(d, dict) and d.get("error_code")), None)
+                            raise failure
                         if result.message_sent and not (spec.can_message_user or spec.can_message_external):
                             raise RuntimeError("activity_message_forbidden")
                         result.cost = {**dict(needs), **result.cost}
@@ -377,6 +391,12 @@ class InternalActivityRuntime:
                     except Exception as exc:
                         receipt = build_receipt(spec, status="FAILED", started_at=started, trigger=self._trigger, presence=running.presence, action_id=running.action_id)
                         receipt.raw_payload = {"error_type": type(exc).__name__, "error_code": getattr(exc,"code",None), "stage": "execution"}
+                        partial = getattr(exc, "activity_result", None)
+                        if partial is not None:
+                            receipt.raw_payload["result"] = partial.diagnostics()
+                            receipt.summary = partial.summary or receipt.summary
+                            receipt.changed = partial.changed
+                            receipt.details = partial.details
                         receipt.warnings = ["活动可能已完成部分步骤，请检查结果后再重试。"]
                         failures = item["failure_count"] + 1
                         item.update(last_result="FAILED", failure_count=failures, dirty=True,
@@ -385,7 +405,7 @@ class InternalActivityRuntime:
                         if name == PERCEPTION_COGNITION and perception is not None:
                             # Quarantined items are visible failures, not runnable maintenance debt.
                             item["dirty"] = bool(perception.store.snapshot_cognition_counts().get("PENDING", 0))
-                        self.event("ACTIVITY_FAILED", name, error=type(exc).__name__)
+                        self.event("ACTIVITY_FAILED", name, error=type(exc).__name__, error_code=getattr(exc, "code", None))
                     finally:
                         if receipt:
                             self.record_receipt(receipt)
