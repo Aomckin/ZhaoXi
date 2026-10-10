@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     decision_follow_up_min_interval_minutes: int = Field(default=360, ge=1, le=10080)
     decision_follow_up_expire_days: int = Field(default=30, ge=1, le=180)
     runtime_metrics_enabled: bool = True
+    interim_legacy_tool_enabled: bool = False  # Debug rollback only; native action text is the default.
     interim_reply_enabled: bool = True
     interim_reply_threshold_seconds: float = Field(default=10, ge=0)
     interim_reply_max_count: int = Field(default=1, ge=0, le=3)

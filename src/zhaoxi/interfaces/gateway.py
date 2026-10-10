@@ -64,6 +64,7 @@ class InterfaceGateway:
         if settings is None:
             return
         trace.metrics_enabled = settings.runtime_metrics_enabled
+        trace.interim_legacy_tool_enabled = settings.interim_legacy_tool_enabled
         trace.interim_enabled = settings.interim_reply_enabled
         trace.interim_threshold_seconds = settings.interim_reply_threshold_seconds
         trace.interim_max_count = settings.interim_reply_max_count

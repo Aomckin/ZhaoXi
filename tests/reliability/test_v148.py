@@ -195,7 +195,7 @@ async def test_disabled_workflow_is_rejected_even_in_router_fallback(tmp_path):
     assert route.route == CognitiveRoute.TOOL and route.workflow_id is None
 
 
-async def test_interim_schema_available_before_threshold_without_fake_response():
+async def test_action_sidecar_prompt_available_without_extra_interim_tool_schema():
     from zhaoxi.models.types import ToolCall
     from zhaoxi.config.settings import Settings
     provider = FakeProvider([
@@ -205,7 +205,8 @@ async def test_interim_schema_available_before_threshold_without_fake_response()
     core = agent(provider);core.settings = Settings(_env_file=None, interim_reply_threshold_seconds=1000)
     gateway = InterfaceGateway(core);events=[];gateway.event_sink=events.append
     await gateway.chat(UnifiedMessage(request_id="before-threshold",channel=InterfaceChannel.WEB,content="检查工具后整理"))
-    assert any(s["function"]["name"] == "emit_interim_reply" for s in provider.tool_schemas[1])
+    assert not any(s["function"]["name"] == "emit_interim_reply" for s in provider.tool_schemas[1])
+    assert "同一次 response.content" in provider.calls[1][0].content
     assert not any(e["type"] == "interim_reply" for e in events)
     assert any(e.get("event",{}).get("event_type") == "interim_response_skipped" for e in events)
 

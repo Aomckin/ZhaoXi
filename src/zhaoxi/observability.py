@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from difflib import SequenceMatcher
 import logging
 import time
 from contextlib import contextmanager
@@ -15,6 +16,14 @@ from zhaoxi.reliability import current_correlation
 
 
 logger = logging.getLogger("OBSERVABILITY")
+
+ACTION_INTERIM_RULE = (
+    "\n决定下一步工具行动时，可在同一次 response.content 中顺便说一句符合当前人格的短台词，"
+    "同时输出 tool_calls；用自然文本，不包 JSON，不调用额外回复工具。没话说可以留空。"
+    "这句只说明正在做什么或接下来做什么，不是最终回复，不宣布尚未完成的结果。"
+    "没有工具调用时，仍按原有最终回复要求回答。"
+)
+
 
 TOOL_LABELS = {
     "agenda_add": "添加日程", "agenda_update": "修改日程", "agenda_complete": "完成日程",
@@ -123,6 +132,8 @@ class ActionTrace:
     extra_round_reason: str | None = None
     tool_rounds: int = 0
     catalog_inspections: int = 0
+    interim_legacy_tool_enabled: bool = False
+    _last_interim_content: str = ""
     interim_enabled: bool = True
     interim_threshold_seconds: float = 10
     interim_max_count: int = 1
@@ -250,34 +261,64 @@ class ActionTrace:
         self.emit(stage + "_finished", stage, "success", "阶段处理已结束",
                   metadata={"duration_ms": round(duration, 2)})
 
+    def emit_action_text(self, response) -> bool:
+        """Consume native action content transiently, with no extra model/tool call."""
+        if not response.tool_calls or not (response.content or "").strip():
+            return False
+        progress = repr([(call.name, call.arguments) for call in response.tool_calls])
+        return self.emit_interim(response.content, reason="action_content", progress=progress)
+
     def emit_interim(self, content: str, *, reason: str = "agent", progress: str = "") -> bool:
         content = content.strip()
         limit = self.planner_interim_max_count if self.planner_used else self.interim_max_count
-        if not self.interim_enabled or self.sink is None or self.finished_at is not None or self.interim_replies >= limit:
-            return False
-        if time.monotonic() - self.started_monotonic < self.interim_threshold_seconds:
-            return False
-        if reason == "agent" and not self.actions and (self.current_step or 0) < 2:
-            return False
-        if not content or len(content) > 180 or any(term in content.lower() for term in (
-                "goal_id", "trace_id", "invocation_id", "token", "llm #", "step_id")):
-            return False
-        if any(term in content for term in ("已经完成", "问题解决", "我查到了", "已经更新")):
-            return False
-        if self.interim_replies and (not progress.strip() or progress.strip() == self._last_interim_progress
-                                     or self.planner_progress_version <= self._last_interim_progress_version):
+        def diagnostic(kind, why=None):
+            self.emit(kind, "interim_response", "info", "中间台词候选已处理",
+                      metadata={"reason": why or reason, "length": len(content)})
+        try:
+            diagnostic("interim_candidate_generated")
+            why = None
+            if not self.interim_enabled or self.sink is None or self.finished_at is not None:
+                why = "delivery_unavailable"
+            elif self.interim_replies >= limit:
+                why = "max_count"
+            elif time.monotonic() - self.started_monotonic < self.interim_threshold_seconds:
+                why = "too_fast"
+            elif not content:
+                why = "no_progress"
+            elif len(content) > 180:
+                why = "too_long"
+            elif any(term in content.lower() for term in (
+                    "goal_id", "trace_id", "invocation_id", "token", "llm #", "step_id",
+                    "tool_calls", "awareness", "<function", "dsml", "```")) or content.startswith(("{", "[")):
+                why = "unsafe_content"
+            elif any(term in content for term in ("已经完成", "问题解决", "我查到了", "已经更新", "全部完成", "任务完成")):
+                why = "terminal_claim"
+            elif self.interim_replies and SequenceMatcher(None, content, self._last_interim_content).ratio() >= .85:
+                why = "duplicate"
+            elif self.interim_replies and (not progress.strip() or progress.strip() == self._last_interim_progress
+                    or (reason != "action_content" and self.planner_progress_version <= self._last_interim_progress_version)):
+                why = "no_progress"
+            if why:
+                diagnostic("interim_candidate_suppressed", why)
+                return False
+            event = self.emit("interim_response_emitted", "interim_response", "info", "朝汐已先回应，任务仍在继续",
+                              metadata={"sequence": self.interim_replies + 1, "reason": reason})
+            self.sink({"type": "interim_reply", "request_id": self.request_id,
+                       "trace_id": self.trace_id, "sequence": self.interim_replies + 1,
+                       "content": content, "emitted_at": event.timestamp,
+                       "visible_to_user": True, "terminates_turn": False})
+        except Exception:
+            # Progress delivery must never interrupt action execution or the final reply.
+            logger.warning("Interim delivery unavailable; action execution continues")
+            self.events.append(AgentEvent("interim_candidate_suppressed", self.trace_id,
+                self.request_id, self.current_step, "interim_response", "info", "中间台词未送达",
+                metadata={"reason": "delivery_unavailable"}))
             return False
         self.interim_replies += 1
+        self._last_interim_content = content
         self._last_interim_progress = progress.strip()
         self._last_interim_progress_version = self.planner_progress_version
         self.first_reply()
-        event = self.emit("interim_response_emitted", "interim_response", "info", "朝汐已先回应，任务仍在继续",
-                          metadata={"sequence": self.interim_replies, "reason": reason})
-        if self.sink:
-            self.sink({"type": "interim_reply", "request_id": self.request_id,
-                       "trace_id": self.trace_id, "sequence": self.interim_replies,
-                       "content": content, "emitted_at": event.timestamp,
-                       "visible_to_user": True, "terminates_turn": False})
         return True
 
     def first_reply(self) -> None:

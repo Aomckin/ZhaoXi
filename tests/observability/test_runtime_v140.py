@@ -30,7 +30,7 @@ def test_interim_event_is_distinct_and_bounded():
     assert trace.first_reply_ms is not None
     assert trace.interim_replies == 1
     assert [event["type"] for event in events].count("interim_reply") == 1
-    assert events[-1]["terminates_turn"] is False
+    assert next(e for e in events if e["type"] == "interim_reply")["terminates_turn"] is False
     trace.finish()
     metrics = trace.metrics()
     assert metrics["ttfr_ms"] <= metrics["total_ms"]
@@ -241,3 +241,24 @@ def test_current_cognition_observatory_counters():
     assert metrics["current_cognition_model_ms"] == 12.5
     assert metrics["current_cognition_ops_count"] == 2
     assert metrics["threads_added"] == 1
+
+
+@pytest.mark.parametrize("text,reason", [
+    ("x" * 181, "too_long"), ("trace_id:private", "unsafe_content"),
+    ('{"reply":"草稿"}', "unsafe_content"), ("任务已经完成", "terminal_claim")])
+def test_native_interim_suppression_is_diagnostic_not_failure(text, reason):
+    from zhaoxi.models.types import ModelResponse, ToolCall
+    trace = ActionTrace("t", "r", lambda e: None, interim_threshold_seconds=0)
+    assert not trace.emit_action_text(ModelResponse(content=text, tool_calls=[ToolCall(id="c", name="echo", arguments={})]))
+    assert trace.events[-1].metadata["reason"] == reason
+    assert trace.response_status == "pending" and trace.interim_replies == 0
+
+
+def test_native_repeat_requires_new_action_and_distinct_text():
+    trace = ActionTrace("t", "r", lambda e: None, interim_threshold_seconds=0, interim_max_count=3)
+    assert trace.emit_interim("我先把日程核对一下呀。", reason="action_content", progress="read")
+    assert not trace.emit_interim("我先把日程核对一下呀！", reason="action_content", progress="write")
+    assert trace.events[-1].metadata["reason"] == "duplicate"
+    assert not trace.emit_interim("接下来给你记上这个安排。", reason="action_content", progress="read")
+    assert trace.events[-1].metadata["reason"] == "no_progress"
+    assert trace.emit_interim("接下来给你记上这个安排。", reason="action_content", progress="write")

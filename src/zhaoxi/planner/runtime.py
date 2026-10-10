@@ -320,9 +320,7 @@ class PlannerRuntime:
                     return await self._emergency_final(goal, action_index, "budget_exhausted")
             schemas = [*control_schemas(), *(tool.schema() for tool in self.registry.list())]
             action_trace = current_trace()
-            if not (action_trace and action_trace.interim_enabled
-                    and time.monotonic() - action_trace.started_monotonic >= action_trace.interim_threshold_seconds
-                    and action_trace.interim_replies < action_trace.planner_interim_max_count):
+            if not (action_trace and action_trace.interim_legacy_tool_enabled):
                 schemas = [schema for schema in schemas if schema["function"]["name"] != "emit_interim_reply"]
             messages = self.context_builder.build(
                 self.conversation,
@@ -330,6 +328,9 @@ class PlannerRuntime:
                 planner_context=self._format_state(goal),
                 **({"release_images": True} if finalizing else {}),
             )
+            from zhaoxi.observability import ACTION_INTERIM_RULE
+            if not finalizing:
+                messages[0].content = (messages[0].content or "") + ACTION_INTERIM_RULE
             from zhaoxi.tools.domain_map import domain_prompt
             messages[0].content = (messages[0].content or "") + "\n" + domain_prompt(self.registry.manifest())
             if finalizing:
@@ -362,10 +363,12 @@ class PlannerRuntime:
                 self.conversation.add_assistant(response.content)
                 continue
 
+            if action_trace:
+                action_trace.emit_action_text(response)
             durable_calls = [call for call in response.tool_calls if call.name != "emit_interim_reply"]
             if durable_calls:
                 self.conversation.add_assistant(
-                    None if len(durable_calls) != len(response.tool_calls) else response.content,
+                    None,  # Native action speech is transient, including suppressed candidates.
                     tool_calls=durable_calls)
             for call in response.tool_calls:
                 if call.name == "emit_interim_reply":

@@ -20,6 +20,48 @@ REPLY_FORMAT = {"type":"json_schema","json_schema":{
     "name":"main_reply","schema":MainReply.model_json_schema()}}
 
 
+class ReplyRepair(BaseModel):
+    reply: str = Field(description="以当前人格给出完整自然正文，仅依据已确认结果；不附决策分析或工具参数。")
+
+
+REPAIR_FORMAT = {"type": "json_schema", "json_schema": {
+    "name": "reply_repair", "schema": ReplyRepair.model_json_schema()}}
+
+
+def decode_reply_repair(response: ModelResponse) -> ModelResponse:
+    """The repair contract requires body only; the primary contract stays strict."""
+    if response.tool_calls:
+        return response
+    if response.finish_reason in {"length", "max_tokens", "content_filter"}:
+        return _finish(response, "", encoding="repair_incomplete", error_code="invalid_reply_protocol")
+    raw = (response.content or "").strip()
+    if not raw:
+        return _finish(response, "", encoding="repair_empty", error_code="empty_model_reply")
+    if raw.startswith("```json") and raw.endswith("```"):
+        raw = raw[7:-3].strip()
+    try:
+        value = json.loads(raw)
+    except ValueError:
+        # Complete ordinary text is usable when a compatible provider ignores
+        # JSON mode. Never salvage truncated envelopes or protocol fragments.
+        if not raw.startswith(("{", "[", "<", "```")) and not re.search(
+                r'<decision-awareness\b|<\s*[|｜].*?DSML|<\s*/?tool_call\b|<\s*function\s*=', raw, re.I):
+            return _finish(response, raw, encoding="repair_text", awareness="not_requested")
+        if raw.startswith("<decision-awareness") or raw.startswith("[emoji:"):
+            return _finish(response, "", encoding="repair_json", error_code="empty_model_reply")
+        return _finish(response, "", encoding="repair_json", error_code="invalid_reply_protocol")
+    if not isinstance(value, dict) or "reply" not in value:
+        return _finish(response, "", encoding="repair_shape", error_code="invalid_reply_protocol")
+    body = value["reply"]
+    if not isinstance(body, str) or not body.strip():
+        return _finish(response, "", encoding="repair_json", error_code="empty_model_reply")
+    if set(value) - {"reply", "awareness", "escalation"}:
+        return _finish(response, "", encoding="repair_shape", error_code="invalid_reply_protocol")
+    if re.search(r'<decision-awareness\b|<\s*[|｜].*?DSML|<\s*/?tool_call\b|<\s*function\s*=', body, re.I):
+        return _finish(response, "", encoding="repair_protocol", error_code="invalid_reply_protocol")
+    return _finish(response, body, encoding="reply_repair", awareness="not_requested")
+
+
 def _finish(response: ModelResponse, body: str, *, encoding: str,
             awareness: str = "missing", mode: str | None = None,
             content: str | None = None, error_code: str | None = None) -> ModelResponse:

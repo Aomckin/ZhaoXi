@@ -8,7 +8,8 @@ from zhaoxi.models.openai_compatible import OpenAICompatibleProvider
 
 
 @pytest.mark.asyncio
-async def test_provider_normalizes_tool_calls():
+@pytest.mark.parametrize("content", [None, "唔，我先算一下呀。"] )
+async def test_provider_normalizes_tool_calls(content):
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["Authorization"] == "Bearer secret"
         return httpx.Response(200, json={
@@ -16,7 +17,7 @@ async def test_provider_normalizes_tool_calls():
             "model": "test-model",
             "choices": [{
                 "finish_reason": "tool_calls",
-                "message": {"content": None, "tool_calls": [{
+                "message": {"content": content, "tool_calls": [{
                     "id": "call-1",
                     "type": "function",
                     "function": {"name": "calculator", "arguments": '{"expression":"2+2"}'},
@@ -32,6 +33,7 @@ async def test_provider_normalizes_tool_calls():
         response = await provider.generate([Message(role=Role.USER, content="2+2")], [])
     assert response.tool_calls[0].arguments == {"expression": "2+2"}
     assert response.usage["total_tokens"] == 10
+    assert response.content == content
 
 
 @pytest.mark.asyncio

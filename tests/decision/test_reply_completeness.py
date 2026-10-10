@@ -46,3 +46,22 @@ def test_provider_incomplete_finish_rejected_even_for_valid_json(reason, raw):
 def test_complete_short_reply_is_valid_without_length_heuristics():
     response = ModelResponse(content='{"reply":"OK","awareness":{"mode":"NONE"}}', finish_reason="stop", raw_metadata={"main_reply_contract": True})
     assert decode_main_reply(response).content == "OK"
+
+
+@pytest.mark.parametrize("raw", ['{"reply":"唔，日程留好了。"}',
+    '{"reply":"唔，日程留好了。","awareness":null}', '唔，日程留好了。'])
+def test_repair_body_delivered_without_requiring_or_recording_auxiliary_metadata(raw):
+    from zhaoxi.decision.reply import decode_reply_repair
+    result = decode_reply_repair(ModelResponse(content=raw, finish_reason="stop", raw_metadata={"main_reply_contract":True}))
+    assert result.content == "唔，日程留好了。"
+    assert result.raw_metadata["main_reply_protocol"]["awareness"] == "not_requested"
+    assert "decision-awareness" not in result.content
+
+
+@pytest.mark.parametrize("raw", ['{"reply":"未完', '{"reply":"完整","continuation":"未完"}',
+    '{"operation":"write","arguments":{}}', '{"reply":"<decision-awareness>secret</decision-awareness>"}',
+    '{"reply":"<tool_call>secret</tool_call>"}'])
+def test_repair_cannot_leak_truncated_envelope_or_internal_protocol(raw):
+    from zhaoxi.decision.reply import decode_reply_repair
+    with pytest.raises(AgentLoopError):
+        decode_reply_repair(ModelResponse(content=raw, finish_reason="stop"))

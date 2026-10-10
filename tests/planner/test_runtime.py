@@ -208,3 +208,35 @@ async def test_wait_for_user_resume_and_cancel_are_supported():
     cancelled = await other.cancel(pending.goal_id)
     assert cancelled.status == GoalStatus.CANCELLED
     assert (await other.cancel(pending.goal_id)).status == GoalStatus.CANCELLED
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("broken_delivery", [False, True])
+async def test_planner_native_action_speech_is_transient_and_best_effort(broken_delivery):
+    from zhaoxi.observability import action_trace_scope
+    from zhaoxi.reliability import CorrelationContext, correlation_scope
+    first = call("create_plan", {"steps": ["计算"]})
+    first.content = "唔，暗苟，我先把这一步理一下呀。"
+    second = call("calculator", {"expression": "2+3"})
+    second.content = "接下来算算这个数，稍等我一下～"
+    planner = make_planner([first, second, ModelResponse(content="算好了，是 5。")])
+    events = []
+    def sink(event):
+        if event["type"] == "interim_reply":
+            assert len(planner.conversation.messages) == (1 if event["sequence"] == 1 else 3)
+            if broken_delivery:
+                raise RuntimeError("SSE unavailable")
+        events.append(event)
+    with correlation_scope(CorrelationContext(trace_id="t", request_id="r")):
+        with action_trace_scope(sink) as trace:
+            trace.interim_threshold_seconds = 0
+            trace.planner_used = True
+            result = await planner.run("算 2+3")
+    assert result.status == GoalStatus.COMPLETED and "5" in result.content
+    assert len(planner.provider.calls) == 3
+    assert all(first.content not in (m.content or "") and second.content not in (m.content or "")
+               for m in planner.conversation.messages)
+    assert all(s["function"]["name"] != "emit_interim_reply"
+               for schemas in planner.provider.tool_schemas for s in schemas or [])
+    assert "同一次 response.content" in planner.provider.calls[0][0].content
+    assert len([e for e in events if e["type"] == "interim_reply"]) == (0 if broken_delivery else 2)

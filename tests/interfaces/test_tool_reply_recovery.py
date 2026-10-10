@@ -33,7 +33,18 @@ def setup(responses, *, model_limit=3, server_status=200):
     registry = ToolRegistry()
     registry.register(tool)
     registry.update_tools(name="lifehud", confirm_write=False)
-    provider = FakeProvider([ModelResponse(tool_calls=[ToolCall(id="focus-1", name="lifehud", arguments={
+    class ContractProvider(FakeProvider):
+        async def generate(self, messages, tools=None, **kwargs):
+            response = await super().generate(messages, tools, **kwargs)
+            if kwargs.get("response_format", {}).get("json_schema", {}).get("name") == "reply_repair":
+                try:
+                    value = json.loads(response.content or "")
+                except ValueError:
+                    return response
+                if isinstance(value, dict) and value.get("awareness") == {"mode": "NONE"} and value.get("reply"):
+                    return response.model_copy(update={"content": json.dumps({"reply": value["reply"]}, ensure_ascii=False)})
+            return response
+    provider = ContractProvider([ModelResponse(tool_calls=[ToolCall(id="focus-1", name="lifehud", arguments={
         "operation": "focus", "arguments": {"action": "start", "plannedMinutes": 25,
                                              "title": "代码开发"}})]), *responses])
     agent = ZhaoxiAgent(provider=provider, registry=registry, context_builder=ContextBuilder("朝汐"),
@@ -59,7 +70,8 @@ async def test_tool_success_then_missing_reply_uses_one_tool_free_recovery(raw):
     assert "tool_choice" not in provider.options[-1]
     assert agent.last_action_trace["response_status"] == "succeeded"
     assert agent.last_action_trace["runtime_metrics"]["tool_call_count"] == 1
-    assert any(m.role.value == "tool" and "fixture-focus-1" in m.content for m in provider.calls[-1])
+    assert any("fixture-focus-1" in (m.content or "") for m in provider.calls[-1])
+    assert provider.options[-1]["response_format"]["json_schema"]["name"] == "reply_repair"
     assert sum(m.role.value == "user" for m in agent.conversation.messages) == 1
     assert len([m for m in agent.conversation.messages if m.role.value == "assistant" and is_user_visible_message(m)]) == 1
 
@@ -210,7 +222,7 @@ async def test_danger_budget_repairs_with_compact_receipts_without_extension():
     assert sum(len(m.content or "") for m in provider.calls[-1]) < 16000
 
 
-async def test_runtime_progress_emits_during_slow_finalization_without_model_tool():
+async def test_slow_finalization_does_not_emit_canned_runtime_notice():
     import asyncio
     agent, provider, gateway, seen = setup([final()])
     agent.settings = Settings(_env_file=None, interim_reply_threshold_seconds=.01)
@@ -224,8 +236,7 @@ async def test_runtime_progress_emits_during_slow_finalization_without_model_too
     gateway.event_sink = events.append
     await gateway.chat(UnifiedMessage(channel="web", content="开个番茄钟", request_id="progress"))
     interim = [e for e in events if e["type"] == "interim_reply"]
-    assert len(interim) == 1 and not interim[0]["terminates_turn"]
-    assert any(e.get("event", {}).get("metadata", {}).get("reason") == "runtime_progress" for e in events)
+    assert interim == []
     assert len(provider.calls) == 2 and len(seen) == 2
     assert all(m.visibility != "interim" for m in agent.conversation.messages)
 
@@ -307,3 +318,78 @@ async def test_reply_repair_does_not_upgrade_failed_action_to_partial_success():
     assert response.activity["task_status"] == "failed"
     assert response.activity["result_status"] == "failed"
     assert response.activity["response_status"] == "succeeded"
+
+
+@pytest.mark.parametrize("enabled,threshold,sent", [(True, 0, True), (False, 0, False), (True, 1000, False)])
+async def test_same_action_call_carries_personal_interim_without_extra_round(enabled, threshold, sent):
+    text = "唔，暗苟，刚才那条留好了，我再核对一下时间呀。"
+    follow = ModelResponse(content=text,
+        tool_calls=[ToolCall(id="verify", name="lifehud", arguments={"operation":"focus.current", "arguments":{}})])
+    agent, provider, gateway, seen = setup([follow, final()])
+    agent.context_builder.personality_prompt = "你是朝汐，对暗苟亲近自然。"
+    agent.settings = Settings(_env_file=None, interim_reply_enabled=enabled, interim_reply_threshold_seconds=threshold)
+    events = []
+    gateway.event_sink = events.append
+    result = await gateway.chat(UnifiedMessage(channel="web", content="开番茄钟并核对", request_id="inline"))
+    interim = [e for e in events if e["type"] == "interim_reply"]
+    assert len(interim) == int(sent)
+    if sent:
+        assert interim[0]["content"] == text and not interim[0]["terminates_turn"]
+    assert len(provider.calls) == 3 and len(seen) == 3
+    assert result.content.startswith("25 分钟")
+    assert "你是朝汐，对暗苟亲近自然" in provider.calls[1][0].content
+    assert "同一次 response.content" in provider.calls[1][0].content if enabled else True
+    assert all("emit_interim_reply" != s["function"]["name"] for schemas in provider.tool_schemas for s in schemas or [])
+    assert all(text not in (m.content or "") for m in agent.conversation.messages)
+
+
+async def test_reply_only_repair_retains_character_image_and_confirmed_results():
+    bad = ModelResponse(content=json.dumps({"reply":""}), raw_metadata={"main_reply_contract":True})
+    agent, provider, gateway, seen = setup([bad, final()])
+    agent.context_builder.personality_prompt = "fixture-personality"
+    agent.context_builder.expression_prompt = "fixture-expression"
+    import base64
+    from io import BytesIO
+    from PIL import Image
+    output = BytesIO()
+    Image.new("RGB", (2, 2)).save(output, format="PNG")
+    image = "data:image/png;base64," + base64.b64encode(output.getvalue()).decode()
+    result = await gateway.chat(UnifiedMessage(channel="web", content="记录截图中的日程", images=[image], request_id="repair-image"))
+    assert result.activity["response_status"] == "succeeded" and len(provider.calls) == 3
+    assert "fixture-personality" in provider.calls[-1][0].content
+    assert "fixture-expression" in provider.calls[-1][0].content
+    assert provider.calls[-1][-1].images == [image]
+    assert provider.options[-1]["response_format"]["json_schema"]["name"] == "reply_repair"
+    schema = provider.options[-1]["response_format"]["json_schema"]["schema"]
+    assert schema["required"] == ["reply"] and "awareness" not in schema["properties"]
+    assert len(seen) == 2
+
+
+@pytest.mark.parametrize("broken_delivery", [False, True])
+async def test_first_action_native_speech_precedes_execution_and_is_not_replayed(broken_delivery):
+    agent, provider, gateway, seen = setup([final()])
+    text = "唔，暗苟，我先给你把番茄钟开起来呀。"
+    provider.responses[0].content = text
+    agent.settings.interim_reply_threshold_seconds = 0
+    events = []
+    def sink(event):
+        if event["type"] == "interim_reply":
+            assert seen == []  # The next write has not started yet.
+            if broken_delivery:
+                raise RuntimeError("SSE unavailable")
+        events.append(event)
+    gateway.event_sink = sink
+    result = await gateway.chat(UnifiedMessage(channel="web", content="开个番茄钟", request_id="first-native"))
+    assert result.content.startswith("25 分钟")
+    assert len(provider.calls) == 2 and len(seen) == 2
+    assert "response_format" not in provider.options[0]
+    assert all(text not in (m.content or "") for m in agent.conversation.messages)
+    assert all(text not in (m.content or "") for m in provider.calls[1])
+    assert len([e for e in events if e["type"] == "interim_reply"]) == int(not broken_delivery)
+
+
+async def test_legacy_interim_schema_requires_explicit_debug_flag():
+    agent, provider, gateway, _ = setup([final()])
+    agent.settings.interim_legacy_tool_enabled = True
+    await gateway.chat(UnifiedMessage(channel="web", content="开个番茄钟", request_id="debug-interim"))
+    assert any(s["function"]["name"] == "emit_interim_reply" for s in provider.tool_schemas[0])
