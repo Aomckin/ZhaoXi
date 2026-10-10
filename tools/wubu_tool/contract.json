@@ -1,0 +1,3555 @@
+{
+  "search_items": {
+    "method": "GET",
+    "path": "/api/v1/items",
+    "query": {
+      "type": "object",
+      "properties": {
+        "search": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "pantry",
+            "drinks",
+            "cleaning",
+            "bathroom",
+            "laundry",
+            "household",
+            "health",
+            "pets",
+            "baby",
+            "other"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "low",
+            "out",
+            "expiring",
+            "expired",
+            "short_lived"
+          ]
+        },
+        "hide_out": {
+          "type": "boolean",
+          "default": false
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "get_item": {
+    "method": "GET",
+    "path": "/api/v1/items/{id}",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "adjust_inventory": {
+    "method": "POST",
+    "path": "/api/v1/items/{id}/adjust",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "receipt",
+            "system"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "delta": {
+          "type": "number",
+          "minimum": -1000000000,
+          "maximum": 1000000000,
+          "multipleOf": 0.001
+        },
+        "quantity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000000,
+          "multipleOf": 0.001
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "按名称操作时的商品名或别名。"
+        },
+        "spec": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "每包装规格，例如 2L；与购买数量和库存单位分别存储。"
+        }
+      },
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "delta"
+          ],
+          "not": {
+            "required": [
+              "quantity"
+            ]
+          }
+        },
+        {
+          "required": [
+            "quantity"
+          ],
+          "not": {
+            "required": [
+              "delta"
+            ]
+          }
+        }
+      ]
+    },
+    "idempotent": true
+  },
+  "record_purchase_event": {
+    "method": "POST",
+    "path": "/api/v1/purchases",
+    "query": {
+      "type": "object",
+      "properties": {
+        "dry_run": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "merchant": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "purchased_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "total_amount": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan (元), at most two decimals; persisted as integer cents."
+        },
+        "currency": {
+          "type": "string",
+          "enum": [
+            "CNY"
+          ],
+          "default": "CNY"
+        },
+        "payment_method": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "receipt",
+            "system"
+          ],
+          "default": "manual"
+        },
+        "external_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "discount": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan (元), at most two decimals; persisted as integer cents."
+        },
+        "extra_fee": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan (元), at most two decimals; persisted as integer cents."
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 500,
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "maxLength": 80,
+                "description": "商品基础名称，例如无糖可乐；旧的名称加规格输入会自动拆分。"
+              },
+              "item_id": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "quantity": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1000000000,
+                "multipleOf": 0.001,
+                "exclusiveMinimum": 0,
+                "description": "购买数量，例如 1 瓶的数量为 1；不能用规格容量 2L 替代数量。"
+              },
+              "unit": {
+                "type": "string",
+                "maxLength": 20,
+                "description": "库存计数单位，如瓶、包、个；包装规格单独填spec或package_size/package_unit。"
+              },
+              "unit_price": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10000000,
+                "multipleOf": 0.01,
+                "description": "CNY yuan (元), at most two decimals; persisted as integer cents."
+              },
+              "subtotal": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10000000000,
+                "multipleOf": 0.01,
+                "description": "CNY yuan (元), at most two decimals; persisted as integer cents."
+              },
+              "item_type": {
+                "enum": [
+                  "CONSUMABLE",
+                  "DURABLE",
+                  "UNTRACKED"
+                ],
+                "type": "string",
+                "description": "DURABLE requires quantity=1, one instance per line; UNTRACKED must omit item_id.",
+                "default": "CONSUMABLE"
+              },
+              "category": {
+                "type": "string",
+                "enum": [
+                  "pantry",
+                  "drinks",
+                  "cleaning",
+                  "bathroom",
+                  "laundry",
+                  "household",
+                  "health",
+                  "pets",
+                  "baby",
+                  "other"
+                ]
+              },
+              "location": {
+                "type": "string",
+                "maxLength": 60
+              },
+              "confidence": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 1
+              },
+              "note": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "brand": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "model": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "serial_number": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "warranty_until": {
+                "type": "string",
+                "format": "date"
+              },
+              "id": {
+                "type": "string",
+                "description": "改单保留原商品行 id；新增行不传 id。"
+              },
+              "spec": {
+                "type": "string",
+                "maxLength": 100,
+                "description": "每包装规格，例如 2L；与购买数量和库存单位分别存储。"
+              },
+              "package_size": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "exclusiveMinimum": 0
+              },
+              "package_unit": {
+                "type": "string",
+                "maxLength": 20,
+                "description": "包装容量或重量单位，如 L、ml；不决定库存数量。"
+              }
+            },
+            "required": [
+              "name",
+              "quantity",
+              "unit",
+              "unit_price",
+              "subtotal"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "account_id": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Account ID or exact name; omitted uses default payment account, then unknown."
+        }
+      },
+      "required": [
+        "total_amount",
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "get_recent_purchases": {
+    "method": "GET",
+    "path": "/api/v1/purchases",
+    "query": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "item_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 100
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "get_purchase_event": {
+    "method": "GET",
+    "path": "/api/v1/purchases/{id}",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "amend_purchase_event": {
+    "method": "PUT",
+    "path": "/api/v1/purchases/{id}",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "merchant": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "purchased_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "total_amount": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan (元), at most two decimals; persisted as integer cents."
+        },
+        "currency": {
+          "type": "string",
+          "enum": [
+            "CNY"
+          ],
+          "default": "CNY"
+        },
+        "payment_method": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "receipt",
+            "system"
+          ],
+          "default": "manual"
+        },
+        "external_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "discount": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan (元), at most two decimals; persisted as integer cents."
+        },
+        "extra_fee": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan (元), at most two decimals; persisted as integer cents."
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 500,
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "maxLength": 80,
+                "description": "商品基础名称，例如无糖可乐；旧的名称加规格输入会自动拆分。"
+              },
+              "item_id": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "quantity": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1000000000,
+                "multipleOf": 0.001,
+                "exclusiveMinimum": 0,
+                "description": "购买数量，例如 1 瓶的数量为 1；不能用规格容量 2L 替代数量。"
+              },
+              "unit": {
+                "type": "string",
+                "maxLength": 20,
+                "description": "库存计数单位，如瓶、包、个；包装规格单独填spec或package_size/package_unit。"
+              },
+              "unit_price": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10000000,
+                "multipleOf": 0.01,
+                "description": "CNY yuan (元), at most two decimals; persisted as integer cents."
+              },
+              "subtotal": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10000000000,
+                "multipleOf": 0.01,
+                "description": "CNY yuan (元), at most two decimals; persisted as integer cents."
+              },
+              "item_type": {
+                "enum": [
+                  "CONSUMABLE",
+                  "DURABLE",
+                  "UNTRACKED"
+                ],
+                "type": "string",
+                "description": "DURABLE requires quantity=1, one instance per line; UNTRACKED must omit item_id.",
+                "default": "CONSUMABLE"
+              },
+              "category": {
+                "type": "string",
+                "enum": [
+                  "pantry",
+                  "drinks",
+                  "cleaning",
+                  "bathroom",
+                  "laundry",
+                  "household",
+                  "health",
+                  "pets",
+                  "baby",
+                  "other"
+                ]
+              },
+              "location": {
+                "type": "string",
+                "maxLength": 60
+              },
+              "confidence": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 1
+              },
+              "note": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "brand": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "model": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "serial_number": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "warranty_until": {
+                "type": "string",
+                "format": "date"
+              },
+              "id": {
+                "type": "string",
+                "description": "改单保留原商品行 id；新增行不传 id。"
+              },
+              "spec": {
+                "type": "string",
+                "maxLength": 100,
+                "description": "每包装规格，例如 2L；与购买数量和库存单位分别存储。"
+              },
+              "package_size": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "exclusiveMinimum": 0
+              },
+              "package_unit": {
+                "type": "string",
+                "maxLength": 20,
+                "description": "包装容量或重量单位，如 L、ml；不决定库存数量。"
+              }
+            },
+            "required": [
+              "name",
+              "quantity",
+              "unit",
+              "unit_price",
+              "subtotal"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "expected_updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "刚读取的购买记录 updated_at；版本不一致返回 409。"
+        },
+        "account_id": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Account ID or exact name; omitted uses default payment account, then unknown."
+        }
+      },
+      "required": [
+        "total_amount",
+        "items",
+        "expected_updated_at",
+        "source",
+        "external_id"
+      ],
+      "additionalProperties": false,
+      "description": "整笔替换购买。保留 source、external_id 和原商品行 id。费用与库存差额在同一事务内更新；既有消耗保留。换单位只允许没有其他购买或库存变化的独立物品。已关联商品行不能改变 item_type 或 item_id；移除旧行并新增时，仍受库存与耐用品约束。"
+    },
+    "idempotent": true
+  },
+  "delete_purchase_event": {
+    "method": "DELETE",
+    "path": "/api/v1/purchases/{id}",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "expected_updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "刚读取的购买记录 updated_at；版本不一致返回 409。"
+        }
+      },
+      "required": [
+        "expected_updated_at"
+      ],
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "get_purchase_history": {
+    "method": "GET",
+    "path": "/api/v1/items/{id}/purchases",
+    "query": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "get_price_history": {
+    "method": "GET",
+    "path": "/api/v1/items/{id}/prices",
+    "query": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "get_inventory_history": {
+    "method": "GET",
+    "path": "/api/v1/inventory-events",
+    "query": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "item_id": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "get_item_inventory_history": {
+    "method": "GET",
+    "path": "/api/v1/items/{id}/inventory-events",
+    "query": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "consume_item": {
+    "method": "POST",
+    "path": "/api/v1/items/{id}/consume",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "receipt",
+            "system"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "quantity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000000,
+          "multipleOf": 0.001,
+          "exclusiveMinimum": 0
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "按名称操作时的商品名或别名。"
+        },
+        "spec": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "每包装规格，例如 2L；与购买数量和库存单位分别存储。"
+        }
+      },
+      "required": [
+        "quantity"
+      ],
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "open_item": {
+    "method": "POST",
+    "path": "/api/v1/items/{id}/open",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "receipt",
+            "system"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "按名称操作时的商品名或别名。"
+        },
+        "spec": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "每包装规格，例如 2L；与购买数量和库存单位分别存储。"
+        }
+      },
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "finish_item": {
+    "method": "POST",
+    "path": "/api/v1/items/{id}/finish",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "receipt",
+            "system"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "按名称操作时的商品名或别名。"
+        },
+        "spec": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "每包装规格，例如 2L；与购买数量和库存单位分别存储。"
+        }
+      },
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "discard_item": {
+    "method": "POST",
+    "path": "/api/v1/items/{id}/discard",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "receipt",
+            "system"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "按名称操作时的商品名或别名。"
+        },
+        "spec": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "每包装规格，例如 2L；与购买数量和库存单位分别存储。"
+        }
+      },
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "add_maintenance_event": {
+    "method": "POST",
+    "path": "/api/v1/items/{id}/maintenance",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "receipt",
+            "system"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "cost": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan (元), at most two decimals; persisted as integer cents."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "DONE",
+            "PLANNED"
+          ],
+          "default": "DONE",
+          "description": "PLANNED requires cost=0; DONE cost>0 posts MoneyTransaction and account balance atomically."
+        },
+        "account_id": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Account ID or exact name; omitted uses default payment account, then unknown."
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "get_maintenance_history": {
+    "method": "GET",
+    "path": "/api/v1/items/{id}/maintenance",
+    "query": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "get_recent_maintenance": {
+    "method": "GET",
+    "path": "/api/v1/maintenance",
+    "query": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "item_id": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "get_durable_details": {
+    "method": "GET",
+    "path": "/api/v1/items/{id}/durable",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "update_durable_details": {
+    "method": "PATCH",
+    "path": "/api/v1/items/{id}/durable",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "brand": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "model": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "serial_number": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "warranty_until": {
+          "type": "string",
+          "description": "YYYY-MM-DD or empty"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ACTIVE",
+            "STORED",
+            "LOST",
+            "SOLD",
+            "RETIRED",
+            "ARCHIVED",
+            "DISCARDED"
+          ],
+          "description": "ARCHIVED input maps to STORED; DISCARDED to RETIRED. SOLD posts income atomically; ended lifecycle cannot be restored."
+        },
+        "sold_at": {
+          "type": "string",
+          "description": "RFC3339 timestamp or empty; required for SOLD"
+        },
+        "sold_price": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan (元), at most two decimals; persisted as integer cents."
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "add_product_alias": {
+    "method": "POST",
+    "path": "/api/v1/items/{id}/aliases",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "alias": {
+          "type": "string",
+          "maxLength": 100,
+          "minLength": 1
+        }
+      },
+      "required": [
+        "alias"
+      ],
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "get_product_aliases": {
+    "method": "GET",
+    "path": "/api/v1/items/{id}/aliases",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "resolve_item": {
+    "method": "GET",
+    "path": "/api/v1/items/resolve",
+    "query": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 100,
+          "minLength": 1
+        },
+        "spec": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "每包装规格，例如 2L；与购买数量和库存单位分别存储。"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ]
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "get_expenses": {
+    "method": "GET",
+    "path": "/api/v1/expenses",
+    "query": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 100
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "get_ledger_summary": {
+    "method": "GET",
+    "path": "/api/v1/ledger/summary",
+    "query": {
+      "type": "object",
+      "properties": {
+        "month": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}$"
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "get_inventory": {
+    "method": "GET",
+    "path": "/api/v1/inventory",
+    "query": {
+      "type": "object",
+      "properties": {
+        "search": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "pantry",
+            "drinks",
+            "cleaning",
+            "bathroom",
+            "laundry",
+            "household",
+            "health",
+            "pets",
+            "baby",
+            "other"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "low",
+            "out",
+            "expiring",
+            "expired",
+            "short_lived"
+          ]
+        },
+        "hide_out": {
+          "type": "boolean",
+          "default": false
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "record_purchase": {
+    "method": "POST",
+    "path": "/api/v1/purchases/record",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 500,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "quantity",
+              "unit"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "quantity": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000000.0,
+                "multipleOf": 0.001
+              },
+              "unit": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20,
+                "description": "库存计数单位，如瓶、包、个；包装规格单独填spec或package_size/package_unit。"
+              },
+              "price": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10000000.0,
+                "multipleOf": 0.01,
+                "description": "每库存单位单价，元。"
+              },
+              "spec": {
+                "type": "string",
+                "maxLength": 100,
+                "description": "每包装规格，例如 2L；与购买数量和库存单位分别存储。"
+              },
+              "item_type": {
+                "type": "string",
+                "enum": [
+                  "CONSUMABLE",
+                  "DURABLE",
+                  "UNTRACKED"
+                ],
+                "default": "CONSUMABLE"
+              },
+              "location": {
+                "type": "string",
+                "maxLength": 100
+              }
+            }
+          }
+        },
+        "total": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000.0,
+          "multipleOf": 0.01,
+          "description": "实际付款（元）；省略按单价乘数量合计；仅有一个商品且省略价格时按总价推导。"
+        },
+        "merchant": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "payment_method": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "account_id": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Account ID or exact name; omitted uses default payment account, then unknown."
+        }
+      }
+    },
+    "idempotent": true
+  },
+  "validate_purchase": {
+    "method": "POST",
+    "path": "/api/v1/purchases/validate",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 500,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "quantity",
+              "unit"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "quantity": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000000.0,
+                "multipleOf": 0.001
+              },
+              "unit": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20,
+                "description": "库存计数单位，如瓶、包、个；包装规格单独填spec或package_size/package_unit。"
+              },
+              "price": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10000000.0,
+                "multipleOf": 0.01,
+                "description": "每库存单位单价，元。"
+              },
+              "spec": {
+                "type": "string",
+                "maxLength": 100,
+                "description": "每包装规格，例如 2L；与购买数量和库存单位分别存储。"
+              },
+              "item_type": {
+                "type": "string",
+                "enum": [
+                  "CONSUMABLE",
+                  "DURABLE",
+                  "UNTRACKED"
+                ],
+                "default": "CONSUMABLE"
+              },
+              "location": {
+                "type": "string",
+                "maxLength": 100
+              }
+            }
+          }
+        },
+        "total": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000.0,
+          "multipleOf": 0.01,
+          "description": "实际付款（元）；省略按单价乘数量合计；仅有一个商品且省略价格时按总价推导。"
+        },
+        "merchant": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "payment_method": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "account_id": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Account ID or exact name; omitted uses default payment account, then unknown."
+        }
+      }
+    },
+    "idempotent": false
+  },
+  "consume_by_name": {
+    "method": "POST",
+    "path": "/api/v1/items/consume",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "receipt",
+            "system"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "quantity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000000,
+          "multipleOf": 0.001,
+          "exclusiveMinimum": 0
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "按名称操作时的商品名或别名。"
+        },
+        "spec": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "每包装规格，例如 2L；与购买数量和库存单位分别存储。"
+        }
+      },
+      "required": [
+        "name",
+        "quantity"
+      ],
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "adjust_by_name": {
+    "method": "POST",
+    "path": "/api/v1/items/adjust",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "receipt",
+            "system"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "delta": {
+          "type": "number",
+          "minimum": -1000000000,
+          "maximum": 1000000000,
+          "multipleOf": 0.001
+        },
+        "quantity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000000,
+          "multipleOf": 0.001
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "按名称操作时的商品名或别名。"
+        },
+        "spec": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "每包装规格，例如 2L；与购买数量和库存单位分别存储。"
+        }
+      },
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "delta"
+          ],
+          "not": {
+            "required": [
+              "quantity"
+            ]
+          }
+        },
+        {
+          "required": [
+            "quantity"
+          ],
+          "not": {
+            "required": [
+              "delta"
+            ]
+          }
+        }
+      ],
+      "required": [
+        "name"
+      ]
+    },
+    "idempotent": true
+  },
+  "open_by_name": {
+    "method": "POST",
+    "path": "/api/v1/items/open",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "receipt",
+            "system"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "按名称操作时的商品名或别名。"
+        },
+        "spec": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "每包装规格，例如 2L；与购买数量和库存单位分别存储。"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ]
+    },
+    "idempotent": true
+  },
+  "finish_by_name": {
+    "method": "POST",
+    "path": "/api/v1/items/finish",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "receipt",
+            "system"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "按名称操作时的商品名或别名。"
+        },
+        "spec": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "每包装规格，例如 2L；与购买数量和库存单位分别存储。"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ]
+    },
+    "idempotent": true
+  },
+  "discard_by_name": {
+    "method": "POST",
+    "path": "/api/v1/items/discard",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "receipt",
+            "system"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "按名称操作时的商品名或别名。"
+        },
+        "spec": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "每包装规格，例如 2L；与购买数量和库存单位分别存储。"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ]
+    },
+    "idempotent": true
+  },
+  "get_accounts": {
+    "method": "GET",
+    "path": "/api/v1/accounts",
+    "query": {
+      "type": "object",
+      "properties": {
+        "account_class": {
+          "type": "string",
+          "enum": [
+            "STORAGE",
+            "CONSUMPTION"
+          ],
+          "description": "Current fund-use boundary, independent of account type. Existing accounts migrate to STORAGE."
+        },
+        "merchant": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "active": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "create_account": {
+    "method": "POST",
+    "path": "/api/v1/accounts",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "WALLET",
+            "BANK",
+            "CASH",
+            "CAMPUS_CARD",
+            "CREDIT_CARD",
+            "OTHER",
+            "MERCHANT_BALANCE"
+          ],
+          "default": "OTHER"
+        },
+        "currency": {
+          "type": "string",
+          "enum": [
+            "CNY"
+          ]
+        },
+        "initial_balance": {
+          "type": "number",
+          "minimum": -10000000000,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "Signed net balance or delta in CNY yuan."
+        },
+        "credit_limit": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan, persisted as integer cents."
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "account_class": {
+          "type": "string",
+          "enum": [
+            "STORAGE",
+            "CONSUMPTION"
+          ],
+          "description": "Current fund-use boundary, independent of account type. Existing accounts migrate to STORAGE.",
+          "default": "STORAGE"
+        },
+        "merchant": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "get_account": {
+    "method": "GET",
+    "path": "/api/v1/accounts/{id}",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "update_account": {
+    "method": "PATCH",
+    "path": "/api/v1/accounts/{id}",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "credit_limit": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan, persisted as integer cents."
+        },
+        "account_class": {
+          "type": "string",
+          "enum": [
+            "STORAGE",
+            "CONSUMPTION"
+          ],
+          "description": "Current fund-use boundary, independent of account type. Existing accounts migrate to STORAGE."
+        },
+        "merchant": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "get_money_settings": {
+    "method": "GET",
+    "path": "/api/v1/money/settings",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "set_default_payment_account": {
+    "method": "PATCH",
+    "path": "/api/v1/money/settings",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "default_payment_account": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "default_payment_account"
+      ],
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "get_balance": {
+    "method": "GET",
+    "path": "/api/v1/money/balance",
+    "query": {
+      "type": "object",
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "record_expense": {
+    "method": "POST",
+    "path": "/api/v1/money/expenses",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Account ID or exact name; omitted uses default payment account, then unknown."
+        },
+        "amount": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan, persisted as integer cents."
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "merchant": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "external_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "occurred_at": {
+          "type": "string",
+          "description": "RFC3339 with timezone; empty/omitted defaults to now."
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "system",
+            "receipt"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "amount"
+      ],
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "record_income": {
+    "method": "POST",
+    "path": "/api/v1/money/income",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Account ID or exact name; omitted uses default payment account, then unknown."
+        },
+        "amount": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan, persisted as integer cents."
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "external_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "occurred_at": {
+          "type": "string",
+          "description": "RFC3339 with timezone; empty/omitted defaults to now."
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "system",
+            "receipt"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "amount"
+      ],
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "transfer_money": {
+    "method": "POST",
+    "path": "/api/v1/money/transfers",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "from_account": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Account ID or exact name; omitted uses default payment account, then unknown."
+        },
+        "to_account": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Account ID or exact name; omitted uses default payment account, then unknown."
+        },
+        "amount": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan, persisted as integer cents."
+        },
+        "external_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "occurred_at": {
+          "type": "string",
+          "description": "RFC3339 with timezone; empty/omitted defaults to now."
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "system",
+            "receipt"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "from_account",
+        "to_account",
+        "amount"
+      ],
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "record_refund": {
+    "method": "POST",
+    "path": "/api/v1/money/refunds",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Account ID or exact name; omitted uses default payment account, then unknown."
+        },
+        "amount": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan, persisted as integer cents."
+        },
+        "purchase_event_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "related_transaction_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "external_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "occurred_at": {
+          "type": "string",
+          "description": "RFC3339 with timezone; empty/omitted defaults to now."
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "system",
+            "receipt"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "return_items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "item_id": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "quantity": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "multipleOf": 0.001
+              }
+            },
+            "required": [
+              "item_id",
+              "quantity"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "amount"
+      ],
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "purchase_event_id"
+          ]
+        },
+        {
+          "required": [
+            "related_transaction_id"
+          ]
+        }
+      ]
+    },
+    "idempotent": true
+  },
+  "adjust_balance": {
+    "method": "POST",
+    "path": "/api/v1/money/adjustments",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Account ID or exact name; omitted uses default payment account, then unknown."
+        },
+        "actual_balance": {
+          "type": "number",
+          "minimum": -10000000000,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "Signed net balance or delta in CNY yuan."
+        },
+        "occurred_at": {
+          "type": "string",
+          "description": "RFC3339 with timezone; empty/omitted defaults to now."
+        },
+        "external_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "system",
+            "receipt"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "actual_balance"
+      ],
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "reconcile_account": {
+    "method": "POST",
+    "path": "/api/v1/money/reconcile",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Account ID or exact name; omitted uses default payment account, then unknown."
+        },
+        "actual_balance": {
+          "type": "number",
+          "minimum": -10000000000,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "Signed net balance or delta in CNY yuan."
+        },
+        "occurred_at": {
+          "type": "string",
+          "description": "RFC3339 with timezone; empty/omitted defaults to now."
+        },
+        "external_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "system",
+            "receipt"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "actual_balance"
+      ],
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "get_recent_transactions": {
+    "method": "GET",
+    "path": "/api/v1/money/transactions",
+    "query": {
+      "type": "object",
+      "properties": {
+        "period": {
+          "type": "string",
+          "enum": [
+            "today",
+            "week",
+            "month",
+            "year"
+          ],
+          "description": "Shanghai calendar; exclusive with from/to. Week starts Monday."
+        },
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "account_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "merchant": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "EXPENSE",
+            "INCOME",
+            "TRANSFER_OUT",
+            "TRANSFER_IN",
+            "REFUND",
+            "ADJUSTMENT",
+            "BONUS"
+          ]
+        },
+        "to_account": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "group_by": {
+          "enum": [
+            "category",
+            "merchant",
+            "account",
+            "item"
+          ],
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "get_money_summary": {
+    "method": "GET",
+    "path": "/api/v1/money/summary",
+    "query": {
+      "type": "object",
+      "properties": {
+        "period": {
+          "type": "string",
+          "enum": [
+            "today",
+            "week",
+            "month",
+            "year"
+          ],
+          "description": "Shanghai calendar; exclusive with from/to. Week starts Monday."
+        },
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "account_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "merchant": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "EXPENSE",
+            "INCOME",
+            "TRANSFER_OUT",
+            "TRANSFER_IN",
+            "REFUND",
+            "ADJUSTMENT",
+            "BONUS"
+          ]
+        },
+        "to_account": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "group_by": {
+          "enum": [
+            "category",
+            "merchant",
+            "account",
+            "item"
+          ],
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "get_expense_summary": {
+    "method": "GET",
+    "path": "/api/v1/money/expense-summary",
+    "query": {
+      "type": "object",
+      "properties": {
+        "period": {
+          "type": "string",
+          "enum": [
+            "today",
+            "week",
+            "month",
+            "year"
+          ],
+          "description": "Shanghai calendar; exclusive with from/to. Week starts Monday."
+        },
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "account_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "merchant": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "EXPENSE",
+            "INCOME",
+            "TRANSFER_OUT",
+            "TRANSFER_IN",
+            "REFUND",
+            "ADJUSTMENT",
+            "BONUS"
+          ]
+        },
+        "to_account": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "group_by": {
+          "enum": [
+            "category",
+            "merchant",
+            "account",
+            "item"
+          ],
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "get_income_summary": {
+    "method": "GET",
+    "path": "/api/v1/money/income-summary",
+    "query": {
+      "type": "object",
+      "properties": {
+        "period": {
+          "type": "string",
+          "enum": [
+            "today",
+            "week",
+            "month",
+            "year"
+          ],
+          "description": "Shanghai calendar; exclusive with from/to. Week starts Monday."
+        },
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "account_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "merchant": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "EXPENSE",
+            "INCOME",
+            "TRANSFER_OUT",
+            "TRANSFER_IN",
+            "REFUND",
+            "ADJUSTMENT",
+            "BONUS"
+          ]
+        },
+        "to_account": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "group_by": {
+          "enum": [
+            "category",
+            "merchant",
+            "account",
+            "item"
+          ],
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "get_category_summary": {
+    "method": "GET",
+    "path": "/api/v1/money/category-summary",
+    "query": {
+      "type": "object",
+      "properties": {
+        "period": {
+          "type": "string",
+          "enum": [
+            "today",
+            "week",
+            "month",
+            "year"
+          ],
+          "description": "Shanghai calendar; exclusive with from/to. Week starts Monday."
+        },
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "account_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "merchant": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "EXPENSE",
+            "INCOME",
+            "TRANSFER_OUT",
+            "TRANSFER_IN",
+            "REFUND",
+            "ADJUSTMENT",
+            "BONUS"
+          ]
+        },
+        "to_account": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "group_by": {
+          "enum": [
+            "category",
+            "merchant",
+            "account",
+            "item"
+          ],
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "get_merchant_summary": {
+    "method": "GET",
+    "path": "/api/v1/money/merchant-summary",
+    "query": {
+      "type": "object",
+      "properties": {
+        "period": {
+          "type": "string",
+          "enum": [
+            "today",
+            "week",
+            "month",
+            "year"
+          ],
+          "description": "Shanghai calendar; exclusive with from/to. Week starts Monday."
+        },
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "account_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "merchant": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "EXPENSE",
+            "INCOME",
+            "TRANSFER_OUT",
+            "TRANSFER_IN",
+            "REFUND",
+            "ADJUSTMENT",
+            "BONUS"
+          ]
+        },
+        "to_account": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "group_by": {
+          "enum": [
+            "category",
+            "merchant",
+            "account",
+            "item"
+          ],
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "get_money_categories": {
+    "method": "GET",
+    "path": "/api/v1/money/categories",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "save_money_category": {
+    "method": "POST",
+    "path": "/api/v1/money/categories",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "previous_name": {
+          "type": "string",
+          "maxLength": 100
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "get_durable_items": {
+    "method": "GET",
+    "path": "/api/v1/durables",
+    "query": {
+      "type": "object",
+      "properties": {
+        "period": {
+          "type": "string",
+          "enum": [
+            "today",
+            "week",
+            "month",
+            "year"
+          ],
+          "description": "Shanghai calendar; exclusive with from/to. Week starts Monday."
+        },
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ACTIVE",
+            "STORED",
+            "LOST",
+            "SOLD",
+            "RETIRED"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "search": {
+          "type": "string",
+          "maxLength": 100
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "sell_item": {
+    "method": "POST",
+    "path": "/api/v1/items/{id}/sell",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ACTIVE",
+            "STORED",
+            "LOST",
+            "SOLD",
+            "RETIRED"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "amount": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan, persisted as integer cents."
+        },
+        "account_id": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Account ID or exact name; omitted uses default payment account, then unknown."
+        },
+        "occurred_at": {
+          "type": "string",
+          "description": "RFC3339 with timezone; empty/omitted defaults to now."
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "system",
+            "receipt"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "retire_item": {
+    "method": "POST",
+    "path": "/api/v1/items/{id}/retire",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ACTIVE",
+            "STORED",
+            "LOST",
+            "SOLD",
+            "RETIRED"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "amount": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan, persisted as integer cents."
+        },
+        "account_id": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Account ID or exact name; omitted uses default payment account, then unknown."
+        },
+        "occurred_at": {
+          "type": "string",
+          "description": "RFC3339 with timezone; empty/omitted defaults to now."
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "system",
+            "receipt"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "move_item": {
+    "method": "POST",
+    "path": "/api/v1/items/{id}/move",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ACTIVE",
+            "STORED",
+            "LOST",
+            "SOLD",
+            "RETIRED"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "amount": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan, persisted as integer cents."
+        },
+        "account_id": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Account ID or exact name; omitted uses default payment account, then unknown."
+        },
+        "occurred_at": {
+          "type": "string",
+          "description": "RFC3339 with timezone; empty/omitted defaults to now."
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "system",
+            "receipt"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "set_durable_status": {
+    "method": "POST",
+    "path": "/api/v1/items/{id}/status",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "ACTIVE",
+            "STORED",
+            "LOST",
+            "SOLD",
+            "RETIRED"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "amount": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan, persisted as integer cents."
+        },
+        "account_id": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Account ID or exact name; omitted uses default payment account, then unknown."
+        },
+        "occurred_at": {
+          "type": "string",
+          "description": "RFC3339 with timezone; empty/omitted defaults to now."
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "system",
+            "receipt"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "get_durable_history": {
+    "method": "GET",
+    "path": "/api/v1/items/{id}/durable-events",
+    "query": {
+      "type": "object",
+      "properties": {
+        "period": {
+          "type": "string",
+          "enum": [
+            "today",
+            "week",
+            "month",
+            "year"
+          ],
+          "description": "Shanghai calendar; exclusive with from/to. Week starts Monday."
+        },
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "get_item_total_cost": {
+    "method": "GET",
+    "path": "/api/v1/items/{id}/total-cost",
+    "query": {
+      "type": "object",
+      "properties": {
+        "period": {
+          "type": "string",
+          "enum": [
+            "today",
+            "week",
+            "month",
+            "year"
+          ],
+          "description": "Shanghai calendar; exclusive with from/to. Week starts Monday."
+        },
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  },
+  "top_up_account": {
+    "method": "POST",
+    "path": "/api/v1/money/top-ups",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "from_account": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "to_account": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "paid_amount": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan, persisted as integer cents.",
+          "exclusiveMinimum": 0
+        },
+        "credited_amount": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan, persisted as integer cents.",
+          "exclusiveMinimum": 0
+        },
+        "occurred_at": {
+          "type": "string",
+          "description": "RFC3339 with timezone; empty/omitted defaults to now."
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "system",
+            "receipt"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "from_account",
+        "to_account",
+        "paid_amount",
+        "credited_amount"
+      ],
+      "additionalProperties": false
+    },
+    "idempotent": true
+  },
+  "record_bonus": {
+    "method": "POST",
+    "path": "/api/v1/money/bonuses",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Account ID or exact name; omitted uses default payment account, then unknown."
+        },
+        "amount": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000000000,
+          "multipleOf": 0.01,
+          "description": "CNY yuan, persisted as integer cents."
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "external_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "occurred_at": {
+          "type": "string",
+          "description": "RFC3339 with timezone; empty/omitted defaults to now."
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "agent",
+            "import",
+            "system",
+            "receipt"
+          ],
+          "default": "manual"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "amount"
+      ],
+      "additionalProperties": false,
+      "description": "Positive restricted gift value; account must be CONSUMPTION. Excluded from ordinary income and expense."
+    },
+    "idempotent": true
+  },
+  "get_account_statistics": {
+    "method": "GET",
+    "path": "/api/v1/accounts/{id}/statistics",
+    "query": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "required": []
+    },
+    "payload": {},
+    "idempotent": false
+  }
+}

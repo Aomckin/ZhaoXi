@@ -1,0 +1,4286 @@
+{
+  "health": {
+    "database": "ok",
+    "status": "ok",
+    "version": "0.2.1"
+  },
+  "base_url": "http://127.0.0.1:12555",
+  "autostart": false,
+  "run_id": "64a0beae05dc4b30b0a29c377b544db6",
+  "checks": [
+    {
+      "name": "get_balance response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "create_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "create_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "set_default_payment_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "top_up_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "top_up_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "stable top-up replay",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "100 paid 110 credited",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "top-up three transaction types",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_income_summary response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "bonus not ordinary income",
+      "passed": true,
+      "detail": {
+        "bonus": 0.0,
+        "currency": "CNY",
+        "expense": 0.0,
+        "refund": 0.0,
+        "net_expense": 0.0,
+        "income": 0.0,
+        "transfer_out": 0.0,
+        "groups": []
+      }
+    },
+    {
+      "name": "record_purchase response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "consume 20",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "record_refund response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "refund defaults original account",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "record_refund response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "cross-account refund",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_account_statistics response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "account statistics",
+      "passed": true,
+      "detail": {
+        "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+        "top_up_principal": 100.0,
+        "bonus": 10.0,
+        "expense": 20.0,
+        "refund": 15.0,
+        "net_expense": 5.0,
+        "current_balance": 100.0,
+        "bonus_ratio": 0.1
+      }
+    },
+    {
+      "name": "get_balance response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "classified balances",
+      "passed": true,
+      "detail": {
+        "liquid_balance": 5071.08,
+        "consumption_balance": 431.0,
+        "total_value": 5502.08,
+        "currency": "CNY",
+        "total_balance": 5502.08,
+        "available_balance": 5071.08,
+        "accounts": [
+          {
+            "account_class": "STORAGE",
+            "merchant": "",
+            "warnings": [],
+            "id": "unknown",
+            "name": "未指定账户",
+            "type": "OTHER",
+            "currency": "CNY",
+            "current_balance": 0.0,
+            "credit_limit": null,
+            "active": true,
+            "note": "旧记录或未配置默认账户",
+            "created_at": "2026-10-10T11:14:54.561Z",
+            "updated_at": "2026-10-10T11:14:54.561Z"
+          },
+          {
+            "account_class": "STORAGE",
+            "merchant": "",
+            "warnings": [],
+            "id": "67bd1bc1-92b3-4dff-a738-1d99470764b9",
+            "name": "aa5e933bac914af38af961c5e0eb1992wallet",
+            "type": "OTHER",
+            "currency": "CNY",
+            "current_balance": 400.0,
+            "credit_limit": null,
+            "active": true,
+            "note": "",
+            "created_at": "2026-10-10T11:30:17.2210077Z",
+            "updated_at": "2026-10-10T11:30:17.2926315Z"
+          },
+          {
+            "account_class": "CONSUMPTION",
+            "merchant": "aa5e933bac914af38af961c5e0eb1992merchant",
+            "warnings": [],
+            "id": "ca30b8f3-5999-462a-b82b-9de27b50b69e",
+            "name": "aa5e933bac914af38af961c5e0eb1992tea",
+            "type": "MERCHANT_BALANCE",
+            "currency": "CNY",
+            "current_balance": 110.0,
+            "credit_limit": null,
+            "active": true,
+            "note": "",
+            "created_at": "2026-10-10T11:30:17.2470413Z",
+            "updated_at": "2026-10-10T11:30:17.2931436Z"
+          },
+          {
+            "account_class": "STORAGE",
+            "merchant": "",
+            "warnings": [],
+            "id": "779f730e-bc1d-42f0-84fa-035406d031d1",
+            "name": "2cba9f1d74ef4fb09a6104789e06c8afwallet",
+            "type": "OTHER",
+            "currency": "CNY",
+            "current_balance": 4320.08,
+            "credit_limit": null,
+            "active": true,
+            "note": "",
+            "created_at": "2026-10-10T11:30:46.3933331Z",
+            "updated_at": "2026-10-10T11:30:47.5649885Z"
+          },
+          {
+            "account_class": "CONSUMPTION",
+            "merchant": "2cba9f1d74ef4fb09a6104789e06c8afmerchant",
+            "warnings": [],
+            "id": "48eff881-b419-4066-8111-dceaf0c4fd3c",
+            "name": "2cba9f1d74ef4fb09a6104789e06c8aftea",
+            "type": "MERCHANT_BALANCE",
+            "currency": "CNY",
+            "current_balance": 111.0,
+            "credit_limit": null,
+            "active": true,
+            "note": "",
+            "created_at": "2026-10-10T11:30:46.4156218Z",
+            "updated_at": "2026-10-10T11:30:47.4921268Z"
+          },
+          {
+            "account_class": "STORAGE",
+            "merchant": "",
+            "warnings": [],
+            "id": "76760041-e3c4-429f-a0e6-1ef0d902335e",
+            "name": "00ac653ebe4b4473bfe2ccaac5a600acwallet",
+            "type": "OTHER",
+            "currency": "CNY",
+            "current_balance": -54.0,
+            "credit_limit": null,
+            "active": true,
+            "note": "",
+            "created_at": "2026-10-10T11:32:17.58121Z",
+            "updated_at": "2026-10-10T11:32:18.3573542Z"
+          },
+          {
+            "account_class": "CONSUMPTION",
+            "merchant": "00ac653ebe4b4473bfe2ccaac5a600acmerchant",
+            "warnings": [],
+            "id": "e91d1a20-dba9-457d-9644-48dfcb7ee7dc",
+            "name": "00ac653ebe4b4473bfe2ccaac5a600actea",
+            "type": "MERCHANT_BALANCE",
+            "currency": "CNY",
+            "current_balance": 110.0,
+            "credit_limit": null,
+            "active": true,
+            "note": "",
+            "created_at": "2026-10-10T11:32:17.6057679Z",
+            "updated_at": "2026-10-10T11:32:18.2298132Z"
+          },
+          {
+            "account_class": "STORAGE",
+            "merchant": "",
+            "warnings": [],
+            "id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+            "name": "64a0beae05dc4b30b0a29c377b544db6wallet",
+            "type": "OTHER",
+            "currency": "CNY",
+            "current_balance": 405.0,
+            "credit_limit": null,
+            "active": true,
+            "note": "",
+            "created_at": "2026-10-10T11:32:49.539695Z",
+            "updated_at": "2026-10-10T11:32:49.8223637Z"
+          },
+          {
+            "account_class": "CONSUMPTION",
+            "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+            "warnings": [],
+            "id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+            "name": "64a0beae05dc4b30b0a29c377b544db6tea",
+            "type": "MERCHANT_BALANCE",
+            "currency": "CNY",
+            "current_balance": 100.0,
+            "credit_limit": null,
+            "active": true,
+            "note": "",
+            "created_at": "2026-10-10T11:32:49.5646278Z",
+            "updated_at": "2026-10-10T11:32:49.7762949Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "get_recent_transactions response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "update_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_balance response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "class edit moves current balance",
+      "passed": true,
+      "detail": {
+        "liquid_balance": 5171.08,
+        "consumption_balance": 331.0,
+        "total_value": 5502.08,
+        "currency": "CNY",
+        "total_balance": 5502.08,
+        "available_balance": 5171.08,
+        "accounts": [
+          {
+            "account_class": "STORAGE",
+            "merchant": "",
+            "warnings": [],
+            "id": "unknown",
+            "name": "未指定账户",
+            "type": "OTHER",
+            "currency": "CNY",
+            "current_balance": 0.0,
+            "credit_limit": null,
+            "active": true,
+            "note": "旧记录或未配置默认账户",
+            "created_at": "2026-10-10T11:14:54.561Z",
+            "updated_at": "2026-10-10T11:14:54.561Z"
+          },
+          {
+            "account_class": "STORAGE",
+            "merchant": "",
+            "warnings": [],
+            "id": "67bd1bc1-92b3-4dff-a738-1d99470764b9",
+            "name": "aa5e933bac914af38af961c5e0eb1992wallet",
+            "type": "OTHER",
+            "currency": "CNY",
+            "current_balance": 400.0,
+            "credit_limit": null,
+            "active": true,
+            "note": "",
+            "created_at": "2026-10-10T11:30:17.2210077Z",
+            "updated_at": "2026-10-10T11:30:17.2926315Z"
+          },
+          {
+            "account_class": "CONSUMPTION",
+            "merchant": "aa5e933bac914af38af961c5e0eb1992merchant",
+            "warnings": [],
+            "id": "ca30b8f3-5999-462a-b82b-9de27b50b69e",
+            "name": "aa5e933bac914af38af961c5e0eb1992tea",
+            "type": "MERCHANT_BALANCE",
+            "currency": "CNY",
+            "current_balance": 110.0,
+            "credit_limit": null,
+            "active": true,
+            "note": "",
+            "created_at": "2026-10-10T11:30:17.2470413Z",
+            "updated_at": "2026-10-10T11:30:17.2931436Z"
+          },
+          {
+            "account_class": "STORAGE",
+            "merchant": "",
+            "warnings": [],
+            "id": "779f730e-bc1d-42f0-84fa-035406d031d1",
+            "name": "2cba9f1d74ef4fb09a6104789e06c8afwallet",
+            "type": "OTHER",
+            "currency": "CNY",
+            "current_balance": 4320.08,
+            "credit_limit": null,
+            "active": true,
+            "note": "",
+            "created_at": "2026-10-10T11:30:46.3933331Z",
+            "updated_at": "2026-10-10T11:30:47.5649885Z"
+          },
+          {
+            "account_class": "CONSUMPTION",
+            "merchant": "2cba9f1d74ef4fb09a6104789e06c8afmerchant",
+            "warnings": [],
+            "id": "48eff881-b419-4066-8111-dceaf0c4fd3c",
+            "name": "2cba9f1d74ef4fb09a6104789e06c8aftea",
+            "type": "MERCHANT_BALANCE",
+            "currency": "CNY",
+            "current_balance": 111.0,
+            "credit_limit": null,
+            "active": true,
+            "note": "",
+            "created_at": "2026-10-10T11:30:46.4156218Z",
+            "updated_at": "2026-10-10T11:30:47.4921268Z"
+          },
+          {
+            "account_class": "STORAGE",
+            "merchant": "",
+            "warnings": [],
+            "id": "76760041-e3c4-429f-a0e6-1ef0d902335e",
+            "name": "00ac653ebe4b4473bfe2ccaac5a600acwallet",
+            "type": "OTHER",
+            "currency": "CNY",
+            "current_balance": -54.0,
+            "credit_limit": null,
+            "active": true,
+            "note": "",
+            "created_at": "2026-10-10T11:32:17.58121Z",
+            "updated_at": "2026-10-10T11:32:18.3573542Z"
+          },
+          {
+            "account_class": "CONSUMPTION",
+            "merchant": "00ac653ebe4b4473bfe2ccaac5a600acmerchant",
+            "warnings": [],
+            "id": "e91d1a20-dba9-457d-9644-48dfcb7ee7dc",
+            "name": "00ac653ebe4b4473bfe2ccaac5a600actea",
+            "type": "MERCHANT_BALANCE",
+            "currency": "CNY",
+            "current_balance": 110.0,
+            "credit_limit": null,
+            "active": true,
+            "note": "",
+            "created_at": "2026-10-10T11:32:17.6057679Z",
+            "updated_at": "2026-10-10T11:32:18.2298132Z"
+          },
+          {
+            "account_class": "STORAGE",
+            "merchant": "",
+            "warnings": [],
+            "id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+            "name": "64a0beae05dc4b30b0a29c377b544db6wallet",
+            "type": "OTHER",
+            "currency": "CNY",
+            "current_balance": 405.0,
+            "credit_limit": null,
+            "active": true,
+            "note": "",
+            "created_at": "2026-10-10T11:32:49.539695Z",
+            "updated_at": "2026-10-10T11:32:49.8223637Z"
+          },
+          {
+            "account_class": "STORAGE",
+            "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+            "warnings": [],
+            "id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+            "name": "64a0beae05dc4b30b0a29c377b544db6tea",
+            "type": "MERCHANT_BALANCE",
+            "currency": "CNY",
+            "current_balance": 100.0,
+            "credit_limit": null,
+            "active": true,
+            "note": "",
+            "created_at": "2026-10-10T11:32:49.5646278Z",
+            "updated_at": "2026-10-10T11:32:49.9570234Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "get_recent_transactions response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "class edit preserves history",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "update_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "update_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "deactivation remaining balance warning",
+      "passed": true,
+      "detail": {
+        "account_class": "CONSUMPTION",
+        "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+        "warnings": [
+          {
+            "code": "ACCOUNT_HAS_REMAINING_BALANCE",
+            "message": "消费账户仍有余额，停用后不会计入消费储值汇总；记录与余额仍保留。"
+          }
+        ],
+        "id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+        "name": "64a0beae05dc4b30b0a29c377b544db6tea",
+        "type": "MERCHANT_BALANCE",
+        "currency": "CNY",
+        "current_balance": 100.0,
+        "credit_limit": null,
+        "active": false,
+        "note": "",
+        "created_at": "2026-10-10T11:32:49.5646278Z",
+        "updated_at": "2026-10-10T11:32:50.054314Z"
+      }
+    },
+    {
+      "name": "update_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "record_expense response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "merchant mismatch actionable",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "top_up_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "short credit warning",
+      "passed": true,
+      "detail": {
+        "warnings": [
+          {
+            "code": "TOP_UP_VALUE_LOSS",
+            "message": "到账少于实付，差额已记录为储值损失调整，不计普通消费。"
+          }
+        ],
+        "transactions": [
+          {
+            "id": "6128c850-eaf8-43fc-ba94-0a06f96f2e1a",
+            "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+            "type": "TRANSFER_OUT",
+            "amount": 10.0,
+            "balance_delta": -10.0,
+            "balance_before": 405.0,
+            "balance_after": 395.0,
+            "category": "other",
+            "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+            "related_transaction_id": "ef7cabd6-3a4a-4392-94bf-386087f0c68c",
+            "occurred_at": "2026-10-10T11:32:50.1268359Z",
+            "source": "agent",
+            "note": "",
+            "reason": "TOP_UP",
+            "created_at": "2026-10-10T11:32:50.1268359Z"
+          },
+          {
+            "id": "ef7cabd6-3a4a-4392-94bf-386087f0c68c",
+            "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+            "type": "TRANSFER_IN",
+            "amount": 10.0,
+            "balance_delta": 10.0,
+            "balance_before": 100.0,
+            "balance_after": 110.0,
+            "category": "other",
+            "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+            "related_transaction_id": "6128c850-eaf8-43fc-ba94-0a06f96f2e1a",
+            "occurred_at": "2026-10-10T11:32:50.1268359Z",
+            "source": "agent",
+            "note": "",
+            "reason": "TOP_UP",
+            "created_at": "2026-10-10T11:32:50.1273515Z"
+          },
+          {
+            "id": "ff8eb828-07a3-4eb3-9b8e-a03728679b01",
+            "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+            "type": "ADJUSTMENT",
+            "amount": 2.0,
+            "balance_delta": -2.0,
+            "balance_before": 110.0,
+            "balance_after": 108.0,
+            "category": "other",
+            "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+            "related_transaction_id": "ef7cabd6-3a4a-4392-94bf-386087f0c68c",
+            "occurred_at": "2026-10-10T11:32:50.1268359Z",
+            "source": "agent",
+            "note": "",
+            "reason": "TOP_UP_VALUE_LOSS",
+            "created_at": "2026-10-10T11:32:50.1273515Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "record_bonus response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "record_bonus response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_recent_transactions response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "record_purchase response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "add_maintenance response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "maintenance atomically deducts 50",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_item_total_cost response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "purchase plus maintenance cost",
+      "passed": true,
+      "detail": {
+        "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+        "purchase_cost": 399.0,
+        "maintenance_cost": 50.0,
+        "total_cost": 449.0,
+        "refund": 0.0,
+        "net_cost": 449.0,
+        "purchase_count": 1,
+        "purchase_quantity": 1,
+        "latest_price": 399.0,
+        "maintenance_count": 1
+      }
+    },
+    {
+      "name": "move_item response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "set_durable_status response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "wubu response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "durable STORED inventory",
+      "passed": true,
+      "detail": {
+        "inventory_unit": "个",
+        "item_type": "DURABLE",
+        "opened_at": null,
+        "id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+        "name": "64a0beae05dc4b30b0a29c377b544db6keyboard",
+        "category": "other",
+        "icon": "inventory_2",
+        "quantity": 1,
+        "unit_price_cents": 39900,
+        "unit": "个",
+        "location": "shelf",
+        "low_stock_threshold": null,
+        "expiry_date": null,
+        "short_lived": false,
+        "auto_consume_at": null,
+        "notes": "",
+        "created_at": "2026-10-10T11:32:50.2415271Z",
+        "updated_at": "2026-10-10T11:32:50.3826069Z",
+        "version": 4
+      }
+    },
+    {
+      "name": "set_durable_status response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "wubu response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "durable LOST inventory",
+      "passed": true,
+      "detail": {
+        "inventory_unit": "个",
+        "item_type": "DURABLE",
+        "opened_at": null,
+        "id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+        "name": "64a0beae05dc4b30b0a29c377b544db6keyboard",
+        "category": "other",
+        "icon": "inventory_2",
+        "quantity": 0,
+        "unit_price_cents": 39900,
+        "unit": "个",
+        "location": "shelf",
+        "low_stock_threshold": null,
+        "expiry_date": null,
+        "short_lived": false,
+        "auto_consume_at": null,
+        "notes": "",
+        "created_at": "2026-10-10T11:32:50.2415271Z",
+        "updated_at": "2026-10-10T11:32:50.4285292Z",
+        "version": 5
+      }
+    },
+    {
+      "name": "set_durable_status response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "wubu response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "durable ACTIVE inventory",
+      "passed": true,
+      "detail": {
+        "inventory_unit": "个",
+        "item_type": "DURABLE",
+        "opened_at": null,
+        "id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+        "name": "64a0beae05dc4b30b0a29c377b544db6keyboard",
+        "category": "other",
+        "icon": "inventory_2",
+        "quantity": 1,
+        "unit_price_cents": 39900,
+        "unit": "个",
+        "location": "shelf",
+        "low_stock_threshold": null,
+        "expiry_date": null,
+        "short_lived": false,
+        "auto_consume_at": null,
+        "notes": "",
+        "created_at": "2026-10-10T11:32:50.2415271Z",
+        "updated_at": "2026-10-10T11:32:50.4790238Z",
+        "version": 6
+      }
+    },
+    {
+      "name": "get_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "sell_item response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "sale credits 260",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "sell_item response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "sale replay",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "sale replay no duplicate income",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "set_durable_status response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "record_purchase response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "retire_item response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "set_durable_status response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_durable_history response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_durable_items response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_recent_maintenance response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "record_income response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "record_expense response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "transfer_money response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "adjust_balance response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "absolute adjustment",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "reconcile_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_account response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "absolute reconcile",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "save_money_category response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_money_categories response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_money_summary response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_expense_summary response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_income_summary response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_category_summary response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_merchant_summary response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_money_settings response",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "get_accounts response",
+      "passed": true,
+      "detail": null
+    }
+  ],
+  "calls": [
+    {
+      "tool": "get_balance",
+      "input": {},
+      "result": {
+        "success": true,
+        "content": "自由可用资金 ¥4666.08；受限消费储值 ¥331.00。消费储值不能当作自由现金；total_balance含信用卡和停用账户净额。",
+        "data": {
+          "liquid_balance": 4666.08,
+          "consumption_balance": 331.0,
+          "total_value": 4997.08,
+          "currency": "CNY",
+          "total_balance": 4997.08,
+          "available_balance": 4666.08,
+          "accounts": [
+            {
+              "account_class": "STORAGE",
+              "merchant": "",
+              "warnings": [],
+              "id": "unknown",
+              "name": "未指定账户",
+              "type": "OTHER",
+              "currency": "CNY",
+              "current_balance": 0.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "旧记录或未配置默认账户",
+              "created_at": "2026-10-10T11:14:54.561Z",
+              "updated_at": "2026-10-10T11:14:54.561Z"
+            },
+            {
+              "account_class": "STORAGE",
+              "merchant": "",
+              "warnings": [],
+              "id": "67bd1bc1-92b3-4dff-a738-1d99470764b9",
+              "name": "aa5e933bac914af38af961c5e0eb1992wallet",
+              "type": "OTHER",
+              "currency": "CNY",
+              "current_balance": 400.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:30:17.2210077Z",
+              "updated_at": "2026-10-10T11:30:17.2926315Z"
+            },
+            {
+              "account_class": "CONSUMPTION",
+              "merchant": "aa5e933bac914af38af961c5e0eb1992merchant",
+              "warnings": [],
+              "id": "ca30b8f3-5999-462a-b82b-9de27b50b69e",
+              "name": "aa5e933bac914af38af961c5e0eb1992tea",
+              "type": "MERCHANT_BALANCE",
+              "currency": "CNY",
+              "current_balance": 110.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:30:17.2470413Z",
+              "updated_at": "2026-10-10T11:30:17.2931436Z"
+            },
+            {
+              "account_class": "STORAGE",
+              "merchant": "",
+              "warnings": [],
+              "id": "779f730e-bc1d-42f0-84fa-035406d031d1",
+              "name": "2cba9f1d74ef4fb09a6104789e06c8afwallet",
+              "type": "OTHER",
+              "currency": "CNY",
+              "current_balance": 4320.08,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:30:46.3933331Z",
+              "updated_at": "2026-10-10T11:30:47.5649885Z"
+            },
+            {
+              "account_class": "CONSUMPTION",
+              "merchant": "2cba9f1d74ef4fb09a6104789e06c8afmerchant",
+              "warnings": [],
+              "id": "48eff881-b419-4066-8111-dceaf0c4fd3c",
+              "name": "2cba9f1d74ef4fb09a6104789e06c8aftea",
+              "type": "MERCHANT_BALANCE",
+              "currency": "CNY",
+              "current_balance": 111.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:30:46.4156218Z",
+              "updated_at": "2026-10-10T11:30:47.4921268Z"
+            },
+            {
+              "account_class": "STORAGE",
+              "merchant": "",
+              "warnings": [],
+              "id": "76760041-e3c4-429f-a0e6-1ef0d902335e",
+              "name": "00ac653ebe4b4473bfe2ccaac5a600acwallet",
+              "type": "OTHER",
+              "currency": "CNY",
+              "current_balance": -54.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:32:17.58121Z",
+              "updated_at": "2026-10-10T11:32:18.3573542Z"
+            },
+            {
+              "account_class": "CONSUMPTION",
+              "merchant": "00ac653ebe4b4473bfe2ccaac5a600acmerchant",
+              "warnings": [],
+              "id": "e91d1a20-dba9-457d-9644-48dfcb7ee7dc",
+              "name": "00ac653ebe4b4473bfe2ccaac5a600actea",
+              "type": "MERCHANT_BALANCE",
+              "currency": "CNY",
+              "current_balance": 110.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:32:17.6057679Z",
+              "updated_at": "2026-10-10T11:32:18.2298132Z"
+            }
+          ]
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_balance",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "create_account",
+      "input": {
+        "name": "64a0beae05dc4b30b0a29c377b544db6wallet",
+        "initial_balance": 500,
+        "account_class": "STORAGE",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-1"
+      },
+      "result": {
+        "success": true,
+        "content": "已在物簿记录。",
+        "data": {
+          "account_class": "STORAGE",
+          "merchant": "",
+          "warnings": [],
+          "id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+          "name": "64a0beae05dc4b30b0a29c377b544db6wallet",
+          "type": "OTHER",
+          "currency": "CNY",
+          "current_balance": 500.0,
+          "credit_limit": null,
+          "active": true,
+          "note": "",
+          "created_at": "2026-10-10T11:32:49.539695Z",
+          "updated_at": "2026-10-10T11:32:49.539695Z"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "create_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "create_account",
+      "input": {
+        "name": "64a0beae05dc4b30b0a29c377b544db6tea",
+        "type": "MERCHANT_BALANCE",
+        "account_class": "CONSUMPTION",
+        "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-2"
+      },
+      "result": {
+        "success": true,
+        "content": "已在物簿记录。",
+        "data": {
+          "account_class": "CONSUMPTION",
+          "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+          "warnings": [],
+          "id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+          "name": "64a0beae05dc4b30b0a29c377b544db6tea",
+          "type": "MERCHANT_BALANCE",
+          "currency": "CNY",
+          "current_balance": 0.0,
+          "credit_limit": null,
+          "active": true,
+          "note": "",
+          "created_at": "2026-10-10T11:32:49.5646278Z",
+          "updated_at": "2026-10-10T11:32:49.5651412Z"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "create_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "set_default_payment_account",
+      "input": {
+        "default_payment_account": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-3"
+      },
+      "result": {
+        "success": true,
+        "content": "已在物簿记录。",
+        "data": {
+          "default_payment_account": "09c03ee8-1b37-483d-abca-dedeccdb3a74"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "set_default_payment_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "top_up_account",
+      "input": {
+        "from_account": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+        "to_account": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+        "paid_amount": 100,
+        "credited_amount": 110,
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6top"
+      },
+      "result": {
+        "success": true,
+        "content": "已记录资金事件：TRANSFER_OUT ¥100.00，账户 09c03ee8-1b37-483d-abca-dedeccdb3a74，余额 500.0→400.0；TRANSFER_IN ¥100.00，账户 ad897372-5fee-4ec0-b1c5-046f1fbd9319，余额 0.0→100.0；BONUS ¥10.00，账户 ad897372-5fee-4ec0-b1c5-046f1fbd9319，余额 100.0→110.0。充值本金转账和赠送储值不计普通收入或消费。",
+        "data": {
+          "warnings": [],
+          "transactions": [
+            {
+              "id": "e8f82b6b-2d9b-4ace-bb1e-b8ff22160c3c",
+              "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+              "type": "TRANSFER_OUT",
+              "amount": 100.0,
+              "balance_delta": -100.0,
+              "balance_before": 500.0,
+              "balance_after": 400.0,
+              "category": "other",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "related_transaction_id": "a9d0d7f2-a42d-47ed-930d-348f29fa4cf0",
+              "occurred_at": "2026-10-10T11:32:49.6158812Z",
+              "source": "agent",
+              "note": "",
+              "reason": "TOP_UP",
+              "created_at": "2026-10-10T11:32:49.6158812Z"
+            },
+            {
+              "id": "a9d0d7f2-a42d-47ed-930d-348f29fa4cf0",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "TRANSFER_IN",
+              "amount": 100.0,
+              "balance_delta": 100.0,
+              "balance_before": 0.0,
+              "balance_after": 100.0,
+              "category": "other",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "related_transaction_id": "e8f82b6b-2d9b-4ace-bb1e-b8ff22160c3c",
+              "occurred_at": "2026-10-10T11:32:49.6158812Z",
+              "source": "agent",
+              "note": "",
+              "reason": "TOP_UP",
+              "created_at": "2026-10-10T11:32:49.616395Z"
+            },
+            {
+              "id": "a0d4fda9-97a3-413f-8711-4885c2cf726c",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "BONUS",
+              "amount": 10.0,
+              "balance_delta": 10.0,
+              "balance_before": 100.0,
+              "balance_after": 110.0,
+              "category": "other",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "related_transaction_id": "a9d0d7f2-a42d-47ed-930d-348f29fa4cf0",
+              "occurred_at": "2026-10-10T11:32:49.6158812Z",
+              "source": "agent",
+              "note": "",
+              "reason": "TOP_UP",
+              "created_at": "2026-10-10T11:32:49.616395Z"
+            }
+          ]
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "top_up_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "top_up_account",
+      "input": {
+        "from_account": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+        "to_account": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+        "paid_amount": 100,
+        "credited_amount": 110,
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6top"
+      },
+      "result": {
+        "success": true,
+        "content": "已记录资金事件：TRANSFER_OUT ¥100.00，账户 09c03ee8-1b37-483d-abca-dedeccdb3a74，余额 500.0→400.0；TRANSFER_IN ¥100.00，账户 ad897372-5fee-4ec0-b1c5-046f1fbd9319，余额 0.0→100.0；BONUS ¥10.00，账户 ad897372-5fee-4ec0-b1c5-046f1fbd9319，余额 100.0→110.0。充值本金转账和赠送储值不计普通收入或消费。",
+        "data": {
+          "warnings": [],
+          "transactions": [
+            {
+              "id": "e8f82b6b-2d9b-4ace-bb1e-b8ff22160c3c",
+              "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+              "type": "TRANSFER_OUT",
+              "amount": 100.0,
+              "balance_delta": -100.0,
+              "balance_before": 500.0,
+              "balance_after": 400.0,
+              "category": "other",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "related_transaction_id": "a9d0d7f2-a42d-47ed-930d-348f29fa4cf0",
+              "occurred_at": "2026-10-10T11:32:49.6158812Z",
+              "source": "agent",
+              "note": "",
+              "reason": "TOP_UP",
+              "created_at": "2026-10-10T11:32:49.6158812Z"
+            },
+            {
+              "id": "a9d0d7f2-a42d-47ed-930d-348f29fa4cf0",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "TRANSFER_IN",
+              "amount": 100.0,
+              "balance_delta": 100.0,
+              "balance_before": 0.0,
+              "balance_after": 100.0,
+              "category": "other",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "related_transaction_id": "e8f82b6b-2d9b-4ace-bb1e-b8ff22160c3c",
+              "occurred_at": "2026-10-10T11:32:49.6158812Z",
+              "source": "agent",
+              "note": "",
+              "reason": "TOP_UP",
+              "created_at": "2026-10-10T11:32:49.616395Z"
+            },
+            {
+              "id": "a0d4fda9-97a3-413f-8711-4885c2cf726c",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "BONUS",
+              "amount": 10.0,
+              "balance_delta": 10.0,
+              "balance_before": 100.0,
+              "balance_after": 110.0,
+              "category": "other",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "related_transaction_id": "a9d0d7f2-a42d-47ed-930d-348f29fa4cf0",
+              "occurred_at": "2026-10-10T11:32:49.6158812Z",
+              "source": "agent",
+              "note": "",
+              "reason": "TOP_UP",
+              "created_at": "2026-10-10T11:32:49.616395Z"
+            }
+          ]
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "top_up_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": true
+        }
+      }
+    },
+    {
+      "tool": "get_account",
+      "input": {
+        "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "account_class": "STORAGE",
+          "merchant": "",
+          "warnings": [],
+          "id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+          "name": "64a0beae05dc4b30b0a29c377b544db6wallet",
+          "type": "OTHER",
+          "currency": "CNY",
+          "current_balance": 400.0,
+          "credit_limit": null,
+          "active": true,
+          "note": "",
+          "created_at": "2026-10-10T11:32:49.539695Z",
+          "updated_at": "2026-10-10T11:32:49.6158812Z"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_account",
+      "input": {
+        "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "account_class": "CONSUMPTION",
+          "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+          "warnings": [],
+          "id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+          "name": "64a0beae05dc4b30b0a29c377b544db6tea",
+          "type": "MERCHANT_BALANCE",
+          "currency": "CNY",
+          "current_balance": 110.0,
+          "credit_limit": null,
+          "active": true,
+          "note": "",
+          "created_at": "2026-10-10T11:32:49.5646278Z",
+          "updated_at": "2026-10-10T11:32:49.616395Z"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_income_summary",
+      "input": {
+        "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "bonus": 0.0,
+          "currency": "CNY",
+          "expense": 0.0,
+          "refund": 0.0,
+          "net_expense": 0.0,
+          "income": 0.0,
+          "transfer_out": 0.0,
+          "groups": []
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_income_summary",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "record_purchase",
+      "input": {
+        "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+        "items": [
+          {
+            "name": "64a0beae05dc4b30b0a29c377b544db6tea",
+            "quantity": 1,
+            "unit": "杯",
+            "price": 20,
+            "item_type": "UNTRACKED"
+          }
+        ],
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-9"
+      },
+      "result": {
+        "success": true,
+        "content": "已记录购买：64a0beae05dc4b30b0a29c377b544db6tea × 1杯。实际支出 ¥20.00。购买记录：56caa912-8559-4314-9163-9056ae14afbb。校验状态：VALID。",
+        "data": {
+          "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+          "expense_amount": 20.0,
+          "items": [
+            {
+              "id": "71e67f16-150c-412c-ae2c-47efe2743f93",
+              "name": "64a0beae05dc4b30b0a29c377b544db6tea",
+              "quantity": 1,
+              "unit": "杯",
+              "unit_price": 20.0,
+              "subtotal": 20.0,
+              "item_type": "UNTRACKED",
+              "category": "other"
+            }
+          ],
+          "purchase_id": "56caa912-8559-4314-9163-9056ae14afbb",
+          "status": "COMPLETED",
+          "validation_status": "VALID",
+          "warnings": []
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "record_purchase",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_account",
+      "input": {
+        "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "account_class": "CONSUMPTION",
+          "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+          "warnings": [],
+          "id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+          "name": "64a0beae05dc4b30b0a29c377b544db6tea",
+          "type": "MERCHANT_BALANCE",
+          "currency": "CNY",
+          "current_balance": 90.0,
+          "credit_limit": null,
+          "active": true,
+          "note": "",
+          "created_at": "2026-10-10T11:32:49.5646278Z",
+          "updated_at": "2026-10-10T11:32:49.7309392Z"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "record_refund",
+      "input": {
+        "amount": 10,
+        "purchase_event_id": "56caa912-8559-4314-9163-9056ae14afbb",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-11"
+      },
+      "result": {
+        "success": true,
+        "content": "已记录资金事件：REFUND ¥10.00，账户 ad897372-5fee-4ec0-b1c5-046f1fbd9319，余额 90.0→100.0。",
+        "data": {
+          "warnings": null,
+          "transactions": [
+            {
+              "id": "4cd0160c-2502-419e-97ce-8b806827fe6b",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "REFUND",
+              "amount": 10.0,
+              "balance_delta": 10.0,
+              "balance_before": 90.0,
+              "balance_after": 100.0,
+              "category": "other",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "purchase_event_id": "56caa912-8559-4314-9163-9056ae14afbb",
+              "related_transaction_id": "740c250d-1a04-46e2-928e-546a68a28dea",
+              "occurred_at": "2026-10-10T11:32:49.7762949Z",
+              "source": "agent",
+              "note": "",
+              "reason": "",
+              "created_at": "2026-10-10T11:32:49.7762949Z"
+            }
+          ]
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "record_refund",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_account",
+      "input": {
+        "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "account_class": "CONSUMPTION",
+          "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+          "warnings": [],
+          "id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+          "name": "64a0beae05dc4b30b0a29c377b544db6tea",
+          "type": "MERCHANT_BALANCE",
+          "currency": "CNY",
+          "current_balance": 100.0,
+          "credit_limit": null,
+          "active": true,
+          "note": "",
+          "created_at": "2026-10-10T11:32:49.5646278Z",
+          "updated_at": "2026-10-10T11:32:49.7762949Z"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "record_refund",
+      "input": {
+        "amount": 5,
+        "purchase_event_id": "56caa912-8559-4314-9163-9056ae14afbb",
+        "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-13"
+      },
+      "result": {
+        "success": true,
+        "content": "已记录资金事件：REFUND ¥5.00，账户 09c03ee8-1b37-483d-abca-dedeccdb3a74，余额 400.0→405.0。",
+        "data": {
+          "warnings": null,
+          "transactions": [
+            {
+              "id": "25e66839-5817-4b90-a755-c2bda5d9429d",
+              "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+              "type": "REFUND",
+              "amount": 5.0,
+              "balance_delta": 5.0,
+              "balance_before": 400.0,
+              "balance_after": 405.0,
+              "category": "other",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "purchase_event_id": "56caa912-8559-4314-9163-9056ae14afbb",
+              "related_transaction_id": "740c250d-1a04-46e2-928e-546a68a28dea",
+              "occurred_at": "2026-10-10T11:32:49.8223637Z",
+              "source": "agent",
+              "note": "",
+              "reason": "",
+              "created_at": "2026-10-10T11:32:49.8223637Z"
+            }
+          ]
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "record_refund",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_account",
+      "input": {
+        "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "account_class": "STORAGE",
+          "merchant": "",
+          "warnings": [],
+          "id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+          "name": "64a0beae05dc4b30b0a29c377b544db6wallet",
+          "type": "OTHER",
+          "currency": "CNY",
+          "current_balance": 405.0,
+          "credit_limit": null,
+          "active": true,
+          "note": "",
+          "created_at": "2026-10-10T11:32:49.539695Z",
+          "updated_at": "2026-10-10T11:32:49.8223637Z"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_account",
+      "input": {
+        "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "account_class": "CONSUMPTION",
+          "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+          "warnings": [],
+          "id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+          "name": "64a0beae05dc4b30b0a29c377b544db6tea",
+          "type": "MERCHANT_BALANCE",
+          "currency": "CNY",
+          "current_balance": 100.0,
+          "credit_limit": null,
+          "active": true,
+          "note": "",
+          "created_at": "2026-10-10T11:32:49.5646278Z",
+          "updated_at": "2026-10-10T11:32:49.7762949Z"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_account_statistics",
+      "input": {
+        "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319"
+      },
+      "result": {
+        "success": true,
+        "content": "账户统计：充值本金 ¥100.00；赠送 ¥10.00；消费 ¥20.00；退款 ¥15.00；净消费 ¥5.00；当前余额 ¥100.00；赠送比例 0.1。",
+        "data": {
+          "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+          "top_up_principal": 100.0,
+          "bonus": 10.0,
+          "expense": 20.0,
+          "refund": 15.0,
+          "net_expense": 5.0,
+          "current_balance": 100.0,
+          "bonus_ratio": 0.1
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_account_statistics",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_balance",
+      "input": {},
+      "result": {
+        "success": true,
+        "content": "自由可用资金 ¥5071.08；受限消费储值 ¥431.00。消费储值不能当作自由现金；total_balance含信用卡和停用账户净额。",
+        "data": {
+          "liquid_balance": 5071.08,
+          "consumption_balance": 431.0,
+          "total_value": 5502.08,
+          "currency": "CNY",
+          "total_balance": 5502.08,
+          "available_balance": 5071.08,
+          "accounts": [
+            {
+              "account_class": "STORAGE",
+              "merchant": "",
+              "warnings": [],
+              "id": "unknown",
+              "name": "未指定账户",
+              "type": "OTHER",
+              "currency": "CNY",
+              "current_balance": 0.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "旧记录或未配置默认账户",
+              "created_at": "2026-10-10T11:14:54.561Z",
+              "updated_at": "2026-10-10T11:14:54.561Z"
+            },
+            {
+              "account_class": "STORAGE",
+              "merchant": "",
+              "warnings": [],
+              "id": "67bd1bc1-92b3-4dff-a738-1d99470764b9",
+              "name": "aa5e933bac914af38af961c5e0eb1992wallet",
+              "type": "OTHER",
+              "currency": "CNY",
+              "current_balance": 400.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:30:17.2210077Z",
+              "updated_at": "2026-10-10T11:30:17.2926315Z"
+            },
+            {
+              "account_class": "CONSUMPTION",
+              "merchant": "aa5e933bac914af38af961c5e0eb1992merchant",
+              "warnings": [],
+              "id": "ca30b8f3-5999-462a-b82b-9de27b50b69e",
+              "name": "aa5e933bac914af38af961c5e0eb1992tea",
+              "type": "MERCHANT_BALANCE",
+              "currency": "CNY",
+              "current_balance": 110.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:30:17.2470413Z",
+              "updated_at": "2026-10-10T11:30:17.2931436Z"
+            },
+            {
+              "account_class": "STORAGE",
+              "merchant": "",
+              "warnings": [],
+              "id": "779f730e-bc1d-42f0-84fa-035406d031d1",
+              "name": "2cba9f1d74ef4fb09a6104789e06c8afwallet",
+              "type": "OTHER",
+              "currency": "CNY",
+              "current_balance": 4320.08,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:30:46.3933331Z",
+              "updated_at": "2026-10-10T11:30:47.5649885Z"
+            },
+            {
+              "account_class": "CONSUMPTION",
+              "merchant": "2cba9f1d74ef4fb09a6104789e06c8afmerchant",
+              "warnings": [],
+              "id": "48eff881-b419-4066-8111-dceaf0c4fd3c",
+              "name": "2cba9f1d74ef4fb09a6104789e06c8aftea",
+              "type": "MERCHANT_BALANCE",
+              "currency": "CNY",
+              "current_balance": 111.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:30:46.4156218Z",
+              "updated_at": "2026-10-10T11:30:47.4921268Z"
+            },
+            {
+              "account_class": "STORAGE",
+              "merchant": "",
+              "warnings": [],
+              "id": "76760041-e3c4-429f-a0e6-1ef0d902335e",
+              "name": "00ac653ebe4b4473bfe2ccaac5a600acwallet",
+              "type": "OTHER",
+              "currency": "CNY",
+              "current_balance": -54.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:32:17.58121Z",
+              "updated_at": "2026-10-10T11:32:18.3573542Z"
+            },
+            {
+              "account_class": "CONSUMPTION",
+              "merchant": "00ac653ebe4b4473bfe2ccaac5a600acmerchant",
+              "warnings": [],
+              "id": "e91d1a20-dba9-457d-9644-48dfcb7ee7dc",
+              "name": "00ac653ebe4b4473bfe2ccaac5a600actea",
+              "type": "MERCHANT_BALANCE",
+              "currency": "CNY",
+              "current_balance": 110.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:32:17.6057679Z",
+              "updated_at": "2026-10-10T11:32:18.2298132Z"
+            },
+            {
+              "account_class": "STORAGE",
+              "merchant": "",
+              "warnings": [],
+              "id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+              "name": "64a0beae05dc4b30b0a29c377b544db6wallet",
+              "type": "OTHER",
+              "currency": "CNY",
+              "current_balance": 405.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:32:49.539695Z",
+              "updated_at": "2026-10-10T11:32:49.8223637Z"
+            },
+            {
+              "account_class": "CONSUMPTION",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "warnings": [],
+              "id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "name": "64a0beae05dc4b30b0a29c377b544db6tea",
+              "type": "MERCHANT_BALANCE",
+              "currency": "CNY",
+              "current_balance": 100.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:32:49.5646278Z",
+              "updated_at": "2026-10-10T11:32:49.7762949Z"
+            }
+          ]
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_balance",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_recent_transactions",
+      "input": {
+        "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "items": [
+            {
+              "id": "4cd0160c-2502-419e-97ce-8b806827fe6b",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "REFUND",
+              "amount": 10.0,
+              "balance_delta": 10.0,
+              "balance_before": 90.0,
+              "balance_after": 100.0,
+              "category": "other",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "purchase_event_id": "56caa912-8559-4314-9163-9056ae14afbb",
+              "related_transaction_id": "740c250d-1a04-46e2-928e-546a68a28dea",
+              "occurred_at": "2026-10-10T11:32:49.7762949Z",
+              "source": "agent",
+              "note": "",
+              "reason": "",
+              "created_at": "2026-10-10T11:32:49.7762949Z"
+            },
+            {
+              "id": "740c250d-1a04-46e2-928e-546a68a28dea",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "EXPENSE",
+              "amount": 20.0,
+              "balance_delta": -20.0,
+              "balance_before": 110.0,
+              "balance_after": 90.0,
+              "category": "other",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "purchase_event_id": "56caa912-8559-4314-9163-9056ae14afbb",
+              "occurred_at": "2026-10-10T11:32:49.7304258Z",
+              "source": "agent",
+              "note": "",
+              "reason": "",
+              "created_at": "2026-10-10T11:32:49.7309392Z"
+            },
+            {
+              "id": "a0d4fda9-97a3-413f-8711-4885c2cf726c",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "BONUS",
+              "amount": 10.0,
+              "balance_delta": 10.0,
+              "balance_before": 100.0,
+              "balance_after": 110.0,
+              "category": "other",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "related_transaction_id": "a9d0d7f2-a42d-47ed-930d-348f29fa4cf0",
+              "occurred_at": "2026-10-10T11:32:49.6158812Z",
+              "source": "agent",
+              "note": "",
+              "reason": "TOP_UP",
+              "created_at": "2026-10-10T11:32:49.616395Z"
+            },
+            {
+              "id": "a9d0d7f2-a42d-47ed-930d-348f29fa4cf0",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "TRANSFER_IN",
+              "amount": 100.0,
+              "balance_delta": 100.0,
+              "balance_before": 0.0,
+              "balance_after": 100.0,
+              "category": "other",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "related_transaction_id": "e8f82b6b-2d9b-4ace-bb1e-b8ff22160c3c",
+              "occurred_at": "2026-10-10T11:32:49.6158812Z",
+              "source": "agent",
+              "note": "",
+              "reason": "TOP_UP",
+              "created_at": "2026-10-10T11:32:49.616395Z"
+            },
+            {
+              "id": "7287b1c6-df94-4dab-ae52-d1cf3ab92234",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "ADJUSTMENT",
+              "amount": 0.0,
+              "balance_delta": 0.0,
+              "balance_before": 0.0,
+              "balance_after": 0.0,
+              "category": "other",
+              "merchant": "",
+              "occurred_at": "2026-10-10T11:32:49.5646278Z",
+              "source": "system",
+              "note": "",
+              "reason": "INITIAL_BALANCE",
+              "created_at": "2026-10-10T11:32:49.5651412Z"
+            }
+          ],
+          "limit": 100,
+          "offset": 0
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_recent_transactions",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "update_account",
+      "input": {
+        "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+        "account_class": "STORAGE",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-19"
+      },
+      "result": {
+        "success": true,
+        "content": "已在物簿记录。",
+        "data": {
+          "account_class": "STORAGE",
+          "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+          "warnings": [],
+          "id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+          "name": "64a0beae05dc4b30b0a29c377b544db6tea",
+          "type": "MERCHANT_BALANCE",
+          "currency": "CNY",
+          "current_balance": 100.0,
+          "credit_limit": null,
+          "active": true,
+          "note": "",
+          "created_at": "2026-10-10T11:32:49.5646278Z",
+          "updated_at": "2026-10-10T11:32:49.9570234Z"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "update_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_balance",
+      "input": {},
+      "result": {
+        "success": true,
+        "content": "自由可用资金 ¥5171.08；受限消费储值 ¥331.00。消费储值不能当作自由现金；total_balance含信用卡和停用账户净额。",
+        "data": {
+          "liquid_balance": 5171.08,
+          "consumption_balance": 331.0,
+          "total_value": 5502.08,
+          "currency": "CNY",
+          "total_balance": 5502.08,
+          "available_balance": 5171.08,
+          "accounts": [
+            {
+              "account_class": "STORAGE",
+              "merchant": "",
+              "warnings": [],
+              "id": "unknown",
+              "name": "未指定账户",
+              "type": "OTHER",
+              "currency": "CNY",
+              "current_balance": 0.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "旧记录或未配置默认账户",
+              "created_at": "2026-10-10T11:14:54.561Z",
+              "updated_at": "2026-10-10T11:14:54.561Z"
+            },
+            {
+              "account_class": "STORAGE",
+              "merchant": "",
+              "warnings": [],
+              "id": "67bd1bc1-92b3-4dff-a738-1d99470764b9",
+              "name": "aa5e933bac914af38af961c5e0eb1992wallet",
+              "type": "OTHER",
+              "currency": "CNY",
+              "current_balance": 400.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:30:17.2210077Z",
+              "updated_at": "2026-10-10T11:30:17.2926315Z"
+            },
+            {
+              "account_class": "CONSUMPTION",
+              "merchant": "aa5e933bac914af38af961c5e0eb1992merchant",
+              "warnings": [],
+              "id": "ca30b8f3-5999-462a-b82b-9de27b50b69e",
+              "name": "aa5e933bac914af38af961c5e0eb1992tea",
+              "type": "MERCHANT_BALANCE",
+              "currency": "CNY",
+              "current_balance": 110.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:30:17.2470413Z",
+              "updated_at": "2026-10-10T11:30:17.2931436Z"
+            },
+            {
+              "account_class": "STORAGE",
+              "merchant": "",
+              "warnings": [],
+              "id": "779f730e-bc1d-42f0-84fa-035406d031d1",
+              "name": "2cba9f1d74ef4fb09a6104789e06c8afwallet",
+              "type": "OTHER",
+              "currency": "CNY",
+              "current_balance": 4320.08,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:30:46.3933331Z",
+              "updated_at": "2026-10-10T11:30:47.5649885Z"
+            },
+            {
+              "account_class": "CONSUMPTION",
+              "merchant": "2cba9f1d74ef4fb09a6104789e06c8afmerchant",
+              "warnings": [],
+              "id": "48eff881-b419-4066-8111-dceaf0c4fd3c",
+              "name": "2cba9f1d74ef4fb09a6104789e06c8aftea",
+              "type": "MERCHANT_BALANCE",
+              "currency": "CNY",
+              "current_balance": 111.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:30:46.4156218Z",
+              "updated_at": "2026-10-10T11:30:47.4921268Z"
+            },
+            {
+              "account_class": "STORAGE",
+              "merchant": "",
+              "warnings": [],
+              "id": "76760041-e3c4-429f-a0e6-1ef0d902335e",
+              "name": "00ac653ebe4b4473bfe2ccaac5a600acwallet",
+              "type": "OTHER",
+              "currency": "CNY",
+              "current_balance": -54.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:32:17.58121Z",
+              "updated_at": "2026-10-10T11:32:18.3573542Z"
+            },
+            {
+              "account_class": "CONSUMPTION",
+              "merchant": "00ac653ebe4b4473bfe2ccaac5a600acmerchant",
+              "warnings": [],
+              "id": "e91d1a20-dba9-457d-9644-48dfcb7ee7dc",
+              "name": "00ac653ebe4b4473bfe2ccaac5a600actea",
+              "type": "MERCHANT_BALANCE",
+              "currency": "CNY",
+              "current_balance": 110.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:32:17.6057679Z",
+              "updated_at": "2026-10-10T11:32:18.2298132Z"
+            },
+            {
+              "account_class": "STORAGE",
+              "merchant": "",
+              "warnings": [],
+              "id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+              "name": "64a0beae05dc4b30b0a29c377b544db6wallet",
+              "type": "OTHER",
+              "currency": "CNY",
+              "current_balance": 405.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:32:49.539695Z",
+              "updated_at": "2026-10-10T11:32:49.8223637Z"
+            },
+            {
+              "account_class": "STORAGE",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "warnings": [],
+              "id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "name": "64a0beae05dc4b30b0a29c377b544db6tea",
+              "type": "MERCHANT_BALANCE",
+              "currency": "CNY",
+              "current_balance": 100.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:32:49.5646278Z",
+              "updated_at": "2026-10-10T11:32:49.9570234Z"
+            }
+          ]
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_balance",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_recent_transactions",
+      "input": {
+        "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "items": [
+            {
+              "id": "4cd0160c-2502-419e-97ce-8b806827fe6b",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "REFUND",
+              "amount": 10.0,
+              "balance_delta": 10.0,
+              "balance_before": 90.0,
+              "balance_after": 100.0,
+              "category": "other",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "purchase_event_id": "56caa912-8559-4314-9163-9056ae14afbb",
+              "related_transaction_id": "740c250d-1a04-46e2-928e-546a68a28dea",
+              "occurred_at": "2026-10-10T11:32:49.7762949Z",
+              "source": "agent",
+              "note": "",
+              "reason": "",
+              "created_at": "2026-10-10T11:32:49.7762949Z"
+            },
+            {
+              "id": "740c250d-1a04-46e2-928e-546a68a28dea",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "EXPENSE",
+              "amount": 20.0,
+              "balance_delta": -20.0,
+              "balance_before": 110.0,
+              "balance_after": 90.0,
+              "category": "other",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "purchase_event_id": "56caa912-8559-4314-9163-9056ae14afbb",
+              "occurred_at": "2026-10-10T11:32:49.7304258Z",
+              "source": "agent",
+              "note": "",
+              "reason": "",
+              "created_at": "2026-10-10T11:32:49.7309392Z"
+            },
+            {
+              "id": "a0d4fda9-97a3-413f-8711-4885c2cf726c",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "BONUS",
+              "amount": 10.0,
+              "balance_delta": 10.0,
+              "balance_before": 100.0,
+              "balance_after": 110.0,
+              "category": "other",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "related_transaction_id": "a9d0d7f2-a42d-47ed-930d-348f29fa4cf0",
+              "occurred_at": "2026-10-10T11:32:49.6158812Z",
+              "source": "agent",
+              "note": "",
+              "reason": "TOP_UP",
+              "created_at": "2026-10-10T11:32:49.616395Z"
+            },
+            {
+              "id": "a9d0d7f2-a42d-47ed-930d-348f29fa4cf0",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "TRANSFER_IN",
+              "amount": 100.0,
+              "balance_delta": 100.0,
+              "balance_before": 0.0,
+              "balance_after": 100.0,
+              "category": "other",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "related_transaction_id": "e8f82b6b-2d9b-4ace-bb1e-b8ff22160c3c",
+              "occurred_at": "2026-10-10T11:32:49.6158812Z",
+              "source": "agent",
+              "note": "",
+              "reason": "TOP_UP",
+              "created_at": "2026-10-10T11:32:49.616395Z"
+            },
+            {
+              "id": "7287b1c6-df94-4dab-ae52-d1cf3ab92234",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "ADJUSTMENT",
+              "amount": 0.0,
+              "balance_delta": 0.0,
+              "balance_before": 0.0,
+              "balance_after": 0.0,
+              "category": "other",
+              "merchant": "",
+              "occurred_at": "2026-10-10T11:32:49.5646278Z",
+              "source": "system",
+              "note": "",
+              "reason": "INITIAL_BALANCE",
+              "created_at": "2026-10-10T11:32:49.5651412Z"
+            }
+          ],
+          "limit": 100,
+          "offset": 0
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_recent_transactions",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "update_account",
+      "input": {
+        "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+        "account_class": "CONSUMPTION",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-22"
+      },
+      "result": {
+        "success": true,
+        "content": "已在物簿记录。",
+        "data": {
+          "account_class": "CONSUMPTION",
+          "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+          "warnings": [],
+          "id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+          "name": "64a0beae05dc4b30b0a29c377b544db6tea",
+          "type": "MERCHANT_BALANCE",
+          "currency": "CNY",
+          "current_balance": 100.0,
+          "credit_limit": null,
+          "active": true,
+          "note": "",
+          "created_at": "2026-10-10T11:32:49.5646278Z",
+          "updated_at": "2026-10-10T11:32:50.0302623Z"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "update_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "update_account",
+      "input": {
+        "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+        "active": false,
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-23"
+      },
+      "result": {
+        "success": true,
+        "content": "已在物簿记录。警告 ACCOUNT_HAS_REMAINING_BALANCE：停用账户仍有余额，请核对受限储值；记录和余额保留；消费账户仍有余额，停用后不会计入消费储值汇总；记录与余额仍保留。。",
+        "data": {
+          "account_class": "CONSUMPTION",
+          "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+          "warnings": [
+            {
+              "code": "ACCOUNT_HAS_REMAINING_BALANCE",
+              "message": "消费账户仍有余额，停用后不会计入消费储值汇总；记录与余额仍保留。"
+            }
+          ],
+          "id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+          "name": "64a0beae05dc4b30b0a29c377b544db6tea",
+          "type": "MERCHANT_BALANCE",
+          "currency": "CNY",
+          "current_balance": 100.0,
+          "credit_limit": null,
+          "active": false,
+          "note": "",
+          "created_at": "2026-10-10T11:32:49.5646278Z",
+          "updated_at": "2026-10-10T11:32:50.054314Z"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "update_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "update_account",
+      "input": {
+        "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+        "active": true,
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-24"
+      },
+      "result": {
+        "success": true,
+        "content": "已在物簿记录。",
+        "data": {
+          "account_class": "CONSUMPTION",
+          "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+          "warnings": [],
+          "id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+          "name": "64a0beae05dc4b30b0a29c377b544db6tea",
+          "type": "MERCHANT_BALANCE",
+          "currency": "CNY",
+          "current_balance": 100.0,
+          "credit_limit": null,
+          "active": true,
+          "note": "",
+          "created_at": "2026-10-10T11:32:49.5646278Z",
+          "updated_at": "2026-10-10T11:32:50.0787134Z"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "update_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "record_expense",
+      "input": {
+        "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+        "amount": 1,
+        "merchant": "wrong",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-25"
+      },
+      "result": {
+        "success": false,
+        "content": "ledger conflict: ACCOUNT_MERCHANT_MISMATCH: 账户「64a0beae05dc4b30b0a29c377b544db6tea」绑定「64a0beae05dc4b30b0a29c377b544db6merchant」，本次商家为「wrong」，请核对付款账户或商家。 消费账户绑定商家与本次商家不匹配；请核对商家或选择匹配账户，不静默换账户扣款。 建议：choose_matching_account_or_correct_merchant。",
+        "data": {
+          "error": {
+            "code": "ACCOUNT_MERCHANT_MISMATCH",
+            "message": "ledger conflict: ACCOUNT_MERCHANT_MISMATCH: 账户「64a0beae05dc4b30b0a29c377b544db6tea」绑定「64a0beae05dc4b30b0a29c377b544db6merchant」，本次商家为「wrong」，请核对付款账户或商家。",
+            "retryable": false,
+            "suggested_action": "choose_matching_account_or_correct_merchant"
+          },
+          "request_id": "04037fa2fa3b95ebd96295c6"
+        },
+        "error": "ACCOUNT_MERCHANT_MISMATCH",
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "record_expense",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "retryable": false,
+          "http_status": 409,
+          "retry_instruction": "重试只能复用原版本、原 idempotency_key 和完全相同的参数；409 不自动换键。"
+        }
+      }
+    },
+    {
+      "tool": "top_up_account",
+      "input": {
+        "from_account": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+        "to_account": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+        "paid_amount": 10,
+        "credited_amount": 8,
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-26"
+      },
+      "result": {
+        "success": true,
+        "content": "已记录资金事件：TRANSFER_OUT ¥10.00，账户 09c03ee8-1b37-483d-abca-dedeccdb3a74，余额 405.0→395.0；TRANSFER_IN ¥10.00，账户 ad897372-5fee-4ec0-b1c5-046f1fbd9319，余额 100.0→110.0；ADJUSTMENT ¥2.00，账户 ad897372-5fee-4ec0-b1c5-046f1fbd9319，余额 110.0→108.0。充值本金转账和赠送储值不计普通收入或消费。警告 TOP_UP_VALUE_LOSS：到账低于实付，请核对损失差额；不计普通消费；到账少于实付，差额已记录为储值损失调整，不计普通消费。。",
+        "data": {
+          "warnings": [
+            {
+              "code": "TOP_UP_VALUE_LOSS",
+              "message": "到账少于实付，差额已记录为储值损失调整，不计普通消费。"
+            }
+          ],
+          "transactions": [
+            {
+              "id": "6128c850-eaf8-43fc-ba94-0a06f96f2e1a",
+              "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+              "type": "TRANSFER_OUT",
+              "amount": 10.0,
+              "balance_delta": -10.0,
+              "balance_before": 405.0,
+              "balance_after": 395.0,
+              "category": "other",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "related_transaction_id": "ef7cabd6-3a4a-4392-94bf-386087f0c68c",
+              "occurred_at": "2026-10-10T11:32:50.1268359Z",
+              "source": "agent",
+              "note": "",
+              "reason": "TOP_UP",
+              "created_at": "2026-10-10T11:32:50.1268359Z"
+            },
+            {
+              "id": "ef7cabd6-3a4a-4392-94bf-386087f0c68c",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "TRANSFER_IN",
+              "amount": 10.0,
+              "balance_delta": 10.0,
+              "balance_before": 100.0,
+              "balance_after": 110.0,
+              "category": "other",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "related_transaction_id": "6128c850-eaf8-43fc-ba94-0a06f96f2e1a",
+              "occurred_at": "2026-10-10T11:32:50.1268359Z",
+              "source": "agent",
+              "note": "",
+              "reason": "TOP_UP",
+              "created_at": "2026-10-10T11:32:50.1273515Z"
+            },
+            {
+              "id": "ff8eb828-07a3-4eb3-9b8e-a03728679b01",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "ADJUSTMENT",
+              "amount": 2.0,
+              "balance_delta": -2.0,
+              "balance_before": 110.0,
+              "balance_after": 108.0,
+              "category": "other",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "related_transaction_id": "ef7cabd6-3a4a-4392-94bf-386087f0c68c",
+              "occurred_at": "2026-10-10T11:32:50.1268359Z",
+              "source": "agent",
+              "note": "",
+              "reason": "TOP_UP_VALUE_LOSS",
+              "created_at": "2026-10-10T11:32:50.1273515Z"
+            }
+          ]
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "top_up_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "record_bonus",
+      "input": {
+        "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+        "amount": 2,
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-27"
+      },
+      "result": {
+        "success": true,
+        "content": "已记录资金事件：BONUS ¥2.00，账户 ad897372-5fee-4ec0-b1c5-046f1fbd9319，余额 108.0→110.0。充值本金转账和赠送储值不计普通收入或消费。",
+        "data": {
+          "warnings": null,
+          "transactions": [
+            {
+              "id": "9b5b9a20-6a3d-4888-b139-bfe93d614635",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "BONUS",
+              "amount": 2.0,
+              "balance_delta": 2.0,
+              "balance_before": 108.0,
+              "balance_after": 110.0,
+              "category": "other",
+              "merchant": "",
+              "occurred_at": "2026-10-10T11:32:50.151716Z",
+              "source": "agent",
+              "note": "",
+              "reason": "",
+              "created_at": "2026-10-10T11:32:50.151716Z"
+            }
+          ]
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "record_bonus",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "record_bonus",
+      "input": {
+        "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+        "amount": 2,
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-28"
+      },
+      "result": {
+        "success": false,
+        "content": "invalid ledger input: BONUS requires CONSUMPTION account 建议：correct_request。",
+        "data": {
+          "error": {
+            "code": "validation_error",
+            "message": "invalid ledger input: BONUS requires CONSUMPTION account",
+            "retryable": false,
+            "suggested_action": "correct_request"
+          },
+          "request_id": "c5f71ee959141021f0db6ad4",
+          "validation_status": "ERROR"
+        },
+        "error": "validation_error",
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "record_bonus",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "retryable": false,
+          "http_status": 422,
+          "retry_instruction": "重试只能复用原版本、原 idempotency_key 和完全相同的参数；409 不自动换键。"
+        }
+      }
+    },
+    {
+      "tool": "get_recent_transactions",
+      "input": {
+        "type": "BONUS"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "items": [
+            {
+              "id": "9b5b9a20-6a3d-4888-b139-bfe93d614635",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "BONUS",
+              "amount": 2.0,
+              "balance_delta": 2.0,
+              "balance_before": 108.0,
+              "balance_after": 110.0,
+              "category": "other",
+              "merchant": "",
+              "occurred_at": "2026-10-10T11:32:50.151716Z",
+              "source": "agent",
+              "note": "",
+              "reason": "",
+              "created_at": "2026-10-10T11:32:50.151716Z"
+            },
+            {
+              "id": "a0d4fda9-97a3-413f-8711-4885c2cf726c",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "BONUS",
+              "amount": 10.0,
+              "balance_delta": 10.0,
+              "balance_before": 100.0,
+              "balance_after": 110.0,
+              "category": "other",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "related_transaction_id": "a9d0d7f2-a42d-47ed-930d-348f29fa4cf0",
+              "occurred_at": "2026-10-10T11:32:49.6158812Z",
+              "source": "agent",
+              "note": "",
+              "reason": "TOP_UP",
+              "created_at": "2026-10-10T11:32:49.616395Z"
+            },
+            {
+              "id": "f4218d4c-1d75-441b-a420-72c92ebb5c4a",
+              "account_id": "e91d1a20-dba9-457d-9644-48dfcb7ee7dc",
+              "type": "BONUS",
+              "amount": 2.0,
+              "balance_delta": 2.0,
+              "balance_before": 108.0,
+              "balance_after": 110.0,
+              "category": "other",
+              "merchant": "",
+              "occurred_at": "2026-10-10T11:32:18.2298132Z",
+              "source": "agent",
+              "note": "",
+              "reason": "",
+              "created_at": "2026-10-10T11:32:18.2298132Z"
+            },
+            {
+              "id": "d67ca6a4-4f1f-4db2-9037-2afcfd6d7ea1",
+              "account_id": "e91d1a20-dba9-457d-9644-48dfcb7ee7dc",
+              "type": "BONUS",
+              "amount": 10.0,
+              "balance_delta": 10.0,
+              "balance_before": 100.0,
+              "balance_after": 110.0,
+              "category": "other",
+              "merchant": "00ac653ebe4b4473bfe2ccaac5a600acmerchant",
+              "related_transaction_id": "9e599bee-6498-4cda-9e7e-f771cab45e8d",
+              "occurred_at": "2026-10-10T11:32:17.6523246Z",
+              "source": "agent",
+              "note": "",
+              "reason": "TOP_UP",
+              "created_at": "2026-10-10T11:32:17.6528426Z"
+            },
+            {
+              "id": "70beb49a-8620-4bee-981f-c894f4579a51",
+              "account_id": "48eff881-b419-4066-8111-dceaf0c4fd3c",
+              "type": "BONUS",
+              "amount": 2.0,
+              "balance_delta": 2.0,
+              "balance_before": 108.0,
+              "balance_after": 110.0,
+              "category": "other",
+              "merchant": "",
+              "occurred_at": "2026-10-10T11:30:46.9994722Z",
+              "source": "agent",
+              "note": "",
+              "reason": "",
+              "created_at": "2026-10-10T11:30:46.9994722Z"
+            },
+            {
+              "id": "2f6bf92c-5e39-45cc-82bc-826841cff414",
+              "account_id": "48eff881-b419-4066-8111-dceaf0c4fd3c",
+              "type": "BONUS",
+              "amount": 10.0,
+              "balance_delta": 10.0,
+              "balance_before": 100.0,
+              "balance_after": 110.0,
+              "category": "other",
+              "merchant": "2cba9f1d74ef4fb09a6104789e06c8afmerchant",
+              "related_transaction_id": "fd021174-8153-4372-8259-84f45f316a0d",
+              "occurred_at": "2026-10-10T11:30:46.4615829Z",
+              "source": "agent",
+              "note": "",
+              "reason": "TOP_UP",
+              "created_at": "2026-10-10T11:30:46.4615829Z"
+            },
+            {
+              "id": "62b70ac7-b3ec-40c9-9032-5ff4f9b510f7",
+              "account_id": "ca30b8f3-5999-462a-b82b-9de27b50b69e",
+              "type": "BONUS",
+              "amount": 10.0,
+              "balance_delta": 10.0,
+              "balance_before": 100.0,
+              "balance_after": 110.0,
+              "category": "other",
+              "merchant": "aa5e933bac914af38af961c5e0eb1992merchant",
+              "related_transaction_id": "379c9513-6f42-497a-8e9c-ed31b3eb00e7",
+              "occurred_at": "2026-10-10T11:30:17.2926315Z",
+              "source": "agent",
+              "note": "",
+              "reason": "TOP_UP",
+              "created_at": "2026-10-10T11:30:17.2931436Z"
+            }
+          ],
+          "limit": 100,
+          "offset": 0
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_recent_transactions",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "record_purchase",
+      "input": {
+        "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+        "items": [
+          {
+            "name": "64a0beae05dc4b30b0a29c377b544db6keyboard",
+            "quantity": 1,
+            "unit": "个",
+            "price": 399,
+            "item_type": "DURABLE",
+            "location": "desk"
+          }
+        ],
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-30"
+      },
+      "result": {
+        "success": true,
+        "content": "已记录购买：64a0beae05dc4b30b0a29c377b544db6keyboard × 1个，当前库存 1个。实际支出 ¥399.00。购买记录：17a2c4f6-3137-464f-a354-3b046f154313。校验状态：VALID。",
+        "data": {
+          "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+          "expense_amount": 399.0,
+          "items": [
+            {
+              "quantity_added": 1,
+              "inventory_after": 1,
+              "id": "9e5e6e6a-166b-4f56-91c0-6ee72e5be296",
+              "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+              "name": "64a0beae05dc4b30b0a29c377b544db6keyboard",
+              "quantity": 1,
+              "unit": "个",
+              "unit_price": 399.0,
+              "subtotal": 399.0,
+              "item_type": "DURABLE",
+              "category": "other",
+              "location": "desk"
+            }
+          ],
+          "purchase_id": "17a2c4f6-3137-464f-a354-3b046f154313",
+          "status": "COMPLETED",
+          "validation_status": "VALID",
+          "warnings": []
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "record_purchase",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_account",
+      "input": {
+        "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "account_class": "STORAGE",
+          "merchant": "",
+          "warnings": [],
+          "id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+          "name": "64a0beae05dc4b30b0a29c377b544db6wallet",
+          "type": "OTHER",
+          "currency": "CNY",
+          "current_balance": -4.0,
+          "credit_limit": null,
+          "active": true,
+          "note": "",
+          "created_at": "2026-10-10T11:32:49.539695Z",
+          "updated_at": "2026-10-10T11:32:50.2415271Z"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "add_maintenance",
+      "input": {
+        "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+        "title": "repair",
+        "cost": 50,
+        "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-32"
+      },
+      "result": {
+        "success": true,
+        "content": "已在物簿记录。",
+        "data": {
+          "id": "04b738e5-6134-4c6c-92f9-9903d36d73b4",
+          "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+          "expense_id": "1e8f727e-4b99-430f-b4a2-a811018715eb",
+          "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+          "occurred_at": "2026-10-10T11:32:50.2866971Z",
+          "title": "repair",
+          "description": "",
+          "cost": 50.0,
+          "status": "DONE",
+          "source": "agent",
+          "note": ""
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "add_maintenance",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_account",
+      "input": {
+        "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "account_class": "STORAGE",
+          "merchant": "",
+          "warnings": [],
+          "id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+          "name": "64a0beae05dc4b30b0a29c377b544db6wallet",
+          "type": "OTHER",
+          "currency": "CNY",
+          "current_balance": -54.0,
+          "credit_limit": null,
+          "active": true,
+          "note": "",
+          "created_at": "2026-10-10T11:32:49.539695Z",
+          "updated_at": "2026-10-10T11:32:50.2866971Z"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_item_total_cost",
+      "input": {
+        "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+          "purchase_cost": 399.0,
+          "maintenance_cost": 50.0,
+          "total_cost": 449.0,
+          "refund": 0.0,
+          "net_cost": 449.0,
+          "purchase_count": 1,
+          "purchase_quantity": 1,
+          "latest_price": 399.0,
+          "maintenance_count": 1
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_item_total_cost",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "move_item",
+      "input": {
+        "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+        "location": "shelf",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-35"
+      },
+      "result": {
+        "success": true,
+        "content": "已在物簿记录。",
+        "data": {
+          "purchase_price": 399.0,
+          "purchase_event_id": "17a2c4f6-3137-464f-a354-3b046f154313",
+          "location": "shelf",
+          "use_days": 0,
+          "warranty_days": null,
+          "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+          "brand": "",
+          "model": "",
+          "serial_number": "",
+          "purchase_date": "2026-10-10T11:32:50.2415271Z",
+          "warranty_until": "",
+          "status": "ACTIVE",
+          "sold_at": "",
+          "sold_price": null,
+          "note": ""
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "move_item",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "set_durable_status",
+      "input": {
+        "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+        "status": "STORED",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-36"
+      },
+      "result": {
+        "success": true,
+        "content": "已在物簿记录。",
+        "data": {
+          "purchase_price": 399.0,
+          "purchase_event_id": "17a2c4f6-3137-464f-a354-3b046f154313",
+          "location": "shelf",
+          "use_days": 0,
+          "warranty_days": null,
+          "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+          "brand": "",
+          "model": "",
+          "serial_number": "",
+          "purchase_date": "2026-10-10T11:32:50.2415271Z",
+          "warranty_until": "",
+          "status": "STORED",
+          "sold_at": "",
+          "sold_price": null,
+          "note": ""
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "set_durable_status",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "wubu",
+      "input": {
+        "operation": "get_item",
+        "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "inventory_unit": "个",
+          "item_type": "DURABLE",
+          "opened_at": null,
+          "id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+          "name": "64a0beae05dc4b30b0a29c377b544db6keyboard",
+          "category": "other",
+          "icon": "inventory_2",
+          "quantity": 1,
+          "unit_price_cents": 39900,
+          "unit": "个",
+          "location": "shelf",
+          "low_stock_threshold": null,
+          "expiry_date": null,
+          "short_lived": false,
+          "auto_consume_at": null,
+          "notes": "",
+          "created_at": "2026-10-10T11:32:50.2415271Z",
+          "updated_at": "2026-10-10T11:32:50.3826069Z",
+          "version": 4
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_item",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "set_durable_status",
+      "input": {
+        "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+        "status": "LOST",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-38"
+      },
+      "result": {
+        "success": true,
+        "content": "已在物簿记录。",
+        "data": {
+          "purchase_price": 399.0,
+          "purchase_event_id": "17a2c4f6-3137-464f-a354-3b046f154313",
+          "location": "shelf",
+          "use_days": 0,
+          "warranty_days": null,
+          "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+          "brand": "",
+          "model": "",
+          "serial_number": "",
+          "purchase_date": "2026-10-10T11:32:50.2415271Z",
+          "warranty_until": "",
+          "status": "LOST",
+          "sold_at": "",
+          "sold_price": null,
+          "note": ""
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "set_durable_status",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "wubu",
+      "input": {
+        "operation": "get_item",
+        "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "inventory_unit": "个",
+          "item_type": "DURABLE",
+          "opened_at": null,
+          "id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+          "name": "64a0beae05dc4b30b0a29c377b544db6keyboard",
+          "category": "other",
+          "icon": "inventory_2",
+          "quantity": 0,
+          "unit_price_cents": 39900,
+          "unit": "个",
+          "location": "shelf",
+          "low_stock_threshold": null,
+          "expiry_date": null,
+          "short_lived": false,
+          "auto_consume_at": null,
+          "notes": "",
+          "created_at": "2026-10-10T11:32:50.2415271Z",
+          "updated_at": "2026-10-10T11:32:50.4285292Z",
+          "version": 5
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_item",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "set_durable_status",
+      "input": {
+        "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+        "status": "ACTIVE",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-40"
+      },
+      "result": {
+        "success": true,
+        "content": "已在物簿记录。",
+        "data": {
+          "purchase_price": 399.0,
+          "purchase_event_id": "17a2c4f6-3137-464f-a354-3b046f154313",
+          "location": "shelf",
+          "use_days": 0,
+          "warranty_days": null,
+          "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+          "brand": "",
+          "model": "",
+          "serial_number": "",
+          "purchase_date": "2026-10-10T11:32:50.2415271Z",
+          "warranty_until": "",
+          "status": "ACTIVE",
+          "sold_at": "",
+          "sold_price": null,
+          "note": ""
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "set_durable_status",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "wubu",
+      "input": {
+        "operation": "get_item",
+        "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "inventory_unit": "个",
+          "item_type": "DURABLE",
+          "opened_at": null,
+          "id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+          "name": "64a0beae05dc4b30b0a29c377b544db6keyboard",
+          "category": "other",
+          "icon": "inventory_2",
+          "quantity": 1,
+          "unit_price_cents": 39900,
+          "unit": "个",
+          "location": "shelf",
+          "low_stock_threshold": null,
+          "expiry_date": null,
+          "short_lived": false,
+          "auto_consume_at": null,
+          "notes": "",
+          "created_at": "2026-10-10T11:32:50.2415271Z",
+          "updated_at": "2026-10-10T11:32:50.4790238Z",
+          "version": 6
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_item",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_account",
+      "input": {
+        "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "account_class": "STORAGE",
+          "merchant": "",
+          "warnings": [],
+          "id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+          "name": "64a0beae05dc4b30b0a29c377b544db6wallet",
+          "type": "OTHER",
+          "currency": "CNY",
+          "current_balance": -54.0,
+          "credit_limit": null,
+          "active": true,
+          "note": "",
+          "created_at": "2026-10-10T11:32:49.539695Z",
+          "updated_at": "2026-10-10T11:32:50.2866971Z"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "sell_item",
+      "input": {
+        "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+        "amount": 260,
+        "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6sale"
+      },
+      "result": {
+        "success": true,
+        "content": "已在物簿记录。",
+        "data": {
+          "purchase_price": 399.0,
+          "purchase_event_id": "17a2c4f6-3137-464f-a354-3b046f154313",
+          "location": "shelf",
+          "use_days": 0,
+          "warranty_days": null,
+          "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+          "brand": "",
+          "model": "",
+          "serial_number": "",
+          "purchase_date": "2026-10-10T11:32:50.2415271Z",
+          "warranty_until": "",
+          "status": "SOLD",
+          "sold_at": "2026-10-10T11:32:50.5565222Z",
+          "sold_price": 260.0,
+          "note": ""
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "sell_item",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_account",
+      "input": {
+        "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "account_class": "STORAGE",
+          "merchant": "",
+          "warnings": [],
+          "id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+          "name": "64a0beae05dc4b30b0a29c377b544db6wallet",
+          "type": "OTHER",
+          "currency": "CNY",
+          "current_balance": 206.0,
+          "credit_limit": null,
+          "active": true,
+          "note": "",
+          "created_at": "2026-10-10T11:32:49.539695Z",
+          "updated_at": "2026-10-10T11:32:50.557037Z"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "sell_item",
+      "input": {
+        "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+        "amount": 260,
+        "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6sale"
+      },
+      "result": {
+        "success": true,
+        "content": "已在物簿记录。",
+        "data": {
+          "purchase_price": 399.0,
+          "purchase_event_id": "17a2c4f6-3137-464f-a354-3b046f154313",
+          "location": "shelf",
+          "use_days": 0,
+          "warranty_days": null,
+          "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+          "brand": "",
+          "model": "",
+          "serial_number": "",
+          "purchase_date": "2026-10-10T11:32:50.2415271Z",
+          "warranty_until": "",
+          "status": "SOLD",
+          "sold_at": "2026-10-10T11:32:50.5565222Z",
+          "sold_price": 260.0,
+          "note": ""
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "sell_item",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": true
+        }
+      }
+    },
+    {
+      "tool": "get_account",
+      "input": {
+        "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "account_class": "STORAGE",
+          "merchant": "",
+          "warnings": [],
+          "id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+          "name": "64a0beae05dc4b30b0a29c377b544db6wallet",
+          "type": "OTHER",
+          "currency": "CNY",
+          "current_balance": 206.0,
+          "credit_limit": null,
+          "active": true,
+          "note": "",
+          "created_at": "2026-10-10T11:32:49.539695Z",
+          "updated_at": "2026-10-10T11:32:50.557037Z"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "set_durable_status",
+      "input": {
+        "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+        "status": "ACTIVE",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-47"
+      },
+      "result": {
+        "success": false,
+        "content": "ledger conflict: durable lifecycle has ended 建议：review_current_inventory。",
+        "data": {
+          "error": {
+            "code": "ledger_conflict",
+            "message": "ledger conflict: durable lifecycle has ended",
+            "retryable": false,
+            "suggested_action": "review_current_inventory"
+          },
+          "request_id": "d6a855e3193c81cb9973608b",
+          "validation_status": "ERROR"
+        },
+        "error": "ledger_conflict",
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "set_durable_status",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "retryable": false,
+          "http_status": 409,
+          "retry_instruction": "重试只能复用原版本、原 idempotency_key 和完全相同的参数；409 不自动换键。"
+        }
+      }
+    },
+    {
+      "tool": "record_purchase",
+      "input": {
+        "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+        "items": [
+          {
+            "name": "64a0beae05dc4b30b0a29c377b544db6mouse",
+            "quantity": 1,
+            "unit": "个",
+            "price": 10,
+            "item_type": "DURABLE"
+          }
+        ],
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-48"
+      },
+      "result": {
+        "success": true,
+        "content": "已记录购买：64a0beae05dc4b30b0a29c377b544db6mouse × 1个，当前库存 1个。实际支出 ¥10.00。购买记录：96ac7f62-af84-4783-be57-bf908b3d0a98。校验状态：VALID。",
+        "data": {
+          "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+          "expense_amount": 10.0,
+          "items": [
+            {
+              "quantity_added": 1,
+              "inventory_after": 1,
+              "id": "13e24765-f429-4560-8568-82c2deb4f60e",
+              "item_id": "536bd52c-5cf4-4784-a2cc-4713385cff36",
+              "name": "64a0beae05dc4b30b0a29c377b544db6mouse",
+              "quantity": 1,
+              "unit": "个",
+              "unit_price": 10.0,
+              "subtotal": 10.0,
+              "item_type": "DURABLE",
+              "category": "other"
+            }
+          ],
+          "purchase_id": "96ac7f62-af84-4783-be57-bf908b3d0a98",
+          "status": "COMPLETED",
+          "validation_status": "VALID",
+          "warnings": []
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "record_purchase",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "retire_item",
+      "input": {
+        "item_id": "536bd52c-5cf4-4784-a2cc-4713385cff36",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-49"
+      },
+      "result": {
+        "success": true,
+        "content": "已在物簿记录。",
+        "data": {
+          "purchase_price": 10.0,
+          "purchase_event_id": "96ac7f62-af84-4783-be57-bf908b3d0a98",
+          "location": "",
+          "use_days": 0,
+          "warranty_days": null,
+          "item_id": "536bd52c-5cf4-4784-a2cc-4713385cff36",
+          "brand": "",
+          "model": "",
+          "serial_number": "",
+          "purchase_date": "2026-10-10T11:32:50.6796235Z",
+          "warranty_until": "",
+          "status": "RETIRED",
+          "sold_at": "",
+          "sold_price": null,
+          "note": ""
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "retire_item",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "set_durable_status",
+      "input": {
+        "item_id": "536bd52c-5cf4-4784-a2cc-4713385cff36",
+        "status": "ACTIVE",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-50"
+      },
+      "result": {
+        "success": false,
+        "content": "ledger conflict: durable lifecycle has ended 建议：review_current_inventory。",
+        "data": {
+          "error": {
+            "code": "ledger_conflict",
+            "message": "ledger conflict: durable lifecycle has ended",
+            "retryable": false,
+            "suggested_action": "review_current_inventory"
+          },
+          "request_id": "b928f2278b9e9d0a91afc274",
+          "validation_status": "ERROR"
+        },
+        "error": "ledger_conflict",
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "set_durable_status",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "retryable": false,
+          "http_status": 409,
+          "retry_instruction": "重试只能复用原版本、原 idempotency_key 和完全相同的参数；409 不自动换键。"
+        }
+      }
+    },
+    {
+      "tool": "get_durable_history",
+      "input": {
+        "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "items": [
+            {
+              "id": "672379e4-f689-4f3e-8b83-5435cdc251c9",
+              "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+              "type": "SOLD",
+              "occurred_at": "2026-10-10T11:32:50.5565222Z",
+              "from_status": "ACTIVE",
+              "to_status": "SOLD",
+              "location": "shelf",
+              "note": "",
+              "source": "agent"
+            },
+            {
+              "id": "da600894-2139-4f36-9173-2bc392be340f",
+              "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+              "type": "FOUND",
+              "occurred_at": "2026-10-10T11:32:50.4785127Z",
+              "from_status": "LOST",
+              "to_status": "ACTIVE",
+              "location": "shelf",
+              "note": "",
+              "source": "agent"
+            },
+            {
+              "id": "cde33146-d7c4-4694-8c3b-f6488fcd830b",
+              "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+              "type": "LOST",
+              "occurred_at": "2026-10-10T11:32:50.4285292Z",
+              "from_status": "STORED",
+              "to_status": "LOST",
+              "location": "shelf",
+              "note": "",
+              "source": "agent"
+            },
+            {
+              "id": "ca656a0d-fe54-406f-8ede-4a6dd32c1614",
+              "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+              "type": "STORED",
+              "occurred_at": "2026-10-10T11:32:50.3826069Z",
+              "from_status": "ACTIVE",
+              "to_status": "STORED",
+              "location": "shelf",
+              "note": "",
+              "source": "agent"
+            },
+            {
+              "id": "816a6b25-09eb-482a-8c77-b989eaeefe4b",
+              "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+              "type": "MOVED",
+              "occurred_at": "2026-10-10T11:32:50.3591283Z",
+              "from_status": "ACTIVE",
+              "to_status": "ACTIVE",
+              "location": "shelf",
+              "note": "",
+              "source": "agent"
+            },
+            {
+              "id": "5074bbef-67db-4ec6-bc62-cc5bec7257b6",
+              "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+              "type": "PURCHASED",
+              "occurred_at": "2026-10-10T11:32:50.2415271Z",
+              "from_status": "",
+              "to_status": "ACTIVE",
+              "location": "desk",
+              "note": "",
+              "source": "agent"
+            }
+          ],
+          "limit": 100,
+          "offset": 0
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_durable_history",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_durable_items",
+      "input": {
+        "status": "SOLD"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "items": [
+            {
+              "name": "64a0beae05dc4b30b0a29c377b544db6keyboard",
+              "details": {
+                "purchase_price": 399.0,
+                "purchase_event_id": "17a2c4f6-3137-464f-a354-3b046f154313",
+                "location": "shelf",
+                "use_days": 0,
+                "warranty_days": null,
+                "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+                "brand": "",
+                "model": "",
+                "serial_number": "",
+                "purchase_date": "2026-10-10T11:32:50.2415271Z",
+                "warranty_until": "",
+                "status": "SOLD",
+                "sold_at": "2026-10-10T11:32:50.5565222Z",
+                "sold_price": 260.0,
+                "note": ""
+              }
+            },
+            {
+              "name": "2cba9f1d74ef4fb09a6104789e06c8afkeyboard",
+              "details": {
+                "purchase_price": 399.0,
+                "purchase_event_id": "52ecb886-5747-4e6b-9b0e-113c2e096aed",
+                "location": "shelf",
+                "use_days": 0,
+                "warranty_days": null,
+                "item_id": "fa259da8-1840-44b3-afe7-f3a8a3505356",
+                "brand": "",
+                "model": "",
+                "serial_number": "",
+                "purchase_date": "2026-10-10T11:30:47.0728564Z",
+                "warranty_until": "",
+                "status": "SOLD",
+                "sold_at": "2026-10-10T11:30:47.2377659Z",
+                "sold_price": 260.0,
+                "note": ""
+              }
+            }
+          ],
+          "limit": 100,
+          "offset": 0
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_durable_items",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_recent_maintenance",
+      "input": {},
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "items": [
+            {
+              "id": "04b738e5-6134-4c6c-92f9-9903d36d73b4",
+              "item_id": "7871c5af-b3b3-4d5e-b336-e1d103c14d46",
+              "expense_id": "1e8f727e-4b99-430f-b4a2-a811018715eb",
+              "occurred_at": "2026-10-10T11:32:50.2866971Z",
+              "title": "repair",
+              "description": "",
+              "cost": 50.0,
+              "status": "DONE",
+              "source": "agent",
+              "note": ""
+            },
+            {
+              "id": "b2379c48-6430-43b3-a8c6-122665e6b238",
+              "item_id": "4520f66e-1876-429e-a125-61b4df350a3d",
+              "expense_id": "caa3309e-514b-49e4-b74d-e739efa7add8",
+              "occurred_at": "2026-10-10T11:32:18.3573542Z",
+              "title": "repair",
+              "description": "",
+              "cost": 50.0,
+              "status": "DONE",
+              "source": "agent",
+              "note": ""
+            },
+            {
+              "id": "e75c02d4-156d-487a-8eab-27385bc14bdf",
+              "item_id": "fa259da8-1840-44b3-afe7-f3a8a3505356",
+              "expense_id": "23d130dc-a8bc-4f25-a290-0f601920d3c2",
+              "occurred_at": "2026-10-10T11:30:47.1003756Z",
+              "title": "repair",
+              "description": "",
+              "cost": 50.0,
+              "status": "DONE",
+              "source": "agent",
+              "note": ""
+            }
+          ],
+          "limit": 100,
+          "offset": 0
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_recent_maintenance",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "record_income",
+      "input": {
+        "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+        "amount": 20,
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-54"
+      },
+      "result": {
+        "success": true,
+        "content": "已记录资金事件：INCOME ¥20.00，账户 09c03ee8-1b37-483d-abca-dedeccdb3a74，余额 196.0→216.0。",
+        "data": {
+          "warnings": null,
+          "transactions": [
+            {
+              "id": "f9117c9b-4560-4191-bfad-dfab6ee82672",
+              "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+              "type": "INCOME",
+              "amount": 20.0,
+              "balance_delta": 20.0,
+              "balance_before": 196.0,
+              "balance_after": 216.0,
+              "category": "other",
+              "merchant": "",
+              "occurred_at": "2026-10-10T11:32:50.832504Z",
+              "source": "agent",
+              "note": "",
+              "reason": "",
+              "created_at": "2026-10-10T11:32:50.832504Z"
+            }
+          ]
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "record_income",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "record_expense",
+      "input": {
+        "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+        "amount": 2,
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-55"
+      },
+      "result": {
+        "success": true,
+        "content": "已记录资金事件：EXPENSE ¥2.00，账户 09c03ee8-1b37-483d-abca-dedeccdb3a74，余额 216.0→214.0。",
+        "data": {
+          "warnings": null,
+          "transactions": [
+            {
+              "id": "94dab123-0646-46cf-abf2-627f28e5f295",
+              "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+              "type": "EXPENSE",
+              "amount": 2.0,
+              "balance_delta": -2.0,
+              "balance_before": 216.0,
+              "balance_after": 214.0,
+              "category": "other",
+              "merchant": "",
+              "occurred_at": "2026-10-10T11:32:50.8566952Z",
+              "source": "agent",
+              "note": "",
+              "reason": "",
+              "created_at": "2026-10-10T11:32:50.8566952Z"
+            }
+          ]
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "record_expense",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "transfer_money",
+      "input": {
+        "from_account": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+        "to_account": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+        "amount": 1,
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-56"
+      },
+      "result": {
+        "success": true,
+        "content": "已记录资金事件：TRANSFER_OUT ¥1.00，账户 09c03ee8-1b37-483d-abca-dedeccdb3a74，余额 214.0→213.0；TRANSFER_IN ¥1.00，账户 ad897372-5fee-4ec0-b1c5-046f1fbd9319，余额 110.0→111.0。",
+        "data": {
+          "warnings": null,
+          "transactions": [
+            {
+              "id": "e27ce944-484f-40a3-b2eb-690b45f4f97a",
+              "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+              "type": "TRANSFER_OUT",
+              "amount": 1.0,
+              "balance_delta": -1.0,
+              "balance_before": 214.0,
+              "balance_after": 213.0,
+              "category": "other",
+              "merchant": "",
+              "related_transaction_id": "609b6042-a1e8-4cdb-925d-422d9852d632",
+              "occurred_at": "2026-10-10T11:32:50.8814968Z",
+              "source": "agent",
+              "note": "",
+              "reason": "",
+              "created_at": "2026-10-10T11:32:50.8814968Z"
+            },
+            {
+              "id": "609b6042-a1e8-4cdb-925d-422d9852d632",
+              "account_id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "type": "TRANSFER_IN",
+              "amount": 1.0,
+              "balance_delta": 1.0,
+              "balance_before": 110.0,
+              "balance_after": 111.0,
+              "category": "other",
+              "merchant": "",
+              "related_transaction_id": "e27ce944-484f-40a3-b2eb-690b45f4f97a",
+              "occurred_at": "2026-10-10T11:32:50.8814968Z",
+              "source": "agent",
+              "note": "",
+              "reason": "",
+              "created_at": "2026-10-10T11:32:50.8814968Z"
+            }
+          ]
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "transfer_money",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "adjust_balance",
+      "input": {
+        "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+        "actual_balance": 4321.08,
+        "reason": "acceptance",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-57"
+      },
+      "result": {
+        "success": true,
+        "content": "已记录资金事件：ADJUSTMENT ¥4108.08，账户 09c03ee8-1b37-483d-abca-dedeccdb3a74，余额 213.0→4321.08。",
+        "data": {
+          "warnings": null,
+          "transactions": [
+            {
+              "id": "c5f7730c-7dd7-4d71-9b1c-9ee7d5babfc5",
+              "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+              "type": "ADJUSTMENT",
+              "amount": 4108.08,
+              "balance_delta": 4108.08,
+              "balance_before": 213.0,
+              "balance_after": 4321.08,
+              "category": "other",
+              "merchant": "",
+              "occurred_at": "2026-10-10T11:32:50.9050999Z",
+              "source": "agent",
+              "note": "",
+              "reason": "acceptance",
+              "created_at": "2026-10-10T11:32:50.9056048Z"
+            }
+          ]
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "adjust_balance",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_account",
+      "input": {
+        "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "account_class": "STORAGE",
+          "merchant": "",
+          "warnings": [],
+          "id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+          "name": "64a0beae05dc4b30b0a29c377b544db6wallet",
+          "type": "OTHER",
+          "currency": "CNY",
+          "current_balance": 4321.08,
+          "credit_limit": null,
+          "active": true,
+          "note": "",
+          "created_at": "2026-10-10T11:32:49.539695Z",
+          "updated_at": "2026-10-10T11:32:50.9056048Z"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "reconcile_account",
+      "input": {
+        "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+        "actual_balance": 4320.08,
+        "reason": "acceptance",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-59"
+      },
+      "result": {
+        "success": true,
+        "content": "已记录资金事件：ADJUSTMENT ¥1.00，账户 09c03ee8-1b37-483d-abca-dedeccdb3a74，余额 4321.08→4320.08。",
+        "data": {
+          "warnings": null,
+          "transactions": [
+            {
+              "id": "9d1a1ae6-2c11-4aee-a667-704de7bf63f2",
+              "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+              "type": "ADJUSTMENT",
+              "amount": 1.0,
+              "balance_delta": -1.0,
+              "balance_before": 4321.08,
+              "balance_after": 4320.08,
+              "category": "other",
+              "merchant": "",
+              "occurred_at": "2026-10-10T11:32:50.95155Z",
+              "source": "agent",
+              "note": "",
+              "reason": "acceptance",
+              "created_at": "2026-10-10T11:32:50.95155Z"
+            }
+          ]
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "reconcile_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_account",
+      "input": {
+        "account_id": "09c03ee8-1b37-483d-abca-dedeccdb3a74"
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "account_class": "STORAGE",
+          "merchant": "",
+          "warnings": [],
+          "id": "09c03ee8-1b37-483d-abca-dedeccdb3a74",
+          "name": "64a0beae05dc4b30b0a29c377b544db6wallet",
+          "type": "OTHER",
+          "currency": "CNY",
+          "current_balance": 4320.08,
+          "credit_limit": null,
+          "active": true,
+          "note": "",
+          "created_at": "2026-10-10T11:32:49.539695Z",
+          "updated_at": "2026-10-10T11:32:50.95155Z"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_account",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "save_money_category",
+      "input": {
+        "name": "64a0beae05dc4b30b0a29c377b544db6category",
+        "idempotency_key": "64a0beae05dc4b30b0a29c377b544db6-61"
+      },
+      "result": {
+        "success": true,
+        "content": "已在物簿记录。",
+        "data": {
+          "name": "64a0beae05dc4b30b0a29c377b544db6category"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "save_money_category",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_money_categories",
+      "input": {},
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "items": [
+            "2cba9f1d74ef4fb09a6104789e06c8afcategory",
+            "64a0beae05dc4b30b0a29c377b544db6category",
+            "maintenance",
+            "other",
+            "sale",
+            "交通",
+            "住房",
+            "其他",
+            "医疗",
+            "娱乐",
+            "学习",
+            "数码",
+            "服务",
+            "生活用品",
+            "食品饮料",
+            "餐饮"
+          ]
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_money_categories",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_money_summary",
+      "input": {},
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "bonus": 46.0,
+          "currency": "CNY",
+          "expense": 1431.0,
+          "refund": 45.0,
+          "net_expense": 1386.0,
+          "income": 560.0,
+          "transfer_out": 432.0,
+          "groups": []
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_money_summary",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_expense_summary",
+      "input": {},
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "bonus": 46.0,
+          "currency": "CNY",
+          "expense": 1431.0,
+          "refund": 45.0,
+          "net_expense": 1386.0,
+          "income": 560.0,
+          "transfer_out": 432.0,
+          "groups": []
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_expense_summary",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_income_summary",
+      "input": {},
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "bonus": 0.0,
+          "currency": "CNY",
+          "expense": 0.0,
+          "refund": 0.0,
+          "net_expense": 0.0,
+          "income": 560.0,
+          "transfer_out": 0.0,
+          "groups": []
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_income_summary",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_category_summary",
+      "input": {},
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "bonus": 46.0,
+          "currency": "CNY",
+          "expense": 1431.0,
+          "refund": 45.0,
+          "net_expense": 1386.0,
+          "income": 560.0,
+          "transfer_out": 432.0,
+          "groups": [
+            {
+              "key": "other",
+              "amount": 1236.0,
+              "count": 16
+            },
+            {
+              "key": "maintenance",
+              "amount": 150.0,
+              "count": 3
+            }
+          ]
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_category_summary",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_merchant_summary",
+      "input": {},
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "bonus": 46.0,
+          "currency": "CNY",
+          "expense": 1431.0,
+          "refund": 45.0,
+          "net_expense": 1386.0,
+          "income": 560.0,
+          "transfer_out": 432.0,
+          "groups": [
+            {
+              "key": "",
+              "amount": 1371.0,
+              "count": 10
+            },
+            {
+              "key": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "amount": 5.0,
+              "count": 3
+            },
+            {
+              "key": "2cba9f1d74ef4fb09a6104789e06c8afmerchant",
+              "amount": 5.0,
+              "count": 3
+            },
+            {
+              "key": "00ac653ebe4b4473bfe2ccaac5a600acmerchant",
+              "amount": 5.0,
+              "count": 3
+            }
+          ]
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_merchant_summary",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_money_settings",
+      "input": {},
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "default_payment_account": "09c03ee8-1b37-483d-abca-dedeccdb3a74"
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_money_settings",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    },
+    {
+      "tool": "get_accounts",
+      "input": {
+        "account_class": "CONSUMPTION",
+        "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+        "active": true
+      },
+      "result": {
+        "success": true,
+        "content": "已从物簿读取事实。",
+        "data": {
+          "items": [
+            {
+              "account_class": "CONSUMPTION",
+              "merchant": "64a0beae05dc4b30b0a29c377b544db6merchant",
+              "warnings": [],
+              "id": "ad897372-5fee-4ec0-b1c5-046f1fbd9319",
+              "name": "64a0beae05dc4b30b0a29c377b544db6tea",
+              "type": "MERCHANT_BALANCE",
+              "currency": "CNY",
+              "current_balance": 111.0,
+              "credit_limit": null,
+              "active": true,
+              "note": "",
+              "created_at": "2026-10-10T11:32:49.5646278Z",
+              "updated_at": "2026-10-10T11:32:50.8814968Z"
+            }
+          ]
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "get_accounts",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false
+        }
+      }
+    }
+  ],
+  "passed": 94,
+  "total": 94
+}

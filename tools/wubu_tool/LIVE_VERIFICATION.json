@@ -1,0 +1,542 @@
+{
+  "checked_at_utc": "2026-10-06T03:43:20.718410+00:00",
+  "health": {
+    "database": "ok",
+    "status": "ok",
+    "version": "0.1.1"
+  },
+  "operations": 33,
+  "tools": [
+    "record_purchase",
+    "validate_purchase",
+    "wubu_inventory_event",
+    "wubu"
+  ],
+  "scope": "Real v0.1.1: GET and POST /purchases/validate only; no event writes, no restart. Public API entity snapshots, not a byte-level database checksum.",
+  "before": {
+    "/api/v1/items": {
+      "count": 1,
+      "sha256": "ab92984e2adfd70f42e6fcc8168e5c15c09810ee666583b2a39d0a2aba20f0c2"
+    },
+    "/api/v1/purchases": {
+      "count": 1,
+      "sha256": "3307241f606cf5e3bdb4b19dd4921ac5a41d814fb210b0a643347169798c85ec"
+    },
+    "/api/v1/expenses": {
+      "count": 1,
+      "sha256": "5988220f3f3ffae9371638145e0c0d9f447a5ed1b077cdcdea3c7e99435be451"
+    },
+    "/api/v1/inventory-events": {
+      "count": 2,
+      "sha256": "3a99d43db6b759cd5b40768228310a395808f3ec40f96919c31bcfffd27c9e9a"
+    }
+  },
+  "after": {
+    "/api/v1/items": {
+      "count": 1,
+      "sha256": "ab92984e2adfd70f42e6fcc8168e5c15c09810ee666583b2a39d0a2aba20f0c2"
+    },
+    "/api/v1/purchases": {
+      "count": 1,
+      "sha256": "3307241f606cf5e3bdb4b19dd4921ac5a41d814fb210b0a643347169798c85ec"
+    },
+    "/api/v1/expenses": {
+      "count": 1,
+      "sha256": "5988220f3f3ffae9371638145e0c0d9f447a5ed1b077cdcdea3c7e99435be451"
+    },
+    "/api/v1/inventory-events": {
+      "count": 2,
+      "sha256": "3a99d43db6b759cd5b40768228310a395808f3ec40f96919c31bcfffd27c9e9a"
+    }
+  },
+  "public_entities_unchanged": true,
+  "prechecks": [
+    {
+      "input": {
+        "items": [
+          {
+            "name": "无糖可乐",
+            "spec": "2L",
+            "quantity": 1,
+            "unit": "瓶",
+            "price": 5.5
+          }
+        ]
+      },
+      "result": {
+        "success": true,
+        "content": "购买预检查（未写入）：无糖可乐 2L × 1瓶，预计库存 2瓶。预计支出 ¥5.50。校验状态：VALID。",
+        "data": {
+          "expense_amount": 5.5,
+          "items": [
+            {
+              "spec": "2L",
+              "package_size": 2,
+              "package_unit": "L",
+              "quantity_added": 1,
+              "inventory_after": 2,
+              "item_id": "1dc6dc9d-f3c9-4eb7-9772-d3c24638c7cb",
+              "name": "无糖可乐",
+              "quantity": 1,
+              "unit": "瓶",
+              "unit_price": 5.5,
+              "subtotal": 5.5,
+              "item_type": "CONSUMABLE",
+              "category": "other"
+            }
+          ],
+          "purchase_id": "",
+          "validation_status": "VALID",
+          "warnings": []
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "validate_purchase",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false,
+          "written": false
+        }
+      }
+    },
+    {
+      "input": {
+        "items": [
+          {
+            "name": "东方树叶",
+            "spec": "900ml",
+            "quantity": 1,
+            "unit": "瓶",
+            "price": 5
+          }
+        ]
+      },
+      "result": {
+        "success": true,
+        "content": "购买预检查（未写入）：东方树叶 900ml × 1瓶，预计库存 1瓶。预计支出 ¥5.00。校验状态：VALID。",
+        "data": {
+          "expense_amount": 5.0,
+          "items": [
+            {
+              "spec": "900ml",
+              "package_size": 900,
+              "package_unit": "ml",
+              "quantity_added": 1,
+              "inventory_after": 1,
+              "name": "东方树叶",
+              "quantity": 1,
+              "unit": "瓶",
+              "unit_price": 5.0,
+              "subtotal": 5.0,
+              "item_type": "CONSUMABLE",
+              "category": "other"
+            }
+          ],
+          "purchase_id": "",
+          "validation_status": "VALID",
+          "warnings": []
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "validate_purchase",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false,
+          "written": false
+        }
+      }
+    },
+    {
+      "input": {
+        "items": [
+          {
+            "name": "无糖可乐",
+            "spec": "2000ml",
+            "quantity": 1,
+            "unit": "瓶",
+            "price": 5.5
+          }
+        ]
+      },
+      "result": {
+        "success": true,
+        "content": "购买预检查（未写入）：无糖可乐 2L × 1瓶，预计库存 2瓶。预计支出 ¥5.50。校验状态：VALID。",
+        "data": {
+          "expense_amount": 5.5,
+          "items": [
+            {
+              "spec": "2L",
+              "package_size": 2,
+              "package_unit": "L",
+              "quantity_added": 1,
+              "inventory_after": 2,
+              "item_id": "1dc6dc9d-f3c9-4eb7-9772-d3c24638c7cb",
+              "name": "无糖可乐",
+              "quantity": 1,
+              "unit": "瓶",
+              "unit_price": 5.5,
+              "subtotal": 5.5,
+              "item_type": "CONSUMABLE",
+              "category": "other"
+            }
+          ],
+          "purchase_id": "",
+          "validation_status": "VALID",
+          "warnings": []
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "validate_purchase",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false,
+          "written": false
+        }
+      }
+    },
+    {
+      "input": {
+        "items": [
+          {
+            "name": "朝汐预检查样例饮料",
+            "spec": "2L",
+            "quantity": 2,
+            "unit": "L",
+            "price": 5.5
+          }
+        ],
+        "total": 5.5
+      },
+      "result": {
+        "success": true,
+        "content": "购买预检查（未写入）：朝汐预检查样例饮料 2L × 2L，预计库存 2L。预计支出 ¥5.50。校验状态：WARNING。警告 SPEC_QUANTITY_CONFLICT：请核对是否将包装规格误填成购买数量或库存单位；第 1 行可能把包装规格 2L 当成了购买数量，请确认数量和库存单位。。警告 PURCHASE_AMOUNT_INCONSISTENT：请核对实际付款与数量、单价及小计是否一致；商品合计 − 优惠 + 附加费用与实际付款不一致，请核对优惠、费用或抹零。。",
+        "data": {
+          "expense_amount": 5.5,
+          "items": [
+            {
+              "spec": "2L",
+              "package_size": 2,
+              "package_unit": "L",
+              "quantity_added": 2,
+              "inventory_after": 2,
+              "name": "朝汐预检查样例饮料",
+              "quantity": 2,
+              "unit": "L",
+              "unit_price": 5.5,
+              "subtotal": 11.0,
+              "item_type": "CONSUMABLE",
+              "category": "other"
+            }
+          ],
+          "purchase_id": "",
+          "validation_status": "WARNING",
+          "warnings": [
+            {
+              "code": "SPEC_QUANTITY_CONFLICT",
+              "message": "第 1 行可能把包装规格 2L 当成了购买数量，请确认数量和库存单位。",
+              "line": 1
+            },
+            {
+              "code": "PURCHASE_AMOUNT_INCONSISTENT",
+              "message": "商品合计 − 优惠 + 附加费用与实际付款不一致，请核对优惠、费用或抹零。"
+            }
+          ]
+        },
+        "error": null,
+        "metadata": {
+          "fact_source": "wubu",
+          "operation": "validate_purchase",
+          "safe_to_replay": true,
+          "unknown_outcome": false,
+          "idempotency_replayed": false,
+          "written": false
+        }
+      }
+    }
+  ],
+  "schemas": {
+    "record_purchase": {
+      "type": "function",
+      "function": {
+        "name": "record_purchase",
+        "description": "把一次现实购买记入物簿。只填 items 和稳定 idempotency_key，无需 operation/payload、先查询或创建商品。一瓶2L无糖可乐5.5元：name=无糖可乐,spec=2L,quantity=1,unit=瓶,price=5.5。后端在同一事务匹配或创建商品、记录费用与库存，并默认时间/CNY/source=agent。已知付款填 price 或 total；全未知时后端金额默认0，应向用户说明未确认金额。只在用户有购买记账意图时调用；歧义向用户确认，不随意选；只有成功写入后才能说已记账。根据返回的 purchase_id、expense_amount、库存快照和 warnings 确认；金额或规格警告需请用户核对。超时结果未知，不换键或盲目重试。耐用品、服务费用或复杂账单用高级 wubu.record_purchase_event。",
+        "parameters": {
+          "$defs": {
+            "PurchaseItem": {
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "description": "商品基础名称，例如无糖可乐；规格单独填 spec。",
+                  "maxLength": 80,
+                  "minLength": 1,
+                  "title": "Name",
+                  "type": "string"
+                },
+                "quantity": {
+                  "description": "买了多少库存单位，例如一瓶填 1；2L 是规格，不是数量。",
+                  "exclusiveMinimum": 0,
+                  "maximum": 1000000000,
+                  "multipleOf": 0.001,
+                  "title": "Quantity",
+                  "type": "number"
+                },
+                "unit": {
+                  "description": "库存计数单位，例如瓶、包、个；一瓶2L饮料填瓶。",
+                  "maxLength": 20,
+                  "minLength": 1,
+                  "title": "Unit",
+                  "type": "string"
+                },
+                "price": {
+                  "description": "每库存单位的单价，CNY 元；不知道则省略。",
+                  "maximum": 10000000,
+                  "minimum": 0,
+                  "multipleOf": 0.01,
+                  "title": "Price",
+                  "type": "number"
+                },
+                "spec": {
+                  "default": "",
+                  "description": "每包装规格，例如 2L、900ml，不与 name 拼接。",
+                  "maxLength": 100,
+                  "title": "Spec",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "quantity",
+                "unit"
+              ],
+              "title": "PurchaseItem",
+              "type": "object"
+            }
+          },
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/$defs/PurchaseItem"
+              },
+              "maxItems": 500,
+              "minItems": 1,
+              "title": "Items",
+              "type": "array"
+            },
+            "total": {
+              "description": "实际付款元，选填；省略由明细合计，单商品省略 price 时可由 total 推导。",
+              "maximum": 10000000000,
+              "minimum": 0,
+              "multipleOf": 0.01,
+              "title": "Total",
+              "type": "number"
+            },
+            "merchant": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Merchant",
+              "type": "string"
+            },
+            "payment_method": {
+              "default": "",
+              "maxLength": 100,
+              "title": "Payment Method",
+              "type": "string"
+            },
+            "note": {
+              "default": "",
+              "maxLength": 2000,
+              "title": "Note",
+              "type": "string"
+            },
+            "idempotency_key": {
+              "description": "每个现实事件稳定保存一个键，重试复用原键及原参数。",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[\\x21-\\x7e]+$",
+              "title": "Idempotency Key",
+              "type": "string"
+            }
+          },
+          "required": [
+            "items",
+            "idempotency_key"
+          ],
+          "title": "RecordPurchaseInput",
+          "type": "object"
+        }
+      }
+    },
+    "validate_purchase": {
+      "type": "function",
+      "function": {
+        "name": "validate_purchase",
+        "description": "预检查购买的名称/规格、金额和预计库存，不写物品、购买、费用、库存或幂等记录。参数与 record_purchase 相同但不需幂等键，只有 items 必填。用于有疑问的账单；返回 warnings 时请用户核对。预检查通过不代表已记账，正式购买用 record_purchase。",
+        "parameters": {
+          "$defs": {
+            "PurchaseItem": {
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "description": "商品基础名称，例如无糖可乐；规格单独填 spec。",
+                  "maxLength": 80,
+                  "minLength": 1,
+                  "title": "Name",
+                  "type": "string"
+                },
+                "quantity": {
+                  "description": "买了多少库存单位，例如一瓶填 1；2L 是规格，不是数量。",
+                  "exclusiveMinimum": 0,
+                  "maximum": 1000000000,
+                  "multipleOf": 0.001,
+                  "title": "Quantity",
+                  "type": "number"
+                },
+                "unit": {
+                  "description": "库存计数单位，例如瓶、包、个；一瓶2L饮料填瓶。",
+                  "maxLength": 20,
+                  "minLength": 1,
+                  "title": "Unit",
+                  "type": "string"
+                },
+                "price": {
+                  "description": "每库存单位的单价，CNY 元；不知道则省略。",
+                  "maximum": 10000000,
+                  "minimum": 0,
+                  "multipleOf": 0.01,
+                  "title": "Price",
+                  "type": "number"
+                },
+                "spec": {
+                  "default": "",
+                  "description": "每包装规格，例如 2L、900ml，不与 name 拼接。",
+                  "maxLength": 100,
+                  "title": "Spec",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "quantity",
+                "unit"
+              ],
+              "title": "PurchaseItem",
+              "type": "object"
+            }
+          },
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/$defs/PurchaseItem"
+              },
+              "maxItems": 500,
+              "minItems": 1,
+              "title": "Items",
+              "type": "array"
+            },
+            "total": {
+              "description": "实际付款元，选填；省略由明细合计，单商品省略 price 时可由 total 推导。",
+              "maximum": 10000000000,
+              "minimum": 0,
+              "multipleOf": 0.01,
+              "title": "Total",
+              "type": "number"
+            },
+            "merchant": {
+              "default": "",
+              "maxLength": 200,
+              "title": "Merchant",
+              "type": "string"
+            },
+            "payment_method": {
+              "default": "",
+              "maxLength": 100,
+              "title": "Payment Method",
+              "type": "string"
+            },
+            "note": {
+              "default": "",
+              "maxLength": 2000,
+              "title": "Note",
+              "type": "string"
+            }
+          },
+          "required": [
+            "items"
+          ],
+          "title": "PurchaseInput",
+          "type": "object"
+        }
+      }
+    },
+    "wubu_inventory_event": {
+      "type": "function",
+      "function": {
+        "name": "wubu_inventory_event",
+        "description": "按名称/规格/别名在同一后端事务处理已有库存，不拆成先查再写。action=consume 用掉多少、adjust 实际剩多少（可0）、open 开封、finish 用完、discard 丢弃；后三项不填 quantity。spec 是包装规格，与库存数量分开。不存在不创建；ITEM_AMBIGUOUS 要询问用户规格，或选候选ID后使用高级wubu的ID操作，不偷偷选一个。写入 source=agent，幂等键稳定保存，超时不换键重发。购买记账用 record_purchase。",
+        "parameters": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "enum": [
+                "consume",
+                "adjust",
+                "open",
+                "finish",
+                "discard"
+              ],
+              "title": "Action",
+              "type": "string"
+            },
+            "name": {
+              "description": "已有物品的名称或别名，不先查找或创建商品。",
+              "maxLength": 80,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "quantity": {
+              "description": "consume=用掉量（正数），adjust=实际剩余；其他动作省略。",
+              "maximum": 1000000000,
+              "minimum": 0,
+              "multipleOf": 0.001,
+              "title": "Quantity",
+              "type": "number"
+            },
+            "spec": {
+              "default": "",
+              "description": "已知包装规格；名称有多个规格时先询问。",
+              "maxLength": 100,
+              "title": "Spec",
+              "type": "string"
+            },
+            "note": {
+              "default": "",
+              "maxLength": 2000,
+              "title": "Note",
+              "type": "string"
+            },
+            "idempotency_key": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[\\x21-\\x7e]+$",
+              "title": "Idempotency Key",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "name",
+            "idempotency_key"
+          ],
+          "title": "InventoryInput",
+          "type": "object"
+        }
+      }
+    }
+  }
+}
