@@ -42,6 +42,7 @@ class LoopSafety:
     discovery_limit: int = 1
     tool_round: int = 0
     repair_round: int = 0
+    reply_repair_round: int = 0
     failed_tools: dict = field(default_factory=dict)
     fingerprints: dict = field(default_factory=dict)
     locked: set = field(default_factory=set)
@@ -56,7 +57,7 @@ class LoopSafety:
 
     @property
     def model_limit_reached(self):
-        return self.model_round >= self.model_limit + self.discovery_round
+        return self.model_round >= self.model_limit + self.discovery_round + self.reply_repair_round
 
     def credit_discovery_round(self, *, expanded, business_calls):
         """Allow one productive, discovery-only round before business execution.

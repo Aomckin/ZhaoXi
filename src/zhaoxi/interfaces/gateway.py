@@ -181,8 +181,7 @@ class InterfaceGateway:
                         emoji_trace["gateway_emitted"],
                         len(emoji_trace.get("message_ids", [])),
                     )
-                self.metrics.increment("interface.chat.completed")
-                trace.emit("runtime_finished", "runtime", "success", "运行已结束")
+                self._finish_runtime(trace, metric="interface.chat")
                 trace.finish()
                 self.agent.last_action_trace = trace.summary()
                 return result
@@ -359,8 +358,7 @@ class InterfaceGateway:
                         emoji_trace["gateway_emitted"],
                         len(emoji_trace.get("message_ids", [])),
                     )
-                self.metrics.increment("interface.regenerate.completed")
-                trace.emit("runtime_finished", "runtime", "success", "运行已结束")
+                self._finish_runtime(trace, metric="interface.regenerate")
                 trace.finish()
                 self.agent.last_action_trace = trace.summary()
                 return result
@@ -520,11 +518,24 @@ class InterfaceGateway:
         if beat:
             beat.note_assistant(datetime.now(UTC))
         result = self._result(response, request_id=request_id, session_id=session_id, action_trace=trace)
-        trace.emit("runtime_finished", "runtime", "success", "运行已结束")
+        self._finish_runtime(trace)
         trace.finish()
         self.agent.last_action_trace = trace.summary()
         self._cache(result)
         return result
+
+    def _finish_runtime(self, trace, *, metric=None):
+        status = trace.overall_result_status()
+        outcome = ("failed" if status in {"failed", "budget_exhausted"} else
+                   "partial" if status == "partial_success" else
+                   "waiting_for_permission" if status == "waiting_for_permission" else "success")
+        if metric:
+            self.metrics.increment(metric + (".failed" if outcome == "failed" else
+                                             ".partial" if outcome == "partial" else
+                                             ".waiting_for_permission" if outcome == "waiting_for_permission" else ".completed"))
+        trace.emit("runtime_finished", "runtime", outcome, "回复未完成" if outcome == "failed" else "运行已结束",
+                   metadata={"result_status": status, "task_status": trace.task_status,
+                             "response_status": trace.response_status})
 
     async def _bounded_permission(self, operation, trace):
         from zhaoxi.errors import AgentLoopError

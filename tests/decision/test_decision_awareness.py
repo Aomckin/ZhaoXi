@@ -402,7 +402,10 @@ async def test_undeliverable_reply_fails_without_empty_bubble_choice_or_maintena
     assert agent.last_reply_protocol["error_code"] == code
     assert all(m.role.value == "user" for m in agent.conversation.messages)
     assert agent.decision_awareness.history.list() == []
-    assert gateway._maintenance is None and len(provider.calls) == 1
+    assert gateway._maintenance is None and len(provider.calls) == (1 if fast else 2)
+    if not fast:
+        assert provider.tool_schemas[-1] is None
+        assert agent.last_action_trace["runtime_metrics"]["repair_round"] == 1
     assert "empty" not in gateway._responses
     # The accepted user turn remains; the existing resume route delivers a fresh reply.
     provider.responses.clear()

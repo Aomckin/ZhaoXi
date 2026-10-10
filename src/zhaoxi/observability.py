@@ -308,13 +308,15 @@ class ActionTrace:
         """Combine delivery and business outcomes without rewriting completed actions."""
         terminal = next((event.outcome for event in reversed(self.events)
                          if event.event_type == "runtime_finished"), None)
-        if self.response_status == "failed" or terminal == "failed":
+        if self.response_status == "failed":
+            return "failed"
+        if self.result_status == "budget_exhausted":
+            return "budget_exhausted"
+        if terminal == "failed":
             return "failed"
         task = self.task_status
         if self.response_status == "waiting_for_permission" or task == "waiting_for_permission":
             return "waiting_for_permission"
-        if self.result_status == "budget_exhausted":
-            return "budget_exhausted"
         if task == "failed":
             return "failed"
         if task == "partial" or self.partial_success:

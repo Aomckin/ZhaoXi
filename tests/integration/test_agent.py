@@ -280,6 +280,8 @@ async def test_invalid_tool_json_after_failed_tool_returns_failure_summary(
     response = await make_agent(provider, registry, context_builder, conversation).run("计算")
     assert "工具操作未能完成" in response.content
     assert "后续工具参数格式有误" in response.content
+    assert response.result_status == "failed"
+    assert calls == 3 and provider.tool_schemas[-1] is None
 
 
 @pytest.mark.parametrize("outcome", ["complete", "invalid_arguments"])
