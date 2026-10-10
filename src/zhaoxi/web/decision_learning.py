@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import ConfigDict, Field
 from zhaoxi.decision.models import ChoiceFeedback
 from zhaoxi.decision.learning_models import LearningModel
+from zhaoxi.decision.principle_tools import PrincipleWrite, save_principle
 from zhaoxi.internal_activity.models import ActivitySpec, ActivityCategory, CostClass
 from zhaoxi.internal_activity.receipt import build_receipt
 from zhaoxi.internal_activity.models import ActivityResult
@@ -163,12 +164,27 @@ def decision_learning_router(core):
         for row in rows:
             row['recent_used_at'] = next((h['timestamp'] for h in learning.history.list(limit=1000)
                                          if row['id'] in h.get('principle_ids', [])), None)
-        fragments = awareness.principle_archive.fragments(query, 5) if query else []
+        for row in rows:
+            row['source_status'] = awareness.principle_archive.source_status(row)
+        fragments = awareness.principle_archive.fragments(query, 5, user_only=True) if query else []
         if principle_id:
             selected = next((r for r in rows if r['id'] == principle_id), None)
             if selected is None:
                 raise HTTPException(404, '用户准则不存在。')
             fragments = awareness.principle_archive.source_fragment(selected)
         return {'items': rows, 'archive_fragments': fragments}
+
+    @router.post('/user-principles')
+    async def save_summary(body: PrincipleWrite):
+        services()
+        try:
+            value = save_principle(core.decision_awareness, body, actor='owner')
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return receipt('保存准则摘要', '已保存摘要索引及原文依据，原始资料保持完整。', value)
+
+    @router.get('/user-principles/{identity}/revisions')
+    async def principle_revisions(identity: str):
+        return {'items': services().principles.revisions(identity)}
 
     return router

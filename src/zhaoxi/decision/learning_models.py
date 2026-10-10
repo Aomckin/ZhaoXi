@@ -1,4 +1,4 @@
-"""Explicit principles and provisional decision experience have separate types."""
+"""Source-backed summary indexes and provisional experience have separate types."""
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Literal
@@ -33,6 +33,8 @@ class LearningModel(BaseModel):
 class UserPrinciple(LearningModel):
     id: str = Field(pattern=r"^[\w-]+$", max_length=100)
     type: Literal["user_principle"] = "user_principle"
+    origin: Literal["owner", "zhaoxi_summary"] = "owner"
+    updated_at: datetime | None = None
     statement: str = Field(min_length=1, max_length=1200)
     domain: str = Field(default="general", max_length=100)
     tags: list[str] = Field(default_factory=list, max_length=20)

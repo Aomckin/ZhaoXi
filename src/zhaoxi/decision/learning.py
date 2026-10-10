@@ -10,7 +10,7 @@ REFLECTION_PROMPT = '''你在后台整理朝汐自己的判断经验，不负责
 仅根据提供的真实反馈、最终选择、建议和少量证据判断可归因性、可推广性。
 不要虚构原因或用户偏好；一次普通 PICK 的好坏不值得建立长期经验。UNKNOWN、不可归因返回 learnable=false/journal_action=NONE。
 GOOD 不必支持，BAD 不必反选；MIXED 优先补条件/例外。多次 NO_DIFFERENCE 可以学习减少分析、检索、澄清的成本，而不是学习选项偏好。
-明确用户准则高于你的经验，冲突填 principle_conflicts，只供 Owner 复查。LOCKED/PINNED/RETIRED 尊重人工状态。
+user_archive_originals 是当前用户资料原文；User Principles 是可修订的摘要索引，可能由朝汐整理，不等于用户确认。优先依据原文及明确表达，不能把摘要当硬规则；冲突填 principle_conflicts 供复查。LOCKED/PINNED/RETIRED 尊重人工状态。
 输出一个 DecisionReflection JSON 对象：decision_id, learnable, summary, lessons, conditions, exceptions,
 journal_action(NONE/CREATE/SUPPORT/REFINE/WEAKEN/CONFLICT/RETIRE), target_journal_id, confidence_delta,
 reason, title, domain, statement, source_decision_ids, principle_conflicts。
@@ -49,12 +49,18 @@ class DecisionLearning:
             entries = list(entries_by_id.values())[:8]
             principles = self.principles.list() if self.principles else []
             principles = [p for p in principles if p['id'] in row.get('principle_ids', [])][:8]
+            originals = []
+            archive = getattr(self.principles, 'archive', None)
+            if archive:
+                principles = [p for p in principles if archive.source_status(p) == 'current']
+                for principle in principles[:3]:
+                    originals.extend(archive.source_fragment(principle))
             if feedback['label'] == 'UNKNOWN':
                 reflection = DecisionReflection(decision_id=decision_id, reason='结果尚未知，不学习。')
             else:
                 fields = ('decision_id', 'summary', 'suggestion', 'mode', 'user_final_choice', 'feedback',
                           'context_refs', 'principle_ids', 'journal_ids')
-                payload = {'decision': {k: row.get(k) for k in fields}, 'user_principles': principles,
+                payload = {'decision': {k: row.get(k) for k in fields}, 'user_principles': principles, 'user_archive_originals': originals,
                     'decision_journal': entries, 'related_history': [{k: r.get(k) for k in fields} for r in relevant]}
                 with llm_owner_scope('decision_reflection', 'decision_learning'):
                     response = await self.provider.generate([Message(role=Role.SYSTEM, content=REFLECTION_PROMPT),

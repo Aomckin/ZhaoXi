@@ -12,7 +12,7 @@ class DecisionContextInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     query: str = Field(min_length=1, max_length=500)
     sources: list[str] = Field(min_length=1, max_length=8,
-        description="只选本题需要的 agenda/current_cognition/memory/user_principles/decision_journal/choice_history（principles兼容别名） 或已注册扩展来源。")
+        description="只选本题需要的 agenda/current_cognition/memory/user_archive/user_principles/decision_journal/choice_history（principles兼容别名） 或已注册扩展来源。")
     limit: int = Field(default=5, ge=1, le=8)
 
 
@@ -43,10 +43,20 @@ class ReadDecisionContext(Tool):
     async def _read(self, source: str, query: str, limit: int) -> list[dict]:
         service = self.awareness
         if source in {"principles", "user_principles"} and service.user_principles:
-            result = [{"ref": source + ":" + r['id'], **r} for r in service.user_principles.retrieve(query, limit)]
+            summaries = [{"ref": source + ":" + r['id'], "authority": "summary_index_not_user_quote", **r}
+                         for r in service.user_principles.retrieve(query, limit)]
+            originals = service.principle_archive.fragments(query, limit, user_only=True) if service.principle_archive else []
             if service.principle_archive:
-                result.extend(service.principle_archive.fragments(query, max(1, limit - len(result))))
-            return result[:limit]
+                for row in summaries:
+                    row['source_status'] = service.principle_archive.source_status(row)
+                summaries = [r for r in summaries if r['source_status'] == 'current']
+                if not originals:
+                    for row in summaries:
+                        originals.extend(service.principle_archive.source_fragment(row))
+            reserved = 1 if summaries and limit > 1 else 0
+            return (originals[:limit - reserved] + summaries[:reserved])[:limit] if originals else summaries[:limit]
+        if source == "user_archive" and service.principle_archive:
+            return service.principle_archive.fragments(query, limit, user_only=True)
         if source == "decision_journal" and service.journal:
             return [{"ref": "decision_journal:" + r['id'], "authority": "agent_experience_not_user_quote", **r}
                     for r in service.journal.retrieve(query, limit)]

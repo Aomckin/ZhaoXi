@@ -1,0 +1,62 @@
+{
+  "date": "2026-10-06",
+  "change": "Writable User Principles summary index; user archive originals are primary evidence.",
+  "python_related_regression": {
+    "passed": 249,
+    "targets": [
+      "tests/decision",
+      "tests/web/test_dashboard.py",
+      "tests/web/test_web.py",
+      "tests/integration"
+    ],
+    "stage": "before final canonical-path read boundary adjustment",
+    "log_local": ".zhaoxi/principle-summary-python.log"
+  },
+  "python_final_focused": {
+    "passed": 14,
+    "targets": [
+      "tests/decision/test_principle_summaries.py"
+    ],
+    "stage": "after final canonical-path adjustment",
+    "log_local": ".zhaoxi/principle-summary-final.log"
+  },
+  "node": {
+    "passed": 98,
+    "failed": 0,
+    "log_local": ".zhaoxi/principle-summary-node.log"
+  },
+  "browser": {
+    "checks": [
+      "model-written summary is labelled as agent abstraction",
+      "summary drills into actual user archive original",
+      "dashboard summary edits persist",
+      "summary revision history preserves model and owner authorship",
+      "new archive search supplies verified reference and quote",
+      "saved summaries survive page reload",
+      "no browser script errors"
+    ],
+    "errors": []
+  },
+  "compileall": true,
+  "git_diff_check": true,
+  "real_model_calls": 0,
+  "model_write_chain": "Simulated main provider: read user_archive, write_user_principle, then final reply; three normal tool-loop model turns, no separate summarizer.",
+  "production_archive_modified": false,
+  "production_principles_modified": false,
+  "production_restarted": false,
+  "storage": "revisions.jsonl authoritative; per-id JSON atomically replaced as repairable index",
+  "behavior": [
+    "Dynamically discover up to 200 user Markdown/TXT documents plus configured supplementary archive paths.",
+    "Queries read current user originals before at most one relevant summary index when originals exist.",
+    "Require actual source reference and verbatim quote; save origin and source hash.",
+    "Source changed or missing: do not reuse old summary; let the main model re-read and revise when useful.",
+    "Summary writes reuse stable id; identical retry does not create another revision.",
+    "Dashboard can search originals, edit summary, inspect original and revisions.",
+    "Owner private only."
+  ],
+  "limits": [
+    "No all-document regeneration on startup.",
+    "No automatic full index reconstruction after every archive change; stale summaries are skipped until model or Owner revises them.",
+    "Snapshot hash covers the bounded 32000-character text read."
+  ]
+}

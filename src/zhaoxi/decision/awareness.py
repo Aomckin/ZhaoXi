@@ -67,7 +67,7 @@ class DecisionAwareness:
         self.recent_traces: list[dict] = []
 
     def register_context_provider(self, name: str, provider: DecisionContextProvider) -> None:
-        if name in {"agenda", "current_cognition", "memory", "principles", "choice_history", "user_principles", "decision_journal"}:
+        if name in {"agenda", "current_cognition", "memory", "principles", "choice_history", "user_principles", "user_archive", "decision_journal"}:
             raise ValueError("Built-in source cannot be replaced")
         self.providers[name] = provider
 
@@ -104,7 +104,7 @@ class DecisionAwareness:
 
     def prompt(self, conversation) -> str:
         value = AWARENESS_PROMPT + """
-User Principles 是用户明确确认的准则，优先于朝汐自己的经验。Decision Journal 是你从真实选择和反馈中总结的暂时判断，可参考，不是用户原话或硬规则。Choice History 只作弱证据。当前现实和明确表达优先。需要时 read_decision_context sources 可选 user_principles/decision_journal；不全量预读。
+User Principles 是可修订的准则摘要索引，包含朝汐整理的内容，不等于用户原话或用户确认。实际参考一般先 read_decision_context sources=["user_archive"] 查询 archive/user 原文；user_principles 也优先返回原文。原文与摘要冲突时以当前用户明确表达和原文为准。读到值得复用的原则时，可用 write_user_principle 自己抽象总结、补充或修订对应索引，引用实际读取的 source_ref 和逐字 source_quote，保留条件和例外；不必每轮写，不修改原始 archive。Decision Journal 是你从真实选择和反馈中总结的暂时判断，可参考，不是用户原话或硬规则。Choice History 只作弱证据。当前现实和明确表达优先。需要时 read_decision_context sources 可选 user_principles/decision_journal；不全量预读。
 反馈是同一主回复的旁产物：用户明确承接下面某条选择且谈到实际结果时，必须在 awareness 中填 feedback={decision_id, user_final_choice:null或明确选择, outcome_label:GOOD/BAD/NEUTRAL/MIXED/NO_DIFFERENCE/UNKNOWN, outcome_text:本轮原话, feedback_source:natural或follow_up}。模糊的“挺好”“都一样”、不能唯一确认选择对象时不绑反馈；最终选择不明用 null，不臆造。反馈不直接变用户偏好。先简短自然回应，不在前台声称已经总结出长期经验；后台才反思。只是在接受已发生的结果时 mode=NONE，不把接受反馈改写成新的 ADVISE，也不能用一段安慰或新建议代替 feedback 字段。
 awareness 可填 journal_ids（仅实际读取的日记 ID）、follow_up_policy:NEVER/PASSIVE/OPPORTUNISTIC/SCHEDULED、follow_up_after:含时区ISO时间或null。琐碎菜单 NEVER、饮料小消费 PASSIVE；值得回顾才 OPPORTUNISTIC，明确长期观察时间才 SCHEDULED。不能每个 PICK 都主动问。后台反思不写进本轮 reply schema。
 """

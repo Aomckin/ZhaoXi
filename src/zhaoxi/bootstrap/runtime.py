@@ -105,8 +105,10 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         from zhaoxi.decision.journal import DecisionJournalStore
         from zhaoxi.decision.user_principles import UserPrincipleStore, DecisionPrincipleArchiveProvider
         from zhaoxi.decision.learning import DecisionLearning
-        awareness.user_principles = UserPrincipleStore(settings.decision_user_principles_directory)
         awareness.principle_archive = DecisionPrincipleArchiveProvider(settings.archive_directory, settings.decision_principle_archive_paths)
+        awareness.user_principles = UserPrincipleStore(settings.decision_user_principles_directory, awareness.principle_archive)
+        from zhaoxi.decision.principle_tools import WriteUserPrinciple
+        registry.register(WriteUserPrinciple(awareness))
         awareness.journal = DecisionJournalStore(settings.decision_data_directory)
         runtime.decision_learning = DecisionLearning(awareness.history, awareness.journal, awareness.user_principles, provider)
         from zhaoxi.decision.follow_up import DecisionFollowUp
