@@ -18,10 +18,15 @@
 - [2026-10-08 近一周失败日志统计与 Bug 审计](maintenance/2026-10-08-weekly-failure-log-audit.md)
 - [2026-10-09 后台摘要预算与失败队列修复](maintenance/2026-10-09-background-snapshot-recovery.md)
 - [2026-10-09 空内容认知计数与失败指标修复](maintenance/2026-10-09-cognition-count-and-result-metrics.md)
+- [2026-10-10 近三天失败日志与 v1.4.8 清债审计](maintenance/2026-10-10-three-day-failure-log-audit.md)
+- [2026-10-10 未提交改动检查与提交记录](maintenance/2026-10-10-uncommitted-change-review.md)
+- [2026-10-06 User Principles 自主摘要与原文优先](maintenance/2026-10-06-user-principle-summaries.md)
 - [未来开发计划](<roadmap/Zhaoxi 未来开发计划.md>)
 - [常驻与自启动](guides/presence-autostart.md)
 
 ## v1.4.x
+
+- [v1.4.8 Reliability 已知问题与清债记录（待开发）](v1.4.x/Zhaoxi_v1.4.8_Reliability_已知问题与清债记录.md)
 
 - [v1.4.7 Decision Learning 任务书](v1.4.x/Zhaoxi_v1.4.7_Decision_Learning_Decision_Journal_开发任务书.md)
 - [v1.4.7 开发记录与验收边界](v1.4.x/Zhaoxi_v1.4.7_开发记录.md)

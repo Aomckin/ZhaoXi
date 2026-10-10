@@ -1,0 +1,1175 @@
+{
+  "interval": {
+    "start": "2026-10-07T00:00:00+08:00",
+    "end": "2026-10-10T00:00:00+08:00",
+    "timezone": "Asia/Shanghai",
+    "mode": "last_3_completed_calendar_days"
+  },
+  "files": [
+    {
+      "path": ".zhaoxi\\logs\\zhaoxi.log",
+      "bytes": 6513138,
+      "sha256": "a39c8cf9ac57a24eae46e743c6c0fec30b8d5c0ac498135bd622388c0a2957ae",
+      "first": "2026-10-08T22:41:45.028000+08:00",
+      "last": "2026-10-10T00:00:26.746000+08:00"
+    },
+    {
+      "path": ".zhaoxi\\logs\\zhaoxi.log.1",
+      "bytes": 10485609,
+      "sha256": "1cb43c6b354527b1f0efcb24e6c73abdc047e642fd81499116944f2b6562d396",
+      "first": "2026-10-07T15:06:35.087000+08:00",
+      "last": "2026-10-08T22:41:45.020000+08:00"
+    },
+    {
+      "path": ".zhaoxi\\logs\\zhaoxi.log.2",
+      "bytes": 10485753,
+      "sha256": "7db36888b04bce39165ee556c821c8ab3e70dc3ddd21883844e1b892e75580fe",
+      "first": "2026-10-05T15:40:26.852000+08:00",
+      "last": "2026-10-07T15:06:35.079000+08:00"
+    },
+    {
+      "path": ".zhaoxi\\logs\\zhaoxi.log.3",
+      "bytes": 10485313,
+      "sha256": "2b39d528cb14addc036608a0ea711ec50204d7897e0d054431fb40750e16ca13",
+      "first": "2026-10-03T23:29:47.976000+08:00",
+      "last": "2026-10-05T15:40:26.833000+08:00"
+    },
+    {
+      "path": ".zhaoxi\\logs\\zhaoxi.log.4",
+      "bytes": 10485471,
+      "sha256": "73a54fddfeebf56e3b0eae9e4ab6c3572815b0fb36e66c14ab817a6f27b773b0",
+      "first": "2026-10-01T15:51:57.772000+08:00",
+      "last": "2026-10-03T23:29:47.958000+08:00"
+    },
+    {
+      "path": ".zhaoxi\\logs\\zhaoxi.log.5",
+      "bytes": 10483919,
+      "sha256": "1f0befd187777b04a4c5530c479d7bde138c5a0e83e5bfbe04aa43e066981b66",
+      "first": "2026-09-28T11:34:25.361000+08:00",
+      "last": "2026-10-01T15:51:57.765000+08:00"
+    }
+  ],
+  "records": 104869,
+  "levels": {
+    "WARNING": 6103,
+    "ERROR": 12
+  },
+  "foreground": {
+    "request_started": 153,
+    "terminal_failed": 30,
+    "terminal_success": 123,
+    "terminal_failure_rate": 0.19607843137254902,
+    "failure_codes": {
+      "agent_loop_error": 3,
+      "empty_model_reply": 11,
+      "agent_timeout": 3,
+      "invalid_reply_protocol": 7,
+      "provider_protocol_error": 1,
+      "provider_http_400": 4,
+      "provider_transport_error": 1
+    },
+    "stage_reply_failure_then_runtime_success": 25,
+    "runtime_success_but_metrics_failed": 13,
+    "daily": [
+      {
+        "date": "2026-10-07",
+        "requests": 65,
+        "terminal_failed": 17
+      },
+      {
+        "date": "2026-10-08",
+        "requests": 40,
+        "terminal_failed": 8
+      },
+      {
+        "date": "2026-10-09",
+        "requests": 48,
+        "terminal_failed": 5
+      }
+    ],
+    "failures": [
+      {
+        "request_id": "965def11-8718-491c-89bc-6f07bc35c329",
+        "first": "2026-10-07T00:00:09.949000+08:00",
+        "last": "2026-10-07T00:02:19.699000+08:00",
+        "error_code": "agent_loop_error",
+        "log_ref": {
+          "at": "2026-10-07T00:02:19.699000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+          "line": 32916,
+          "request_id": "965def11-8718-491c-89bc-6f07bc35c329"
+        },
+        "total_ms": 129688.6
+      },
+      {
+        "request_id": "25da7de3-507c-4d7f-b8f6-70334785643c",
+        "first": "2026-10-07T00:13:11.084000+08:00",
+        "last": "2026-10-07T00:13:34.609000+08:00",
+        "error_code": "empty_model_reply",
+        "log_ref": {
+          "at": "2026-10-07T00:13:34.609000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+          "line": 33420,
+          "request_id": "25da7de3-507c-4d7f-b8f6-70334785643c"
+        },
+        "total_ms": 23459.44
+      },
+      {
+        "request_id": "dadde3ca-0120-4021-9275-79e890329a3e",
+        "first": "2026-10-07T00:15:41.709000+08:00",
+        "last": "2026-10-07T00:16:23.251000+08:00",
+        "error_code": "empty_model_reply",
+        "log_ref": {
+          "at": "2026-10-07T00:16:23.251000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+          "line": 33604,
+          "request_id": "dadde3ca-0120-4021-9275-79e890329a3e"
+        },
+        "total_ms": 41487.26
+      },
+      {
+        "request_id": "91610bf0-bbca-4ea9-bb1c-e3ebf4b237b9",
+        "first": "2026-10-07T00:16:25.279000+08:00",
+        "last": "2026-10-07T00:17:14.898000+08:00",
+        "error_code": "empty_model_reply",
+        "log_ref": {
+          "at": "2026-10-07T00:17:14.898000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+          "line": 33668,
+          "request_id": "91610bf0-bbca-4ea9-bb1c-e3ebf4b237b9"
+        },
+        "total_ms": 49549.6
+      },
+      {
+        "request_id": "59a39436-ecb8-479f-91d4-785bc85724a6",
+        "first": "2026-10-07T00:33:30.906000+08:00",
+        "last": "2026-10-07T00:33:50.812000+08:00",
+        "error_code": "empty_model_reply",
+        "log_ref": {
+          "at": "2026-10-07T00:33:50.812000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+          "line": 34315,
+          "request_id": "59a39436-ecb8-479f-91d4-785bc85724a6"
+        },
+        "total_ms": 19838.2
+      },
+      {
+        "request_id": "c20e1a89-b0d0-41f3-972e-d79a7770e5a3",
+        "first": "2026-10-07T00:35:25.230000+08:00",
+        "last": "2026-10-07T00:35:46.404000+08:00",
+        "error_code": "empty_model_reply",
+        "log_ref": {
+          "at": "2026-10-07T00:35:46.404000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+          "line": 34433,
+          "request_id": "c20e1a89-b0d0-41f3-972e-d79a7770e5a3"
+        },
+        "total_ms": 21095.32
+      },
+      {
+        "request_id": "ec2e29f1-d807-4ed9-8034-68d95c951585",
+        "first": "2026-10-07T08:49:50.833000+08:00",
+        "last": "2026-10-07T08:50:51.475000+08:00",
+        "error_code": "agent_timeout",
+        "log_ref": {
+          "at": "2026-10-07T08:50:51.475000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+          "line": 36440,
+          "request_id": "ec2e29f1-d807-4ed9-8034-68d95c951585"
+        },
+        "total_ms": 60574.3
+      },
+      {
+        "request_id": "d7b87397-83c3-47ab-825b-d9db31d9af7b",
+        "first": "2026-10-07T08:53:04.895000+08:00",
+        "last": "2026-10-07T08:53:11.636000+08:00",
+        "error_code": "invalid_reply_protocol",
+        "log_ref": {
+          "at": "2026-10-07T08:53:11.636000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+          "line": 36636,
+          "request_id": "d7b87397-83c3-47ab-825b-d9db31d9af7b"
+        },
+        "total_ms": 6678.3
+      },
+      {
+        "request_id": "fb3f2791-3e7d-454f-8e27-286ae382e9b7",
+        "first": "2026-10-07T08:53:17.830000+08:00",
+        "last": "2026-10-07T08:53:23.760000+08:00",
+        "error_code": "invalid_reply_protocol",
+        "log_ref": {
+          "at": "2026-10-07T08:53:23.760000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+          "line": 36652,
+          "request_id": "fb3f2791-3e7d-454f-8e27-286ae382e9b7"
+        },
+        "total_ms": 5856.1
+      },
+      {
+        "request_id": "d6f620c9-41a3-41c6-9141-6ee5894c7d93",
+        "first": "2026-10-07T08:55:47.114000+08:00",
+        "last": "2026-10-07T08:56:01.381000+08:00",
+        "error_code": "invalid_reply_protocol",
+        "log_ref": {
+          "at": "2026-10-07T08:56:01.381000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+          "line": 36808,
+          "request_id": "d6f620c9-41a3-41c6-9141-6ee5894c7d93"
+        },
+        "total_ms": 14203.27
+      },
+      {
+        "request_id": "04717c9c-769d-40d2-934b-7bed1944d993",
+        "first": "2026-10-07T12:37:19.075000+08:00",
+        "last": "2026-10-07T12:39:19.120000+08:00",
+        "error_code": "agent_timeout",
+        "log_ref": {
+          "at": "2026-10-07T12:39:19.120000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+          "line": 47861,
+          "request_id": "04717c9c-769d-40d2-934b-7bed1944d993"
+        },
+        "total_ms": 120044.89
+      },
+      {
+        "request_id": "5dda9cfd-2eb3-4988-8f8e-ca77c1868694",
+        "first": "2026-10-07T15:47:15.862000+08:00",
+        "last": "2026-10-07T15:49:25.270000+08:00",
+        "error_code": "agent_loop_error",
+        "log_ref": {
+          "at": "2026-10-07T15:49:25.270000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+          "line": 2013,
+          "request_id": "5dda9cfd-2eb3-4988-8f8e-ca77c1868694"
+        },
+        "total_ms": 129373.39
+      },
+      {
+        "request_id": "24fad798-4805-4c01-8a48-1f205815bf71",
+        "first": "2026-10-07T21:59:18.245000+08:00",
+        "last": "2026-10-07T21:59:26.983000+08:00",
+        "error_code": "provider_protocol_error",
+        "log_ref": {
+          "at": "2026-10-07T21:59:26.983000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+          "line": 17234,
+          "request_id": "24fad798-4805-4c01-8a48-1f205815bf71"
+        },
+        "total_ms": 8736.6
+      },
+      {
+        "request_id": "438381d0-0055-4b07-b89a-e5b35fda450e",
+        "first": "2026-10-07T22:02:56.999000+08:00",
+        "last": "2026-10-07T22:03:04.204000+08:00",
+        "error_code": "empty_model_reply",
+        "log_ref": {
+          "at": "2026-10-07T22:03:04.204000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+          "line": 17679,
+          "request_id": "438381d0-0055-4b07-b89a-e5b35fda450e"
+        },
+        "total_ms": 7196.3
+      },
+      {
+        "request_id": "3bcbbc20-add5-47b5-af72-a1272168b0e1",
+        "first": "2026-10-07T22:03:46.326000+08:00",
+        "last": "2026-10-07T22:03:50.839000+08:00",
+        "error_code": "empty_model_reply",
+        "log_ref": {
+          "at": "2026-10-07T22:03:50.839000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+          "line": 17789,
+          "request_id": "3bcbbc20-add5-47b5-af72-a1272168b0e1"
+        },
+        "total_ms": 4506.99
+      },
+      {
+        "request_id": "7643ec73-5df3-45ed-a807-dcaf1851047c",
+        "first": "2026-10-07T22:04:10.659000+08:00",
+        "last": "2026-10-07T22:04:19.181000+08:00",
+        "error_code": "empty_model_reply",
+        "log_ref": {
+          "at": "2026-10-07T22:04:19.181000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+          "line": 17859,
+          "request_id": "7643ec73-5df3-45ed-a807-dcaf1851047c"
+        },
+        "total_ms": 8516.21
+      },
+      {
+        "request_id": "83dde4fc-c1a4-4995-950a-3dd6c793f2f7",
+        "first": "2026-10-07T22:22:57.755000+08:00",
+        "last": "2026-10-07T22:23:06.971000+08:00",
+        "error_code": "provider_http_400",
+        "log_ref": {
+          "at": "2026-10-07T22:23:06.971000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+          "line": 18617,
+          "request_id": "83dde4fc-c1a4-4995-950a-3dd6c793f2f7"
+        },
+        "total_ms": 9225.64
+      },
+      {
+        "request_id": "3cb2b8df-1e35-4072-b589-e9df78661666",
+        "first": "2026-10-08T10:08:48.130000+08:00",
+        "last": "2026-10-08T10:08:54.171000+08:00",
+        "error_code": "provider_http_400",
+        "log_ref": {
+          "at": "2026-10-08T10:08:54.171000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+          "line": 24724,
+          "request_id": "3cb2b8df-1e35-4072-b589-e9df78661666"
+        },
+        "total_ms": 6035.35
+      },
+      {
+        "request_id": "eb08fadb-d81f-4b34-8624-72c4f50c7262",
+        "first": "2026-10-08T10:08:57.407000+08:00",
+        "last": "2026-10-08T10:09:02.577000+08:00",
+        "error_code": "provider_http_400",
+        "log_ref": {
+          "at": "2026-10-08T10:09:02.577000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+          "line": 24741,
+          "request_id": "eb08fadb-d81f-4b34-8624-72c4f50c7262"
+        },
+        "total_ms": 5151.19
+      },
+      {
+        "request_id": "6eb93510-9e04-4ee5-9ce4-f9207076f5f1",
+        "first": "2026-10-08T10:09:29.707000+08:00",
+        "last": "2026-10-08T10:09:34.967000+08:00",
+        "error_code": "provider_http_400",
+        "log_ref": {
+          "at": "2026-10-08T10:09:34.967000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+          "line": 24783,
+          "request_id": "6eb93510-9e04-4ee5-9ce4-f9207076f5f1"
+        },
+        "total_ms": 5241.56
+      },
+      {
+        "request_id": "56ea5ff8-b6e8-44f2-b048-d393a961c74a",
+        "first": "2026-10-08T16:41:51.380000+08:00",
+        "last": "2026-10-08T16:42:06.100000+08:00",
+        "error_code": "empty_model_reply",
+        "log_ref": {
+          "at": "2026-10-08T16:42:06.100000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+          "line": 43891,
+          "request_id": "56ea5ff8-b6e8-44f2-b048-d393a961c74a"
+        },
+        "total_ms": 14725.31
+      },
+      {
+        "request_id": "173ee7a5-dfd5-4c8e-a06b-e489458ef2c4",
+        "first": "2026-10-08T16:42:31.902000+08:00",
+        "last": "2026-10-08T16:42:47.645000+08:00",
+        "error_code": "invalid_reply_protocol",
+        "log_ref": {
+          "at": "2026-10-08T16:42:47.645000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+          "line": 43953,
+          "request_id": "173ee7a5-dfd5-4c8e-a06b-e489458ef2c4"
+        },
+        "total_ms": 15731.47
+      },
+      {
+        "request_id": "cbc4c29f-6c60-48e3-b8d5-7979de112cbf",
+        "first": "2026-10-08T19:26:35.837000+08:00",
+        "last": "2026-10-08T19:26:46.977000+08:00",
+        "error_code": "invalid_reply_protocol",
+        "log_ref": {
+          "at": "2026-10-08T19:26:46.977000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+          "line": 52428,
+          "request_id": "cbc4c29f-6c60-48e3-b8d5-7979de112cbf"
+        },
+        "total_ms": 11135.99
+      },
+      {
+        "request_id": "6a1259aa-d591-4ec3-b74c-50ba65c49f32",
+        "first": "2026-10-08T19:28:48.682000+08:00",
+        "last": "2026-10-08T19:29:05.226000+08:00",
+        "error_code": "empty_model_reply",
+        "log_ref": {
+          "at": "2026-10-08T19:29:05.226000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+          "line": 52634,
+          "request_id": "6a1259aa-d591-4ec3-b74c-50ba65c49f32"
+        },
+        "total_ms": 16538.3
+      },
+      {
+        "request_id": "85652356-518e-4bb9-9b81-c3298045b6f8",
+        "first": "2026-10-08T22:43:25.251000+08:00",
+        "last": "2026-10-08T22:43:38.515000+08:00",
+        "error_code": "invalid_reply_protocol",
+        "log_ref": {
+          "at": "2026-10-08T22:43:38.515000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log",
+          "line": 80,
+          "request_id": "85652356-518e-4bb9-9b81-c3298045b6f8"
+        },
+        "total_ms": 13259.41
+      },
+      {
+        "request_id": "59097796-f1d7-4669-bf6d-d851b656f14f",
+        "first": "2026-10-09T00:12:51.612000+08:00",
+        "last": "2026-10-09T00:13:06.429000+08:00",
+        "error_code": "invalid_reply_protocol",
+        "log_ref": {
+          "at": "2026-10-09T00:13:06.429000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log",
+          "line": 3967,
+          "request_id": "59097796-f1d7-4669-bf6d-d851b656f14f"
+        },
+        "total_ms": 14816.71
+      },
+      {
+        "request_id": "1a720162-4071-403b-8a52-b43c41589715",
+        "first": "2026-10-09T15:13:42.977000+08:00",
+        "last": "2026-10-09T15:13:56.342000+08:00",
+        "error_code": "provider_transport_error",
+        "log_ref": {
+          "at": "2026-10-09T15:13:56.342000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log",
+          "line": 15705,
+          "request_id": "1a720162-4071-403b-8a52-b43c41589715"
+        },
+        "total_ms": 13361.6
+      },
+      {
+        "request_id": "26caab97-0b58-49dc-ab7e-9e7a637ac13a",
+        "first": "2026-10-09T17:42:52.883000+08:00",
+        "last": "2026-10-09T17:44:52.937000+08:00",
+        "error_code": "agent_timeout",
+        "log_ref": {
+          "at": "2026-10-09T17:44:52.937000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log",
+          "line": 22632,
+          "request_id": "26caab97-0b58-49dc-ab7e-9e7a637ac13a"
+        },
+        "total_ms": 120048.13
+      },
+      {
+        "request_id": "63a53ca9-b6ee-48ab-b16d-e586b4379569",
+        "first": "2026-10-09T17:48:35.009000+08:00",
+        "last": "2026-10-09T17:50:35.768000+08:00",
+        "error_code": "agent_loop_error",
+        "log_ref": {
+          "at": "2026-10-09T17:50:35.768000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log",
+          "line": 22917,
+          "request_id": "63a53ca9-b6ee-48ab-b16d-e586b4379569"
+        },
+        "total_ms": 120726.07
+      },
+      {
+        "request_id": "b1f10153-8b71-4a3d-8e42-926263726309",
+        "first": "2026-10-09T23:42:08.061000+08:00",
+        "last": "2026-10-09T23:42:19.332000+08:00",
+        "error_code": "empty_model_reply",
+        "log_ref": {
+          "at": "2026-10-09T23:42:19.332000+08:00",
+          "file": ".zhaoxi\\logs\\zhaoxi.log",
+          "line": 32511,
+          "request_id": "b1f10153-8b71-4a3d-8e42-926263726309"
+        },
+        "total_ms": 11261.26
+      }
+    ]
+  },
+  "failure_signals": {
+    "token_budget_exhausted": 1383,
+    "snapshot_cognition_failure": 1659,
+    "web_operation_failed": 30,
+    "main_reply_rejected": 41,
+    "lifehud_health_failure": 17,
+    "qq_connection_refused": 2692,
+    "sensor_failure": 36,
+    "internal_activity_failed": 63,
+    "token_budget_other_warning_or_error": 8,
+    "agent_other_warning_or_error": 17,
+    "current_cognition_maintain_failed": 7,
+    "external_direct_failure": 1,
+    "shutdown_timeout": 2,
+    "asgi_exception": 4,
+    "web_other_warning_or_error": 1,
+    "provider_tool_arguments_invalid": 5,
+    "external_planner_failure": 3,
+    "provider_http_400": 208,
+    "pywebview_other_warning_or_error": 1
+  },
+  "daily_signals": {
+    "2026-10-07": {
+      "token_budget_exhausted": 603,
+      "snapshot_cognition_failure": 783,
+      "web_operation_failed": 17,
+      "main_reply_rejected": 16,
+      "lifehud_health_failure": 5,
+      "qq_connection_refused": 1177,
+      "sensor_failure": 10,
+      "internal_activity_failed": 8,
+      "token_budget_other_warning_or_error": 7,
+      "agent_other_warning_or_error": 7,
+      "current_cognition_maintain_failed": 1,
+      "external_direct_failure": 1,
+      "shutdown_timeout": 1,
+      "asgi_exception": 3,
+      "web_other_warning_or_error": 1,
+      "provider_tool_arguments_invalid": 1,
+      "external_planner_failure": 3,
+      "provider_http_400": 165
+    },
+    "2026-10-08": {
+      "provider_http_400": 43,
+      "snapshot_cognition_failure": 806,
+      "lifehud_health_failure": 5,
+      "qq_connection_refused": 1082,
+      "sensor_failure": 12,
+      "internal_activity_failed": 6,
+      "web_operation_failed": 8,
+      "pywebview_other_warning_or_error": 1,
+      "token_budget_exhausted": 756,
+      "provider_tool_arguments_invalid": 2,
+      "current_cognition_maintain_failed": 6,
+      "main_reply_rejected": 10
+    },
+    "2026-10-09": {
+      "token_budget_exhausted": 24,
+      "snapshot_cognition_failure": 70,
+      "main_reply_rejected": 15,
+      "web_operation_failed": 5,
+      "shutdown_timeout": 1,
+      "asgi_exception": 1,
+      "lifehud_health_failure": 7,
+      "qq_connection_refused": 433,
+      "sensor_failure": 14,
+      "internal_activity_failed": 49,
+      "provider_tool_arguments_invalid": 2,
+      "agent_other_warning_or_error": 10,
+      "token_budget_other_warning_or_error": 1
+    }
+  },
+  "internal_activity_errors": [
+    [
+      [
+        "perception_cognition",
+        "ProviderError"
+      ],
+      43
+    ],
+    [
+      [
+        "current_cognition_consolidation",
+        "TypeError"
+      ],
+      10
+    ],
+    [
+      [
+        "memory_maintenance",
+        "RuntimeError"
+      ],
+      6
+    ],
+    [
+      [
+        "perception_cognition",
+        "ValidationError"
+      ],
+      4
+    ]
+  ],
+  "provider_http": {
+    "count": 208,
+    "by_code_and_model": [
+      [
+        [
+          "400",
+          "unsupported_model",
+          "deepseek-flash"
+        ],
+        208
+      ]
+    ]
+  },
+  "reply_protocol": {
+    "count": 41,
+    "by_encoding": {
+      "empty": 23,
+      "json": 9,
+      "truncated_json": 4,
+      "mixed_json": 3,
+      "tool_arguments": 2
+    }
+  },
+  "tool_failures": [
+    {
+      "at": "2026-10-07T08:51:18.448000+08:00",
+      "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+      "line": 36482,
+      "request_id": "0f37053d-fd2b-4b41-a2fe-147bb099989a",
+      "tool": "write_user_principle",
+      "error_code": "tool_execution_error",
+      "metadata": {
+        "result_code": "ValueError",
+        "duration_ms": 22.98
+      }
+    },
+    {
+      "at": "2026-10-07T17:54:38.900000+08:00",
+      "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+      "line": 7122,
+      "request_id": "eac1ef8e-cb1e-4f1a-ad83-6ab40e2101cc",
+      "tool": "mcp_filesystem_search_files",
+      "error_code": "tool_execution_error",
+      "metadata": {
+        "result_code": "mcp_call_failed",
+        "duration_ms": 15159.95
+      }
+    },
+    {
+      "at": "2026-10-08T19:14:21.751000+08:00",
+      "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+      "line": 51701,
+      "request_id": "b8411f12-6bbf-4ac7-9763-f83fec0365ff",
+      "tool": "lifehud",
+      "error_code": "tool_execution_error",
+      "metadata": {
+        "result_code": "lifehud_invalid_argument",
+        "duration_ms": 535.92
+      }
+    },
+    {
+      "at": "2026-10-08T19:14:30.327000+08:00",
+      "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+      "line": 51717,
+      "request_id": "b8411f12-6bbf-4ac7-9763-f83fec0365ff",
+      "tool": "lifehud",
+      "error_code": "tool_execution_error",
+      "metadata": {
+        "result_code": "validation_error",
+        "duration_ms": 21.32
+      }
+    },
+    {
+      "at": "2026-10-09T14:55:08.923000+08:00",
+      "file": ".zhaoxi\\logs\\zhaoxi.log",
+      "line": 14818,
+      "request_id": "fbf57375-a4b4-4c3f-8582-7941caf9f279",
+      "tool": "add_job",
+      "error_code": "tool_execution_error",
+      "metadata": {
+        "result_code": "failed",
+        "duration_ms": 17.31
+      }
+    },
+    {
+      "at": "2026-10-09T14:55:08.941000+08:00",
+      "file": ".zhaoxi\\logs\\zhaoxi.log",
+      "line": 14823,
+      "request_id": "fbf57375-a4b4-4c3f-8582-7941caf9f279",
+      "tool": "add_job",
+      "error_code": "tool_execution_error",
+      "metadata": {
+        "result_code": "failed",
+        "duration_ms": 17.64
+      }
+    },
+    {
+      "at": "2026-10-09T16:26:41.331000+08:00",
+      "file": ".zhaoxi\\logs\\zhaoxi.log",
+      "line": 19107,
+      "request_id": "f9304bc0-a199-464c-ae1c-d38e4889eb3d",
+      "tool": "add_job",
+      "error_code": "tool_execution_error",
+      "metadata": {
+        "result_code": "failed",
+        "duration_ms": 18.78
+      }
+    },
+    {
+      "at": "2026-10-09T16:26:50.105000+08:00",
+      "file": ".zhaoxi\\logs\\zhaoxi.log",
+      "line": 19121,
+      "request_id": "f9304bc0-a199-464c-ae1c-d38e4889eb3d",
+      "tool": "add_job",
+      "error_code": "tool_execution_error",
+      "metadata": {
+        "result_code": "failed",
+        "duration_ms": 18.82
+      }
+    }
+  ],
+  "category_examples": {
+    "token_budget_exhausted": [
+      {
+        "at": "2026-10-07T00:00:04.834000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 32815,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T08:22:28.691000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 34665,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T08:23:12.344000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 34736,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T08:23:41.679000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 34769,
+        "request_id": null
+      }
+    ],
+    "snapshot_cognition_failure": [
+      {
+        "at": "2026-10-07T00:00:04.834000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 32816,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T08:23:12.344000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 34737,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T08:23:41.679000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 34770,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T08:24:18.005000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 34808,
+        "request_id": null
+      }
+    ],
+    "web_operation_failed": [
+      {
+        "at": "2026-10-07T00:02:19.699000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 32916,
+        "request_id": "965def11-8718-491c-89bc-6f07bc35c329"
+      },
+      {
+        "at": "2026-10-07T00:13:34.609000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 33420,
+        "request_id": "25da7de3-507c-4d7f-b8f6-70334785643c"
+      },
+      {
+        "at": "2026-10-07T00:16:23.251000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 33604,
+        "request_id": "dadde3ca-0120-4021-9275-79e890329a3e"
+      },
+      {
+        "at": "2026-10-07T00:17:14.898000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 33668,
+        "request_id": "91610bf0-bbca-4ea9-bb1c-e3ebf4b237b9"
+      }
+    ],
+    "main_reply_rejected": [
+      {
+        "at": "2026-10-07T00:13:34.524000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 33415,
+        "request_id": "25da7de3-507c-4d7f-b8f6-70334785643c"
+      },
+      {
+        "at": "2026-10-07T00:16:23.178000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 33599,
+        "request_id": "dadde3ca-0120-4021-9275-79e890329a3e"
+      },
+      {
+        "at": "2026-10-07T00:17:14.829000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 33663,
+        "request_id": "91610bf0-bbca-4ea9-bb1c-e3ebf4b237b9"
+      },
+      {
+        "at": "2026-10-07T00:33:50.721000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 34310,
+        "request_id": "59a39436-ecb8-479f-91d4-785bc85724a6"
+      }
+    ],
+    "lifehud_health_failure": [
+      {
+        "at": "2026-10-07T08:21:58.841000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 34634,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T09:17:10.295000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 37088,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T14:37:58.148000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 47968,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T19:24:16.958000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 9105,
+        "request_id": null
+      }
+    ],
+    "qq_connection_refused": [
+      {
+        "at": "2026-10-07T08:21:59.732000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 34636,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T08:22:07.316000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 34642,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T08:22:15.392000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 34660,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T08:22:22.432000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 34662,
+        "request_id": null
+      }
+    ],
+    "sensor_failure": [
+      {
+        "at": "2026-10-07T08:22:04.912000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 34638,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T08:22:05.008000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 34639,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T09:17:17.254000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 37092,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T09:17:17.254000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 37093,
+        "request_id": null
+      }
+    ],
+    "internal_activity_failed": [
+      {
+        "at": "2026-10-07T08:22:28.704000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 34666,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T11:32:57.160000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 44700,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T12:03:15.016000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 46184,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T15:30:18.042000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 1204,
+        "request_id": null
+      }
+    ],
+    "token_budget_other_warning_or_error": [
+      {
+        "at": "2026-10-07T08:22:43.492000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 34704,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T14:48:17.939000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 48645,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T14:49:18.105000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 48710,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T14:51:54.096000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 48855,
+        "request_id": null
+      }
+    ],
+    "agent_other_warning_or_error": [
+      {
+        "at": "2026-10-07T08:50:51.388000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 36435,
+        "request_id": "ec2e29f1-d807-4ed9-8034-68d95c951585"
+      },
+      {
+        "at": "2026-10-07T12:28:26.841000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 47406,
+        "request_id": "854b1066-50fd-4c28-bcc7-31426a0f36fb"
+      },
+      {
+        "at": "2026-10-07T12:39:19.084000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.2",
+        "line": 47856,
+        "request_id": "04717c9c-769d-40d2-934b-7bed1944d993"
+      },
+      {
+        "at": "2026-10-07T17:55:57.354000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 7211,
+        "request_id": "eac1ef8e-cb1e-4f1a-ad83-6ab40e2101cc"
+      }
+    ],
+    "current_cognition_maintain_failed": [
+      {
+        "at": "2026-10-07T18:03:22.432000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 7587,
+        "request_id": "d04ec7e9-8fc5-4d0f-aad3-794e95c441a3:maintenance"
+      },
+      {
+        "at": "2026-10-08T16:27:43.524000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 43352,
+        "request_id": "0022b7c5-d9e2-4b6d-92a6-5d96b17f9ae1:maintenance"
+      },
+      {
+        "at": "2026-10-08T19:12:30.602000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 51604,
+        "request_id": "4b17792b-0da6-4ce3-bfda-8769b58467af:maintenance"
+      },
+      {
+        "at": "2026-10-08T19:15:34.243000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 51811,
+        "request_id": "b8411f12-6bbf-4ac7-9763-f83fec0365ff:maintenance"
+      }
+    ],
+    "external_direct_failure": [
+      {
+        "at": "2026-10-07T20:41:34.945000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 14050,
+        "request_id": null
+      }
+    ],
+    "shutdown_timeout": [
+      {
+        "at": "2026-10-07T21:41:52.823000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 16306,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-09T00:16:48.383000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log",
+        "line": 4143,
+        "request_id": null
+      }
+    ],
+    "asgi_exception": [
+      {
+        "at": "2026-10-07T21:41:52.824000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 16308,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T21:41:52.901000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 16356,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T21:41:52.903000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 16404,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-09T00:16:48.384000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log",
+        "line": 4145,
+        "request_id": null
+      }
+    ],
+    "web_other_warning_or_error": [
+      {
+        "at": "2026-10-07T21:42:00.084000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 16453,
+        "request_id": null
+      }
+    ],
+    "provider_tool_arguments_invalid": [
+      {
+        "at": "2026-10-07T21:59:26.967000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 17225,
+        "request_id": "24fad798-4805-4c01-8a48-1f205815bf71"
+      },
+      {
+        "at": "2026-10-08T11:10:32.505000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 27795,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-08T23:11:01.631000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log",
+        "line": 1127,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-09T14:16:17.810000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log",
+        "line": 12929,
+        "request_id": "b1d76d35-2a87-4c2a-850f-254dd9b583a1"
+      }
+    ],
+    "external_planner_failure": [
+      {
+        "at": "2026-10-07T22:06:57.496000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 18045,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T22:09:44.690000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 18146,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T22:12:34.125000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 18260,
+        "request_id": null
+      }
+    ],
+    "provider_http_400": [
+      {
+        "at": "2026-10-07T22:17:31.301000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 18393,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T22:20:27.406000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 18509,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T22:21:00.497000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 18530,
+        "request_id": null
+      },
+      {
+        "at": "2026-10-07T22:23:06.967000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 18612,
+        "request_id": "83dde4fc-c1a4-4995-950a-3dd6c793f2f7"
+      }
+    ],
+    "pywebview_other_warning_or_error": [
+      {
+        "at": "2026-10-08T10:09:47.753000+08:00",
+        "file": ".zhaoxi\\logs\\zhaoxi.log.1",
+        "line": 24784,
+        "request_id": null
+      }
+    ]
+  },
+  "reproduction": {
+    "memory_normal_skip_false_failure": [
+      {
+        "enabled": false,
+        "not_due": true,
+        "local_maintenance_changed": false,
+        "result": null,
+        "error": "memory_consolidation_failed"
+      },
+      {
+        "enabled": true,
+        "not_due": true,
+        "local_maintenance_changed": false,
+        "result": null,
+        "error": "memory_consolidation_failed"
+      },
+      {
+        "enabled": true,
+        "not_due": true,
+        "local_maintenance_changed": true,
+        "result": null,
+        "error": "memory_consolidation_failed"
+      }
+    ],
+    "regenerate_timeout_code": {
+      "method": "resume_current_turn",
+      "exception_code": "agent_loop_error",
+      "message": "请求超过 120 秒，已停止。"
+    },
+    "mode": "AST extracted original methods; in-memory fake dependencies; no application imports, model calls or production writes"
+  },
+  "source_sha256": {
+    "src/zhaoxi/core/agent.py": "ea15a230acdff173ca595f1cd6eec9f41d2860cfcb8fd60e4cce635fb63bdf5b",
+    "src/zhaoxi/errors.py": "3ba4ea3bb7ac69a17bed2ba98a1b81950848001de8ca64a418bb15b53fbff085",
+    "src/zhaoxi/internal_activity/activities/legacy.py": "b2345f9a2f93f02d245475f020bd1152257943ebd90b5b92ca61db98b645a09d",
+    "src/zhaoxi/memory/consolidation.py": "6c69c9a6ef08ee98b4b22c66941b161f5ea1d9b0c2fe8a0cd3c2b6a861219e7b",
+    "src/zhaoxi/internal_activity/runtime.py": "6c552c0db762b58ad377395fe59fe6271bef76c2535349caf95cf324395da6fd",
+    "src/zhaoxi/perception/runtime.py": "52cbd7c25ec3b171693cf5003b8db62b3da8542e146e1125cd836f394c1692fd"
+  },
+  "limitations": [
+    "Mixed runtime builds and configuration in logs; current source does not identify each runtime build.",
+    "Terminal success may be deterministic fallback rather than full natural reply.",
+    "Signal counts overlap; they are attempts or log records, not independent bugs.",
+    "No application initialization, real provider requests, service changes or production database writes."
+  ]
+}
