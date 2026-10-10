@@ -128,7 +128,7 @@ def test_only_bundled_chime_is_allowed_in_release_audio(release):
     root, dist = release
     wheel = dist / 'zhaoxi-2.3.4-py3-none-any.whl'
     with zipfile.ZipFile(wheel, 'a') as archive:
-        archive.writestr('zhaoxi/desktop/assets/wind_chime.wav', b'fixture')
+        archive.writestr('zhaoxi/desktop/assets/glass-clink-52.wav', b'fixture')
     assert verify(root, dist)['version'] == '2.3.4'
     with zipfile.ZipFile(wheel, 'a') as archive:
         archive.writestr('zhaoxi/user.wav', b'private audio')

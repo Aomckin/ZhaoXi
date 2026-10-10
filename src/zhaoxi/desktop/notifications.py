@@ -141,7 +141,7 @@ class NativeNotifier:
         try:
             import winsound
             from pathlib import Path
-            winsound.PlaySound(str(Path(__file__).with_name("assets") / "wind_chime.wav"),
+            winsound.PlaySound(str(Path(__file__).with_name("assets") / "glass-clink-52.wav"),
                                winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
         except (ImportError, RuntimeError, OSError):
             import logging

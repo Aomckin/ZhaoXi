@@ -10,7 +10,7 @@ import tomllib
 import zipfile
 
 
-BUNDLED_AUDIO = {"zhaoxi/desktop/assets/wind_chime.wav"}
+BUNDLED_AUDIO = {"zhaoxi/desktop/assets/glass-clink-52.wav"}
 
 FORBIDDEN_SUFFIXES = (".env", ".db", ".sqlite", ".log", ".wav", ".mp3", ".pyc")
 
