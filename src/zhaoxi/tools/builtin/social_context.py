@@ -58,7 +58,7 @@ class ReadSocialContextTool(Tool):
     group="social_context"
     persistent=True
     aliases=("群聊原文","群聊摘要","原消息","展开证据","搜索群聊","群聊历史")
-    description="回查已保存的 QQ 群原消息：提供 reference 展开 SocialTrace（statement_id 可指定一句），或不提供 reference，改用 query 关键词、group_id 群号、since/until 带时区的时间搜索。结果按新到旧分页，返回可继续展开的引用；include_images 可查看缓存历史图片。兼容现存旧 Perception 记录，缺失不猜测。QQ 外部调用仅限当前群及插件，无发送或写入能力。"
+    description="回查已保存的 QQ 群原消息：提供 reference 展开 SocialTrace（statement_id 可指定一句），或不提供 reference，改用 query 关键词、group_id 群号、since/until 带时区的时间搜索。结果按新到旧分页，返回可继续展开的引用；include_images 可查看缓存历史图片。兼容现存旧 Perception 记录，缺失不猜测。QQ 外部调用仅限当前群及插件，无发送或写入能力。条件搜索无命中是正常空结果，不代表群里从未发生；可依据已有线索调整条件或查询其他资料，不能编造命中。"
     input_model=ReadSocialContextInput
 
     def __init__(self,stream,*,max_output_chars=8000,perception_path=None):
@@ -92,6 +92,11 @@ class ReadSocialContextTool(Tool):
                 result["next_offset"]=arguments.offset
                 result["next_text_offset"]=record["text_offset"]+len(record["content"])
             result["status"]="partial"
-        return ToolResult(success=result["status"] in {"complete","partial"},content=result.get("notice",result["status"]),
-            data=result,error=None if result["status"] in {"complete","partial"} else result["status"],
-            metadata={"include_social_images":arguments.include_images,"source_kind":"social_evidence"})
+        # No matches is a successful search outcome, not a broken tool. A
+        # missing explicitly requested reference remains a failure to read it.
+        empty_search = not arguments.reference and result["status"] == "not_found"
+        success = result["status"] in {"complete", "partial"} or empty_search
+        return ToolResult(success=success,content=result.get("notice",result["status"]),
+            data=result,error=None if success else result["status"],
+            metadata={"include_social_images":arguments.include_images,"source_kind":"social_evidence",
+                      **({"result_code": "empty"} if empty_search else {})})

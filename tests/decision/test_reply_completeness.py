@@ -10,12 +10,13 @@ from zhaoxi.models.types import ModelResponse
 
 
 @pytest.mark.parametrize("model", ["deepseek-v4-flash", "test-model"])
-async def test_stop_with_missing_required_field_is_rejected_at_provider_boundary(model):
+@pytest.mark.parametrize("payload_content", [{"reply":"This comparison is", "continuation":"unfinished"}, {"type":"json_object"}])
+async def test_stop_with_missing_required_field_is_rejected_at_provider_boundary(model, payload_content):
     async def handler(request):
         payload = json.loads(request.content)
         assert payload["response_format"]["type"] == ("json_object" if "deepseek" in model else "json_schema")
         return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {
-            "content": json.dumps({"reply": "This comparison is", "continuation": "unfinished"})}}]})
+            "content": json.dumps(payload_content)}}]})
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         provider = OpenAICompatibleProvider(base_url="https://example.test/v1", api_key="test", model=model, client=client)
         response = await provider.generate([Message(role=Role.USER, content="Check this")], response_format=REPLY_FORMAT)
@@ -65,3 +66,24 @@ def test_repair_cannot_leak_truncated_envelope_or_internal_protocol(raw):
     from zhaoxi.decision.reply import decode_reply_repair
     with pytest.raises(AgentLoopError):
         decode_reply_repair(ModelResponse(content=raw, finish_reason="stop"))
+
+
+@pytest.mark.parametrize("raw", [
+    '{"type":"json_object"}', '{}', '{"value":42}', '[]', '[1,2]',
+    'null', '42', 'true', '"config echo"',
+    '```json\n{"type":"json_object"}\n```', '[{"type":"json_object"}',
+])
+@pytest.mark.parametrize("fast", [False, True])
+def test_missing_reply_shape_cannot_use_literal_json_fallback_under_contract(raw, fast):
+    with pytest.raises(AgentLoopError) as failure:
+        decode_main_reply(ModelResponse(content=raw, finish_reason="stop",
+                          raw_metadata={"main_reply_contract": True}), fast=fast)
+    assert failure.value.code == "invalid_reply_protocol"
+
+
+def test_requested_json_can_still_be_quoted_inside_valid_reply():
+    body = '{"type":"json_object"}'
+    raw = json.dumps({"reply": body, "awareness": {"mode": "NONE"}})
+    response = decode_main_reply(ModelResponse(content=raw, finish_reason="stop",
+                                raw_metadata={"main_reply_contract": True}))
+    assert response.content == body

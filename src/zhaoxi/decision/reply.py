@@ -130,7 +130,7 @@ def decode_main_reply(response: ModelResponse, *, fast: bool = False) -> ModelRe
 
 def _decode_unparsed_reply(response: ModelResponse, raw: str) -> ModelResponse:
     # A requested main-reply envelope must be complete before any body is saved.
-    if response.raw_metadata.get("main_reply_contract") and raw.startswith("{"):
+    if response.raw_metadata.get("main_reply_contract") and raw.startswith(("{", "[")):
         return _finish(response, "", encoding="truncated_json", error_code="invalid_reply_protocol")
     # Recover only a complete reply string, never unfinished/private metadata.
     match = re.search(r'"reply"\s*:\s*(")', raw)
@@ -151,6 +151,11 @@ def _decode_unparsed_reply(response: ModelResponse, raw: str) -> ModelResponse:
 
 def _decode_reply_object(response: ModelResponse, arguments, raw: str, *, fast: bool, encoding: str) -> ModelResponse:
     if not isinstance(arguments, dict) or "reply" not in arguments:
+        # A complete JSON value is not necessarily a complete reply envelope.
+        # In particular, response-format/config echoes must enter bounded repair,
+        # never the legacy literal-JSON fallback. User-facing JSON belongs in reply.
+        if response.raw_metadata.get("main_reply_contract"):
+            return _finish(response, "", encoding=encoding, error_code="invalid_reply_protocol")
         if isinstance(arguments, dict) and any(key in arguments for key in ("awareness", "escalation")):
             return _finish(response, "", encoding="json", error_code="invalid_reply_protocol")
         # A bare action envelope is an attempted tool call, not a final reply.

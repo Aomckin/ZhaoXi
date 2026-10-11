@@ -334,3 +334,24 @@ async def test_two_social_image_reads_emit_valid_native_transcript(tmp_path):
         result = await agent.run_channel_reply(trigger.content, trigger_event=trigger, audience="public")
     assert result.content == "两次回查完成，图片都保留了。"
     assert len(payloads) == 2
+
+
+@pytest.mark.parametrize("scoped", [False, True])
+async def test_no_match_search_is_successful_empty_and_keeps_scope(history, scoped):
+    stream, store, _ = history
+    tool = ReadSocialContextTool(stream, perception_path=store.path)
+    token = set_current_turn(turn_for(history)) if scoped else None
+    try:
+        result = await tool.execute(ReadSocialContextInput(query="桌宠模拟器", group_id="A"))
+        assert result.success and result.error is None
+        assert result.metadata["result_code"] == "empty"
+        assert result.data["status"] == "not_found" and result.data["records"] == []
+        assert result.data["total_records"] == 0
+        assert result.data["group_id"] == "A"
+        assert "没有命中不代表群内从未发生" in result.content
+        if scoped:
+            forbidden = await tool.execute(ReadSocialContextInput(query="桌宠模拟器", group_id="B"))
+            assert not forbidden.success and forbidden.error == "forbidden"
+            assert forbidden.metadata.get("result_code") != "empty"
+    finally:
+        if token is not None: reset_current_turn(token)
