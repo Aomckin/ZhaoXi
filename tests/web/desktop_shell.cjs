@@ -3,7 +3,7 @@
 const {chromium}=require('playwright');
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'../..'),assets=path.join(root,'src/zhaoxi/web/static');
-const output=path.join(root,'docs/screenshots/v1.2.1');
+const output=process.env.ZHAOXI_TEST_OUTPUT||path.join(root,'docs/screenshots/v1.2.1');
 const action='（尾巴轻轻摇了摇。）\n今天也辛苦啦。要在这里坐一会儿吗？\n（顿了两秒。）\n窗外的麦田被风吹得沙沙响。\n（耳朵转了转。）\n你的话，我在听。';
 (async()=>{
  fs.mkdirSync(output,{recursive:true});

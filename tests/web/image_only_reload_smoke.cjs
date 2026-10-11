@@ -9,7 +9,7 @@ const png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAA
 const fixture={messages:[{role:'user',text:'',type:'image',images:[png],timestamp:'2026-10-08T11:28:48Z'}]};
 const script=`
 const $=selector=>document.querySelector(selector),messages=$('#messages');
-let voiceEnabled=false,displayTimezone='Asia/Shanghai',historyReady=false;
+let voiceEnabled=false,displayTimezone='Asia/Shanghai',historyReady=false,historyLoading=false;
 const seenDeliveries=new Set(),drainDeliveries=async()=>{},showNotice=()=>{};
 function escapeHtml(value){const node=document.createElement('div');node.textContent=value??'';return node.innerHTML}
 function markdown(value){return escapeHtml(value)}

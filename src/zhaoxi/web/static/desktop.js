@@ -65,7 +65,14 @@
         copy.querySelectorAll('br').forEach(el => el.replaceWith(document.createTextNode('\n')));
         return copy.textContent;
       }).join('\n').slice(0,1000);
-      article.append(name,text); surface.append(article);
+      article.append(name,text);
+      for (const row of selected) for (const source of row.querySelectorAll('img.attachment')) {
+        article.append(source.cloneNode(true));
+      }
+      window.MessageTools?.bind(article, {role,
+        text: selected.map(row => row.messageInfo?.text || '').join('\n'),
+        timestamp: selected.at(-1)?.messageInfo?.timestamp});
+      surface.append(article);
     }
     if (!surface.childElementCount) surface.textContent = '我在这里，慢慢说。';
     const expand = document.createElement('button');
