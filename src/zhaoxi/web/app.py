@@ -769,6 +769,7 @@ def create_app(
             result = await adapter.chat(
                 request.message.strip(),
                 request_id=request_id, images=request.images, display_parts=request.display_parts,
+                references=request.references, message_id=request.message_id,
             )
         except HTTPException:
             raise

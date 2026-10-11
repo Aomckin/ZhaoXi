@@ -31,13 +31,15 @@ class WebInterfaceAdapter:
         self.agent = agent
         self.gateway = InterfaceGateway(agent)
 
-    async def chat(self, message: str, *, request_id: str | None = None, images: list[str] | None = None, display_parts=None) -> WebResult:
+    async def chat(self, message: str, *, request_id: str | None = None, images: list[str] | None = None, display_parts=None, references=None, message_id=None) -> WebResult:
         response = await self.gateway.chat(UnifiedMessage(
             request_id=request_id or str(uuid4()),
             channel=InterfaceChannel.WEB,
             content=message,
             images=images or [],
             display_parts=display_parts or [],
+            references=references or [],
+            **({"message_id": message_id, "metadata": {"client_message_id": message_id}} if message_id else {}),
         ))
         return self._result(response)
 

@@ -3,11 +3,13 @@ from datetime import datetime
 from typing import Any, Literal
 from pydantic import BaseModel, Field, ConfigDict, StrictBool, StrictInt, model_validator
 from zhaoxi.core.attachments import ImageList
-from zhaoxi.interfaces.models import DisplayPart
+from zhaoxi.interfaces.models import DisplayPart, ReferenceTarget
 from zhaoxi.expression import EmojiMetadata
 
 class ChatRequest(BaseModel):
     message: str = Field(default="", max_length=20_000)
+    message_id: str | None = Field(default=None, min_length=1, max_length=128)
+    references: list[ReferenceTarget] = Field(default_factory=list, max_length=20)
     display_parts: list[DisplayPart] = Field(default_factory=list, max_length=1000)
     images: ImageList = Field(default_factory=list)
     request_id: str | None = Field(default=None, min_length=1, max_length=128)

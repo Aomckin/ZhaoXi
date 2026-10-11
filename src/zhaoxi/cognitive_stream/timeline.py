@@ -80,6 +80,7 @@ def project_event(event: CognitiveEvent) -> Message:
             "provenance_snapshot":from_event(event).metadata(),
             "event_id": event.event_id,
             "social_statements":event.metadata.get("social_statements",[]),
+            **({"references": event.metadata["references"]} if event.metadata.get("references") else {}),
             "trace_granularity":event.metadata.get("trace_granularity"),
             "event_type": event.event_type.value,
             "image_count": sum(part.type == "image" for part in event.parts),

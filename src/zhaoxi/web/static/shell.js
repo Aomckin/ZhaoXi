@@ -206,10 +206,11 @@ function submit(){
   if(pendingInput.map(item=>item.text).concat(text).join('\n\n').length>20000){showActivityHint('本次合并文字不能超过20000字，请等待发送后再补充');return}
   const images=draftImages;draftImages=[];renderImagePreview();
   input.value='';
-  const row=addMessage('user',text,'',images)[0];
+  const reference=window.MessageTools?.takeReference()||null;
+  const row=addMessage('user',text,'',images,null,null,false,true,null,reference)[0];row.dataset.pending='true';
   const recall=document.createElement('button');recall.className='recall';recall.textContent='撤回';
   recall.type='button';recall.setAttribute('aria-label','撤回这条待发送消息');
-  const item={text,images,row,recall,timestamp:new Date().toISOString()};pendingInput.push(item);
+  const item={text,images,row,recall,reference,timestamp:new Date().toISOString()};pendingInput.push(item);
   recall.onclick=()=>recallInput(item);row.querySelector('.bubble,.image-only').append(recall);
   $('#clear').disabled=true;
   clearTimeout(inputTimer);
@@ -229,11 +230,13 @@ async function flushInput(){
   if(busy||!pendingInput.length||inputTimer!==null)return;
   const text=pendingInput.map(item=>item.text).filter(Boolean).join('\n\n');
   const images=pendingInput.flatMap(item=>item.images);
-  const display_parts=pendingInput.map(item=>({text:item.text,image_count:item.images.length,timestamp:item.timestamp}));
+  const queued=pendingInput.slice(),messageId=crypto.randomUUID();
+  const display_parts=queued.map((item,index)=>{item.row.dataset.messageId=messageId;item.row.dataset.messagePartIndex=index;return {text:item.text,image_count:item.images.length,timestamp:item.timestamp,reference:item.reference?{message_id:item.reference.message_id,part_index:item.reference.part_index}:null}});
   pendingInput.forEach(item=>item.recall.remove());pendingInput=[];
   busy=true;$('#clear').disabled=true;activity.textContent='正在处理…';const requestId=beginActionTrace();
   try{
-    const data=await request('/api/chat',{method:'POST',body:JSON.stringify({message:text,images,display_parts,request_id:requestId})}),renderStartedAt=performance.now();
+    const data=await request('/api/chat',{method:'POST',body:JSON.stringify({message:text,images,display_parts,message_id:messageId,request_id:requestId})}),renderStartedAt=performance.now();
+    queued.forEach(item=>{item.row.dataset.pending='false'});
     await (data.output_messages?.length?renderResponse(data):sendReply(data.content,data.timestamp,data.message_id));
     acknowledgeReply(data,renderStartedAt);
     if(data.permission)permissionCard(data.permission);
@@ -252,9 +255,9 @@ $('#imageFiles').onchange=async e=>{await selectImages(e.target.files);e.target.
 input.addEventListener('paste',e=>{const files=Array.from(e.clipboardData?.files||[]);if(files.length){e.preventDefault();void selectImages(files)}});
 send.onclick=submit;input.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();submit()}};input.oninput=()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,150)+'px'};
 mic.onclick=toggleVoice;$('#voiceConfirm').onclick=confirmVoice;$('#voiceCancel').onclick=cancelVoice;$('#voiceRetry').onclick=async()=>{await cancelVoice();await toggleVoice()};
-$('#clear').onclick=async()=>{if(busy||imagesReading||pendingInput.length)return;await request('/api/session',{method:'DELETE'});draftImages=[];renderImagePreview();messages.innerHTML='<div id="empty" class="empty"><b>会话已清空。</b>重新开始吧。</div>';debug.textContent='Session cleared'};
+$('#clear').onclick=async()=>{if(busy||imagesReading||pendingInput.length)return;await request('/api/session',{method:'DELETE'});draftImages=[];renderImagePreview();window.MessageTools?.clearReference();messages.innerHTML='<div id="empty" class="empty"><b>会话已清空。</b>重新开始吧。</div>';debug.textContent='Session cleared'};
 const seenDeliveries=new Set(), deliveryQueue=[];let historyReady=false;
-async function restore(){try{const data=await request('/api/session');displayTimezone=data.timezone||displayTimezone;for(const m of data.messages){if([...messages.querySelectorAll('[data-message-id]')].some(n=>n.dataset.messageId===m.message_id))continue;if(m.delivery_id)seenDeliveries.add(m.delivery_id);if(m.kind==='system')continue;if(m.role==='user'&&m.display_parts?.length){let offset=0;for(const p of m.display_parts){addMessage('user',p.text,'',(m.images||[]).slice(offset,offset+p.image_count),p.timestamp,m.message_id);offset+=p.image_count}}else await renderMessage(m)}const p=await request('/api/proactive');p.deliveries.filter(d=>['delivered','acknowledged'].includes(d.status)).reverse().forEach(d=>showNotice(d))}catch(e){$('#connection').textContent='Core 暂时不可用'}finally{historyReady=true;void drainDeliveries()}}
+async function restore(){try{const data=await request('/api/session');displayTimezone=data.timezone||displayTimezone;for(const m of data.messages){if([...messages.querySelectorAll('[data-message-id]')].some(n=>n.dataset.messageId===m.message_id))continue;if(m.delivery_id)seenDeliveries.add(m.delivery_id);if(m.kind==='system')continue;await renderMessage(m)}const p=await request('/api/proactive');p.deliveries.filter(d=>['delivered','acknowledged'].includes(d.status)).reverse().forEach(d=>showNotice(d))}catch(e){$('#connection').textContent='Core 暂时不可用'}finally{historyReady=true;void drainDeliveries()}}
 let historyCursor=null, historyLoading=false;
 function historyButton(){
   if(document.getElementById('olderHistory'))return;
@@ -280,14 +283,15 @@ async function loadOlderHistory(){
     messages.scrollTop=top+messages.scrollHeight-height;
   }catch(error){showActivityHint('历史消息暂时无法加载：'+error.message)}finally{historyLoading=false;button.disabled=false}
 }
-async function openReply(id){
-  if(busy){showActivityHint('当前回复结束后打开消息…');setTimeout(()=>openReply(id),500);return}
-  if(!historyReady){setTimeout(()=>openReply(id),100);return}
-  let target=[...messages.querySelectorAll('[data-message-id]')].find(n=>n.dataset.messageId===id);
-  if(!target){await restore();target=[...messages.querySelectorAll('[data-message-id]')].find(n=>n.dataset.messageId===id)}
+async function openReply(id,partIndex=null){
+  if(busy){showActivityHint('当前回复结束后打开消息…');setTimeout(()=>openReply(id,partIndex),500);return}
+  if(!historyReady){setTimeout(()=>openReply(id,partIndex),100);return}
+  const find=()=>[...messages.querySelectorAll('[data-message-id]')].find(n=>n.dataset.messageId===id&&(partIndex==null||Number(n.dataset.messagePartIndex)===partIndex));
+  let target=find();
+  if(!target){await restore();target=find()}
   while(!target&&document.getElementById('olderHistory')){
     const cursor=historyCursor;await loadOlderHistory();
-    target=[...messages.querySelectorAll('[data-message-id]')].find(n=>n.dataset.messageId===id);
+    target=find();
     if(cursor===historyCursor)break;
   }
   if(target)target.scrollIntoView({block:'center',behavior:'smooth'});
@@ -419,7 +423,7 @@ async function setupBudgetDebug(){if(!$('#budgetDebug'))return;try{$('#budgetDeb
 $('#budgetDebugRefresh').onclick=setupBudgetDebug;
 $('#budgetDebugPanel').addEventListener('toggle',event=>{if(event.target.open)void setupBudgetDebug()});
 let pendingDeliveryTimer=null;
-async function openDelivery(id){clearTimeout(pendingDeliveryTimer);if(busy||pendingInput.length){activity.textContent='当前回复结束后打开系统消息…';pendingDeliveryTimer=setTimeout(()=>openDelivery(id),500);return}try{await request('/api/proactive/'+encodeURIComponent(id)+'/activate',{method:'POST'});const data=await request('/api/session');displayTimezone=data.timezone||displayTimezone;historyCursor=null;messages.replaceChildren();historyButton();data.messages.forEach(m=>{if(m.delivery_id)seenDeliveries.add(m.delivery_id);if(m.kind==='system')return;if(m.role==='user'&&m.display_parts?.length){let offset=0;for(const p of m.display_parts){addMessage('user',p.text,'',(m.images||[]).slice(offset,offset+p.image_count),p.timestamp);offset+=p.image_count}}else void renderMessage(m)});debug.textContent=JSON.stringify(await request('/api/proactive/'+encodeURIComponent(id)+'/inspect'),null,2);const n=document.getElementById('notice-'+id);if(n)n.querySelector('.badge').textContent='已读';input.focus()}catch(e){showActivityHint('暂时无法打开系统消息，请稍后重试')}}
+async function openDelivery(id){clearTimeout(pendingDeliveryTimer);if(busy||pendingInput.length){activity.textContent='当前回复结束后打开系统消息…';pendingDeliveryTimer=setTimeout(()=>openDelivery(id),500);return}try{await request('/api/proactive/'+encodeURIComponent(id)+'/activate',{method:'POST'});const data=await request('/api/session');displayTimezone=data.timezone||displayTimezone;historyCursor=null;messages.replaceChildren();historyButton();data.messages.forEach(m=>{if(m.delivery_id)seenDeliveries.add(m.delivery_id);if(m.kind==='system')return;void renderMessage(m)});debug.textContent=JSON.stringify(await request('/api/proactive/'+encodeURIComponent(id)+'/inspect'),null,2);const n=document.getElementById('notice-'+id);if(n)n.querySelector('.badge').textContent='已读';input.focus()}catch(e){showActivityHint('暂时无法打开系统消息，请稍后重试')}}
 function showNotice(d){showProactiveNote(d);if(d.kind!=='system'&&!String(d.event_type||'').startsWith('system.'))return;if(!['delivered','acknowledged'].includes(d.status)||document.getElementById('notice-'+d.delivery_id))return;const n=document.createElement('button');n.id='notice-'+d.delivery_id;n.className='notice';n.style.cssText='display:block;width:100%;text-align:left';n.innerHTML=`<div class="badge">${d.status==='acknowledged'?'已读':'未读'}</div><div>${markdown(d.content)}</div><small>${escapeHtml(formatTime(d.delivered_at||d.available_at))}</small>`;n.onclick=()=>openDelivery(d.delivery_id);$('#notices').querySelector('.sub')?.remove();$('#notices').prepend(n);while($('#notices').children.length>100)$('#notices').lastElementChild.remove()}
 function receiveDelivery(d){
   showProactiveNote(d);

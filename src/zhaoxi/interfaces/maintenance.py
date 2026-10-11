@@ -77,7 +77,13 @@ class PostTurnMaintenanceQueue:
 
     def start(self):
         if self.supervisor.accepting and (self.worker is None or self.worker.done()):
-            self.worker = self.supervisor.create(self.run(), name="post-turn-maintenance")
+            # Worker tasks must not inherit a foreground quote and its image payloads.
+            from zhaoxi.core.references import set_references, reset_references
+            token = set_references(None)
+            try:
+                self.worker = self.supervisor.create(self.run(), name="post-turn-maintenance")
+            finally:
+                reset_references(token)
 
     async def run(self):
         while True:

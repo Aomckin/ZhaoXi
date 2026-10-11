@@ -60,7 +60,7 @@
         const content = row.querySelector('.bubble,.image-only');
         if (!content) return '';
         const copy = content.cloneNode(true);
-        copy.querySelectorAll('time,button').forEach(el => el.remove());
+        copy.querySelectorAll('time,button,.message-reference').forEach(el => el.remove());
         copy.querySelectorAll('img').forEach(el => el.replaceWith(document.createTextNode('[图片]')));
         copy.querySelectorAll('br').forEach(el => el.replaceWith(document.createTextNode('\n')));
         return copy.textContent;
@@ -70,6 +70,7 @@
         article.append(source.cloneNode(true));
       }
       window.MessageTools?.bind(article, {role,
+        quoteTarget: selected.at(-1),
         text: selected.map(row => row.messageInfo?.text || '').join('\n'),
         timestamp: selected.at(-1)?.messageInfo?.timestamp});
       surface.append(article);

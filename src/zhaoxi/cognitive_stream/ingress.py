@@ -18,7 +18,8 @@ class CognitiveIngress:
 
     def desktop(self, content: str, *, message_id: str | None = None,
                 images: list[str] | None = None, session_id: str = "local",
-                channel: str = "desktop", occurred_at: datetime | None = None) -> CognitiveEvent:
+                channel: str = "desktop", occurred_at: datetime | None = None,
+                references: list[dict] | None = None) -> CognitiveEvent:
         return self._append(CognitiveEvent(
             event_type=CognitiveEventType.USER_MESSAGE, source="desktop", channel=channel,
             turn_id=message_id,
@@ -26,7 +27,8 @@ class CognitiveIngress:
             occurred_at=occurred_at or datetime.now(UTC),
             parts=[EventPart(type="image", url=image) for image in (images or [])], trust_level="TRUSTED",
             source_refs=["desktop:" + message_id] if message_id else [], importance=0.7,
-            metadata={"input_text_present": bool(content.strip())}))
+            metadata={"input_text_present": bool(content.strip()),
+                      **({"references": references} if references else {})}))
 
     def observation(self, item, *, session_id: str | None = None,
                     images: list[str] | None = None) -> CognitiveEvent:

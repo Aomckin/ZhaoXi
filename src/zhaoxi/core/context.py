@@ -115,6 +115,8 @@ class ContextBuilder:
             if index:
                 add("system.formatting", "\n\n")
             add(name, prompt.strip())
+        from zhaoxi.core.references import reference_prompt, reference_image_messages, referenced_image_ids, with_reference_summary
+        add("runtime.message_references", reference_prompt())
         add("system.runtime_rules", f"\n\n运行规则：\n{self.runtime_rules}")
         awareness = getattr(self, "decision_awareness", None)
         if awareness is not None and audience == "owner":
@@ -276,6 +278,9 @@ class ContextBuilder:
             recent[-1].message_id if recent and recent[-1].role == Role.USER else None
         )
         for item in recent:
+            item = with_reference_summary(item)
+            if item.message_id in referenced_image_ids():
+                item = item.model_copy(update={"images": []})
             if item.role == Role.TOOL and item.tool_call_id in (absorbed_tool_call_ids or set()):
                 try:
                     original = json.loads(item.content or "")
@@ -375,4 +380,4 @@ class ContextBuilder:
                     content = item.content
                 item = item.model_copy(update={"content": content, "images": previews})
             timeline.append(item)
-        return [Message(role=Role.SYSTEM, content=system, metadata={"prompt_components": components}), *timeline]
+        return [Message(role=Role.SYSTEM, content=system, metadata={"prompt_components": components}), *reference_image_messages(tool_image_references), *timeline]

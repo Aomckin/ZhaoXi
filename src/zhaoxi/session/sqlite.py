@@ -220,7 +220,7 @@ class SQLiteSessionStore(SessionStore):
         originals = {message.message_id: message for message in [*evicted, *session.conversation.recent(self.max_messages)]}
         for value in [*archived, *safe_messages]:
             metadata = originals[value["message_id"]].metadata
-            value["metadata"] = {key: metadata[key] for key in ("request_id", "event_id", "display_parts") if key in metadata}
+            value["metadata"] = {key: metadata[key] for key in ("request_id", "event_id", "display_parts", "references") if key in metadata}
         with self._connect() as connection:
             for value in archived:
                 connection.execute("INSERT OR IGNORE INTO session_history(session_id, message_id, message_json) VALUES (?, ?, ?)",
@@ -247,6 +247,16 @@ class SQLiteSessionStore(SessionStore):
             self.thumbnail_cache(session.id).retain(session.conversation.recent(self.max_messages))
         except OSError as exc:
             logger.warning("thumbnail cache cleanup failed type=%s", type(exc).__name__)
+
+    async def history_message(self, session_id: str, message_id: str) -> Message | None:
+        return await asyncio.to_thread(self._history_message, session_id, message_id)
+
+    def _history_message(self, session_id: str, message_id: str) -> Message | None:
+        # Lookup is always constrained to the active session, including old pages.
+        with self._connect() as connection:
+            row = connection.execute("SELECT message_json FROM session_history WHERE session_id=? AND message_id=?",
+                                     (session_id, message_id)).fetchone()
+        return Message.model_validate(self.media.loads(row["message_json"])) if row else None
 
     async def history_page(self, session_id: str, *, before: str | None = None, limit: int = 80) -> dict:
         return await asyncio.to_thread(self._history_page, session_id, before, max(1, min(limit, 200)))

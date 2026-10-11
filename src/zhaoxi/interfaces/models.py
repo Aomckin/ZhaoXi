@@ -24,10 +24,16 @@ class MessageOrigin(StrEnum):
     SYSTEM = "system"
 
 
+class ReferenceTarget(BaseModel):
+    message_id: str = Field(min_length=1, max_length=128)
+    part_index: int | None = Field(default=None, ge=0, le=999)
+
+
 class DisplayPart(BaseModel):
     text: str = Field(default="", max_length=20_000)
     image_count: int = Field(default=0, ge=0, le=20)
     timestamp: datetime
+    reference: ReferenceTarget | None = None
 
 
 class UnifiedMessage(BaseModel):
@@ -40,6 +46,7 @@ class UnifiedMessage(BaseModel):
     origin: MessageOrigin = MessageOrigin.USER
     content: str = Field(default="", max_length=20_000)
     images: ImageList = Field(default_factory=list)
+    references: list[ReferenceTarget] = Field(default_factory=list, max_length=20)
     display_parts: list[DisplayPart] = Field(default_factory=list, max_length=1000)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     reply_to: str | None = Field(default=None, max_length=128)

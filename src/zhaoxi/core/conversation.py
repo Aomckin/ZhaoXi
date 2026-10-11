@@ -37,7 +37,12 @@ class Conversation:
         if self.replay_user is not None:
             original, self.replay_user = self.replay_user, None
             return self.add(original.model_copy(deep=True))
-        return self.add(Message(role=Role.USER, content=content, images=images or [], input_text_present=bool(content.strip())))
+        from .references import current_references
+        state = current_references()
+        metadata = {"references": [item["view"] for item in state["items"]]} if state and state["items"] else {}
+        return self.add(Message(role=Role.USER, content=content, images=images or [], metadata=metadata,
+            **({"message_id": state["message_id"]} if state and state.get("message_id") else {}),
+            input_text_present=bool(content.strip())))
 
     def add_assistant(self, content: str | None, **kwargs: object) -> Message:
         return self.add(Message(role=Role.ASSISTANT, content=content, **kwargs))

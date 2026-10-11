@@ -278,7 +278,8 @@ class FastChatRuntime:
                 "当前没有工具或长期记忆检索；你可以直接完成低价值 PICK。需要补日程、近期状态、记忆或大问题资料时，提出结构化 decision/recall 升级请求，再由 STANDARD 主模型按需查阅。")
             rules = rules.replace("Runtime 会验证当前消息的行动、回忆或决策证据；",
                 "Runtime 会校验本轮引用；资料升级由你判断，执行行动仍需明确意图与权限；")
-        system = builder.character_prompt.strip() + "\n\n" + rules
+        from zhaoxi.core.references import reference_prompt, reference_image_messages, referenced_image_ids, with_reference_summary
+        system = builder.character_prompt.strip() + "\n\n" + rules + reference_prompt()
         if getattr(self.agent, "decision_mode", "legacy") == "agency" and audience == "owner":
             system += "\n\n" + self.agent.decision_awareness.prompt(self.agent.conversation)
         builder.last_recent_context = {"agenda": None, "current_cognition": None, "errors": {}}
@@ -304,6 +305,7 @@ class FastChatRuntime:
         recent = self._recent_owner_conversation(
             user_message, output_channel=output_channel, audience=audience,
         )
+        recent = [with_reference_summary(m.model_copy(update={"images": []}) if m.message_id in referenced_image_ids() else m) for m in recent]
         image_note = ""
         if any(message.images for message in recent):
             image_note = ("历史用户图片以缩略图附在对应消息中。可根据可辨细节回答，"
@@ -322,7 +324,7 @@ class FastChatRuntime:
             system += "\n" + domain_prompt(self.agent.registry.manifest())
         return [Message(role=Role.SYSTEM, content=system, metadata={"prompt_components": components, "decision_context_sources": {
             source: ["context:" + source] for source in ("agenda", "current_cognition")
-            if builder.last_recent_context.get(source)}}), *recent]
+            if builder.last_recent_context.get(source)}}), *reference_image_messages(), *recent]
 
     def _recent_owner_conversation(
         self, user_message: str, *, output_channel: str, audience: str,

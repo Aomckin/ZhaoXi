@@ -73,18 +73,44 @@
     })();
     await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);
   }
+  let activeReference = null;
+  const draftReference = document.createElement('div'); draftReference.id = 'draftReference'; draftReference.hidden = true;
+  document.querySelector('#imagePreview')?.before(draftReference);
+  function referenceCard(reference, cancel) {
+    const box = document.createElement('div'); box.className = 'message-reference';
+    const link = document.createElement('button'); link.type = 'button'; link.className = 'reference-link';
+    const name = document.createElement('strong'), preview = document.createElement('span');
+    name.textContent = (reference.role === 'user' ? '我' : '朝汐') + (reference.timestamp ? ' · ' + formatTime(reference.timestamp) : '') + ' ↗';
+    preview.textContent = reference.text || (reference.image_count ? `[图片 · ${reference.image_count}张]` : '原消息');
+    link.append(name,preview); link.setAttribute('aria-label','查看引用的原消息');
+    link.onclick = async () => {
+      if (document.documentElement.dataset.windowMode === 'companion') {
+        try { await window.pywebview.api.command('mode','main'); }
+        catch { showActivityHint('请展开主窗口查看原消息'); return; }
+      }
+      await openReply(reference.message_id, reference.part_index);
+      const rows = [...document.querySelectorAll('#messages [data-message-id]')];
+      const row = rows.find(item => item.dataset.messageId === reference.message_id &&
+        (reference.part_index == null || Number(item.dataset.messagePartIndex) === reference.part_index));
+      if (row) { row.scrollIntoView({block:'center',behavior:'smooth'}); row.classList.add('reference-highlight'); setTimeout(()=>row.classList.remove('reference-highlight'),1800); }
+    };
+    box.append(link);
+    if (cancel) { const button = document.createElement('button'); button.type='button';button.className='reference-cancel';button.textContent='×';button.setAttribute('aria-label','取消引用');button.onclick=()=>setReference(null);box.append(button); }
+    return box;
+  }
+  function setReference(value) {
+    activeReference = value; draftReference.replaceChildren(); draftReference.hidden = !value;
+    if (value) draftReference.append(referenceCard(value,true));
+  }
   function quote(info) {
-    if (imagesReading || draftImages.length + info.images.length > MAX_IMAGES) {
-      showActivityHint(imagesReading ? '请等图片读取完成' : '引用后图片超过20张，请先移除一些图片'); return;
-    }
-    const author = info.role === 'user' ? '我' : '朝汐';
-    const label = `${author}${info.timestamp ? ' · ' + formatTime(info.timestamp) : ''}`;
-    const body = info.text.trim() || '[图片]';
-    const quoted = `> 引用 ${label}\n${body.split('\n').map(line => '> ' + line).join('\n')}\n\n`;
-    if (input.value.length + quoted.length > 20000) { showActivityHint('引用后文字超过20000字'); return; }
-    input.value = quoted + input.value;
-    draftImages.push(...info.images); renderImagePreview();
-    input.dispatchEvent(new Event('input')); input.focus(); input.setSelectionRange(input.value.length, input.value.length);
+    if (info.quoteTarget) info = {...info.quoteTarget.messageInfo, row:info.quoteTarget,
+      images:[...info.quoteTarget.querySelectorAll('img.attachment')]};
+    const messageId = info.row.dataset.messageId;
+    if (!messageId || info.row.dataset.pending === 'true') { showActivityHint('这条消息发送完成后才能引用'); return; }
+    setReference({message_id:messageId,
+      part_index:info.row.dataset.messagePartIndex == null ? null : Number(info.row.dataset.messagePartIndex),
+      role:info.role,text:info.text.slice(0,500),image_count:info.images.length,timestamp:info.timestamp});
+    input.focus();
   }
   menu.addEventListener('click', async event => {
     const action = event.target.closest('button')?.dataset.action, info = target;
@@ -109,6 +135,12 @@
   document.addEventListener('scroll', () => hideMenu(), true);
   window.addEventListener('blur', () => hideMenu());
   window.MessageTools = {
+    takeReference() { const value=activeReference;setReference(null);return value; },
+    clearReference() { setReference(null); },
+    attachReference(row, reference) {
+      if (!reference) return;
+      row.querySelector('.bubble,.image-only')?.prepend(referenceCard(reference,false));
+    },
     open(src, focus) { hideMenu(); lastFocus = focus || document.activeElement; viewer.showModal(); picture.src = src; },
     bind(row, info) {
       row.messageInfo = info;

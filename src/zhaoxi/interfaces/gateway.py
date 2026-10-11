@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from time import monotonic
 from typing import Any
 
+from zhaoxi.errors import AgentLoopError
 from zhaoxi.core.agent import ZhaoxiAgent
 from zhaoxi.core.tool_retry import local_retry_scope
 from zhaoxi.cognitive_stream.models import CognitiveEventType
@@ -85,6 +86,7 @@ class InterfaceGateway:
             if cached is not None:
                 self.metrics.increment("interface.chat.cache_hit")
                 return cached.model_copy(deep=True)
+            reference_state = await self._resolve_references(message)
             state = getattr(self.agent, "proactive_state", None)
             if state is not None:
                 state.interacting = True
@@ -105,10 +107,13 @@ class InterfaceGateway:
             trace = None
             budget = None
             try:
+                from zhaoxi.core.references import set_references, reset_references
+                reference_token = set_references(reference_state)
                 ingress = getattr(self.agent, "cognitive_ingress", None)
                 trigger = ingress.desktop(message.content, message_id=message.message_id,
                     images=message.images, session_id=message.session_id,
-                    channel=message.channel.value, occurred_at=message.created_at) if ingress else None
+                    channel=message.channel.value, occurred_at=message.created_at,
+                    **({"references": [item["view"] for item in reference_state["items"]]} if reference_state["items"] else {})) if ingress else None
                 from zhaoxi.cognitive_stream.turn import CognitiveTurnContext, set_current_turn
                 turn_token = set_current_turn(CognitiveTurnContext(
                     trigger_event=trigger, request_id=message.request_id,
@@ -212,6 +217,8 @@ class InterfaceGateway:
                         )
                 raise
             finally:
+                if "reference_token" in locals():
+                    reset_references(reference_token)
                 if "turn_token" in locals() and turn_token is not None:
                     from zhaoxi.cognitive_stream.turn import reset_current_turn
                     reset_current_turn(turn_token)
@@ -291,7 +298,12 @@ class InterfaceGateway:
             trace = None
             budget = None
             turn_token = None
+            reference_token = None
             try:
+                from zhaoxi.core.references import set_references, reset_references
+                reference_token = set_references(await self._resolve_references(UnifiedMessage(
+                    channel="web", content=source_user.content or "", images=source_user.images,
+                    references=source_user.metadata.get("references", []))))
                 from zhaoxi.cognitive_stream.turn import CognitiveTurnContext, set_current_turn, reset_current_turn
                 stream = getattr(self.agent, "experience_stream", None)
                 event_id = source_user.metadata.get("event_id")
@@ -377,6 +389,8 @@ class InterfaceGateway:
                 self.metrics.increment("interface.regenerate.failed")
                 raise
             finally:
+                if reference_token is not None:
+                    reset_references(reference_token)
                 if budget is not None:
                     self.agent.last_budget_snapshot = budget.snapshot()
                 self.agent.conversation.replay_user = None
@@ -750,6 +764,53 @@ class InterfaceGateway:
         if trace:
             trace.record_interval("session_persist", started)
 
+    async def _resolve_references(self, message: UnifiedMessage) -> dict:
+        client_id = message.metadata.get("client_message_id")
+        if client_id:
+            existing = next((m for m in [*self.agent.conversation.messages, *self.agent.conversation.evicted] if m.message_id == client_id), None)
+            store, session = getattr(self.agent, "session_store", None), getattr(self.agent, "session_record", None)
+            if existing is None and store and session and hasattr(store, "history_message"):
+                existing = await store.history_message(session.id, client_id)
+            if existing:
+                raise AgentLoopError("消息标识已存在，请重试。", code="message_id_conflict")
+        targets = list(message.references)
+        targets.extend(part.reference for part in message.display_parts if part.reference)
+        keys, items = set(), []
+        for target in targets:
+            key = (target.message_id, target.part_index)
+            if key in keys:
+                continue
+            keys.add(key)
+            if len(keys) > 20:
+                raise AgentLoopError("一次最多引用20条消息。", code="reference_limit")
+            original = next((item for item in [*self.agent.conversation.messages, *self.agent.conversation.evicted]
+                             if item.message_id == target.message_id), None)
+            store, session = getattr(self.agent, "session_store", None), getattr(self.agent, "session_record", None)
+            if original is None and store and session and hasattr(store, "history_message"):
+                original = await store.history_message(session.id, target.message_id)
+            if original is None or not is_user_visible_message(original):
+                raise AgentLoopError("引用的原消息已不可用，请取消引用后重试。", code="reference_unavailable")
+            content, images = original.content or "", list(original.images)
+            timestamp, offset = original.timestamp.isoformat(), 0
+            if target.part_index is not None:
+                parts = original.metadata.get("display_parts", [])
+                if target.part_index >= len(parts):
+                    raise AgentLoopError("引用的消息分段不存在。", code="reference_unavailable")
+                part = parts[target.part_index]
+                offset = sum(p["image_count"] for p in parts[:target.part_index])
+                images = images[offset:offset + part["image_count"]]
+                content = part["text"]
+                timestamp = part["timestamp"]
+            view = {"message_id": original.message_id, "part_index": target.part_index,
+                    "role": original.role.value, "text": content[:500], "image_count": len(images),
+                    "timestamp": timestamp}
+            from zhaoxi.core.references import resolve_reference_images
+            emoji_service = getattr(getattr(self.agent, "context_builder", None), "emoji_service", None) or getattr(self.agent, "emoji_manager", None)
+            images = resolve_reference_images(images, emoji_service)
+            items.append({"view": view, "content": content, "images": images, "offset": offset,
+                          "event_id": original.metadata.get("event_id")})
+        return {"items": items, "message_id": message.metadata.get("client_message_id")}
+
     def _attach_display_parts(self, message: UnifiedMessage, previous_messages: set[int]) -> None:
         for item in self.agent.conversation.messages:
             if id(item) not in previous_messages and item.role == Role.USER:
@@ -811,6 +872,7 @@ class InterfaceGateway:
             "kind": item.metadata.get("kind", ""),
             "regeneratable": regeneratable,
             "display_parts": item.metadata.get("display_parts", []) if item.role == Role.USER else [],
+            "references": item.metadata.get("references", []) if item.role == Role.USER else [],
         }
 
     def _cache(self, response: UnifiedResponse) -> None:

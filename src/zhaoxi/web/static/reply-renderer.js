@@ -26,13 +26,13 @@ function replyDisplayGroup(message){
   if(currentReplyDisplayGroup?.key!==key)currentReplyDisplayGroup={key};
   return currentReplyDisplayGroup;
 }
-function addMessage(role,content,kind='',images=[],timestamp=null,messageId=null,regeneratable=false,debugOnly=true,replyGroup=null){
+function addMessage(role,content,kind='',images=[],timestamp=null,messageId=null,regeneratable=false,debugOnly=true,replyGroup=null,reference=null){
   const splitParts=role==='assistant'&&kind!=='system'?splitReply(content):[content];
   const parts=splitParts.length?splitParts:(images.length?['']:[]);
   const group=role==='assistant'&&kind!=='system'?(replyGroup||{}):null;
   if(group&&regeneratable&&messageId)document.querySelectorAll('.regenerate').forEach(item=>item.remove());
   const rows=parts.map(part=>addMessageBubble(role,part,kind,images,timestamp,group));
-  for(const row of rows)if(messageId)row.dataset.messageId=messageId;
+  for(const row of rows){if(messageId)row.dataset.messageId=messageId;if(reference)window.MessageTools?.attachReference(row,reference)}
   if(group&&regeneratable)attachRegenerate(group,messageId,debugOnly);
   return rows;
 }
@@ -55,7 +55,8 @@ async function sendReply(content,timestamp=null,messageId=null,regeneratable=tru
   if(regeneratable&&messageId)document.querySelectorAll('.regenerate').forEach(item=>item.remove());
   for(const part of parts){
     const waiting=waitReplySegment(sequence);if(waiting)await waiting;
-    addMessageBubble('assistant',part,'',[],timestamp,group);
+    const row=addMessageBubble('assistant',part,'',[],timestamp,group);
+    if(messageId)row.dataset.messageId=messageId;
   }
   if(regeneratable&&messageId)attachRegenerate(group,messageId,true);
   return group.element;
@@ -68,7 +69,17 @@ async function renderResponse(data){
   if(output.some(item=>item.source==='emoji'))void acknowledgeEmojiTrace(data.trace_id,true);
   return last;
 }
+function renderUserParts(message){
+  let offset=0,first=null;
+  for(const [index,part] of message.display_parts.entries()){
+    const reference=part.reference?(message.references||[]).find(r=>r.message_id===part.reference.message_id&&r.part_index===part.reference.part_index):null;
+    const rows=addMessage('user',part.text,'',(message.images||[]).slice(offset,offset+part.image_count),part.timestamp,message.message_id,false,true,null,reference);
+    rows.forEach(row=>row.dataset.messagePartIndex=index);first=first||rows[0];offset+=part.image_count;
+  }
+  return first;
+}
 async function renderMessage(message,{paced=false,latestMessageId=null,pacing=null}={}){
+  if(message.role==='user'&&message.display_parts?.length)return renderUserParts(message);
   const content=message.text??message.content??'',images=message.images||[],id=message.id||message.message_id||null;
   const group=replyDisplayGroup(message);
   if(id&&message.kind!=='system'&&['user','assistant'].includes(message.role))document.querySelectorAll('.regenerate').forEach(item=>item.remove());
@@ -76,5 +87,5 @@ async function renderMessage(message,{paced=false,latestMessageId=null,pacing=nu
     if(content.trim())return sendReply(content,message.timestamp,id,id===latestMessageId,pacing,group);
     const waiting=waitReplySegment(pacing||{shown:0});if(waiting)await waiting;
   }
-  return addMessage(message.role,content,message.kind==='system'?'system':'',images,message.timestamp,id,paced?!!id&&id===latestMessageId:!!message.regeneratable,true,group)[0]||null;
+  return addMessage(message.role,content,message.kind==='system'?'system':'',images,message.timestamp,id,paced?!!id&&id===latestMessageId:!!message.regeneratable,true,group,message.references?.[0])[0]||null;
 }

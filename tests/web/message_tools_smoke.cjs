@@ -16,6 +16,7 @@ const renderer=fs.readFileSync(path.join(dir,'reply-renderer.js'),'utf8');
   await page.route('**/*',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><meta charset="utf-8"><style>${css}.row{margin:10px}.attachment{max-width:180px;max-height:120px}.bubble{background:#eee;padding:12px}</style><div id="messages"></div><textarea id="input"></textarea><div id="imagePreview"></div><div id="activity"></div><script>
 const $=s=>document.querySelector(s),messages=$('#messages'),input=$('#input');
 let voiceEnabled=false,historyLoading=false,imagesReading=false,draftImages=[];const MAX_IMAGES=20;
+async function openReply(){}
 function showActivityHint(text){$('#activity').textContent=text}
 function formatTime(value){return '2026/10/11 01:00'}
 function renderImagePreview(){$('#imagePreview').textContent=draftImages.length+' pictures'}
@@ -26,8 +27,8 @@ ${renderer}
 ${bubble}
 const canvas=document.createElement('canvas');canvas.width=1200;canvas.height=1800;const g=canvas.getContext('2d');g.fillStyle='#82aaa0';g.fillRect(0,0,1200,1800);g.fillStyle='white';g.font='80px sans-serif';g.fillText('Image viewer',180,200);
 window.fixtureImage=canvas.toDataURL('image/png');
-addMessage('assistant','朝汐：**先看看**这张图\\n第二行','',[fixtureImage],'2026-10-11T01:00:00+08:00');
-addMessage('user','','',[fixtureImage],'2026-10-11T01:01:00+08:00');
+addMessage('assistant','朝汐：**先看看**这张图\\n第二行','',[fixtureImage],'2026-10-11T01:00:00+08:00','source-assistant');
+addMessage('user','','',[fixtureImage],'2026-10-11T01:01:00+08:00','source-user');
 </script>`}));
   await page.goto('http://localhost:18799/');
   assert.deepEqual(errors,[]);
@@ -56,16 +57,24 @@ addMessage('user','','',[fixtureImage],'2026-10-11T01:01:00+08:00');
   assert.equal((await page.evaluate(()=>navigator.clipboard.readText())).replace(/\r\n/g,'\n'),'朝汐：**先看看**这张图\n第二行');
   await page.evaluate(()=>{delete navigator.clipboard.writeText;input.value='继续解释';});
   await page.locator('.row.assistant').click({button:'right'});await page.getByRole('menuitem',{name:'引用消息',exact:true}).click();
-  const quote=await page.locator('#input').inputValue();assert.ok(quote.includes('> 引用 朝汐'));assert.ok(quote.includes('> 第二行'));assert.ok(quote.endsWith('继续解释'));
-  assert.equal(await page.evaluate(()=>draftImages.length),1);
+  assert.equal(await page.locator('#input').inputValue(),'继续解释');
+  assert.equal(await page.locator('#draftReference').isVisible(),true);
+  assert.ok((await page.locator('#draftReference').innerText()).includes('先看看'));
+  assert.equal(await page.evaluate(()=>draftImages.length),0);
+  await page.locator('#draftReference .reference-link').click();
+  assert.equal(await page.locator('[data-message-id="source-assistant"]').evaluate(e=>e.classList.contains('reference-highlight')),true);
+  await page.getByRole('button',{name:'取消引用',exact:true}).click();assert.equal(await page.locator('#draftReference').isVisible(),false);
   await page.locator('.row.user .attachment').click({button:'right'});await page.getByRole('menuitem',{name:'复制图片',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#activity').textContent==='图片已复制');
   assert.ok(await page.evaluate(async()=> (await navigator.clipboard.read()).some(item=>item.types.includes('image/png'))));
   await page.locator('.row.user').focus();await page.keyboard.press('Shift+F10');assert.equal(await page.locator('#messageMenu').isVisible(),true);
-  await page.getByRole('menuitem',{name:'引用消息',exact:true}).click();assert.ok((await page.locator('#input').inputValue()).includes('> [图片]'));assert.equal(await page.evaluate(()=>draftImages.length),2);
-  await page.evaluate(()=>{draftImages=Array(20).fill(fixtureImage)});
-  await page.locator('.row.user').click({button:'right'});await page.getByRole('menuitem',{name:'引用消息',exact:true}).click();assert.equal(await page.evaluate(()=>draftImages.length),20);
+  await page.getByRole('menuitem',{name:'引用消息',exact:true}).click();
+  assert.equal(await page.locator('#input').inputValue(),'继续解释');assert.equal(await page.evaluate(()=>draftImages.length),0);
+  const reference=await page.evaluate(()=>window.MessageTools.takeReference());assert.equal(reference.message_id,'source-user');
+  await page.evaluate(reference=>{addMessage('user','我的回复','',[],null,'referencing-user',false,true,null,reference)},reference);
+  await page.locator('[data-message-id="referencing-user"] .reference-link').click();
+  assert.equal(await page.locator('[data-message-id="source-user"]').evaluate(e=>e.classList.contains('reference-highlight')),true);
   await page.locator('.row.assistant').click({button:'right'});await page.locator('#input').click();assert.equal(await page.locator('#messageMenu').isVisible(),false);
-  assert.deepEqual(errors,[]);console.log('PASS: viewer zoom/pan/fit/close, no popup, copy text/image, quote text/image, keyboard menu, limits, outside dismissal');
+  assert.deepEqual(errors,[]);console.log('PASS: viewer zoom/pan/fit/close, no popup, copy text/image, read-only linked quote cards, unchanged composer/images, cancel, locate source, keyboard menu, outside dismissal');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});
