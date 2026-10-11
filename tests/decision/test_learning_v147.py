@@ -31,7 +31,7 @@ def stack(tmp_path, responses=()):
 
 
 def episode(learning, identity='one', mode='ADVISE', label='GOOD', **metadata):
-    trace = DecisionAwarenessTrace(mode=mode, agent_recommendation='出去活动', **metadata)
+    trace = DecisionAwarenessTrace(mode=mode, decision_kind='NEW', decision_question='低精力下午应外出活动还是继续当前项目？', agent_recommendation='出去活动', **metadata)
     learning.history.record(identity, trace, '低精力下午出去活动还是继续项目', scope=SCOPE)
     if label:
         learning.history.feedback(identity, scope=SCOPE, outcome_label=label, outcome_text='回来状态好多了')
@@ -368,7 +368,7 @@ async def test_natural_feedback_same_reply_and_ambiguous_chat_does_not_bind(tmp_
     from test_decision_awareness import make_agent
     agent,provider=make_agent(tmp_path,[],fast=False)
     identity='previous'
-    agent.decision_awareness.history.record(identity,DecisionAwarenessTrace(mode='ADVISE',agent_recommendation='出去活动'),
+    agent.decision_awareness.history.record(identity,DecisionAwarenessTrace(mode='ADVISE',decision_kind='NEW',decision_question='低精力下午应外出活动还是继续当前项目？',agent_recommendation='出去活动'),
         '下午活动安排',scope=SCOPE)
     provider.responses.append(ModelResponse(content=json.dumps({'reply':'回来状态好多了就好。','awareness':{
         'mode':'NONE','feedback':{'decision_id':identity,'outcome_label':'GOOD','outcome_text':'出去以后状态挺好'}}},ensure_ascii=False)))
@@ -385,7 +385,7 @@ async def test_opportunistic_same_main_reply_marks_once_without_new_call(tmp_pat
     from test_decision_awareness import make_agent
     agent,provider=make_agent(tmp_path,[],fast=True)
     history=agent.decision_awareness.history
-    history.record('previous',DecisionAwarenessTrace(mode='ADVISE',agent_recommendation='参加活动',
+    history.record('previous',DecisionAwarenessTrace(mode='ADVISE',decision_kind='NEW',decision_question='昨天下午应参加活动还是留在家中？',agent_recommendation='参加活动',
         follow_up_policy='OPPORTUNISTIC',follow_up_after=datetime.now(UTC)-timedelta(days=1)),
         '昨天下午去舞萌',scope=SCOPE)
     service=DecisionFollowUp(history,Settings(_env_file=None));agent.decision_awareness.follow_up=service

@@ -33,7 +33,7 @@ class DecisionAwarenessTrace(BaseModel):
     mode: DecisionMode = DecisionMode.NONE
     decision_kind: Literal["NEW", "CONTINUATION", "CORRECTION", "EXECUTION", "NONE"] | None = None
     decision_question: str | None = Field(default=None, min_length=4, max_length=500,
-        description="NEW 才登记：结合上下文用一两句说明在什么情境下要决定什么，不复制承接句或建议。")
+        description="NEW 才登记：先结合上下文抽象成一两句自足的问题描述，明确情境、选择对象和必要约束。省略称呼/口头语/指令，补全指代；不得摘抄用户原话、建议或凭空补条件。EXECUTION/CORRECTION/CONTINUATION/NONE 填 null。")
     predicted_user_choice: str | None = Field(default=None, max_length=200)
     agent_recommendation: str | None = Field(default=None, max_length=200)
     context_sources: list[str] = Field(default_factory=list, max_length=20)

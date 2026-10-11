@@ -42,7 +42,7 @@ async def run():
     await case('FAST PICK',pick)
     async def feedback():
         agent,p,path=new('feedback');history=agent.decision_awareness.history
-        history.record('yesterday',DecisionAwarenessTrace(mode='ADVISE',agent_recommendation='出去散步'),
+        history.record('yesterday',DecisionAwarenessTrace(mode='ADVISE',decision_kind='NEW',decision_question='低精力下午应外出散步还是继续项目？',agent_recommendation='出去散步'),
             '昨天下午低精力且没有紧急 deadline，在寝室低效很久，要出门还是继续项目',scope='owner:desktop:local')
         result=await agent.run_direct('昨天你让我出去散步，我去了，回来精神好多了，这个建议挺好。')
         row=history.get('yesterday')
@@ -52,7 +52,7 @@ async def run():
     async def ambiguous():
         agent,p,path=new('ambiguous');history=agent.decision_awareness.history
         for identity in ['lunch','pen']:
-            history.record(identity,DecisionAwarenessTrace(mode='PICK',agent_recommendation='第一个'),identity,scope='owner:desktop:local')
+            history.record(identity,DecisionAwarenessTrace(mode='PICK',decision_kind='NEW',decision_question='当前备选商品应选哪一个？',agent_recommendation='第一个'),identity,scope='owner:desktop:local')
         result=await agent.run_direct('今天挺开心的。')
         return {'passed':all(r['feedback'] is None for r in history.list()),'model_calls':p.calls,'reply':result.content}
     await case('unbound casual feedback',ambiguous)
@@ -60,7 +60,7 @@ async def run():
         agent,p,path=new('reflect');history=agent.decision_awareness.history;journal=DecisionJournalStore(path/'journal')
         entry=journal.create(DecisionJournalEntry(title='低精力时换个环境',statement='没有紧急 deadline 时，低精力且低效很久可以考虑出去活动',
             conditions=['无紧急 deadline','低精力且低效很久'],confidence=.6).model_dump(mode='json'))
-        history.record('one',DecisionAwarenessTrace(mode='ADVISE',agent_recommendation='出去散步',journal_ids=[entry['id']]),
+        history.record('one',DecisionAwarenessTrace(mode='ADVISE',decision_kind='NEW',decision_question='低精力下午应外出散步还是继续项目？',agent_recommendation='出去散步',journal_ids=[entry['id']]),
             '低精力且没有紧急 deadline，在寝室低效很久，出门还是继续项目',scope='owner:desktop:local')
         history.feedback('one',scope='owner:desktop:local',outcome_label='GOOD',outcome_text='出门回来精神好多了，晚上项目也顺利推进')
         learning=DecisionLearning(history,journal,UserPrincipleStore(path/'principles'),p);result=await learning.reflect('one')
@@ -70,7 +70,7 @@ async def run():
     async def no_difference():
         agent,p,path=new('no-difference');history=agent.decision_awareness.history;journal=DecisionJournalStore(path/'journal')
         for identity in ['one','two','three']:
-            history.record(identity,DecisionAwarenessTrace(mode='PICK',agent_recommendation='黑壳笔'),
+            history.record(identity,DecisionAwarenessTrace(mode='PICK',decision_kind='NEW',decision_question='本次购买应选哪种外壳的笔？',agent_recommendation='黑壳笔'),
                 '两根一块钱的笔，黑壳白壳功能一样，选哪根',scope='owner:desktop:local')
             history.feedback(identity,scope='owner:desktop:local',outcome_label='NO_DIFFERENCE',outcome_text='黑壳白壳写起来都一样，真不用纠结')
         learning=DecisionLearning(history,journal,UserPrincipleStore(path/'principles'),p);result=await learning.reflect('one')

@@ -6,6 +6,7 @@ from pathlib import Path
 from threading import RLock
 from uuid import uuid4
 from .models import DecisionAwarenessTrace
+from .question import question_issue
 from .learning_models import FeedbackLabel, FollowUpPolicy, require_owner
 
 logger = logging.getLogger('DECISION')
@@ -63,12 +64,17 @@ class ChoiceHistory:
         append_row(self.directory / 'choice_history.jsonl', row)
         self._signature = None
 
-    def record(self, decision_id: str, trace: DecisionAwarenessTrace, summary: str, *, scope: str):
+    def record(self, decision_id: str, trace: DecisionAwarenessTrace, summary: str | None = None, *, scope: str,
+               source_text: str | None = None, source_message_id: str | None = None):
         require_owner()
         if not scope.startswith('owner:'):
             raise PermissionError('Owner scope required')
+        if issue := question_issue(trace, source_text):
+            raise ValueError(f'Decision question rejected: {issue}')
+        # The legacy summary argument is deliberately never a fallback for new writes.
         row = {'event': 'decision', 'decision_id': decision_id, 'schema_version': 4,
-            'timestamp': datetime.now(UTC).isoformat(), 'scope': scope, 'summary': (trace.decision_question or summary)[:500],
+            'timestamp': datetime.now(UTC).isoformat(), 'scope': scope, 'summary': trace.decision_question.strip(),
+            'question_status': 'abstracted', 'source_message_id': source_message_id,
             'decision_kind': trace.decision_kind, 'decision_question': trace.decision_question,
             'mode': trace.mode.value, 'suggestion': trace.agent_recommendation,
             'predicted_user_choice': trace.predicted_user_choice, 'context_refs': trace.context_refs,
@@ -149,6 +155,7 @@ class ChoiceHistory:
             original.update({key: row[key] for key in fields if key in row})
         self._file_meta = metadata
         for row in choices.values():
+            row.setdefault("question_status", "abstracted" if row.get("decision_question") else "legacy_unabstracted")
             for key, default in {'journal_ids': [], 'feedback': None, 'follow_up_policy': 'PASSIVE',
                 'follow_up_after': None, 'follow_up_status': 'PENDING', 'reflected': False,
                 'reflection_id': None}.items():

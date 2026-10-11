@@ -58,7 +58,7 @@ class DecisionLearning:
             if feedback['label'] == 'UNKNOWN':
                 reflection = DecisionReflection(decision_id=decision_id, reason='结果尚未知，不学习。')
             else:
-                fields = ('decision_id', 'summary', 'suggestion', 'mode', 'user_final_choice', 'feedback',
+                fields = ('decision_id', 'summary', 'decision_question', 'question_status', 'source_message_id', 'suggestion', 'mode', 'user_final_choice', 'feedback',
                           'context_refs', 'principle_ids', 'journal_ids')
                 payload = {'decision': {k: row.get(k) for k in fields}, 'user_principles': principles, 'user_archive_originals': originals,
                     'decision_journal': entries, 'related_history': [{k: r.get(k) for k in fields} for r in relevant]}

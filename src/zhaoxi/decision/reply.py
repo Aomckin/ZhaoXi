@@ -16,8 +16,12 @@ class MainReply(BaseModel):
         description="仅 FAST 缺必要资料时填 kind=decision/recall/tool, reason, trigger_span（本轮逐字原文），不夹带草稿；STANDARD 不填。")
 
 
+_MAIN_SCHEMA = MainReply.model_json_schema()
+# Require explicit semantics in provider output while accepting missing optional
+# telemetry locally without sacrificing an otherwise valid natural reply.
+_MAIN_SCHEMA["$defs"]["DecisionAwarenessTrace"]["required"] = ["mode", "decision_kind", "decision_question"]
 REPLY_FORMAT = {"type":"json_schema","json_schema":{
-    "name":"main_reply","schema":MainReply.model_json_schema()}}
+    "name":"main_reply","schema":_MAIN_SCHEMA}}
 
 
 class ReplyRepair(BaseModel):
