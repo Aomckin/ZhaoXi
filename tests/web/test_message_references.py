@@ -240,3 +240,26 @@ async def test_background_worker_does_not_inherit_foreground_reference():
     finally:
         reset_references(token)
         queue.db.close()
+
+
+async def test_live_proactive_reference_uses_synced_original_not_delivery_id():
+    from zhaoxi.proactive.models import Delivery, DeliveryStatus, Priority
+    from zhaoxi.proactive.store import InMemoryProactiveStore
+    agent = CaptureAgent()
+    store = InMemoryProactiveStore()
+    delivery = Delivery(delivery_id="beat-live", event_id="beat-event", subscription_id="beat",
+                        priority=Priority.NOTICE, status=DeliveryStatus.DELIVERED,
+                        event_type="conversation.beat", content="窗边那只桌宠，想让我回想哪一段？")
+    await store.save_delivery(delivery)
+    agent.proactive = SimpleNamespace(store=store)
+    gateway = InterfaceGateway(agent)
+    first = await gateway.history()
+    source = next(m for m in first if m["delivery_id"] == delivery.delivery_id)
+    second = await gateway.history()
+    assert source["message_id"] != delivery.delivery_id
+    assert [m for m in second if m["delivery_id"] == delivery.delivery_id] == [source]
+    await gateway.chat(request(source["message_id"]))
+    user = agent.conversation.messages[-2]
+    assert user.metadata["references"][0]["text"] == delivery.content
+    assert user.metadata["references"][0]["message_id"] == source["message_id"]
+    assert len(agent.calls) == 1

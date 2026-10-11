@@ -106,7 +106,8 @@
     if (info.quoteTarget) info = {...info.quoteTarget.messageInfo, row:info.quoteTarget,
       images:[...info.quoteTarget.querySelectorAll('img.attachment')]};
     const messageId = info.row.dataset.messageId;
-    if (!messageId || info.row.dataset.pending === 'true') { showActivityHint('这条消息发送完成后才能引用'); return; }
+    if (info.row.dataset.pending === 'true') { showActivityHint('这条消息发送完成后才能引用'); return; }
+    if (!messageId) { showActivityHint('原消息标识尚未同步，请刷新后再引用'); return; }
     setReference({message_id:messageId,
       part_index:info.row.dataset.messagePartIndex == null ? null : Number(info.row.dataset.messagePartIndex),
       role:info.role,text:info.text.slice(0,500),image_count:info.images.length,timestamp:info.timestamp});

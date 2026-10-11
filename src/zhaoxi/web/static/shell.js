@@ -436,7 +436,14 @@ async function drainDeliveries(){
   while(deliveryQueue.length){
     const d=deliveryQueue.shift();if(seenDeliveries.has(d.delivery_id))continue;
     busy=true;$('#clear').disabled=true;seenDeliveries.add(d.delivery_id);
-    try{await sendReply(d.content,d.delivered_at||d.available_at)}finally{finishTurn()}
+    try{
+      // SSE carries a delivery ID, not the stored conversation message ID.
+      // Resolve the original through the same session contract as restoration.
+      let original=null;
+      try{const session=await request('/api/session');original=session.messages?.find(m=>m.delivery_id===d.delivery_id&&m.role==='assistant'&&m.kind!=='system')}catch{}
+      if(original)await renderMessage(original,{paced:true});
+      else await sendReply(d.content,d.delivered_at||d.available_at,null,false);
+    }finally{finishTurn()}
     if(busy||pendingInput.length)return;
   }
 }

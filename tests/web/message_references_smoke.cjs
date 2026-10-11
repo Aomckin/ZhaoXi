@@ -70,7 +70,29 @@ const assets=path.join(__dirname,'../../src/zhaoxi/web/static');
   await page.locator('#draftReference .reference-link').click();
   await page.waitForFunction(()=>document.documentElement.dataset.windowMode==='main');
   await page.waitForFunction(()=>document.querySelector('[data-message-id="live-reply"]')?.classList.contains('reference-highlight'));
+  // A live initiative arrives only with delivery identity, never a message ID.
+  // Session synchronization must attach the actual stored source to every part.
+  await page.evaluate(()=>desktopShellState({mode:'main',topmost:false}));
+  const initiative={message_id:'stored-live-beat',role:'assistant',delivery_id:'live-beat',content:'屏幕上是桌宠呀。\n\n家里已经有一只了。\n\n想回想哪一段？',timestamp:'2026-10-11T09:13:58Z'};
+  history.push(initiative);
+  await page.evaluate(async item=>{receiveDelivery({delivery_id:item.delivery_id,status:'delivered',kind:'assistant',content:item.content,delivered_at:item.timestamp});},initiative);
+  await page.waitForFunction(()=>!busy&&document.querySelectorAll('[data-message-id="stored-live-beat"]').length===3);
+  await page.locator('[data-message-id="stored-live-beat"]').last().scrollIntoViewIfNeeded();
+  // Let the preceding original-message smooth navigation finish before opening a menu.
+  await page.waitForTimeout(500);
+  await page.locator('[data-message-id="stored-live-beat"]').last().click({button:'right'});
+  await page.getByRole('menuitem',{name:'引用消息',exact:true}).click();
+  assert.ok((await page.locator('#draftReference').innerText()).includes('想回想哪一段'));
+  assert.equal(await page.locator('#input').inputValue(),'');
+  assert.equal(await page.locator('[data-message-id="stored-live-beat"]').first().locator('..').locator('.regenerate').count(),0);
+  await page.locator('#draftReference .reference-link').click();
+  await page.waitForFunction(()=>document.querySelector('[data-message-id="stored-live-beat"]')?.classList.contains('reference-highlight'));
+  await page.screenshot({path:'.pytest_cache/proactive-reference-live.png'});
+  await page.reload();
+  await page.waitForFunction(()=>document.querySelectorAll('[data-message-id="stored-live-beat"]').length===3);
+  await page.evaluate(item=>receiveDelivery({delivery_id:item.delivery_id,status:'delivered',kind:'assistant',content:item.content}),initiative);
+  assert.equal(await page.locator('[data-message-id="stored-live-beat"]').count(),3);
   assert.deepEqual(errors,[]);
-  console.log('PASS: original history/part navigation, read-only composer, ID-only request, merged inputs, live reply IDs, refresh persistence, companion references/main-window navigation');
+  console.log('PASS: original history/part navigation, read-only composer, ID-only request, merged inputs, live reply IDs, refresh persistence, companion references/main-window navigation, live initiative source IDs/quote/navigation/reload deduplication');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});
