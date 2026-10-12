@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 .idea/
 .commandcode/
 .venv/
@@ -11,20 +13,19 @@ dist/
 build/
 *.egg-info/
 .zhaoxi/
+# Local journals, memories, principles and other personal runtime data.
 data/*
 !data/decisions/
 data/decisions/*
 !data/decisions/rules/
-!data/decisions/user_principles/
-data/decisions/user_principles/*
-!data/decisions/user_principles/job_below_explicit_floor.json
-!data/decisions/user_principles/long_term_direction.json
-!data/decisions/user_principles/protect_today_mainline.json
-!data/decisions/user_principles/reversible_low_cost.json
+
+# Keep empty emoji directories, not the user's registry or collected images.
 !data/emoji/
+data/emoji/*
+!data/emoji/images/
+!data/emoji/pending/
 data/emoji/images/*
 !data/emoji/images/.gitkeep
-!data/emoji/emoji_registry.json
 data/emoji/pending/*
 !data/emoji/pending/.gitkeep
 
