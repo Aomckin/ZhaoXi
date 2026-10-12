@@ -6,7 +6,7 @@ from typing import Any, Sequence
 from datetime import UTC, datetime
 from time import monotonic
 
-from zhaoxi.observability import current_trace, current_llm_owner
+from zhaoxi.observability import current_trace, current_llm_owner, llm_call_scope, llm_token_counts
 
 from zhaoxi.core.message import Message
 from zhaoxi.errors import ProviderError
@@ -67,27 +67,41 @@ class ResilientProvider(ModelProvider):
                 owner, stage = current_llm_owner()
                 started_at = datetime.now(UTC).isoformat()
                 started = monotonic()
+                item = None
                 if trace and trace.metrics_enabled:
+                    trace.reveal_process_replies()
+                    item = {"index": len(trace.llm_calls) + 1, "owner": owner, "stage": stage,
+                            "model": getattr(provider, "model", type(provider).__name__),
+                            "started_at": started_at, "status": "running", "reply_kind": "pending",
+                            "prompt_tokens": None, "output_tokens": None, "total_tokens": None}
+                    trace.llm_calls.append(item)
                     trace.emit("llm_call_started", "model", "running", "正在调用模型…",
-                               metadata={"index": len(trace.llm_calls) + 1, "owner": owner, "stage": stage})
+                               metadata={**item, "token_usage": trace.token_usage()})
                 response = None
                 try:
-                    response = await provider.generate(messages, tools, **kwargs)
+                    with llm_call_scope(item):
+                        response = await provider.generate(messages, tools, **kwargs)
                     return response
                 finally:
-                    if trace and trace.metrics_enabled:
-                        usage = response.usage if response is not None else {}
-                        item = {"index": len(trace.llm_calls) + 1, "owner": owner, "stage": stage,
-                                "started_at": started_at, "finished_at": datetime.now(UTC).isoformat(),
-                                "duration_ms": round((monotonic() - started) * 1000, 2),
-                                "prompt_tokens": usage.get("prompt_tokens", usage.get("input_tokens")),
-                                "output_tokens": usage.get("completion_tokens", usage.get("output_tokens")),
-                                "total_tokens": usage.get("total_tokens"),
-                                "tool_call_count": len(response.tool_calls) if response else 0,
-                                "finish_reason": response.finish_reason if response else None}
-                        trace.llm_calls.append(item)
-                        trace.emit("llm_call_finished", "model", "success" if response else "failed",
-                                   "模型调用已结束" if response else "模型调用失败", metadata=item)
+                    if item is not None:
+                        reported_usage = item.pop("_provider_usage", {})
+                        usage = response.usage if response is not None else reported_usage
+                        item.update(llm_token_counts(usage))
+                        item.update(finished_at=datetime.now(UTC).isoformat(),
+                                    duration_ms=round((monotonic() - started) * 1000, 2),
+                                    status="success" if response is not None else "failed",
+                                    tool_call_count=len(response.tool_calls) if response is not None else 0,
+                                    finish_reason=response.finish_reason if response is not None else None,
+                                    _response_text=(response.content or "").strip() if response is not None else "")
+                        if response is not None:
+                            if trace.finished_at is not None:
+                                item["reply_kind"] = "process"
+                                item["process_text"] = item.pop("_response_text", "")
+                            item["model"] = response.raw_metadata.get("model") or item["model"]
+                            response.raw_metadata["action_trace_call_index"] = item["index"]
+                        trace.emit("llm_call_finished", "model", item["status"],
+                                   "模型调用已结束" if response is not None else "模型调用失败",
+                                   metadata={**{key: value for key, value in item.items() if not key.startswith("_")}, "token_usage": trace.token_usage()})
 
             try:
                 options = {

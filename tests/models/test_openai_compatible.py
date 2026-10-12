@@ -461,3 +461,25 @@ def test_recalled_image_summary_cannot_split_native_tool_result_batch():
                       metadata={"image_timeline_scope": "attention"})
     second = Message(role=Role.TOOL, tool_call_id="b", content="second")
     assert _ordered_tool_messages([call, first, omitted, second]) == [call, first, second, omitted]
+
+
+async def test_reported_tokens_survive_response_decode_failure():
+    from zhaoxi.models.resilient import ResilientProvider
+    from zhaoxi.observability import action_trace_scope
+    from zhaoxi.reliability import CorrelationContext, correlation_scope
+
+    async def handler(request):
+        return httpx.Response(200, json={
+            "usage": {"prompt_tokens": 40, "completion_tokens": 6, "total_tokens": 46},
+            "choices": [{"message": {"tool_calls": [{"id": "bad", "function": {"name": "echo", "arguments": "{"}}]}}],
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        base = OpenAICompatibleProvider(base_url="https://example.test/v1", api_key="synthetic", model="synthetic", client=client)
+        provider = ResilientProvider([base])
+        with correlation_scope(CorrelationContext(trace_id="decode", request_id="decode")), action_trace_scope() as trace:
+            with pytest.raises(ProviderError) as caught:
+                await provider.generate([])
+            assert caught.value.code == "provider_tool_arguments_invalid"
+            assert trace.llm_calls[0]["status"] == "failed"
+            assert trace.token_usage()["total_tokens"] == 46

@@ -359,6 +359,8 @@ class PlannerRuntime:
                         response.content or "任务已完成。",
                         getattr(self.context_builder, "emoji_service", None),
                     )
+                    if action_trace:
+                        action_trace.mark_final_reply(response)
                     return await self._finish(goal, sequence.visible_text, action_index)
                 self.conversation.add_assistant(response.content)
                 continue
@@ -399,6 +401,8 @@ class PlannerRuntime:
                     name=call.name,
                 )
                 if goal.status == GoalStatus.COMPLETED:
+                    if action_trace:
+                        action_trace.mark_final_reply(response)
                     return self._response(goal, goal.final_content or "任务已完成。", action_index)
             await self.store.save(goal)
         goal = await self._require(goal.id)

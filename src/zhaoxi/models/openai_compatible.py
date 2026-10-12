@@ -194,9 +194,13 @@ class OpenAICompatibleProvider(ModelProvider):
             )
             response.raise_for_status()
             data = response.json()
+            usage = data.get("usage") or {}
+            if not isinstance(usage, dict):
+                raise ProviderError("模型返回了无效的用量信息。", code="provider_response_invalid")
+            from zhaoxi.observability import record_llm_usage
+            record_llm_usage(usage)
             choice = data["choices"][0]
             message = choice["message"]
-            usage = data.get("usage", {})
             log_prompt_usage(usage, model=str(data.get("model") or self.model))
             calls = []
             native_tool_calls = bool(message.get("tool_calls"))

@@ -98,6 +98,7 @@ class FastChatRuntime:
                            "最终回复生成超时", step_id=1, error_code="agent_timeout")
                 trace.response_status = "failed"
             raise AgentLoopError(f"请求超过 {self.agent.timeout_seconds:g} 秒，已停止。", code="agent_timeout") from exc
+        final_model_response = response
         if reply_format:
             response = self._decode_reply(response, user_message, messages)
         content = strip_echoed_timeline_header(response.content or "模型没有返回可显示的内容。")
@@ -134,6 +135,8 @@ class FastChatRuntime:
                            "当前消息支持升级" if kind else "当前消息不支持升级，继续轻量回应",
                            metadata={"validated": kind is not None, "reason": validation_reason,
                                      "trigger_span": span[:200]})
+            if trace:
+                trace.discard_model_reply(response, "fast_escalation" if kind is not None else "fast_reply_rejected")
             if kind is None:
                 # Discard all unsafe draft text. One bounded, tool-free retry.
                 retry_messages = [*messages, Message(role=Role.SYSTEM, content=
@@ -147,11 +150,16 @@ class FastChatRuntime:
                     if reply_format:
                         retry = self._decode_reply(retry, user_message, messages)
                     content = strip_echoed_timeline_header(retry.content or "")
+                    final_model_response = retry
                     if (not content or retry.tool_calls or self.escalation_request(content) is not None
                             or self.structured_request(content) is not None or self.requires_action_escalation(content)):
                         content = "我在，继续聊吧。"
+                        final_model_response = None
+                        if trace:
+                            trace.discard_model_reply(retry, "fast_retry_rejected")
                 except (ProviderError, TimeoutError):
                     content = "我在，继续聊吧。"
+                    final_model_response = None
                     if trace:
                         trace.deterministic_fallback_used = True
         if trace:
@@ -174,6 +182,8 @@ class FastChatRuntime:
         user = self.agent.conversation.add_user(user_message.strip())
         user.metadata["decision_context_sources"] = messages[0].metadata.get("decision_context_sources", {})
         sequence = self.agent._commit_model_reply_sequence(content)
+        if trace and final_model_response is not None:
+            trace.mark_final_reply(final_model_response)
         content = sequence.visible_text
         if trace:
             trace.emit("response_generation_succeeded", "response_generation", "success", "回复已生成", step_id=1)

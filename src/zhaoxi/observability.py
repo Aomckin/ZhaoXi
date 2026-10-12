@@ -251,6 +251,46 @@ class ActionTrace:
             })
         self.memory_candidates = candidates
 
+    def token_usage(self) -> dict[str, object]:
+        totals = {}
+        for label, field in (("input_tokens", "prompt_tokens"), ("output_tokens", "output_tokens"), ("total_tokens", "total_tokens")):
+            reported = [call[field] for call in self.llm_calls if call.get(field) is not None]
+            totals[label] = sum(reported) if reported or not self.llm_calls else None
+            totals[label + "_unreported_calls"] = len(self.llm_calls) - len(reported)
+        return {**totals, "call_count": len(self.llm_calls),
+                "running_calls": sum(call.get("status") == "running" for call in self.llm_calls)}
+
+    def reveal_process_replies(self) -> None:
+        """A subsequent call or settled request confirms these replies are intermediate."""
+        for call in self.llm_calls:
+            if call.get("status") == "success" and call.get("reply_kind") == "pending":
+                call["reply_kind"] = "process"
+                call["process_text"] = call.pop("_response_text", "")
+                self.emit("llm_process_reply", "model", "info", "模型返回了过程回复",
+                          metadata={key: value for key, value in call.items() if not key.startswith("_")})
+
+    def discard_model_reply(self, response, reason: str) -> None:
+        index = response.raw_metadata.get("action_trace_call_index")
+        if index is None:
+            return
+        call = self.llm_calls[index - 1]
+        call.pop("_response_text", None)
+        call.update(process_text="", reply_kind="discarded")
+        self.emit("llm_reply_discarded", "model", "info", "模型草稿未采用",
+                  metadata={"index": index, "reply_kind": "discarded", "process_text": "", "discard_reason": reason})
+
+    def mark_final_reply(self, response) -> None:
+        index = response.raw_metadata.get("action_trace_call_index")
+        if index is None:
+            return  # Providers without call instrumentation have no corresponding record.
+        call = self.llm_calls[index - 1]
+        call.pop("_response_text", None)
+        call["final_reply"] = True
+        call["reply_kind"] = "final"
+        call["process_text"] = ""
+        self.emit("llm_reply_committed", "model", "success", "本次模型调用用于最终回复",
+                  metadata={"index": index, "final_reply": True, "reply_kind": "final"})
+
     def record_interval(self, stage: str, started: float) -> None:
         if not self.metrics_enabled:
             return
@@ -338,6 +378,7 @@ class ActionTrace:
         self.finished_at = datetime.now(UTC).isoformat()
         self.final_response_ms = round((time.monotonic() - self.started_monotonic) * 1000, 2)
         self.first_reply()
+        self.reveal_process_replies()
         public_metrics = {
             key: value for key, value in self.metrics().items()
             if key not in {"timeline", "memory_candidates"}
@@ -388,7 +429,7 @@ class ActionTrace:
         return {"request_id": self.request_id, "trace_id": self.trace_id, "started_at": self.started_at,
                 "finished_at": self.finished_at, "total_ms": total, "ttfr_ms": self.first_reply_ms,
                 "final_response_ms": self.final_response_ms, "final_reply_ready_ms": self.final_reply_ready_ms, **values,
-                "llm_call_count": len(self.llm_calls), "llm_calls": self.llm_calls,
+                "llm_call_count": len(self.llm_calls), "llm_calls": [{key: value for key, value in call.items() if not key.startswith("_")} for call in self.llm_calls], "token_usage": self.token_usage(),
                 "foreground_llm_calls": sum(call.get("owner") not in {"auto_memory", "current_cognition"} for call in self.llm_calls),
                 "background_llm_calls": sum(call.get("owner") in {"auto_memory", "current_cognition"} for call in self.llm_calls),
                 "router_llm_calls": sum(call.get("owner") == "router" for call in self.llm_calls),
@@ -512,6 +553,35 @@ def action_trace_scope(sink: Callable[[dict[str, object]], None] | None = None) 
         yield trace
     finally:
         _current.reset(token)
+
+_llm_call: ContextVar[dict | None] = ContextVar("zhaoxi_llm_call", default=None)
+
+
+@contextmanager
+def llm_call_scope(call: dict | None) -> Iterator[None]:
+    token = _llm_call.set(call)
+    try:
+        yield
+    finally:
+        _llm_call.reset(token)
+
+
+def record_llm_usage(usage: dict) -> None:
+    """Keep reported usage even if decoding this provider response later fails."""
+    call = _llm_call.get()
+    if call is not None:
+        call["_provider_usage"] = usage
+
+
+def llm_token_counts(usage: dict) -> dict:
+    fields = {"prompt_tokens": usage.get("prompt_tokens", usage.get("input_tokens")),
+              "output_tokens": usage.get("completion_tokens", usage.get("output_tokens")),
+              "total_tokens": usage.get("total_tokens")}
+    counts = {name: value if type(value) is int and value >= 0 else None for name, value in fields.items()}
+    if counts["total_tokens"] is None and counts["prompt_tokens"] is not None and counts["output_tokens"] is not None:
+        counts["total_tokens"] = counts["prompt_tokens"] + counts["output_tokens"]
+    return counts
+
 
 _llm_owner: ContextVar[tuple[str, str]] = ContextVar("zhaoxi_llm_owner", default=("agent", "model"))
 

@@ -8,6 +8,7 @@
 - [v1.4.9 版本说明](v1.4.x/Zhaoxi_v1.4.9_Release_Notes.md)
 - [v1.4.8 清债开发与验收记录](v1.4.x/Zhaoxi_v1.4.8_开发记录.md)
 - [v1.4.8 版本说明](v1.4.x/Zhaoxi_v1.4.8_Release_Notes.md)
+- [行动记录 Token 与过程正文](maintenance/2026-10-12-action-record-token-usage.md)
 - [动态能力域与工作流管理](guides/tool-domains-and-workflows.md)
 
 - [当前运行状态](current/CURRENT_STATUS.md)

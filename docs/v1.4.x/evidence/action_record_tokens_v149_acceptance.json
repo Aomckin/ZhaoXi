@@ -1,0 +1,67 @@
+{
+  "date": "2026-10-12",
+  "version": "1.4.9",
+  "baseline": "7e4f858",
+  "status": "offline_accepted",
+  "token_semantics": "one record per actual provider attempt; reported usage only; missing usage stays unknown; known failed-decode usage included",
+  "process_text_source": "returned content, excluding final or discarded drafts; reasoning_content excluded",
+  "results": {
+    "core_python": {
+      "passed": 1617,
+      "skipped": 1,
+      "failed": 0
+    },
+    "web_node": {
+      "passed": 114,
+      "failed": 0
+    },
+    "tool_python": {
+      "lifehud": 33,
+      "career": 4,
+      "mcp": 8,
+      "markitdown": 2
+    },
+    "career_smoke_subchecks": 266,
+    "career_api": "passed",
+    "focused_python": 188,
+    "additional_focused_python": 85
+  },
+  "browser": {
+    "checks": [
+      "desktop_sidebar_trace",
+      "web_observes_desktop_sse",
+      "reload_mid_request_recovers_snapshot",
+      "terminal_status_both_surfaces",
+      "runtime_metrics_displayed",
+      "navigation_back_restores_completed_trace",
+      "latest_request_snapshot",
+      "no_page_errors",
+      "per_call_tokens",
+      "request_total_tokens",
+      "non_final_body",
+      "final_body_not_duplicated"
+    ],
+    "desktop_events": 14,
+    "web_events": 14,
+    "real_model_calls": 0,
+    "real_social_send": false,
+    "errors": []
+  },
+  "first_run_findings": "2 FAST draft-publication regression failures; fixed by withholding pending bodies and explicit discard, with original assertions preserved",
+  "static_checks": [
+    "changed Python syntax",
+    "documentation links",
+    "git diff whitespace",
+    "no personal runtime data staged"
+  ],
+  "runtime": {
+    "production_restarted": false,
+    "real_model_calls": 0,
+    "real_qq_send": false,
+    "pushed": false
+  },
+  "logs": {
+    "initial": ".pytest_cache/action-records-offline.log",
+    "final": ".pytest_cache/action-records-offline-final.log"
+  }
+}

@@ -1,14 +1,17 @@
 
-const FRONTEND_BUILD_ID='v1.4.9-simplification-20261012',FRONTEND_LOADED_AT=new Date().toISOString();
+const FRONTEND_BUILD_ID='v1.4.9-call-tokens-20261012',FRONTEND_LOADED_AT=new Date().toISOString();
 const shellInertNodes=new Map();
 const $=s=>{const found=document.querySelector(s);if(found)return found;
   if(!shellInertNodes.has(s)){const node=document.createElement('div');node.value='';node.checked=false;shellInertNodes.set(s,node)}
   return shellInertNodes.get(s)}, messages=$('#messages'), input=$('#input'), send=$('#send'), mic=$('#mic'), activity=$('#activity'), debug=$('#debug'), voiceReview=$('#voiceReview'), voiceText=$('#voiceText');let busy=false,voiceEnabled=false,voiceRecording=false,speechActive=false,normalRegenerationEnabled=false;
 let activeTraceId=null,traceTerminated=false,traceRevision=0;
+const actionModelCalls=new Map();let actionTokenUsage=null;
 const retiredTraceIds=new Set();
 function resetActionTrace(requestId){
   if(activeTraceId&&activeTraceId!==requestId){retiredTraceIds.add(activeTraceId);if(retiredTraceIds.size>20)retiredTraceIds.delete(retiredTraceIds.values().next().value)}
   activeTraceId=requestId;traceTerminated=false;traceRevision++;
+  actionModelCalls.clear();actionTokenUsage=null;
+  $('#actionModelCalls')?.replaceChildren();if($('#actionTokenSummary'))$('#actionTokenSummary').textContent='Token 合计：等待模型返回用量';
   $('#actionTraceSummary').textContent='行动记录 · 进行中';$('#actionTraceEvents').replaceChildren();$('#actionTraceDebug').textContent='';
   if($('#actionMaintenance'))$('#actionMaintenance').textContent='';if($('#actionRuntimeSummary'))$('#actionRuntimeSummary').textContent='';if($('#actionPlannerStatus'))$('#actionPlannerStatus').textContent='Planner：本轮尚未启用';
 }
@@ -62,8 +65,45 @@ function renderMemoryCandidates(items){
     `Why: ${(item.why_selected||[]).join('、')||'—'}`,
   ].join('\n')).join('\n\n');
 }
+function recordModelCall(call){
+  if(!Number.isInteger(call.index))return;
+  const saved={...actionModelCalls.get(call.index),...call};
+  if(saved.final_reply)saved.process_text='';
+  actionModelCalls.set(call.index,saved);
+}
+function renderModelCalls(usage=null){
+  const container=$('#actionModelCalls'),summary=$('#actionTokenSummary');
+  if(!container||!summary)return;
+  const calls=[...actionModelCalls.values()].sort((a,b)=>a.index-b.index);
+  if(usage)actionTokenUsage=usage;
+  const totals=actionTokenUsage||Object.fromEntries(['input_tokens','output_tokens','total_tokens'].flatMap(field=>{
+    const key=field==='input_tokens'?'prompt_tokens':field,values=calls.map(call=>call[key]).filter(Number.isFinite);
+    return [[field,values.length||!calls.length?values.reduce((a,b)=>a+b,0):null],[field+'_unreported_calls',calls.length-values.length]];
+  }));
+  const tokens=value=>Number.isFinite(value)?value.toLocaleString('zh-CN'):'未返回';
+  const total=(field)=>tokens(totals[field])+(totals[field+'_unreported_calls']&&Number.isFinite(totals[field])?'（已知）':'');
+  const missing=totals.total_tokens_unreported_calls||0;
+  summary.textContent=`Token 合计 ${total('total_tokens')} · 输入 ${total('input_tokens')} · 输出 ${total('output_tokens')} · ${totals.call_count??calls.length} 次调用`+(missing?` · ${missing} 次用量未返回`:'');
+  container.replaceChildren();
+  for(const call of calls){
+    const card=document.createElement('article'),title=document.createElement('strong'),info=document.createElement('p');
+    card.className='trace-model-call';
+    const state=call.status==='running'?'进行中':call.status==='failed'?'失败':call.final_reply?'最终回复':call.reply_kind==='discarded'?'草稿未采用':'已返回';
+    title.textContent=`调用 #${call.index} · ${call.model||'模型未标记'} · ${call.owner||'agent'} / ${call.stage||'model'} · ${state}`;
+    info.textContent=`Token ${tokens(call.total_tokens)} · 输入 ${tokens(call.prompt_tokens)} · 输出 ${tokens(call.output_tokens)}`+(Number.isFinite(call.duration_ms)?` · ${call.duration_ms.toFixed(2)} ms`:'');
+    card.append(title,info);
+    if(call.reply_kind==='process'&&!call.final_reply&&call.process_text){
+      const details=document.createElement('details'),label=document.createElement('summary'),body=document.createElement('pre');
+      label.textContent='过程回复（非最终正文）';body.textContent=call.process_text;
+      details.append(label,body);card.append(details);
+    }
+    container.append(card);
+  }
+}
 function renderRuntimeMetrics(m){
   const node=$('#actionRuntimeSummary');if(!node)return;
+  for(const call of m.llm_calls||[])recordModelCall(call);
+  renderModelCalls(m.token_usage);
   const ms=value=>Number.isFinite(value)?`${value.toFixed(2)} ms`:'未记录';
   const stages={routing_ms:'路由',memory_retrieval_ms:'记忆检索',decision_ms:'决策',planner_ms:'规划',workflow_ms:'工作流',tool_ms_total:'工具合计',response_generation_ms:'回复生成',auto_memory_ms:'记忆整理',current_cognition_ms:'近期状态',other_ms:'其他'};
   const lane={fast:'FAST / 轻量对话',standard:'STANDARD / 标准',deep:'DEEP / 深度'}[m.runtime_lane]||m.runtime_lane||'未标记';
@@ -79,7 +119,6 @@ function renderRuntimeMetrics(m){
       `Router required ${!!m.router_required} · override ${!!m.router_override} · final ${m.router_final_lane||'—'} · 回到 FAST ${m.router_to_fast_count||0}`]:[]),
     `总耗时 ${ms(m.total_ms)} · 首次回复 ${ms(m.ttfr_ms)}`,
     ...Object.entries(stages).map(([key,label])=>`${label}：${ms(m[key])}`),
-    ...(m.llm_calls||[]).map(c=>`模型 #${c.index} · ${c.owner} / ${c.stage}：${ms(c.duration_ms)}`),
     ...(m.tool_calls||[]).map(c=>`工具 ${c.tool_name}：${ms(c.duration_ms)}`)].join('\n');
   const planner=$('#actionPlannerStatus');if(planner)planner.textContent=m.planner_used?'Planner：本轮已启用':'Planner：本轮未启用（普通 Agent 执行）';
 }
@@ -95,6 +134,10 @@ function renderAgentEvent(event,replay=false){
   $('#actionTraceDebug').textContent+=`${event.timestamp||''} ${type} ${JSON.stringify(event)}\n`;
   if(event.stage==='context')return;
   const meta=event.metadata||{};
+  if(type==='llm_call_started'||type==='llm_call_finished'||type==='llm_reply_committed'||type==='llm_process_reply'||type==='llm_reply_discarded'){
+    recordModelCall({...meta,...(type==='llm_call_started'?{status:'running'}:type==='llm_call_finished'?{status:outcome}:{})});
+    renderModelCalls(meta.token_usage);
+  }
   const duration=Number.isFinite(meta.duration_ms)?` · ${meta.duration_ms.toFixed(2)} ms`:'';
   const identity=type.startsWith('llm_call_')?` · ${meta.owner||'agent'} #${meta.index||''}`:event.tool_name?` · ${event.tool_name}`:'';
   appendTraceEvent((event.display_message||type)+identity+duration,outcome);

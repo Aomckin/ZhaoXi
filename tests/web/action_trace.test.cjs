@@ -21,11 +21,12 @@ function setup(){
     '#actionTrace':{open:false},'#actionTraceSummary':{textContent:''},
     '#actionTraceEvents':list,'#actionTraceDebug':{textContent:''},
     '#actionRuntimeSummary':{textContent:''},'#actionPlannerStatus':{textContent:''},'#actionMaintenance':{textContent:''},
+    '#actionTokenSummary':{textContent:''},'#actionModelCalls':{children:[],append(row){this.children.push(row)},replaceChildren(){this.children=[]}},
   };
   const activity={textContent:''};
   const context=vm.createContext({
     $:selector=>nodes[selector],activity,busy:true,crypto:{randomUUID:()=> 'request-1'},
-    document:{createElement:()=>({className:'',textContent:'',remove(){
+    document:{createElement:()=>({className:'',textContent:'',children:[],append(...items){this.children.push(...items)},remove(){
       const index=list.children.indexOf(this);if(index>=0)list.children.splice(index,1);
     }})},
   });
@@ -233,3 +234,46 @@ for(const [status,title] of [['failed','行动记录 · 未完成'],['partial','
   assert.equal(s.nodes['#actionTraceSummary'].textContent,title);
  });
 }
+
+
+test('per-call tokens and known request total are accurate and replay-safe',()=>{
+  const s=setup();s.context.beginActionTrace();
+  const first={index:1,model:'synthetic-model',owner:'planner',stage:'planning',prompt_tokens:12,output_tokens:5,total_tokens:17,reply_kind:'process',process_text:'先核对日程 <script>never execute</script>'};
+  s.emit('llm_call_finished','model','success','模型调用已结束',{metadata:first});
+  s.emit('llm_call_finished','model','success','模型调用已结束',{metadata:first});
+  assert.equal(s.nodes['#actionModelCalls'].children.length,1);
+  assert.match(s.nodes['#actionTokenSummary'].textContent,/Token 合计 17.*输入 12.*输出 5.*1 次调用/);
+  const card=s.nodes['#actionModelCalls'].children[0];
+  assert.match(card.children[0].textContent,/synthetic-model.*planner/);
+  assert.match(card.children[1].textContent,/Token 17.*输入 12.*输出 5/);
+  assert.equal(card.children[2].children[1].textContent,first.process_text);
+  assert.equal(card.children[2].children[1].innerHTML,undefined);
+  s.emit('llm_call_finished','model','failed','模型调用失败',{metadata:{index:2,prompt_tokens:null,output_tokens:null,total_tokens:null}});
+  assert.match(s.nodes['#actionTokenSummary'].textContent,/17（已知）.*1 次用量未返回/);
+  assert.match(s.nodes['#actionModelCalls'].children[1].children[1].textContent,/Token 未返回/);
+  assert.doesNotMatch(s.activity.textContent,/Token|never execute/);
+});
+
+test('final call remains counted but its body is not repeated; new requests clear old calls',()=>{
+  const s=setup();s.context.beginActionTrace();
+  s.emit('llm_call_finished','model','success','模型调用已结束',{metadata:{index:1,prompt_tokens:0,output_tokens:0,total_tokens:0,process_text:'最终回复正文'}});
+  s.emit('llm_reply_committed','model','success','本次模型调用用于最终回复',{metadata:{index:1,final_reply:true}});
+  const card=s.nodes['#actionModelCalls'].children[0];
+  assert.equal(card.children.length,2);
+  assert.match(card.children[0].textContent,/最终回复/);
+  assert.match(s.nodes['#actionTokenSummary'].textContent,/Token 合计 0/);
+  s.context.resetActionTrace('request-2');
+  assert.equal(s.nodes['#actionModelCalls'].children.length,0);
+  assert.match(s.nodes['#actionTokenSummary'].textContent,/等待模型返回用量/);
+});
+
+test('final runtime snapshot restores all call bodies and authoritative token totals',()=>{
+  const s=setup();s.context.beginActionTrace();
+  s.context.renderRuntimeMetrics({llm_calls:[
+    {index:1,model:'first',prompt_tokens:10,output_tokens:2,total_tokens:12,reply_kind:'process',process_text:'公开的规划说明'},
+    {index:2,model:'final',prompt_tokens:20,output_tokens:3,total_tokens:23,process_text:'不重复显示',final_reply:true},
+  ],token_usage:{call_count:2,input_tokens:30,output_tokens:5,total_tokens:35}});
+  assert.match(s.nodes['#actionTokenSummary'].textContent,/Token 合计 35.*输入 30.*输出 5.*2 次调用/);
+  assert.equal(s.nodes['#actionModelCalls'].children[0].children[2].children[1].textContent,'公开的规划说明');
+  assert.equal(s.nodes['#actionModelCalls'].children[1].children.length,2);
+});

@@ -195,6 +195,8 @@ class ZhaoxiAgent:
         try:
             decoded = decode_reply_repair(response) if repair else decode_main_reply(response, fast=fast)
         except AgentLoopError as exc:
+            if trace := current_trace():
+                trace.discard_model_reply(response, exc.code)
             self.last_reply_protocol = {"status": "failed", "error_code": exc.code,
                                         "input_chars": len(response.content or "")}
             raise
@@ -436,6 +438,7 @@ class ZhaoxiAgent:
             + "\n请结合用户原意，用自然、简洁的中文给出最终回复；失败时如实说明，不猜测成功。"
         )
         content = ""
+        model_response = None
         try:
             with budget_stage_scope("finalization"), llm_owner_scope("workflow_finalization", "workflow_finalization"):
                 model_response = await asyncio.wait_for(
@@ -447,6 +450,8 @@ class ZhaoxiAgent:
         if not content:
             content = self._workflow_fallback(run)
         content = self._commit_model_reply(content)
+        if model_response is not None and (trace := current_trace()):
+            trace.mark_final_reply(model_response)
         return AgentResponse(content=content, request_id=run.id, steps=0)
 
     @staticmethod
@@ -1325,6 +1330,7 @@ class ZhaoxiAgent:
                         continue
                     raise AgentLoopError("回复整理失败，请重试。", code="response_generation_error") from exc
                 if trace:
+                    trace.mark_final_reply(response)
                     trace.emit("response_generation_succeeded", "response_generation", "success", "回复已生成", step_id=step)
                     trace.response_status = "succeeded"
                 logger.info("request=%s final response step=%d", request_id, step)

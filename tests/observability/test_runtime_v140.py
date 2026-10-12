@@ -262,3 +262,112 @@ def test_native_repeat_requires_new_action_and_distinct_text():
     assert not trace.emit_interim("接下来给你记上这个安排。", reason="action_content", progress="read")
     assert trace.events[-1].metadata["reason"] == "no_progress"
     assert trace.emit_interim("接下来给你记上这个安排。", reason="action_content", progress="write")
+
+
+async def test_tokens_count_each_attempt_and_final_reply_is_not_a_process_body():
+    from zhaoxi.reliability.retry import RetryPolicy
+    from zhaoxi.observability import record_llm_usage
+
+    class Attempts:
+        model = "synthetic-primary"
+        count = 0
+
+        async def generate(self, *args, **kwargs):
+            self.count += 1
+            if self.count == 1:
+                record_llm_usage({"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12})
+                raise ProviderError("synthetic decode failure", retryable=True)
+            return ModelResponse(content="先核对日程", usage={"input_tokens": 20, "output_tokens": 3},
+                                 raw_metadata={"reasoning_content": "private-reasoning-canary"})
+
+    events = []
+    provider = ResilientProvider([Attempts()], retry_policy=RetryPolicy(max_attempts=2, base_delay_seconds=0))
+    with correlation_scope(CorrelationContext(trace_id="tokens", request_id="tokens")), action_trace_scope(events.append) as trace:
+        first = await provider.generate([])
+        provider.providers[0] = FakeProvider([ModelResponse(content="最终正文", usage={"prompt_tokens": 30, "completion_tokens": 4, "total_tokens": 34})])
+        final = await provider.generate([])
+        assert trace.llm_calls[1]["reply_kind"] == "process"
+        trace.mark_final_reply(final)
+        trace.finish()
+        assert [call["index"] for call in trace.llm_calls] == [1, 2, 3]
+        assert [call["status"] for call in trace.llm_calls] == ["failed", "success", "success"]
+        assert trace.token_usage()["total_tokens"] == 69
+        assert trace.token_usage()["input_tokens"] == 60
+        assert trace.token_usage()["output_tokens"] == 9
+        assert trace.token_usage()["total_tokens_unreported_calls"] == 0
+        assert trace.llm_calls[-1]["process_text"] == ""
+        assert trace.llm_calls[-1]["final_reply"] is True
+    import json
+    assert "private-reasoning-canary" not in json.dumps(trace.metrics())
+    assert trace.llm_calls[1]["process_text"] == first.content
+
+
+async def test_missing_and_zero_usage_are_distinct_and_background_updates_same_total():
+    from zhaoxi.observability import llm_owner_scope
+    provider = ResilientProvider([FakeProvider([
+        ModelResponse(content="零用量", usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}),
+        ModelResponse(content="服务没返回用量"),
+        ModelResponse(content="后台整理说明", usage={"prompt_tokens": 4, "completion_tokens": 1}),
+    ])])
+    with correlation_scope(CorrelationContext(trace_id="unknown", request_id="unknown")), action_trace_scope() as trace:
+        await provider.generate([])
+        await provider.generate([])
+        trace.finish()
+        with llm_owner_scope("auto_memory", "memory"):
+            await provider.generate([])
+        usage = trace.token_usage()
+        assert trace.llm_calls[0]["total_tokens"] == 0
+        assert trace.llm_calls[1]["total_tokens"] is None
+        assert usage["total_tokens"] == 5 and usage["total_tokens_unreported_calls"] == 1
+        assert trace.llm_calls[2]["reply_kind"] == "process"
+
+
+async def test_concurrent_model_calls_keep_their_own_indices_and_usage():
+    import asyncio
+    from zhaoxi.observability import record_llm_usage
+    release = asyncio.Event()
+    both_started = asyncio.Event()
+
+    class Concurrent:
+        calls = 0
+
+        async def generate(self, *args, **kwargs):
+            self.calls += 1
+            current = self.calls
+            if current == 1:
+                record_llm_usage({"prompt_tokens": 11, "completion_tokens": 1})
+                await release.wait()
+                raise ProviderError("synthetic failure")
+            both_started.set()
+            return ModelResponse(content="另一次调用", usage={"prompt_tokens": 22, "completion_tokens": 2})
+
+    provider = ResilientProvider([Concurrent()])
+    with correlation_scope(CorrelationContext(trace_id="parallel", request_id="parallel")), action_trace_scope() as trace:
+        first = asyncio.create_task(provider.generate([]))
+        await asyncio.sleep(0)
+        second = asyncio.create_task(provider.generate([]))
+        await both_started.wait()
+        response = await second
+        release.set()
+        with pytest.raises(ProviderError):
+            await first
+        assert [call["index"] for call in trace.llm_calls] == [1, 2]
+        assert [call["total_tokens"] for call in trace.llm_calls] == [12, 24]
+        assert response.raw_metadata["action_trace_call_index"] == 2
+        assert trace.token_usage()["total_tokens"] == 36
+
+
+@pytest.mark.parametrize("fast", [False, True])
+async def test_actual_agent_final_call_is_counted_without_body_repetition(fast):
+    from zhaoxi.core.fast_chat import FastChatRuntime
+    inner = FakeProvider([ModelResponse(content="最终验收文本", usage={"prompt_tokens": 7, "completion_tokens": 3})])
+    agent = ZhaoxiAgent(provider=ResilientProvider([inner]), registry=ToolRegistry(), context_builder=ContextBuilder("朝汐"))
+    with correlation_scope(CorrelationContext(trace_id="actual-final", request_id="actual-final")), action_trace_scope() as trace:
+        result = await (FastChatRuntime(agent).run_fast_chat("你好") if fast else agent.run("你好"))
+        trace.finish()
+        assert result.content == "最终验收文本" and len(inner.calls) == 1
+        assert trace.token_usage()["total_tokens"] == 10
+        assert trace.llm_calls[0]["reply_kind"] == "final"
+        assert trace.llm_calls[0]["process_text"] == ""
+        import json
+        assert "最终验收文本" not in json.dumps(trace.metrics(), ensure_ascii=False)
