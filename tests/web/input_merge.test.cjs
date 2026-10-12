@@ -7,8 +7,8 @@ const html=fs.readFileSync(path.join(__dirname,'../../src/zhaoxi/web/static/inde
 const source=html.slice(html.indexOf('let INPUT_MERGE_MS='),html.indexOf('async function resolve('));
 function setup(){
   let id=0;const timers=new Map(),requests=[],payloads=[],bubbles=[],retries=[],clear={replaceChildren(){},append(){}};
-  const node=()=>({removed:false,parentElement:{},append(){},setAttribute(){},remove(){this.removed=true},querySelector(){return this}});
-  const context=vm.createContext({busy:false,send:{},input:{value:'',focus(){}},activity:{},debug:{},performance:{now:()=>0},
+  const node=()=>({removed:false,dataset:{},parentElement:{},append(){},setAttribute(){},remove(){this.removed=true},querySelector(){return this}});
+  const context=vm.createContext({window:{},crypto:require('node:crypto'),busy:false,send:{},input:{value:'',focus(){}},activity:{},debug:{},performance:{now:()=>0},
     showActivityHint:text=>{context.activity.textContent=text},attachRegenerate:(...args)=>retries.push(args),
     $:()=>clear,document:{createElement:node},addMessage:(...args)=>{bubbles.push(args);return [node()]},permissionCard(){},
     setTimeout:(fn,ms)=>{assert.equal(ms,15000);timers.set(++id,fn);return id},clearTimeout:id=>timers.delete(id),

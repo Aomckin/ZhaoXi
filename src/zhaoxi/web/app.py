@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, RedirectResponse
 from zhaoxi.tools.manifest import group_inventory, inventory_summary
 from zhaoxi.tools.filesystem_access import load_filesystem_access
-from zhaoxi.tools.router import safe_resolve_tool_context
+from zhaoxi.tools.router import resolve_tool_context
 
 from zhaoxi.cli import build_agent
 from zhaoxi import __version__
@@ -389,7 +389,7 @@ def create_app(
         if registry is None:
             raise HTTPException(status_code=409, detail="Tool Registry 尚未就绪。")
         state = getattr(core, "_tool_discovery_state", None)
-        schemas = state.schemas(registry) if state else safe_resolve_tool_context(
+        schemas = state.schemas(registry) if state else resolve_tool_context(
             "", [], registry, mode=getattr(core, "tool_router_mode", "dynamic")
         ).schemas
         manifest = registry.manifest([s["function"]["name"] for s in schemas])

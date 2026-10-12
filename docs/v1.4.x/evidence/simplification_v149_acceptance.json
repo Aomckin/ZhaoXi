@@ -1,0 +1,62 @@
+{
+  "version": "1.4.9",
+  "date": "2026-10-12",
+  "status": "offline_accepted",
+  "baseline_root": "2f0f788",
+  "career_commit": "304afa866b22de687083c43bc371cc644300eae3",
+  "task_ids": [
+    "V149-01",
+    "V149-02",
+    "V149-03",
+    "V149-04",
+    "V149-05",
+    "V149-06",
+    "V149-07"
+  ],
+  "command": ".venv/Scripts/python.exe scripts/test.py",
+  "results": {
+    "core_python": {
+      "passed": 1611,
+      "skipped": 1,
+      "failed": 0
+    },
+    "tool_python": {
+      "lifehud": 33,
+      "career": 4,
+      "mcp": 8,
+      "markitdown": 2,
+      "failed": 0
+    },
+    "web_node": {
+      "passed": 111,
+      "failed": 0
+    },
+    "career_smoke": {
+      "subchecks_passed": 266,
+      "failed": 0
+    },
+    "career_api_e2e": "passed"
+  },
+  "focused_python_passed": 166,
+  "first_run_repairs": [
+    "decision debug fixture provides NEW and decision_question",
+    "input merge VM provides window, dataset and crypto"
+  ],
+  "source_net_lines_changed": -41,
+  "static_checks": [
+    "version consistency",
+    "changed Python syntax",
+    "documentation links",
+    "git diff whitespace",
+    "personal data untracked and ignored"
+  ],
+  "runtime_validation": {
+    "production_restarted": false,
+    "real_model_or_qq_tested": false,
+    "published": false
+  },
+  "logs": {
+    "first_run": ".pytest_cache/v149-offline-tests.log",
+    "final_run": ".pytest_cache/v149-offline-final.log"
+  }
+}

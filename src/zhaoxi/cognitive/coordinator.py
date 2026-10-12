@@ -307,7 +307,7 @@ class CognitiveCoordinator:
 
     def _fast_gate_context(self, query: str, recent_context: str) -> dict:
         """Read only local journal/metadata and reuse semantic capability matching."""
-        from zhaoxi.tools.router import safe_resolve_tool_context
+        from zhaoxi.tools.router import resolve_tool_context
         from zhaoxi.tools.manifest import resolve_capability
         cognition = getattr(self.agent.context_builder, "current_cognition_service", None)
         snapshot, topics, errors = "", [], []
@@ -325,9 +325,7 @@ class CognitiveCoordinator:
                 errors.append("current_cognition:" + type(exc).__name__)
         groups = []
         try:
-            context = safe_resolve_tool_context(query, recent_context, self.agent.registry, mode="dynamic")
-            if context.fallback:
-                errors.append("capability_index_unavailable")
+            context = resolve_tool_context(query, recent_context, self.agent.registry, mode="dynamic")
             groups = list(context.dynamic_groups)
             action = self.fast_gate.collect(query, recent_context=recent_context).action_side_effect_confidence
             if action >= self.fast_gate.config.strong_threshold:

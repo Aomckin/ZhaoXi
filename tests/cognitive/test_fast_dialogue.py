@@ -1,6 +1,11 @@
 """v1.4.1 fast dialogue lane and standard finalization regression tests."""
 
+import sqlite3
+from types import SimpleNamespace
+
 import pytest
+
+from zhaoxi.core.fast_chat import FastChatRuntime
 
 from conftest import FakeProvider
 from zhaoxi.cognitive.coordinator import CognitiveCoordinator
@@ -298,3 +303,35 @@ async def test_debug_non_fast_mode_overrides_gate_and_router_without_losing_tool
     assert trace.runtime_lane == "standard"
     agent.cognitive.router.route.assert_awaited_once()
     agent.cognitive.fast_chat.run_fast_chat.assert_not_awaited()
+
+
+@pytest.mark.parametrize("failure", [OSError, sqlite3.OperationalError, ValueError])
+def test_fast_cognition_storage_failure_is_observable(failure, caplog):
+    agent = make_agent(FakeProvider([]))
+
+    def broken():
+        raise failure("synthetic cognition failure")
+
+    agent.context_builder.current_cognition_service = SimpleNamespace(render_for_fast_chat=broken)
+    messages = FastChatRuntime(agent)._messages("在吗", output_channel="desktop", audience="owner", expression_policy="")
+    assert "FAST_CHAT" in messages[0].content
+    assert agent.context_builder.last_recent_context["errors"] == {"current_cognition": failure.__name__}
+    assert "current cognition unavailable" in caplog.text
+
+
+def test_fast_cognition_programming_error_propagates():
+    agent = make_agent(FakeProvider([]))
+
+    def broken():
+        raise RuntimeError("synthetic programming error")
+
+    agent.context_builder.current_cognition_service = SimpleNamespace(render_for_fast_chat=broken)
+    with pytest.raises(RuntimeError, match="synthetic programming error"):
+        FastChatRuntime(agent)._messages("在吗", output_channel="desktop", audience="owner", expression_policy="")
+
+
+def test_fast_cognition_empty_snapshot_is_not_an_error():
+    agent = make_agent(FakeProvider([]))
+    agent.context_builder.current_cognition_service = SimpleNamespace(render_for_fast_chat=lambda: "")
+    FastChatRuntime(agent)._messages("在吗", output_channel="desktop", audience="owner", expression_policy="")
+    assert agent.context_builder.last_recent_context == {"agenda": None, "current_cognition": "", "errors": {}}

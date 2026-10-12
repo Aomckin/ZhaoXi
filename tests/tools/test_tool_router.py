@@ -1,10 +1,12 @@
 from typing import Any
 
+import pytest
+
 from pydantic import BaseModel
 
 from zhaoxi.permission.models import PermissionLevel, SideEffect
 from zhaoxi.tools.base import Tool, ToolResult
-from zhaoxi.tools.router import resolve_tool_context, safe_resolve_tool_context
+from zhaoxi.tools.router import resolve_tool_context
 from zhaoxi.tools.registry import ToolRegistry
 
 
@@ -72,14 +74,13 @@ def test_dynamic_domains_are_selected_by_action_intent():
         assert expected <= groups
 
 
-def test_all_mode_and_invalid_mode_safe_fallback():
+def test_all_mode_and_invalid_mode_fails():
     registry = make_registry()
     all_context = resolve_tool_context("闲聊", [], registry, mode="all")
     assert set(all_context.exposed_tools) == {tool.name for tool in registry.list()}
 
-    fallback = safe_resolve_tool_context("闲聊", [], registry, mode="broken")
-    assert fallback.fallback
-    assert set(fallback.exposed_tools) == {"remember_memory", "update_memory", "search_memories", "request_tool_group", "inspect_tool_catalog"}
+    with pytest.raises(ValueError, match="unsupported tool router mode"):
+        resolve_tool_context("闲聊", [], registry, mode="broken")
 
 
 def test_diagnostics_report_schema_reduction_without_content():
@@ -109,3 +110,57 @@ def test_disabled_semantic_group_is_not_premounted():
     assert "lifehud" not in context.dynamic_groups
     assert "lifehud" not in context.exposed_tools
     assert context.diagnostics()["semantic_route_matched"] is False
+
+
+def test_internal_schema_error_propagates(monkeypatch):
+    registry = make_registry()
+
+    def broken():
+        raise RuntimeError("broken schema")
+
+    monkeypatch.setattr(registry.get("calculator"), "schema", broken)
+    with pytest.raises(RuntimeError, match="broken schema"):
+        resolve_tool_context("计算 1+2", [], registry)
+
+
+def test_schema_generation_is_once_per_routing_pass(monkeypatch):
+    from unittest.mock import Mock
+    registry = make_registry()
+    readers = []
+    for tool in registry.list():
+        reader = Mock(wraps=tool.schema)
+        monkeypatch.setattr(tool, "schema", reader)
+        readers.append(reader)
+    context = resolve_tool_context("计算 1+2", [], registry)
+    assert "calculator" in context.exposed_tools
+    assert all(reader.call_count == 1 for reader in readers)
+
+
+def test_failed_plugin_probe_is_observable_without_exposing_tool(caplog):
+    registry = make_registry()
+
+    def unavailable():
+        raise OSError("synthetic plugin probe failure")
+
+    registry.get("calculator").available = unavailable
+    context = resolve_tool_context("计算 1+2", [], registry, mode="all")
+    assert "calculator" not in context.exposed_tools
+    assert "current_time" in context.exposed_tools
+    assert "tool availability probe failed name=calculator" in caplog.text
+    assert "OSError" in caplog.text
+    row = next(item for item in registry.manifest() if item["name"] == "calculator")
+    assert row["availability_error"] == "OSError"
+
+
+def test_single_tool_usability_does_not_probe_unrelated_tools():
+    registry = make_registry()
+    probes = []
+    registry.get("calculator").available = lambda: probes.append("calculator") or True
+    assert registry.usable("current_time")
+    assert probes == []
+    registry.update_tools(name="current_time", enabled=False)
+    assert not registry.usable("current_time")
+    registry.update_tools(name="current_time", enabled=True)
+    assert registry.usable("current_time")
+    registry.unregister("current_time")
+    assert not registry.usable("current_time")

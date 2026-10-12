@@ -1,6 +1,6 @@
 # Zhaoxi / 朝汐
 
-朝汐是一个以本地运行、长期陪伴和可控工具执行为核心的个人 Agent。当前开发版本为 **1.4.8**（[版本说明](docs/v1.4.x/Zhaoxi_v1.4.8_Release_Notes.md)）。Core 提供请求级运行观测、长任务中间回复、Perception、认知时间线和 External Source Plugin 协议；QQ / NapCat 作为可选插件接入。
+朝汐是一个以本地运行、长期陪伴和可控工具执行为核心的个人 Agent。当前开发版本为 **1.4.9**（[版本说明](docs/v1.4.x/Zhaoxi_v1.4.9_Release_Notes.md)）。Core 提供请求级运行观测、长任务中间回复、Perception、认知时间线和 External Source Plugin 协议；QQ / NapCat 作为可选插件接入。
 
 ## 主要特点
 
@@ -134,6 +134,8 @@ python scripts/test.py --suite core # 仅 Core Python
 
 ## 文档
 
+- [v1.4.9 代码精简任务书](docs/v1.4.x/Zhaoxi_v1.4.9_代码精简_开发任务书.md)
+- [v1.4.9 开发记录](docs/v1.4.x/Zhaoxi_v1.4.9_开发记录.md)
 - [v1.4.7 Decision Learning 开发记录](docs/v1.4.x/Zhaoxi_v1.4.7_开发记录.md)
 - [v1.4.6 Decision as Agency 开发记录与验收](docs/v1.4.x/Zhaoxi_v1.4.6_开发记录.md)
 - [v1.4.5 Dashboard 开发记录与验收](docs/v1.4.x/Zhaoxi_v1.4.5_开发记录.md)

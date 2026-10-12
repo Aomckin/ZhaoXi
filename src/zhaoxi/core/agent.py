@@ -30,7 +30,7 @@ from zhaoxi.reliability.retry import budget_stage_scope, current_budget, BudgetS
 from zhaoxi.tools.base import ToolResult
 from zhaoxi.tools.registry import ToolRegistry
 from zhaoxi.tools.discovery import RequestToolGroupTool, InspectToolCatalogTool, ToolDiscoveryState
-from zhaoxi.tools.router import ToolContext, safe_resolve_tool_context
+from zhaoxi.tools.router import ToolContext, resolve_tool_context
 from zhaoxi.tools.manifest import is_action_request, resolve_capability
 
 if TYPE_CHECKING:
@@ -881,12 +881,9 @@ class ZhaoxiAgent:
         return degraded
 
     def _tool_context(self, user_intent: str) -> ToolContext:
-        context = safe_resolve_tool_context(
+        return resolve_tool_context(
             user_intent, self._recent_tool_context(), self.registry, mode=self.tool_router_mode
         )
-        if context.fallback:
-            logger.error("tool router failed; using persistent fallback")
-        return context
 
     def _observable_tool_name(self, name: str) -> str:
         return name if any(tool.name == name for tool in self.registry.list()) else "unknown_tool"
@@ -1033,13 +1030,16 @@ class ZhaoxiAgent:
                 if trace and step > 2 and not trace.extra_round_reason:
                     trace.extra_round_reason = ("capability_discovery" if safety.discovery_round else
                         "tool_repair" if trace.tool_rounds > 1 else "discovery_or_model_retry")
-                schemas = [] if final_only or no_tools else discovery.schemas(self.registry)
+                # ponytail: reuse metadata only until the next await; never cache across execution.
+                manifest = self.registry.manifest()
+                schemas = [] if final_only or no_tools else discovery.schemas(self.registry, manifest=manifest)
                 if no_tools and not final_only:
-                    schemas = [self.registry.get(name).schema() for name in allowed_read_tools if any(t.name==name for t in self.registry.list()) and self.registry.usable(name)]
+                    schemas = [self.registry.get(item["name"]).schema() for item in manifest
+                               if item["name"] in allowed_read_tools and item["enabled"] and item["available"]]
                 warning_tools = {name for name,_ in safety.outcomes}
                 if required_tool:
                     warning_tools.add(required_tool)
-                warning_tools.update(item["name"] for item in self.registry.manifest()
+                warning_tools.update(item["name"] for item in manifest
                                      if item["group"] in discovery.initial.dynamic_groups)
                 if budget and budget.state is BudgetState.WARNING:
                     schemas = [schema for schema in schemas if schema["function"]["name"] in warning_tools
@@ -1051,6 +1051,8 @@ class ZhaoxiAgent:
                     schemas.extend(schema for schema in control_schemas()
                                    if schema["function"]["name"] == "emit_interim_reply")
                 self.registry.exposed_names = {item["function"]["name"] for item in schemas if item["function"]["name"] != "emit_interim_reply"}
+                for item in manifest:
+                    item["exposed"] = item["name"] in self.registry.exposed_names and item["enabled"] and item["available"]
                 absorbed = set()
                 if trace and trace.actions:
                     for action in trace.actions[:-1]:
@@ -1076,7 +1078,7 @@ class ZhaoxiAgent:
                     self.conversation, memories, output_channel=output_channel,
                     audience=audience, expression_policy=expression_policy, **context_options)
                 from zhaoxi.tools.domain_map import domain_prompt
-                if domain_text := domain_prompt(self.registry.manifest()):
+                if domain_text := domain_prompt(manifest):
                     messages[0] = messages[0].model_copy(update={"content": (messages[0].content or "") + "\n" + domain_text})
                 if trace:
                     trace.record_interval("context_build", context_started)
@@ -1550,7 +1552,7 @@ class ZhaoxiAgent:
                 result = ToolResult(success=False,content="用户选择保留该项，工具没有执行。",error="permission_denied")
             elif stop:
                 result = ToolResult(success=False, content="运行时限制已停止后续调用。", error="runtime_call_blocked",metadata={"not_executed":True})
-            elif position in approved_positions:
+            else:
                 execution = await self.tool_executor.execute(
                     call.name,
                     call.arguments,
@@ -1567,15 +1569,9 @@ class ZhaoxiAgent:
                 if execution.result is None:
                     raise AgentLoopError("授权未能匹配批量工具调用。")
                 result = execution.result
-            else:
-                result = ToolResult(
-                    success=False,
-                    content="用户选择保留该项，工具没有执行。",
-                    error="permission_denied",
-                )
             if position not in approved_positions or stop:
                 safety.outcomes.append((call.name,result.model_copy(deep=True)))
-            elif not stop:
+            else:
                 safety.observe(call, result, mutation=self.registry.get(call.name).mutates_state)
             self._sync_safety(safety)
             self._record_tool_result(call, result)

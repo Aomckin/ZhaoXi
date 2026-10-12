@@ -18,7 +18,8 @@ def test_debug_is_authenticated_read_only_and_agency_never_runs_classifier(tmp_p
     core.last_reply_protocol = {"status":"failed", "error_code":"empty_model_reply", "input_chars":3}
     core.decision_awareness = DecisionAwareness(history=ChoiceHistory(tmp_path / "choices"))
     core.decision_service = SimpleNamespace(evaluate=AsyncMock(side_effect=AssertionError("classifier")))
-    trace = DecisionAwarenessTrace(mode="ADVISE", agent_recommendation="去打舞萌",
+    trace = DecisionAwarenessTrace(mode="ADVISE", decision_kind="NEW",
+                                   decision_question="如何平衡下午的娱乐与项目进度", agent_recommendation="去打舞萌",
                                    predicted_user_choice="继续项目")
     core.decision_awareness.recent_traces.append(trace.model_dump(mode="json"))
     core.decision_awareness.history.record("test", trace, "下午安排", scope="owner:desktop:local")

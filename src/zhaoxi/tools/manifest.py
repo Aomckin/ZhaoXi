@@ -1,6 +1,7 @@
 """Registry-derived tool inventory, capability matching and durable overrides."""
 
 import json
+import logging
 import re
 from pathlib import Path
 from threading import RLock
@@ -74,11 +75,14 @@ def tool_metadata(tool, source: str, override: dict, exposed: set[str]) -> dict:
             (group for group, names in TOOL_GROUPS.items() if tool.name in names),
             source.replace(":", "_") if source != "builtin" else "other",
         )
+    availability_error = None
     try:
         availability = getattr(tool, "available", True)
         available = bool(availability() if callable(availability) else availability)
-    except Exception:
+    except Exception as exc:  # Isolate third-party probes, keeping their errors observable.
         available = False
+        availability_error = type(exc).__name__
+        logging.getLogger("TOOLS").exception("tool availability probe failed name=%s", tool.name)
     enabled = override.get("enabled", getattr(tool, "default_enabled", True))
     write_capable = (
         tool.permission == PermissionLevel.WRITE
@@ -96,6 +100,7 @@ def tool_metadata(tool, source: str, override: dict, exposed: set[str]) -> dict:
         "summary": raw_summary,
         "usage": TOOL_USAGE.get(tool.name, str(raw_summary).removeprefix(f"[{source}] ")[:160]),
         "registered": True, "enabled": enabled, "available": available,
+        "availability_error": availability_error,
         "persistent": getattr(tool, "persistent", tool.name in PERSISTENT_CORE),
         "force_expose": override.get("force_expose", False),
         "confirm_write": override.get("confirm_write", getattr(tool, "default_confirm_write", True)),

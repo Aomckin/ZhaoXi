@@ -107,8 +107,8 @@ class ToolDiscoveryState:
     def known(self, registry: ToolRegistry) -> list[str]:
         return [group["group"] for group in group_inventory(registry.manifest())]
 
-    def schemas(self, registry: ToolRegistry) -> list[dict]:
-        manifest = registry.manifest()
+    def schemas(self, registry: ToolRegistry, *, manifest: list[dict] | None = None) -> list[dict]:
+        manifest = registry.manifest() if manifest is None else manifest
         initially_forced = set(self.initial.reason_tags)  # force-only names are not permanent selections
         names = set(self.initial.exposed_tools) | set(self.expanded)
         names -= {tag.removeprefix("force:") for tag in initially_forced if tag.startswith("force:")}

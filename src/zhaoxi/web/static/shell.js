@@ -1,5 +1,5 @@
 
-const FRONTEND_BUILD_ID='v1.4.8-reliability-20261010',FRONTEND_LOADED_AT=new Date().toISOString();
+const FRONTEND_BUILD_ID='v1.4.9-simplification-20261012',FRONTEND_LOADED_AT=new Date().toISOString();
 const shellInertNodes=new Map();
 const $=s=>{const found=document.querySelector(s);if(found)return found;
   if(!shellInertNodes.has(s)){const node=document.createElement('div');node.value='';node.checked=false;shellInertNodes.set(s,node)}

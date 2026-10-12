@@ -10,7 +10,6 @@ from typing import Any, Iterable, Sequence
 from zhaoxi.tools.registry import ToolRegistry
 
 
-from zhaoxi.tools.metadata import PERSISTENT_CORE, TOOL_GROUPS
 from zhaoxi.tools.manifest import is_action_request, resolve_capability
 
 
@@ -24,7 +23,6 @@ class ToolContext:
     schemas: tuple[dict[str, Any], ...]
     registered_tools_count: int
     registered_schema_chars: int
-    fallback: bool = False
 
     def diagnostics(self) -> dict[str, Any]:
         semantic_reasons = [reason for reason in self.reason_tags if not reason.startswith("force:")]
@@ -43,7 +41,7 @@ class ToolContext:
             "semantic_route_matched": semantic_matched,
             "semantic_route_groups": list(self.dynamic_groups) if semantic_matched else [],
             "semantic_route_reason": ",".join(semantic_reasons) if semantic_matched else "",
-            "fallback": self.fallback,
+            "fallback": False,
         }
 
 
@@ -117,8 +115,8 @@ def resolve_tool_context(
     if mode not in {"dynamic", "all"}:
         raise ValueError(f"unsupported tool router mode: {mode}")
     tools = registry.list()
-    by_name = {tool.name: tool for tool in tools}
-    all_schemas = [tool.schema() for tool in tools]
+    by_schema = {tool.name: tool.schema() for tool in tools}
+    all_schemas = list(by_schema.values())
     manifest = registry.manifest()
     usable = {t["name"] for t in manifest if t["enabled"] and t["available"]}
     persistent = tuple(t["name"] for t in manifest if t["persistent"] and t["name"] in usable)
@@ -126,7 +124,7 @@ def resolve_tool_context(
     if mode == "all":
         return ToolContext(
             mode=mode, persistent_tools=persistent, dynamic_groups=("all",),
-            exposed_tools=tuple(name for name in by_name if name in usable), reason_tags=("all_mode",), schemas=tuple(by_name[name].schema() for name in by_name if name in usable),
+            exposed_tools=tuple(name for name in by_schema if name in usable), reason_tags=("all_mode",), schemas=tuple(by_schema[name] for name in by_schema if name in usable),
             registered_tools_count=len(tools), registered_schema_chars=_schema_chars(all_schemas),
         )
     groups, reasons = _dynamic_groups(user_message, recent_context)
@@ -149,33 +147,9 @@ def resolve_tool_context(
         names.extend(t["name"] for t in manifest if t["group"] == group and t["name"] in usable and t["name"] not in names)
     normal = {t["name"] for t in manifest if t["persistent"] or t["group"] in groups}
     reasons = (*reasons, *("force:" + name for name in forced if name not in normal))
-    schemas = [by_name[name].schema() for name in names]
+    schemas = [by_schema[name] for name in names]
     return ToolContext(
         mode=mode, persistent_tools=persistent, dynamic_groups=groups,
         exposed_tools=tuple(names), reason_tags=reasons, schemas=tuple(schemas),
         registered_tools_count=len(tools), registered_schema_chars=_schema_chars(all_schemas),
     )
-
-
-def safe_resolve_tool_context(
-    user_message: str,
-    recent_context: Sequence[str] | str | None,
-    registry: ToolRegistry,
-    *,
-    mode: str = "dynamic",
-) -> ToolContext:
-    """Fail closed to persistent memory tools, never to an empty accidental selection."""
-    try:
-        return resolve_tool_context(user_message, recent_context, registry, mode=mode)
-    except Exception:
-        tools = registry.list()
-        by_name = {tool.name: tool for tool in tools}
-        all_schemas = [tool.schema() for tool in tools]
-        names = tuple(t["name"] for t in registry.manifest() if (t["persistent"] or t["force_expose"]) and t["enabled"] and t["available"])
-        schemas = tuple(by_name[name].schema() for name in names)
-        return ToolContext(
-            mode=mode, persistent_tools=names, dynamic_groups=(), exposed_tools=names,
-            reason_tags=("router_error_persistent_fallback",), schemas=schemas,
-            registered_tools_count=len(tools), registered_schema_chars=_schema_chars(all_schemas),
-            fallback=True,
-        )

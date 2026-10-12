@@ -28,7 +28,11 @@ class ToolRegistry:
                               self.control.overrides.get(tool.name, {}), visible) for tool in self.list()]
 
     def usable(self, name: str) -> bool:
-        return any(item["name"] == name and item["enabled"] and item["available"] for item in self.manifest())
+        tool = self._tools.get(name)
+        if tool is None:
+            return False
+        item = tool_metadata(tool, tool.source, self.control.overrides.get(name, {}), self.exposed_names)
+        return item["enabled"] and item["available"]
 
     def update_tools(self, *, name=None, group=None, enabled=None, force_expose=None, confirm_write=None, reset=False):
         if name is not None:

@@ -4,6 +4,8 @@
 
 ## 当前事实源
 
+- [v1.4.9 代码精简开发记录](v1.4.x/Zhaoxi_v1.4.9_开发记录.md)
+- [v1.4.9 版本说明](v1.4.x/Zhaoxi_v1.4.9_Release_Notes.md)
 - [v1.4.8 清债开发与验收记录](v1.4.x/Zhaoxi_v1.4.8_开发记录.md)
 - [v1.4.8 版本说明](v1.4.x/Zhaoxi_v1.4.8_Release_Notes.md)
 - [动态能力域与工作流管理](guides/tool-domains-and-workflows.md)
@@ -30,6 +32,7 @@
 
 ## v1.4.x
 
+- [v1.4.9 代码精简任务书](v1.4.x/Zhaoxi_v1.4.9_代码精简_开发任务书.md)
 - [v1.4.8 Reliability 已知问题与清债记录（待开发）](v1.4.x/Zhaoxi_v1.4.8_Reliability_已知问题与清债记录.md)
 - [v1.4.8 清债执行计划书（执行中）](v1.4.x/Zhaoxi_v1.4.8_清债执行计划书.md)
 

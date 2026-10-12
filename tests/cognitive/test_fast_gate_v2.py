@@ -249,7 +249,7 @@ def test_continuing_social_statement_is_not_a_choice_decision():
 def test_failed_capability_collection_delegates_instead_of_defaulting_to_fast(monkeypatch):
     def broken(*args, **kwargs):
         raise RuntimeError("unavailable index")
-    monkeypatch.setattr("zhaoxi.tools.router.safe_resolve_tool_context", broken)
+    monkeypatch.setattr("zhaoxi.tools.router.resolve_tool_context", broken)
     agent = agent_for(FakeProvider([]))
     context = agent.cognitive._fast_gate_context("小金毛？", "")
     decision = agent.cognitive.fast_gate.decide("小金毛？", **context)

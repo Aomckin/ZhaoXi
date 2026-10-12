@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -296,8 +298,9 @@ class FastChatRuntime:
                 builder.last_recent_context["current_cognition"] = snapshot
                 if snapshot:
                     system += f"\n\n{snapshot}\n这是近期整体认识；若与当前用户明确表达冲突，以当前用户为准。"
-            except Exception:
-                pass
+            except (OSError, sqlite3.Error, ValueError) as exc:
+                builder.last_recent_context["errors"]["current_cognition"] = type(exc).__name__
+                logging.getLogger("FAST_CHAT").exception("current cognition unavailable")
         emoji_context = builder.emoji_service.build_context() if builder.emoji_service is not None else ""
         if emoji_context:
             system += "\n\n" + emoji_context + "\n表情属于本轮回复表达，直接使用 emoji DSL，不需要工具或升级通道；收藏、保存和对其他会话发送仍属于动作。"
