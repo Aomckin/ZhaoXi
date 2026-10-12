@@ -61,7 +61,7 @@
         if (!content) return '';
         const copy = content.cloneNode(true);
         copy.querySelectorAll('time,button,.message-reference').forEach(el => el.remove());
-        copy.querySelectorAll('img').forEach(el => el.replaceWith(document.createTextNode('[图片]')));
+        copy.querySelectorAll('img').forEach(el => el.remove());
         copy.querySelectorAll('br').forEach(el => el.replaceWith(document.createTextNode('\n')));
         return copy.textContent;
       }).join('\n').slice(0,1000);

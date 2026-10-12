@@ -54,8 +54,10 @@ const action='（尾巴轻轻摇了摇。）\n今天也辛苦啦。要在这里�
     document.querySelector('#input').value = '草稿不丢';
     for(let i=0;i<30;i++){addMessage('user','旧用户 '+i);addMessage('assistant','旧历史 '+i);}
     addMessage('user','最近的问题');
-    addMessage('user','', '',['data:image/png;base64,AAAA']);
+    const image='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jD1sAAAAASUVORK5CYII=';
+    addMessage('user','', '',[image]);
     addMessage('assistant','最新回复'.repeat(400));
+    addMessage('assistant','', '',[image]);
   });
   const sessionLoads = requests.filter(p=>p==='/api/session').length;
   for(let i=0;i<20;i++){
@@ -76,13 +78,18 @@ const action='（尾巴轻轻摇了摇。）\n今天也辛苦啦。要在这里�
     assert.equal(await page.locator('#companionHeader').count(),0);
     assert((await page.locator('.composer').boundingBox()).height <= 50);
     assert.equal(await page.locator('#attachImage').isVisible(),false);
-    assert((await page.locator('#currentConversation p').first().boundingBox()).height >= 19);
+    assert((await page.locator('#currentConversation article[data-role="assistant"] p').boundingBox()).height >= 19);
     assert.equal(await page.locator('#currentConversation article').count(),2);
-    assert((await page.locator('#currentConversation').innerText()).includes('[图片]'));
+    assert(!(await page.locator('#currentConversation').innerText()).includes('[图片]'));
+    assert.equal(await page.locator('#currentConversation img.attachment').count(),2);
+    assert(await page.locator('#currentConversation img.attachment').evaluateAll(images=>images.every(image=>image.complete && image.naturalWidth>0)));
     assert(!(await page.locator('#currentConversation').innerText()).includes('旧历史'));
     assert.equal(await page.locator('#currentConversation').evaluate(el=>getComputedStyle(el).overflowY),'hidden');
     await page.screenshot({path:path.join(output,`companion-${width}x${height}.png`)});
   }
+  await page.evaluate(() => {addMessage('user','字面内容：[图片]');addMessage('assistant','正文中的[图片]应当保留');});
+  await page.waitForFunction(() => document.querySelector('#currentConversation').textContent.includes('正文中的[图片]应当保留'));
+  assert.equal(await page.locator('#currentConversation img.attachment').count(),0);
   await page.locator('#windowTitle').dblclick();
   assert.equal(await page.locator('html').getAttribute('data-window-mode'),'main');
   assert.equal(errors.length,0,errors.join('\n'));
