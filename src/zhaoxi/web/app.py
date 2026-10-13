@@ -237,7 +237,10 @@ def create_app(
         if normalized_path.startswith("/static/") and normalized_path.endswith(".html") and not configured.dev_browser_ui:
             if not desktop_authorized:
                 return JSONResponse(status_code=403, content={"detail": "请从桌面或托盘打开朝汐；浏览器管理页面位于 /dashboard。"})
-        return await call_next(request)
+        response = await call_next(request)
+        if normalized_path.startswith("/static/") and normalized_path.endswith((".js", ".css")):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
 
     @app.get("/desktop-entry", include_in_schema=False)
     async def desktop_entry(request: Request):
