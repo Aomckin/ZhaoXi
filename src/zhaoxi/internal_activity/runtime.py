@@ -391,6 +391,7 @@ class InternalActivityRuntime:
                     except Exception as exc:
                         receipt = build_receipt(spec, status="FAILED", started_at=started, trigger=self._trigger, presence=running.presence, action_id=running.action_id)
                         receipt.raw_payload = {"error_type": type(exc).__name__, "error_code": getattr(exc,"code",None), "stage": "execution"}
+                        receipt.error["error_code"] = receipt.raw_payload["error_code"]
                         partial = getattr(exc, "activity_result", None)
                         if partial is not None:
                             receipt.raw_payload["result"] = partial.diagnostics()

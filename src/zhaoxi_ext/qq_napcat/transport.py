@@ -16,6 +16,7 @@ class QQTransport:
         self.pending: dict[str, asyncio.Future] = {}
         self.connected = False
         self.reconnect_count = 0
+        self.connection_failure_count = 0
         self.last_error = None
         self.self_id = None
         self.identity_verified = False
@@ -52,7 +53,10 @@ class QQTransport:
                     self.connected = True
                     if self.on_state:
                         self.on_state("connected")
+                    if self.connection_failure_count:
+                        logger.info("QQ WebSocket reconnected after %s consecutive failures", self.connection_failure_count)
                     self.last_error = None
+                    self.connection_failure_count = 0
                     async def identify():
                         try:
                             info = await self.action("get_login_info")
@@ -98,8 +102,12 @@ class QQTransport:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                self.last_error = type(exc).__name__
-                logger.warning("QQ connection failed type=%s", type(exc).__name__)
+                error = type(exc).__name__
+                self.connection_failure_count = self.connection_failure_count + 1 if self.last_error == error else 1
+                self.last_error = error
+                count = self.connection_failure_count
+                if count & (count - 1) == 0:
+                    logger.warning("QQ connection failed type=%s repeat_count=%s", error, count)
             finally:
                 if self.connected and self.on_state:
                     self.on_state("disconnected")

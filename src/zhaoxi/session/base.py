@@ -29,6 +29,10 @@ class SessionStore(ABC):
             await self.save(session)
         return session
 
+    async def archived_delivery_ids(self, session_id: str) -> set[str]:
+        """Stores without a UI archive have no archived deliveries."""
+        return set()
+
     @abstractmethod
     async def create(self) -> Session: ...
 

@@ -1,0 +1,749 @@
+{
+  "window": {
+    "start": "2026-10-10 00:00:00",
+    "end": "2026-10-13 19:09:29,729",
+    "timezone": "Asia/Shanghai"
+  },
+  "log_files": [
+    {
+      "file": "zhaoxi.log",
+      "bytes": 10300149,
+      "sha256": "42bbacf863b830089dea8211f0626efa4c6422c774d479526307e6b2205a85ce",
+      "window_rows": 51055,
+      "from": "2026-10-11 12:32:05,345",
+      "to": "2026-10-13 19:09:29,729"
+    },
+    {
+      "file": "zhaoxi.log.1",
+      "bytes": 10485588,
+      "sha256": "1b7f3e0ec332c6cab1ad113766f301bae8ee51611b73c50483c18a4b63d83b07",
+      "window_rows": 20851,
+      "from": "2026-10-10 00:00:26,562",
+      "to": "2026-10-11 12:32:05,329"
+    },
+    {
+      "file": "zhaoxi.log.2",
+      "bytes": 10485609,
+      "sha256": "1cb43c6b354527b1f0efcb24e6c73abdc047e642fd81499116944f2b6562d396",
+      "window_rows": 0,
+      "from": null,
+      "to": null
+    },
+    {
+      "file": "zhaoxi.log.3",
+      "bytes": 10485753,
+      "sha256": "7db36888b04bce39165ee556c821c8ab3e70dc3ddd21883844e1b892e75580fe",
+      "window_rows": 0,
+      "from": null,
+      "to": null
+    },
+    {
+      "file": "zhaoxi.log.4",
+      "bytes": 10485313,
+      "sha256": "2b39d528cb14addc036608a0ea711ec50204d7897e0d054431fb40750e16ca13",
+      "window_rows": 0,
+      "from": null,
+      "to": null
+    },
+    {
+      "file": "zhaoxi.log.5",
+      "bytes": 10485471,
+      "sha256": "73a54fddfeebf56e3b0eae9e4ab6c3572815b0fb36e66c14ab817a6f27b773b0",
+      "window_rows": 0,
+      "from": null,
+      "to": null
+    }
+  ],
+  "daily": {
+    "2026-10-10": {
+      "rows": 14262,
+      "INFO": 13662,
+      "WARNING": 600
+    },
+    "2026-10-11": {
+      "rows": 22401,
+      "INFO": 21434,
+      "WARNING": 964,
+      "ERROR": 3
+    },
+    "2026-10-12": {
+      "rows": 24195,
+      "INFO": 23318,
+      "WARNING": 877
+    },
+    "2026-10-13": {
+      "rows": 11048,
+      "INFO": 10955,
+      "WARNING": 91,
+      "ERROR": 2
+    }
+  },
+  "event_counts": {
+    "runtime_started": 96,
+    "request_started": 96,
+    "fast_gate_decided": 79,
+    "model_step_started": 153,
+    "response_generation_started": 94,
+    "llm_call_started": 242,
+    "context_measured": 242,
+    "llm_call_finished": 241,
+    "main_reply_protocol": 102,
+    "model_step_finished": 144,
+    "response_generation_succeeded": 84,
+    "response_packaging_finished": 88,
+    "task_completed": 86,
+    "session_persist_finished": 96,
+    "post_turn_enqueue_finished": 84,
+    "runtime_finished": 96,
+    "runtime_metrics_finalized": 274,
+    "auto_memory_started": 90,
+    "input_images_received": 21,
+    "debug_model_round_limit": 39,
+    "context_build_finished": 79,
+    "tool_call_started": 36,
+    "tool_call_succeeded": 34,
+    "response_generation_failed": 15,
+    "reply_recovery_requested": 8,
+    "forced_finalization": 10,
+    "auto_memory_finished": 89,
+    "current_cognition_started": 89,
+    "current_cognition_gate": 89,
+    "current_cognition_skipped": 75,
+    "current_cognition_finished": 87,
+    "tool_arguments_invalid": 10,
+    "decision_awareness": 1,
+    "token_budget_exhausted": 18,
+    "control_call_started": 10,
+    "control_call_finished": 10,
+    "discovery_round_credited": 2,
+    "tool_result_compacted": 8,
+    "context_compacted": 9,
+    "tool_call_blocked": 3,
+    "token_budget_warning": 6,
+    "current_cognition_triggered": 14,
+    "current_cognition_applied": 13,
+    "recovery_started": 4,
+    "recovery_finished": 4,
+    "fast_escalation_validated": 1,
+    "fast_chat_escalated": 1,
+    "model_step_failed": 4,
+    "task_partial": 2,
+    "interim_response_emitted": 1,
+    "debug_standard_runtime": 17,
+    "task_failed": 8,
+    "chat_failed": 6,
+    "regenerate_failed": 2,
+    "tool_repair_limit": 2,
+    "tool_call_failed": 2,
+    "llm_process_reply": 30,
+    "llm_reply_committed": 14,
+    "llm_reply_discarded": 3,
+    "current_cognition_failed": 2,
+    "router_tools_predicted": 5,
+    "tools_preloaded": 1,
+    "post_action_context_slimmed": 2,
+    "image_context_released": 1
+  },
+  "foreground_metrics": {
+    "count": 96,
+    "results": {
+      "completed": 83,
+      "failed": 12,
+      "partial_success": 1
+    },
+    "response": {
+      "succeeded": 84,
+      "failed": 12
+    },
+    "over_120s": []
+  },
+  "safe_log_references": [
+    {
+      "file": "zhaoxi.log",
+      "line": 154,
+      "at": "2026-10-11 12:36:35,637",
+      "event": "server_shutdown_error",
+      "request": "-",
+      "error_code": null
+    },
+    {
+      "file": "zhaoxi.log",
+      "line": 157,
+      "at": "2026-10-11 12:36:37,914",
+      "event": "server_shutdown_error",
+      "request": "-",
+      "error_code": null
+    },
+    {
+      "file": "zhaoxi.log",
+      "line": 205,
+      "at": "2026-10-11 12:36:38,013",
+      "event": "server_shutdown_error",
+      "request": "-",
+      "error_code": null
+    },
+    {
+      "file": "zhaoxi.log",
+      "line": 11549,
+      "at": "2026-10-11 22:05:12,575",
+      "event": "chat_failed",
+      "request": "694dc12e-a2f8-4c23-aa2b-c9e0135029ee",
+      "error_code": "empty_model_reply"
+    },
+    {
+      "file": "zhaoxi.log",
+      "line": 33120,
+      "at": "2026-10-12 21:00:56,789",
+      "event": "chat_failed",
+      "request": "5a85ac88-b31c-4ff9-b03f-55555c00210f",
+      "error_code": "invalid_reply_protocol"
+    },
+    {
+      "file": "zhaoxi.log",
+      "line": 33867,
+      "at": "2026-10-12 21:16:31,872",
+      "event": "chat_failed",
+      "request": "b4847768-27b3-4f96-8ee2-22315a75ef57",
+      "error_code": "invalid_reply_protocol"
+    },
+    {
+      "file": "zhaoxi.log",
+      "line": 34587,
+      "at": "2026-10-12 21:34:15,379",
+      "event": "chat_failed",
+      "request": "0e8a1e1d-a4fe-457b-bdbc-40679d1c4476",
+      "error_code": "invalid_reply_protocol"
+    },
+    {
+      "file": "zhaoxi.log",
+      "line": 43994,
+      "at": "2026-10-13 09:18:45,848",
+      "event": "server_shutdown_error",
+      "request": "-",
+      "error_code": null
+    },
+    {
+      "file": "zhaoxi.log",
+      "line": 45275,
+      "at": "2026-10-13 09:52:31,625",
+      "event": "server_shutdown_error",
+      "request": "-",
+      "error_code": null
+    },
+    {
+      "file": "zhaoxi.log",
+      "line": 46710,
+      "at": "2026-10-13 10:30:15,024",
+      "event": "tools_preloaded",
+      "request": "05a9eefa-6690-40ea-a1bb-fc48a6c4dfad",
+      "error_code": "None"
+    },
+    {
+      "file": "zhaoxi.log",
+      "line": 50508,
+      "at": "2026-10-13 18:55:06,014",
+      "event": "image_context_released",
+      "request": "ac917619-42f5-426c-94fb-072857153cb0",
+      "error_code": "None"
+    },
+    {
+      "file": "zhaoxi.log.1",
+      "line": 41327,
+      "at": "2026-10-10 19:54:32,072",
+      "event": "decision_awareness",
+      "request": "25e51668-51be-440c-aa89-ba3680557646",
+      "error_code": "None"
+    },
+    {
+      "file": "zhaoxi.log.1",
+      "line": 47570,
+      "at": "2026-10-11 00:02:16,223",
+      "event": "interim_response_emitted",
+      "request": "bb81de1c-5894-45be-8925-b024d94ef3dd",
+      "error_code": "None"
+    },
+    {
+      "file": "zhaoxi.log.1",
+      "line": 48756,
+      "at": "2026-10-11 00:35:56,032",
+      "event": "chat_failed",
+      "request": "28ad793d-54b5-4f0b-9078-300df8c06779",
+      "error_code": "provider_transport_error"
+    },
+    {
+      "file": "zhaoxi.log.1",
+      "line": 48846,
+      "at": "2026-10-11 00:37:16,172",
+      "event": "regenerate_failed",
+      "request": "416d809f-0f51-435c-b6b4-2abbe4430054",
+      "error_code": "provider_transport_error"
+    },
+    {
+      "file": "zhaoxi.log.1",
+      "line": 53084,
+      "at": "2026-10-11 10:03:47,319",
+      "event": "chat_failed",
+      "request": "d68bdcce-b17f-4159-b91b-840757e4e54a",
+      "error_code": "invalid_reply_protocol"
+    },
+    {
+      "file": "zhaoxi.log.1",
+      "line": 53121,
+      "at": "2026-10-11 10:04:00,194",
+      "event": "regenerate_failed",
+      "request": "ef01c74d-6456-4219-954e-e169a4cebcf1",
+      "error_code": "invalid_reply_protocol"
+    }
+  ],
+  "successful_tool_events": 34,
+  "tool_outcomes": [
+    {
+      "tool": "search_memories",
+      "event": "tool_call_succeeded",
+      "count": 8
+    },
+    {
+      "tool": "read_social_context",
+      "event": "tool_call_succeeded",
+      "count": 2
+    },
+    {
+      "tool": "read_social_context",
+      "event": "tool_call_failed",
+      "count": 2
+    },
+    {
+      "tool": "read_decision_context",
+      "event": "tool_call_succeeded",
+      "count": 2
+    },
+    {
+      "tool": "lifehud",
+      "event": "tool_call_succeeded",
+      "count": 4
+    },
+    {
+      "tool": "remember_memory",
+      "event": "tool_call_succeeded",
+      "count": 10
+    },
+    {
+      "tool": "agenda_add",
+      "event": "tool_call_succeeded",
+      "count": 2
+    },
+    {
+      "tool": "record_purchase",
+      "event": "tool_call_succeeded",
+      "count": 1
+    },
+    {
+      "tool": "wubu_inventory_event",
+      "event": "tool_call_succeeded",
+      "count": 2
+    },
+    {
+      "tool": "wubu",
+      "event": "tool_call_succeeded",
+      "count": 2
+    },
+    {
+      "tool": "agenda_list",
+      "event": "tool_call_succeeded",
+      "count": 1
+    }
+  ],
+  "web_failure_codes": {
+    "empty_model_reply": 1,
+    "invalid_reply_protocol": 5,
+    "provider_transport_error": 2
+  },
+  "snapshot_failure_signatures": [
+    {
+      "type": "ValidationError",
+      "code": "ValidationError",
+      "count": 3
+    },
+    {
+      "type": "ProviderError",
+      "code": "provider_call_budget_exhausted",
+      "count": 17
+    }
+  ],
+  "qq_connection_errors": {
+    "ConnectionRefusedError": 2361,
+    "InvalidMessage": 2
+  },
+  "notification_clicks": [
+    {
+      "file": "zhaoxi.log",
+      "line": 1424,
+      "at": "2026-10-11 13:08:10,775"
+    },
+    {
+      "file": "zhaoxi.log",
+      "line": 2143,
+      "at": "2026-10-11 13:26:14,215"
+    },
+    {
+      "file": "zhaoxi.log",
+      "line": 11271,
+      "at": "2026-10-11 22:01:04,994"
+    },
+    {
+      "file": "zhaoxi.log",
+      "line": 33523,
+      "at": "2026-10-12 21:10:01,190"
+    },
+    {
+      "file": "zhaoxi.log",
+      "line": 33945,
+      "at": "2026-10-12 21:18:03,176"
+    },
+    {
+      "file": "zhaoxi.log",
+      "line": 34178,
+      "at": "2026-10-12 21:23:37,773"
+    },
+    {
+      "file": "zhaoxi.log",
+      "line": 36098,
+      "at": "2026-10-12 22:11:53,522"
+    },
+    {
+      "file": "zhaoxi.log",
+      "line": 44620,
+      "at": "2026-10-13 09:33:41,976"
+    },
+    {
+      "file": "zhaoxi.log",
+      "line": 45510,
+      "at": "2026-10-13 09:57:06,460"
+    },
+    {
+      "file": "zhaoxi.log.1",
+      "line": 42874,
+      "at": "2026-10-10 22:02:40,440"
+    },
+    {
+      "file": "zhaoxi.log.1",
+      "line": 44053,
+      "at": "2026-10-10 22:33:19,640"
+    }
+  ],
+  "activities": {
+    "count": 200,
+    "daily": {
+      "2026-10-12": {
+        "SUCCESS": 50,
+        "NO_CHANGE": 39,
+        "SKIPPED": 9,
+        "FAILED": 5,
+        "CANCELLED": 2
+      },
+      "2026-10-13": {
+        "NO_CHANGE": 31,
+        "FAILED": 7,
+        "SUCCESS": 40,
+        "SKIPPED": 17
+      }
+    },
+    "by_name": {
+      "agenda_maintenance": {
+        "NO_CHANGE": 32
+      },
+      "cluster_gardening": {
+        "SUCCESS": 7
+      },
+      "cognition_gardening": {
+        "SUCCESS": 1
+      },
+      "current_cognition_consolidation": {
+        "FAILED": 1,
+        "NO_CHANGE": 1
+      },
+      "decision_journal_gardening": {
+        "NO_CHANGE": 2
+      },
+      "decision_reflection": {
+        "NO_CHANGE": 1
+      },
+      "fast_digest": {
+        "FAILED": 5,
+        "SKIPPED": 2
+      },
+      "memory_gardening": {
+        "SUCCESS": 5
+      },
+      "memory_maintenance": {
+        "FAILED": 3
+      },
+      "memory_reminiscence": {
+        "SKIPPED": 3,
+        "SUCCESS": 3
+      },
+      "perception_cognition": {
+        "SUCCESS": 49,
+        "FAILED": 3,
+        "SKIPPED": 4
+      },
+      "proactive_check": {
+        "SUCCESS": 25,
+        "NO_CHANGE": 20,
+        "CANCELLED": 2
+      },
+      "social_lurk": {
+        "NO_CHANGE": 7,
+        "SKIPPED": 6
+      },
+      "social_wander": {
+        "SKIPPED": 11,
+        "NO_CHANGE": 7
+      }
+    },
+    "skip_reasons": {
+      "budget": 10,
+      "maintenance_pending": 16
+    }
+  },
+  "activity_history_retention_limit": 200,
+  "initial_local_history": {
+    "roles_recent": {
+      "user": 11,
+      "assistant": 26,
+      "external": 1
+    },
+    "roles_history": {
+      "assistant": 5354,
+      "user": 80
+    },
+    "by_day": {
+      "2026-10-08": {
+        "assistant": 43
+      },
+      "2026-10-09": {
+        "assistant": 1109,
+        "user": 2
+      },
+      "2026-10-10": {
+        "user": 14,
+        "assistant": 1355
+      },
+      "2026-10-11": {
+        "user": 22,
+        "assistant": 1771
+      },
+      "2026-10-12": {
+        "assistant": 1070,
+        "user": 40
+      },
+      "2026-10-13": {
+        "user": 2,
+        "assistant": 6
+      }
+    },
+    "first_sequence": 1,
+    "updated_at": "2026-10-13T11:05:21.069202+00:00"
+  },
+  "initial_delivery_stats": {
+    "rows": 5251,
+    "unique_delivery_ids": 88,
+    "extra_duplicate_rows": 5163,
+    "max_copies_per_delivery": 110
+  },
+  "choice_history_event_lines": 31,
+  "projected_choice_records": 23,
+  "new_schema_v4_records": 0,
+  "principle_indexes": 0,
+  "workflow_runs_recent_window": 0,
+  "interim_window_total": 1,
+  "syntax_checked": true,
+  "test_cases_used_for_acceptance": false,
+  "production_snapshot_replay": {
+    "source": "read-only production SQLite backups",
+    "history_rows": 5461,
+    "first_page_before_roles": {
+      "assistant": 79,
+      "user": 1
+    },
+    "logical_history_rows_after": 272,
+    "page_roles_after": [
+      {
+        "assistant": 50,
+        "user": 30
+      },
+      {
+        "assistant": 54,
+        "user": 26
+      },
+      {
+        "user": 25,
+        "assistant": 55
+      },
+      {
+        "assistant": 32
+      }
+    ],
+    "original_archived_users": 81,
+    "archived_users_preserved": 81,
+    "unique_history_deliveries": 88,
+    "sync_repeats": 30,
+    "archive_rows_added_by_sync": 0,
+    "active_user_ids_preserved": true,
+    "source_database_modified": false,
+    "real_model_calls": 0,
+    "external_sends": 0,
+    "observed_at": "2026-10-13T19:19:34.472358+08:00"
+  },
+  "browser": {
+    "source": "production snapshots replayed through current history paginator and DOM renderers",
+    "before_dom": {
+      "users": 1,
+      "assistants": 79
+    },
+    "after_first_page_dom": {
+      "users": 40,
+      "assistants": 77
+    },
+    "archived_user_messages_rendered": 81,
+    "all_archived_user_ids_present": true,
+    "automatic_gates_folded": 26,
+    "receipt_rows_preserved": 200,
+    "budget_failure_reason_visible": true,
+    "principles_empty_state_visible": true,
+    "page_errors": [],
+    "write_requests": [],
+    "real_model_calls": 0,
+    "external_sends": 0,
+    "images_pixel_rendering": "not covered: replay does not host production emoji endpoint"
+  },
+  "delivery_sync_reads": "session-specific archive membership; deterministic new message IDs",
+  "production_restart": false,
+  "high_risk_execution": false,
+  "snapshot_queue_readonly": {
+    "counts": [
+      [
+        "FAILED",
+        3
+      ],
+      [
+        "PENDING",
+        9
+      ],
+      [
+        "PROCESSED",
+        614
+      ]
+    ],
+    "recent_noncompleted": [
+      {
+        "snapshot_id": "47b5515acc8946a4ad370c37533f920e",
+        "status": "PENDING",
+        "attempt_count": 0,
+        "next_retry_at": null,
+        "last_error": null,
+        "window_end": "2026-10-13T11:26:04+00:00"
+      },
+      {
+        "snapshot_id": "0b0dda8a35cb4477be0b8265c56788b3",
+        "status": "PENDING",
+        "attempt_count": 0,
+        "next_retry_at": null,
+        "last_error": null,
+        "window_end": "2026-10-13T11:18:37+00:00"
+      },
+      {
+        "snapshot_id": "5d26db32750346d7b86d4c6485a57310",
+        "status": "PENDING",
+        "attempt_count": 0,
+        "next_retry_at": null,
+        "last_error": null,
+        "window_end": "2026-10-13T11:13:18+00:00"
+      },
+      {
+        "snapshot_id": "442b7ab25d014ff3b7ff360a1cc2cd6d",
+        "status": "PENDING",
+        "attempt_count": 0,
+        "next_retry_at": null,
+        "last_error": null,
+        "window_end": "2026-10-13T11:10:20+00:00"
+      },
+      {
+        "snapshot_id": "bdfbef7f178145ae8ecf0ed9519525a5",
+        "status": "PENDING",
+        "attempt_count": 0,
+        "next_retry_at": null,
+        "last_error": null,
+        "window_end": "2026-10-13T11:06:47+00:00"
+      },
+      {
+        "snapshot_id": "719ff7e477204f26981decc6870a7181",
+        "status": "PENDING",
+        "attempt_count": 0,
+        "next_retry_at": null,
+        "last_error": null,
+        "window_end": "2026-10-13T11:04:03+00:00"
+      },
+      {
+        "snapshot_id": "c73f58241f6043fbaec5b42c50555b0b",
+        "status": "PENDING",
+        "attempt_count": 0,
+        "next_retry_at": null,
+        "last_error": null,
+        "window_end": "2026-10-13T10:58:11+00:00"
+      },
+      {
+        "snapshot_id": "1564af9351234bcfae324b8129026b0f",
+        "status": "PENDING",
+        "attempt_count": 0,
+        "next_retry_at": null,
+        "last_error": null,
+        "window_end": "2026-10-13T10:52:42+00:00"
+      },
+      {
+        "snapshot_id": "154b3526d2984ecf842de77142c5bf98",
+        "status": "PENDING",
+        "attempt_count": 0,
+        "next_retry_at": null,
+        "last_error": null,
+        "window_end": "2026-10-13T10:50:20+00:00"
+      },
+      {
+        "snapshot_id": "d31380bc2e7b4e7984d80d5ed4ab8aa2",
+        "status": "FAILED",
+        "attempt_count": 3,
+        "next_retry_at": null,
+        "last_error": "ValidationError",
+        "window_end": "2026-10-09T09:29:11+00:00"
+      },
+      {
+        "snapshot_id": "bcc3802ad0c9423796011d6df710d9bd",
+        "status": "FAILED",
+        "attempt_count": 3,
+        "next_retry_at": null,
+        "last_error": "provider_call_budget_exhausted",
+        "window_end": "2026-10-03T05:13:33+00:00"
+      },
+      {
+        "snapshot_id": "abec282d8eb2414eb683f07fe89de698",
+        "status": "FAILED",
+        "attempt_count": 3,
+        "next_retry_at": null,
+        "last_error": "provider_call_budget_exhausted",
+        "window_end": "2026-10-03T04:57:47+00:00"
+      }
+    ],
+    "observed_at": "2026-10-13T19:31:30.378836+08:00"
+  },
+  "qq_warning_aggregation_replay": {
+    "source": "audited production connection errors, connected markers and app startup markers",
+    "failures_seen": 2363,
+    "connection_or_startup_reset_markers": 42,
+    "warning_rows_after_aggregation": 119,
+    "latest_streak": 0,
+    "reconnect_interval_changed": false,
+    "identity_and_send_logic_changed": false,
+    "real_network_connections": 0,
+    "boundary": "historical replay only; actual loaded process behavior remains to be observed"
+  }
+}

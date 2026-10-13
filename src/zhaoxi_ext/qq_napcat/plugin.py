@@ -160,5 +160,6 @@ class QQNapCatPlugin:
                 "expected_qq": self.config.bot_user_id or None,
                 "logged_in_qq": self.transport.self_id,
                 "reconnect_count": self.transport.reconnect_count,
+                "connection_failure_count": self.transport.connection_failure_count,
                 "last_error": self.transport.last_error,
                 "received_count": self.received_count, "sent_count": self.sent_count}

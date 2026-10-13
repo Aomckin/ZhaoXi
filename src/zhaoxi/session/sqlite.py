@@ -248,6 +248,16 @@ class SQLiteSessionStore(SessionStore):
         except OSError as exc:
             logger.warning("thumbnail cache cleanup failed type=%s", type(exc).__name__)
 
+    async def archived_delivery_ids(self, session_id: str) -> set[str]:
+        return await asyncio.to_thread(self._archived_delivery_ids, session_id)
+
+    def _archived_delivery_ids(self, session_id):
+        with self._connect() as connection:
+            return {row[0] for row in connection.execute(
+                "SELECT DISTINCT json_extract(message_json, '$.delivery_id') FROM session_history "
+                "WHERE session_id=? AND json_extract(message_json, '$.delivery_id') IS NOT NULL",
+                (session_id,)) if row[0]}
+
     async def history_message(self, session_id: str, message_id: str) -> Message | None:
         return await asyncio.to_thread(self._history_message, session_id, message_id)
 
@@ -265,8 +275,16 @@ class SQLiteSessionStore(SessionStore):
         with self._connect() as connection:
             boundary = connection.execute("SELECT sequence FROM session_history WHERE session_id=? AND message_id=?",
                                           (session_id, before)).fetchone() if before else None
-            rows = connection.execute("SELECT * FROM session_history WHERE session_id=? AND sequence < ? ORDER BY sequence DESC LIMIT ?",
-                                      (session_id, boundary["sequence"] if boundary else 9223372036854775807, limit + 1)).fetchall()
+            # Old builds reinserted the same delivery with random message IDs.
+            # Deduplicate before limiting a page; preserve the original archive position.
+            rows = connection.execute("""SELECT * FROM session_history WHERE sequence IN (
+                SELECT MIN(sequence) FROM session_history WHERE session_id=?
+                GROUP BY CASE WHEN json_extract(message_json, '$.delivery_id') IS NOT NULL
+                    AND json_extract(message_json, '$.delivery_id') != ''
+                    THEN 'delivery:' || json_extract(message_json, '$.delivery_id')
+                    ELSE 'message:' || message_id END)
+                AND sequence < ? ORDER BY sequence DESC LIMIT ?""",
+                (session_id, boundary["sequence"] if boundary else 9223372036854775807, limit + 1)).fetchall()
         page = rows[:limit]
         return {"messages": [Message.model_validate(self.media.loads(r["message_json"])) for r in reversed(page)],
                 "has_more": len(rows) > limit, "before": page[-1]["message_id"] if page else None}

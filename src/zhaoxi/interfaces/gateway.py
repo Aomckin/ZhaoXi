@@ -433,6 +433,7 @@ class InterfaceGateway:
                 return
         self.agent.conversation.add_delivery(Message(
             role=Role.ASSISTANT, content=delivery.content, delivery_id=delivery.delivery_id,
+            message_id="delivery:" + delivery.delivery_id,
             timestamp=delivery.delivered_at or delivery.available_at,
             metadata={"kind": delivery.kind},
         ))
@@ -443,7 +444,11 @@ class InterfaceGateway:
             return
         session = getattr(self.agent, "session_record", None)
         since = session.created_at if session else datetime.min.replace(tzinfo=UTC)
+        store = getattr(self.agent, "session_store", None)
+        archived = await store.archived_delivery_ids(session.id) if store and session else set()
         for delivery in reversed(await runtime.store.list_deliveries(self.agent.conversation.max_messages)):
+            if delivery.delivery_id in archived:
+                continue
             if (delivery.status in {DeliveryStatus.DELIVERED, DeliveryStatus.ACKNOWLEDGED}
                     and (delivery.delivered_at or delivery.available_at) >= since):
                 self._include_delivery(delivery)
