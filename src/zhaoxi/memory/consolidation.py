@@ -12,6 +12,7 @@ from zhaoxi.core.message import Message, Role
 from zhaoxi.memory.models import MemoryEdge, MemoryKind, MemoryRelation, MemoryStatus, MemoryUpdate, utc_now, aware_utc
 from zhaoxi.models.base import ModelProvider
 from zhaoxi.errors import ProviderError
+from zhaoxi.reliability.retry import current_budget
 
 if TYPE_CHECKING:
     from zhaoxi.memory.service import MemoryService
@@ -93,7 +94,8 @@ class AutoConsolidator:
         ) or 0)
         last_raw = await self.service.repository.get_runtime("last_consolidation_check_at")
         last_check = aware_utc(datetime.fromisoformat(last_raw)) if last_raw else None
-        due = episode_count >= self.config.after_episodes or (
+        pending = json.loads(await self.service.repository.get_runtime("consolidation_pending_clusters") or "[]")
+        due = bool(pending) or episode_count >= self.config.after_episodes or (
             last_check is None or now - last_check >= timedelta(hours=self.config.interval_hours)
         )
         if not due:
@@ -102,14 +104,17 @@ class AutoConsolidator:
         candidates = await self.prefilter()
         await self.service._increment_runtime("clusters_considered", len(candidates))
         if not candidates:
+            await self.service.repository.set_runtime("consolidation_pending_clusters", "[]")
             await self.service.repository.set_runtime("last_consolidation_check_at", now.isoformat())
             await self.service.repository.set_runtime("episodes_since_consolidation_check", "0")
             return ConsolidationOutcome("NO_CHANGE", reason="no_candidates")
+        await self.service.repository.set_runtime("consolidation_pending_clusters", json.dumps([item.cluster_id for item in candidates]))
+        batch = self._fit_batch(candidates)
         await self.service._increment_runtime("consolidation_llm_calls")
-        decisions = await self._ask(candidates)
+        decisions = await self._ask(batch)
         if decisions is None:
             return ConsolidationOutcome("FAILED", reason="invalid_output", error_code="memory_consolidation_protocol")
-        by_cluster = {item.cluster_id: item for item in candidates}
+        by_cluster = {item.cluster_id: item for item in batch}
         changed = False
         for decision in decisions.decisions:
             candidate = by_cluster.get(decision.cluster_id)
@@ -149,6 +154,8 @@ class AutoConsolidator:
                     await self.service.repository.set_runtime("last_consolidation_at", now.isoformat())
                     await self.service._increment_runtime("semantic_updated")
                     changed = True
+        processed = {item.cluster_id for item in batch}
+        await self.service.repository.set_runtime("consolidation_pending_clusters", json.dumps([item.cluster_id for item in candidates if item.cluster_id not in processed]))
         await self.service.repository.set_runtime("last_consolidation_check_at", now.isoformat())
         await self.service.repository.set_runtime("episodes_since_consolidation_check", "0")
         return ConsolidationOutcome("UPDATE" if changed else "NO_CHANGE", changed, "evaluated")
@@ -170,7 +177,7 @@ class AutoConsolidator:
                 continue
             candidates.append(ConsolidationCandidate(
                 cluster_id=cluster.id, topic=cluster.topic,
-                recent_episode_ids=[item.id for item in uncovered],
+                recent_episode_ids=[item.id for item in uncovered[-6:]],
                 existing_semantic_ids=[item.id for item in semantics],
                 time_range=[
                     min((item.event_at for item in episodes if item.event_at), default=None).isoformat()
@@ -182,21 +189,57 @@ class AutoConsolidator:
                 representative_memories=[{"id": item.id, "content": item.content}
                                          for item in uncovered[-6:]],
             ))
+        pending = json.loads(await self.service.repository.get_runtime("consolidation_pending_clusters") or "[]")
+        if pending:
+            order = {identity: index for index, identity in enumerate(pending)}
+            candidates = sorted((item for item in candidates if item.cluster_id in order), key=lambda item: order[item.cluster_id])
         return candidates[:20]
+
+    def _fit_batch(self, candidates):
+        budget = current_budget()
+        if budget is None:
+            return candidates
+        # UTF-8 bytes bound input. The gateway counts hidden reasoning within
+        # completion, so allocate 3200 there while keeping the activity cap unchanged.
+        limit = budget.max_total_tokens - budget.total_tokens - budget.finalization_reserve - 3200 - 256
+        batch = []
+        for candidate in candidates:
+            memories = list(candidate.representative_memories)
+            minimum = min(len(memories), 2 if candidate.existing_semantic_ids else self.config.min_evidence)
+            while True:
+                item = candidate.model_copy(update={"representative_memories": memories,
+                    "recent_episode_ids": [memory["id"] for memory in memories]})
+                payload = json.dumps({"candidate_clusters": [value.model_dump(mode="json") for value in [*batch, item]]},
+                                     ensure_ascii=False, separators=(",", ":"))
+                if len(self.SYSTEM_PROMPT.encode()) + len(payload.encode()) <= limit:
+                    batch.append(item)
+                    break
+                if len(memories) <= minimum:
+                    break
+                memories = memories[1:]  # Defer whole episodes; never cut facts within an episode.
+            if not batch or batch[-1].cluster_id != candidate.cluster_id:
+                break
+        if not batch:
+            raise ProviderError("完整候选证据超过本轮输入预算，未发送模型请求。",
+                                code="memory_consolidation_input_budget", retryable=False)
+        return batch
 
     async def _ask(self, candidates: list[ConsolidationCandidate]) -> ConsolidationDecisionBatch | None:
         messages = [
             Message(role=Role.SYSTEM, content=self.SYSTEM_PROMPT),
             Message(role=Role.USER, content=json.dumps(
                 {"candidate_clusters": [item.model_dump(mode="json") for item in candidates]},
-                ensure_ascii=False,
+                ensure_ascii=False, separators=(",", ":"),
             )),
         ]
-        response = await self.provider.generate(messages, None, temperature=0, max_tokens=1600)
+        response = await self.provider.generate(messages, None, temperature=0, max_tokens=3200,
+                                                thinking={"type": "disabled"}, response_format={"type": "json_object"})
         raw = (response.content or "").strip()
         if raw.startswith("```"):
             raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE)
         start = raw.find("{")
+        if start < 0 and response.finish_reason == "length":
+            raise ProviderError("记忆归纳输出额度耗尽，未应用任何结论。", code="memory_consolidation_output_budget", retryable=False)
         if start < 0:
             raise ProviderError("记忆归纳未返回结构化结果。", code="memory_consolidation_protocol")
         try:

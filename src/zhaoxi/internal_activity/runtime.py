@@ -210,7 +210,8 @@ class InternalActivityRuntime:
         count = int(await repository.get_runtime("episodes_since_consolidation_check") or 0)
         raw = await repository.get_runtime("last_consolidation_check_at")
         last = aware_utc(datetime.fromisoformat(raw)) if raw else None
-        if count < auto.auto_consolidator.config.after_episodes and (last is not None and
+        pending = await repository.get_runtime("consolidation_pending_clusters")
+        if pending in {None, "[]"} and count < auto.auto_consolidator.config.after_episodes and (last is not None and
                 now - last < timedelta(hours=auto.auto_consolidator.config.interval_hours)):
             return False
         return bool(await auto.auto_consolidator.prefilter())
@@ -347,9 +348,10 @@ class InternalActivityRuntime:
                     if self.publish_status:
                         self.publish_status({"type": "activity_started", "receipt": self.running_receipt})
                     receipt = None
+                    activity_budget = None
                     try:
                         needs = TickBudget.resources(spec, kind)
-                        with provider_budget_scope(needs.get("llm", 0), spec.max_total_tokens):
+                        with provider_budget_scope(needs.get("llm", 0), spec.max_total_tokens) as activity_budget:
                             self._activity_task = asyncio.create_task(self._execute(name, kind))
                             raw = await self._activity_task
                         if isinstance(raw, list):
@@ -365,7 +367,8 @@ class InternalActivityRuntime:
                             raise failure
                         if result.message_sent and not (spec.can_message_user or spec.can_message_external):
                             raise RuntimeError("activity_message_forbidden")
-                        result.cost = {**dict(needs), **result.cost}
+                        result.cost = {**dict(needs), **result.cost,
+                                       "model_attempts": activity_budget.calls, "reported_tokens": activity_budget.total_tokens}
                         item.update(last_success_at=datetime.now(UTC).isoformat(), last_result=result.status,
                                     result=result.diagnostics(), failure_count=0, dirty=False, degraded=False)
                         item.pop("last_error", None)
@@ -392,6 +395,8 @@ class InternalActivityRuntime:
                         receipt = build_receipt(spec, status="FAILED", started_at=started, trigger=self._trigger, presence=running.presence, action_id=running.action_id)
                         receipt.raw_payload = {"error_type": type(exc).__name__, "error_code": getattr(exc,"code",None), "stage": "execution"}
                         receipt.error["error_code"] = receipt.raw_payload["error_code"]
+                        if activity_budget is not None:
+                            receipt.metrics = {"model_attempts": activity_budget.calls, "reported_tokens": activity_budget.total_tokens}
                         partial = getattr(exc, "activity_result", None)
                         if partial is not None:
                             receipt.raw_payload["result"] = partial.diagnostics()

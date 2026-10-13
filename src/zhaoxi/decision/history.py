@@ -151,7 +151,8 @@ class ChoiceHistory:
                 'feedback': ('user_final_choice', 'overridden', 'outcome', 'feedback', 'reflected', 'reflection_id', 'follow_up_status'),
                 'follow_up': ('follow_up_status', 'asked_at'),
                 'reflection': ('reflected', 'reflection_id'), 'reflection_request': ('reflection_requested_at',),
-                'journal_link': ('journal_ids',)}.get(event, ())
+                'journal_link': ('journal_ids',),
+                'question_revision': ('decision_question', 'question_status', 'question_source_refs', 'question_origin')}.get(event, ())
             original.update({key: row[key] for key in fields if key in row})
         self._file_meta = metadata
         for row in choices.values():
@@ -220,7 +221,7 @@ class ChoiceHistory:
 
     def retrieve(self, query, *, scope, limit=5):
         from .principles import relevance
-        ranked = [(relevance(query, row.get('summary', '') + ' ' + (row.get('suggestion') or '')), row)
+        ranked = [(relevance(query, (row.get('decision_question') or row.get('summary', '')) + ' ' + (row.get('suggestion') or '')), row)
                   for row in self.list(limit=1000, scope=scope)]
         ranked.sort(key=lambda pair: -pair[0])
         return [row for score, row in ranked if score > 0][:limit]

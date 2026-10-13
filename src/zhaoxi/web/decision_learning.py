@@ -160,6 +160,7 @@ def decision_learning_router(core):
     async def principles(query: str = Query('', max_length=500), principle_id: str = Query('', max_length=100)):
         learning = services()
         awareness = core.decision_awareness
+        learning.principles.synchronize()
         rows = learning.principles.list()
         for row in rows:
             row['recent_used_at'] = next((h['timestamp'] for h in learning.history.list(limit=1000)

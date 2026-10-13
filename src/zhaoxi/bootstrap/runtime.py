@@ -107,6 +107,7 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
         from zhaoxi.decision.learning import DecisionLearning
         awareness.principle_archive = DecisionPrincipleArchiveProvider(settings.archive_directory, settings.decision_principle_archive_paths)
         awareness.user_principles = UserPrincipleStore(settings.decision_user_principles_directory, awareness.principle_archive)
+        awareness.user_principles.synchronize()
         from zhaoxi.decision.principle_tools import WriteUserPrinciple
         registry.register(WriteUserPrinciple(awareness))
         awareness.journal = DecisionJournalStore(settings.decision_data_directory)

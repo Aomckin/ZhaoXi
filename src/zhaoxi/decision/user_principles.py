@@ -19,7 +19,7 @@ class UserPrincipleStore:
         self.directory = Path(directory)
         self._lock = threading.RLock()
 
-    def list(self):
+    def list(self, *, verify_sources=True):
         require_owner()
         rows = []
         for path in sorted(self.directory.glob('*.json'))[:200]:
@@ -39,7 +39,7 @@ class UserPrincipleStore:
             except ValueError:
                 logging.getLogger('DECISION').warning('invalid principle revision')
         rows = list(indexed.values())
-        if self.archive:
+        if self.archive and verify_sources:
             for row in rows:
                 row["source_status"] = self.archive.source_status(row)
                 row["effective_status"] = ("retired" if row["status"] != "active" else
@@ -54,7 +54,7 @@ class UserPrincipleStore:
             path = self.directory / (row['id'] + '.json')
             if path.resolve().parent != self.directory.resolve():
                 raise ValueError('准则路径超出索引目录。')
-            before = next((r for r in self.list() if r['id'] == row['id']), None)
+            before = next((r for r in self.list(verify_sources=False) if r['id'] == row['id']), None)
             if before and {k: v for k, v in before.items() if k not in {'updated_at', 'source_status', 'effective_status'}} == {k: v for k, v in row.items() if k != 'updated_at'}:
                 return before
             append_row(self.directory / 'revisions.jsonl', {
@@ -82,7 +82,52 @@ class UserPrincipleStore:
         require_owner()
         return [r for r in read_rows(self.directory / 'revisions.jsonl') if r['after']['id'] == identity]
 
+    def synchronize(self):
+        """Index declared user principles/protocols without inventing new rules."""
+        require_owner()
+        if self.archive is None:
+            return 0
+        existing = {row['id']: row for row in self.list(verify_sources=False)}
+        changed = 0
+        for relative in self.archive.available_paths():
+            if not relative.startswith('user/'):
+                continue
+            path = (self.archive.directory / relative).resolve()
+            if not path.is_relative_to(self.archive.directory / 'user') or not path.is_file():
+                continue
+            text = path.read_text(encoding='utf-8-sig')[:32000]
+            lines = text.splitlines()
+            title = next((line[2:].strip() for line in lines if line.startswith('# ')), '')
+            if not any(word in title for word in ('准则', '协议')):
+                continue
+            hierarchy = []
+            for number, line in enumerate(lines, 1):
+                heading = re.match(r'^(#{1,6})\s+(.+)', line)
+                if not heading:
+                    continue
+                level, label = len(heading[1]), heading[2].strip()
+                hierarchy = [(depth, name) for depth, name in hierarchy if depth < level]
+                hierarchy.append((level, label))
+                if label == title:
+                    continue
+                section = ' / '.join(name for _, name in hierarchy if name != title)
+                identity = 'up-archive-' + hashlib.sha256((relative + '\0' + section).encode()).hexdigest()[:24]
+                before = existing.get(identity)
+                if before and (before['status'] != 'active' or before['origin'] != 'zhaoxi_summary' or 'archive_index' not in before['tags']):
+                    continue  # Owner revisions remain authoritative over automatic indexes.
+                values = {'id': identity, 'statement': title + ' · ' + section,
+                    'domain': 'general', 'tags': ['archive_index', title], 'origin': 'zhaoxi_summary',
+                    'confidence': .7, 'status': 'active',
+                    'source': self.archive.evidence(f'archive:{relative}:L{number}', line),
+                    'updated_at': datetime.now(UTC).isoformat()}
+                if before and all(before.get(key) == value for key, value in values.items() if key != 'updated_at'):
+                    continue
+                self.save(values, actor='zhaoxi_summary')
+                changed += 1
+        return changed
+
     def retrieve(self, query, limit=5):
+        self.synchronize()
         rows = [(relevance(query, ' '.join([r['statement'], r['domain'], *r['tags']])), r)
                 for r in self.list() if r['status'] == 'active' and r.get('source_status', 'current') == 'current']
         rows.sort(key=lambda x: -x[0])
@@ -133,10 +178,12 @@ class DecisionPrincipleArchiveProvider:
         require_owner()
         source = principle['source']
         source_path = source.get('path', '').replace('\\', '/')
-        relative = next((p for p in self.available_paths() if source_path == p or source_path.endswith('/' + p)), None)
+        relative = source_path if source_path.startswith('user/') else next((p for p in self.available_paths() if source_path == p or source_path.endswith('/' + p)), None)
         if relative is None:
             return []
         path = (self.directory / relative).resolve()
+        if relative.startswith('user/') and not path.is_relative_to(self.directory / 'user'):
+            return []
         if not path.is_relative_to(self.directory) or not path.is_file() or path.suffix.lower() not in {'.md', '.txt'}:
             return []
         with path.open(encoding='utf-8-sig') as stream:
@@ -168,10 +215,11 @@ class DecisionPrincipleArchiveProvider:
     def evidence(self, reference, quote):
         require_owner()
         match = re.fullmatch(r'archive:(user/.+):L(\d+)', reference)
-        if not match or match[1] not in self.available_paths():
+        if not match:
             raise ValueError('须引用 archive/user 中实际存在的原文片段。')
         path = (self.directory / match[1]).resolve()
-        if not path.is_relative_to((self.directory / 'user').resolve()) or not path.is_relative_to(self.directory):
+        if (not path.is_relative_to((self.directory / 'user').resolve()) or not path.is_relative_to(self.directory)
+                or path.suffix.lower() not in {'.md', '.txt'} or not path.is_file()):
             raise ValueError('原文路径越界。')
         with path.open(encoding='utf-8-sig') as stream:
             text = stream.read(32000)

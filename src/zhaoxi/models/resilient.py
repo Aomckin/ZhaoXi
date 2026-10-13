@@ -48,6 +48,18 @@ class ResilientProvider(ModelProvider):
         self.metrics = metrics or MetricRegistry()
         self.sleeper = sleeper
 
+    @staticmethod
+    def _record_usage(usage, provider, model):
+        input_tokens = usage.get("prompt_tokens", usage.get("input_tokens"))
+        output_tokens = usage.get("completion_tokens", usage.get("output_tokens"))
+        total = usage.get("total_tokens")
+        if total is None:
+            total = int(input_tokens or 0) + int(output_tokens or 0)
+        record_provider_tokens(int(total or 0),
+            input_tokens=int(input_tokens) if input_tokens is not None else None,
+            output_tokens=int(output_tokens) if output_tokens is not None else None,
+            provider=type(provider).__name__, model=str(model))
+
     async def generate(
         self,
         messages: Sequence[Message],
@@ -80,8 +92,15 @@ class ResilientProvider(ModelProvider):
                 response = None
                 try:
                     with llm_call_scope(item):
-                        response = await provider.generate(messages, tools, **kwargs)
-                    return response
+                        try:
+                            response = await provider.generate(messages, tools, **kwargs)
+                        except ProviderError as exc:
+                            if usage := getattr(exc, "usage", None):
+                                self._record_usage(usage, provider, getattr(provider, "model", "unknown"))
+                            raise
+                        self._record_usage(response.usage, provider,
+                                           response.raw_metadata.get("model") or getattr(provider, "model", "unknown"))
+                        return response
                 finally:
                     if item is not None:
                         reported_usage = item.pop("_provider_usage", {})
@@ -116,17 +135,6 @@ class ResilientProvider(ModelProvider):
                 if self.sleeper is not None:
                     options["sleeper"] = self.sleeper
                 result = await retry_async(invoke, **options)
-                usage = result.usage
-                input_tokens = usage.get("prompt_tokens", usage.get("input_tokens"))
-                output_tokens = usage.get("completion_tokens", usage.get("output_tokens"))
-                call_total = usage.get("total_tokens")
-                if call_total is None:
-                    call_total = (int(input_tokens or 0) + int(output_tokens or 0))
-                record_provider_tokens(int(call_total or 0),
-                                       input_tokens=int(input_tokens) if input_tokens is not None else None,
-                                       output_tokens=int(output_tokens) if output_tokens is not None else None,
-                                       provider=type(provider).__name__,
-                                       model=str(result.raw_metadata.get("model") or getattr(provider, "model", "unknown")))
                 breaker.success()
                 if index:
                     self.metrics.increment("provider.fallback_success")

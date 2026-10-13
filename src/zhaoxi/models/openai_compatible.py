@@ -186,6 +186,7 @@ class OpenAICompatibleProvider(ModelProvider):
 
         owns_client = self._client is None
         client = self._client or httpx.AsyncClient(timeout=self.timeout)
+        usage = {}
         try:
             response = await client.post(
                 f"{self.base_url}/chat/completions",
@@ -253,7 +254,9 @@ class OpenAICompatibleProvider(ModelProvider):
                                  response_format.get("json_schema", {}).get("name") == "main_reply" else {}),
                               **({"reasoning_content": message["reasoning_content"]} if isinstance(message.get("reasoning_content"), str) else {})},
             )
-        except ProviderError:
+        except ProviderError as exc:
+            if isinstance(usage, dict) and usage:
+                exc.usage = usage
             raise
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
@@ -281,11 +284,14 @@ class OpenAICompatibleProvider(ModelProvider):
             ) from exc
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
             retryable = isinstance(exc, httpx.HTTPError)
-            raise ProviderError(
+            failure = ProviderError(
                 f"模型请求失败：{exc}",
                 code="provider_timeout" if isinstance(exc, httpx.TimeoutException) else "provider_transport_error" if retryable else "provider_response_invalid",
                 retryable=retryable,
-            ) from exc
+            )
+            if isinstance(usage, dict) and usage:
+                failure.usage = usage
+            raise failure from exc
         finally:
             if owns_client:
                 await client.aclose()
