@@ -19,6 +19,11 @@ def non_owner_reply_block_reason(item, stream=None, *, now: datetime | None = No
         return None
     if item.conversation_kind != "private" and not item.directed_to_zhaoxi:
         return "not_directed"
+    is_bot = bool(item.metadata.get("sender_is_bot") or
+                  item.actor_id in (known_bot_ids or set()))
+    if item.source == "qq" and not is_bot:
+        # Directed human chat is ordinary conversation, including a bare mention.
+        return None
     text = _MENTION.sub("", item.content or "").strip()
     has_image = any(part.type == "image" for part in item.effective_parts)
     if not has_image and (not text or not _REQUEST.search(text)):
@@ -27,8 +32,6 @@ def non_owner_reply_block_reason(item, stream=None, *, now: datetime | None = No
         return None
     now = now or datetime.now(UTC)
     session_id = session_key(item)
-    is_bot = bool(item.metadata.get("sender_is_bot") or
-                  item.actor_id in (known_bot_ids or set()))
     since = now - (BOT_REPLY_LOOKBACK if is_bot else EXTERNAL_ACTOR_COOLDOWN)
     for reply in stream.recent_replies_in_session(session_id, since):
         # Replies from before this guard was installed have no explicit metadata.

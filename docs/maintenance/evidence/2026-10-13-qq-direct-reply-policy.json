@@ -1,0 +1,55 @@
+{
+  "source": "recorded production QQ Observations; model entry intercepted before generation",
+  "direct_messages_replayed": [
+    {
+      "observation_id": "8e3e5818758c4048953226405cc01c2d",
+      "actor_role": "EXTERNAL",
+      "occurred_at": "2026-10-13T11:23:29+00:00",
+      "channel_reply_boundary_reached": true,
+      "gate": null
+    },
+    {
+      "observation_id": "229dd1e8744b43f5b18662fcb832d13b",
+      "actor_role": "EXTERNAL",
+      "occurred_at": "2026-10-13T11:31:04+00:00",
+      "channel_reply_boundary_reached": true,
+      "gate": null
+    },
+    {
+      "observation_id": "80a9028a3f7847e1a270ead4116c0393",
+      "actor_role": "OWNER",
+      "occurred_at": "2026-10-13T11:44:46+00:00",
+      "channel_reply_boundary_reached": true,
+      "gate": null
+    },
+    {
+      "observation_id": "441e1e2b1b094edbb5eda02725cebd15",
+      "actor_role": "EXTERNAL",
+      "occurred_at": "2026-10-13T11:45:54+00:00",
+      "channel_reply_boundary_reached": true,
+      "gate": null
+    }
+  ],
+  "channel_entries": 4,
+  "planner_entries": 0,
+  "planner_context_builds": 0,
+  "bots_compared": 7,
+  "bot_reasons_unchanged": true,
+  "bot_reason_counts": {
+    "null": 1,
+    "no_explicit_request": 6
+  },
+  "ambient_messages_checked": 1488,
+  "ambient_not_directed_unchanged": true,
+  "real_model_calls": 0,
+  "external_sends": 0,
+  "production_database_modified": false,
+  "field_acceptance_after_restart": false,
+  "human_keyword_gate_disabled": true,
+  "human_cooldowns_disabled": true,
+  "bot_request_and_loop_checks_preserved": true,
+  "qq_direct_reply_planner_disabled": true,
+  "qq_ambient_snapshot_cognition_changed": false,
+  "normal_reply_generation_and_public_output_bounds_preserved": true,
+  "reload_required": true
+}
