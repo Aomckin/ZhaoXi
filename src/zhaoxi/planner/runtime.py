@@ -326,13 +326,15 @@ class PlannerRuntime:
                 self.conversation,
                 memories,
                 planner_context=self._format_state(goal),
-                **({"release_images": True} if finalizing else {}),
+                slim=finalizing,
+                extracted_images=any(o.confirmed_write for o in goal.observations),
             )
             from zhaoxi.observability import ACTION_INTERIM_RULE
             if not finalizing:
                 messages[0].content = (messages[0].content or "") + ACTION_INTERIM_RULE
             from zhaoxi.tools.domain_map import domain_prompt
-            messages[0].content = (messages[0].content or "") + "\n" + domain_prompt(self.registry.manifest())
+            if not finalizing:
+                messages[0].content = (messages[0].content or "") + "\n" + domain_prompt(self.registry.manifest())
             if finalizing:
                 messages[0].content = (messages[0].content or "") + "\n计划步骤已完成，只生成最终自然语言回复，不再调用工具。"
             if finalizing:
@@ -554,6 +556,7 @@ class PlannerRuntime:
                 error=last_result.error,
                 retryable=retryable,
                 unknown_outcome=bool(last_result.metadata.get("unknown_outcome")),
+                confirmed_write=bool(last_result.metadata.get("confirmed_write")),
             )
             goal.observations.append(observation)
             self.trace.record(
@@ -585,6 +588,7 @@ class PlannerRuntime:
             data=result.data,
             error=result.error,
             retryable=retryable,
+            confirmed_write=bool(result.metadata.get("confirmed_write")),
         ))
         self.trace.record(
             goal,

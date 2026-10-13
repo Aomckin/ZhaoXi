@@ -31,6 +31,10 @@ try{
  for(const surface of [desktop,dashboard.frameLocator('iframe')]){
   assert.match(await surface.locator('#actionTokenSummary').textContent(),/Token 合计 3,000.*输入 2,800.*输出 200.*2 次调用/);
   assert.equal(await surface.locator('#actionModelCalls article').count(),2);
+  assert.equal(await surface.locator('#actionContextBreakdown table tr').count(),8);
+  assert.equal(await surface.locator('#actionModelCalls .context-breakdown tr').count(),16);
+  assert.match(await surface.locator('#actionContextBreakdown').innerText(),/已报告 2\/2 次/);
+  assert.match(await surface.locator('#actionContextBreakdown').innerText(),/Persona[\s\S]*Tool Schemas[\s\S]*Timeline[\s\S]*Images[\s\S]*图片 Token 未返回/);
   const first=surface.locator('#actionModelCalls article').first(),last=surface.locator('#actionModelCalls article').last();
   assert.match(await first.innerText(),/synthetic-action-model[\s\S]*Token 1,280/);
   await first.locator('summary').click();
@@ -47,6 +51,6 @@ try{
  await desktop.locator('#actionTrace').scrollIntoViewIfNeeded();await desktop.screenshot({path:path.join(output,'action-trace-desktop.png'),fullPage:true});
  await dashboard.screenshot({path:path.join(output,'action-trace-web.png'),fullPage:true});
  assert.deepEqual(errors,[]);
- const evidence={checks:['desktop_sidebar_trace','web_observes_desktop_sse','reload_mid_request_recovers_snapshot','terminal_status_both_surfaces','runtime_metrics_displayed','navigation_back_restores_completed_trace','latest_request_snapshot','no_page_errors','per_call_tokens','request_total_tokens','non_final_body','final_body_not_duplicated'],desktop_events:desktopEvents.length,web_events:observed.length,real_model_calls:0,real_social_send:false,errors};
+ const evidence={checks:['desktop_sidebar_trace','web_observes_desktop_sse','reload_mid_request_recovers_snapshot','terminal_status_both_surfaces','runtime_metrics_displayed','navigation_back_restores_completed_trace','latest_request_snapshot','no_page_errors','per_call_tokens','request_total_tokens','non_final_body','final_body_not_duplicated','eight_categories_per_call','cumulative_context_breakdown','breakdown_after_snapshot_reload','image_usage_unknown_not_zero'],desktop_events:desktopEvents.length,web_events:observed.length,real_model_calls:0,real_social_send:false,errors};
  fs.writeFileSync(path.join(output,'action-trace-monitor-acceptance.json'),JSON.stringify(evidence,null,2));console.log(JSON.stringify(evidence));
 }finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});

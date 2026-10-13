@@ -47,6 +47,8 @@ class ToolDiscoveryState:
     initial: ToolContext
     requested: list[str] = field(default_factory=list)
     expanded: list[str] = field(default_factory=list)
+    preloaded: list[str] = field(default_factory=list)
+    preloaded_groups: list[str] = field(default_factory=list)
     expansion_count: int = 0
     business_tool_called: bool = False
     resolution_checked: bool = False
@@ -112,6 +114,7 @@ class ToolDiscoveryState:
         initially_forced = set(self.initial.reason_tags)  # force-only names are not permanent selections
         names = set(self.initial.exposed_tools) | set(self.expanded)
         names -= {tag.removeprefix("force:") for tag in initially_forced if tag.startswith("force:")}
+        names.update(self.preloaded)
         names.update(t["name"] for t in manifest if t["persistent"] or t["force_expose"])
         usable = {t["name"] for t in manifest if t["enabled"] and t["available"]}
         return [tool.schema() for tool in registry.list() if tool.name in names and tool.name in usable]
@@ -199,6 +202,8 @@ class ToolDiscoveryState:
             "initial_exposed_tools": list(self.initial.exposed_tools),
             "requested_tool_groups": list(self.requested),
             "expanded_tools": list(self.expanded),
+            "preloaded_tools": list(self.preloaded),
+            "preloaded_tool_groups": list(self.preloaded_groups),
             "force_exposed_tools": [t["name"] for t in manifest if t["force_expose"] and t["exposed"]],
             "persistent_tools": [t["name"] for t in manifest if t["persistent"] and t["exposed"]],
             "capability_expansion_count": self.expansion_count,

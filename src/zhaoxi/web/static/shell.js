@@ -11,6 +11,7 @@ function resetActionTrace(requestId){
   if(activeTraceId&&activeTraceId!==requestId){retiredTraceIds.add(activeTraceId);if(retiredTraceIds.size>20)retiredTraceIds.delete(retiredTraceIds.values().next().value)}
   activeTraceId=requestId;traceTerminated=false;traceRevision++;
   actionModelCalls.clear();actionTokenUsage=null;
+  $('#actionContextBreakdown')?.replaceChildren();
   $('#actionModelCalls')?.replaceChildren();if($('#actionTokenSummary'))$('#actionTokenSummary').textContent='Token 合计：等待模型返回用量';
   $('#actionTraceSummary').textContent='行动记录 · 进行中';$('#actionTraceEvents').replaceChildren();$('#actionTraceDebug').textContent='';
   if($('#actionMaintenance'))$('#actionMaintenance').textContent='';if($('#actionRuntimeSummary'))$('#actionRuntimeSummary').textContent='';if($('#actionPlannerStatus'))$('#actionPlannerStatus').textContent='Planner：本轮尚未启用';
@@ -71,6 +72,23 @@ function recordModelCall(call){
   if(saved.final_reply)saved.process_text='';
   actionModelCalls.set(call.index,saved);
 }
+function renderContextBreakdown(parent,reports,label){
+  if(!parent)return;
+  const title=document.createElement('p');title.textContent=label+'（文本按字符÷4估算，非 API 实际分项 Token）';parent.append(title);
+  if(!reports.length){const unknown=document.createElement('p');unknown.textContent='输入构成未返回';parent.append(unknown);return}
+  const table=document.createElement('table');table.className='context-breakdown';
+  for(const [key,name] of Object.entries({system:'System',persona:'Persona',tool_schemas:'Tool Schemas',timeline:'Timeline',tool_results:'Tool Results',images:'Images',memory:'Memory',cognition:'Cognition'})){
+    const values=reports.map(report=>report[key]).filter(Boolean),row=document.createElement('tr'),labelCell=document.createElement('td'),valueCell=document.createElement('td');
+    labelCell.textContent=name;
+    const chars=values.reduce((n,v)=>n+(v.chars||0),0),known=values.length===reports.length;
+    const suffix=known?'':'（已知部分）';
+    const imageValues=values.map(v=>v.tokens).filter(Number.isFinite);
+    const imageTokens=imageValues.length?`图片 Token ${imageValues.reduce((a,b)=>a+b,0).toLocaleString('zh-CN')}`+(imageValues.length<values.length?'（已知部分）':''):'图片 Token 未返回';
+    valueCell.textContent=!values.length?'未返回':key==='images'?`${values.reduce((n,v)=>n+(v.count||0),0)} 张次 · ${chars.toLocaleString('zh-CN')} 载荷字符 · ${imageTokens}${suffix}`:`≈ ${values.reduce((n,v)=>n+(v.estimated_tokens||0),0).toLocaleString('zh-CN')} Token · ${chars.toLocaleString('zh-CN')} 字符${suffix}`;
+    row.append(labelCell,valueCell);table.append(row);
+  }
+  parent.append(table);
+}
 function renderModelCalls(usage=null){
   const container=$('#actionModelCalls'),summary=$('#actionTokenSummary');
   if(!container||!summary)return;
@@ -84,6 +102,8 @@ function renderModelCalls(usage=null){
   const total=(field)=>tokens(totals[field])+(totals[field+'_unreported_calls']&&Number.isFinite(totals[field])?'（已知）':'');
   const missing=totals.total_tokens_unreported_calls||0;
   summary.textContent=`Token 合计 ${total('total_tokens')} · 输入 ${total('input_tokens')} · 输出 ${total('output_tokens')} · ${totals.call_count??calls.length} 次调用`+(missing?` · ${missing} 次用量未返回`:'');
+  const breakdown=$('#actionContextBreakdown');
+  if(breakdown){breakdown.replaceChildren();renderContextBreakdown(breakdown,calls.map(call=>call.context_breakdown).filter(Boolean),`累计输入构成 · 已报告 ${calls.filter(call=>call.context_breakdown).length}/${calls.length} 次`)}
   container.replaceChildren();
   for(const call of calls){
     const card=document.createElement('article'),title=document.createElement('strong'),info=document.createElement('p');
@@ -92,6 +112,7 @@ function renderModelCalls(usage=null){
     title.textContent=`调用 #${call.index} · ${call.model||'模型未标记'} · ${call.owner||'agent'} / ${call.stage||'model'} · ${state}`;
     info.textContent=`Token ${tokens(call.total_tokens)} · 输入 ${tokens(call.prompt_tokens)} · 输出 ${tokens(call.output_tokens)}`+(Number.isFinite(call.duration_ms)?` · ${call.duration_ms.toFixed(2)} ms`:'');
     card.append(title,info);
+    if(call.context_breakdown)renderContextBreakdown(card,[call.context_breakdown],'本次输入构成');
     if(call.reply_kind==='process'&&!call.final_reply&&call.process_text){
       const details=document.createElement('details'),label=document.createElement('summary'),body=document.createElement('pre');
       label.textContent='过程回复（非最终正文）';body.textContent=call.process_text;

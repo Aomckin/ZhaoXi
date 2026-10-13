@@ -92,6 +92,8 @@ class ContextBuilder:
         planner_context: str | None = None,
         *,
         absorbed_tool_call_ids: set[str] | None = None,
+        slim: bool = False,
+        extracted_images: bool = False,
         release_images: bool = False,
         preserve_current_image: bool = False,
         current_image_message_id: str | None = None,
@@ -106,6 +108,8 @@ class ContextBuilder:
 
         def add(name: str, value: str) -> None:
             nonlocal system
+            if slim and name in {"runtime.presence", "runtime.desktop_activity", "runtime.shared_self"}:
+                return
             system += value
             components.append({"name": name, "chars": len(value)})
 
@@ -360,6 +364,13 @@ class ContextBuilder:
                 if release_images and not (preserve_current_image and is_current_image):
                     previews = []
                     self.last_compaction["images_released"] += len(item.images)
+                elif extracted_images:
+                    previews = [preview for image_index, image in enumerate(item.images)
+                                if (preview := self.image_thumbnail_cache.thumbnail(
+                                    item.message_id, image_index, image)) is not None]
+                    self.last_compaction["images_released"] += len(item.images)
+                    item = item.model_copy(update={"content": (item.content or "") +
+                        "\n[图片已用于结构化操作结果；后续仅携带缩略图，请以已确认结果为准。]"})
                 elif is_current_image:
                     previews = [self.image_thumbnail_cache.model_preview(item.message_id, image_index, image) or image
                                 for image_index, image in enumerate(item.images)]
@@ -380,4 +391,10 @@ class ContextBuilder:
                     content = item.content
                 item = item.model_copy(update={"content": content, "images": previews})
             timeline.append(item)
-        return [Message(role=Role.SYSTEM, content=system, metadata={"prompt_components": components}), *reference_image_messages(tool_image_references), *timeline]
+        references = reference_image_messages(tool_image_references)
+        if extracted_images:
+            references = [m.model_copy(update={"images": [preview for i, image in enumerate(m.images)
+                if (preview := self.image_thumbnail_cache.thumbnail(m.message_id, i, image)) is not None],
+                "content": (m.content or "") + "\n[引用图片仅保留缩略图，提取事实见已确认操作结果。]"}) for m in references]
+            self.last_compaction["images_released"] += sum(len(m.images) for m in reference_image_messages())
+        return [Message(role=Role.SYSTEM, content=system, metadata={"prompt_components": components}), *references, *timeline]

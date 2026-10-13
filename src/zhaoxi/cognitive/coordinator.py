@@ -249,6 +249,7 @@ class CognitiveCoordinator:
             result = await self.agent.run(
                 user_message, require_tool_call=decision.requires_tool_call,
                 required_tool=decision.required_tool,
+                **({"preload_tool_groups": decision.preload_tool_groups} if decision.preload_tool_groups else {}),
                 **({"retry_intent": retry.intent} if retry else {}),
                 **({"fast_escalated":True} if fast_escalation_kind is not None else {}),
                 **({"images": images} if images else {}),

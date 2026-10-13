@@ -573,6 +573,13 @@ def record_llm_usage(usage: dict) -> None:
         call["_provider_usage"] = usage
 
 
+def record_llm_context(breakdown: dict) -> None:
+    """Attach numeric input accounting to its actual provider attempt."""
+    call = _llm_call.get()
+    if call is not None:
+        call["context_breakdown"] = breakdown
+
+
 def llm_token_counts(usage: dict) -> dict:
     fields = {"prompt_tokens": usage.get("prompt_tokens", usage.get("input_tokens")),
               "output_tokens": usage.get("completion_tokens", usage.get("output_tokens")),

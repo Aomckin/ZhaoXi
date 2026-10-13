@@ -358,7 +358,14 @@ async def test_reply_only_repair_retains_character_image_and_confirmed_results()
     assert result.activity["response_status"] == "succeeded" and len(provider.calls) == 3
     assert "fixture-personality" in provider.calls[-1][0].content
     assert "fixture-expression" in provider.calls[-1][0].content
-    assert provider.calls[-1][-1].images == [image]
+    thumbnails = provider.calls[-1][-1].images
+    assert thumbnails and image not in thumbnails
+    assert any(image in m.images for m in agent.conversation.messages)
+    from PIL import Image
+    from io import BytesIO
+    import base64
+    with Image.open(BytesIO(base64.b64decode(thumbnails[0].partition(",")[2]))) as preview:
+        assert max(preview.size) <= 512
     assert provider.options[-1]["response_format"]["json_schema"]["name"] == "reply_repair"
     schema = provider.options[-1]["response_format"]["json_schema"]["schema"]
     assert schema["required"] == ["reply"] and "awareness" not in schema["properties"]

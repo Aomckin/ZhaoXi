@@ -53,7 +53,7 @@ def test_current_image_survives_finalization_while_old_images_are_released():
     assert old.images and current.images
 
 def test_context_report_has_categories_and_separates_unknown_image_cost():
-    messages = [Message(role=Role.SYSTEM, content="人格", metadata={"prompt_components": [
+    messages = [Message(role=Role.SYSTEM, content="人格" + "认知" * 4 + "记忆" * 3, metadata={"prompt_components": [
         {"name": "system.persona", "chars": 2},
         {"name": "runtime.current_cognition", "chars": 8},
         {"name": "memory.recall", "chars": 6},

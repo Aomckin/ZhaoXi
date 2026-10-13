@@ -229,6 +229,9 @@ class ToolExecutor:
             **guard_metadata,
             "trust": "untrusted_tool_output",
             "source_tool": name,
+            "confirmed_write": bool(result.success and permission != PermissionLevel.READ
+                                    and isinstance(result.data, dict) and result.data
+                                    and not result.data.get("truncated")),
         }
         self.gateway.record_execution(
             request,

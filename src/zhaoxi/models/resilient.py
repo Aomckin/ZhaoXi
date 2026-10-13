@@ -87,6 +87,11 @@ class ResilientProvider(ModelProvider):
                         reported_usage = item.pop("_provider_usage", {})
                         usage = response.usage if response is not None else reported_usage
                         item.update(llm_token_counts(usage))
+                        if item.get("context_breakdown"):
+                            details = usage.get("prompt_tokens_details", usage.get("input_tokens_details", {}))
+                            image_tokens = details.get("image_tokens") if isinstance(details, dict) else None
+                            if type(image_tokens) is int and image_tokens >= 0:
+                                item["context_breakdown"]["images"]["tokens"] = image_tokens
                         item.update(finished_at=datetime.now(UTC).isoformat(),
                                     duration_ms=round((monotonic() - started) * 1000, 2),
                                     status="success" if response is not None else "failed",

@@ -21,7 +21,7 @@ function setup(){
     '#actionTrace':{open:false},'#actionTraceSummary':{textContent:''},
     '#actionTraceEvents':list,'#actionTraceDebug':{textContent:''},
     '#actionRuntimeSummary':{textContent:''},'#actionPlannerStatus':{textContent:''},'#actionMaintenance':{textContent:''},
-    '#actionTokenSummary':{textContent:''},'#actionModelCalls':{children:[],append(row){this.children.push(row)},replaceChildren(){this.children=[]}},
+    '#actionTokenSummary':{textContent:''},'#actionContextBreakdown':{children:[],append(row){this.children.push(row)},replaceChildren(){this.children=[]}},'#actionModelCalls':{children:[],append(row){this.children.push(row)},replaceChildren(){this.children=[]}},
   };
   const activity={textContent:''};
   const context=vm.createContext({
@@ -276,4 +276,26 @@ test('final runtime snapshot restores all call bodies and authoritative token to
   assert.match(s.nodes['#actionTokenSummary'].textContent,/Token 合计 35.*输入 30.*输出 5.*2 次调用/);
   assert.equal(s.nodes['#actionModelCalls'].children[0].children[2].children[1].textContent,'公开的规划说明');
   assert.equal(s.nodes['#actionModelCalls'].children[1].children.length,2);
+});
+
+
+test('eight-way context breakdown survives replay and snapshots without altering actual tokens',()=>{
+  const s=setup();s.context.beginActionTrace();
+  const context_breakdown=Object.fromEntries(['system','persona','tool_schemas','timeline','tool_results','images','memory','cognition'].map(key=>[key,{chars:key==='images'?1200:400,estimated_tokens:key==='images'?null:100,...(key==='images'?{count:1,tokens:null}:{})}]));
+  const call={index:1,prompt_tokens:900,output_tokens:20,total_tokens:920,context_breakdown};
+  s.emit('llm_call_finished','model','success','done',{metadata:call});
+  s.emit('llm_call_finished','model','success','done',{metadata:call});
+  let table=s.nodes['#actionContextBreakdown'].children[1];
+  assert.equal(table.children.length,8);
+  assert.equal(table.children[0].children[0].textContent,'System');
+  assert.match(table.children[0].children[1].textContent,/100 Token.*400 字符/);
+  assert.match(table.children[5].children[1].textContent,/1 张次.*1,200.*图片 Token 未返回/);
+  s.context.renderRuntimeMetrics({llm_calls:[call,{...call,index:2}],token_usage:{call_count:2,input_tokens:1800,output_tokens:40,total_tokens:1840}});
+  table=s.nodes['#actionContextBreakdown'].children[1];
+  assert.match(table.children[0].children[1].textContent,/200 Token.*800 字符/);
+  assert.match(s.nodes['#actionTokenSummary'].textContent,/输入 1,800/);
+  assert.match(s.nodes['#actionModelCalls'].children[0].children[2].textContent,/非 API 实际分项/);
+  s.emit('llm_call_finished','model','success','known image tokens',{metadata:{...call,index:2,context_breakdown:{...context_breakdown,images:{chars:1200,count:1,tokens:7}}}});
+  assert.match(s.nodes['#actionContextBreakdown'].children[1].children[5].children[1].textContent,/图片 Token 7（已知部分）/);
+  s.context.resetActionTrace('next');assert.equal(s.nodes['#actionContextBreakdown'].children.length,0);
 });

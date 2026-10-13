@@ -27,6 +27,7 @@ class RouteDecision(BaseModel):
     workflow_inputs: dict[str, Any] = Field(default_factory=dict)
     requires_tool_call: bool = False
     required_tool: str | None = None
+    preload_tool_groups: list[str] = Field(default_factory=list, max_length=4)
 
 
 class RouteInput(BaseModel):
@@ -42,6 +43,8 @@ class RouteInput(BaseModel):
     )
     workflow_id: str | None = None
     workflow_inputs: dict[str, Any] = Field(default_factory=dict)
+    preload_tool_groups: list[str] = Field(default_factory=list, max_length=4,
+        description="从实时 Tool Domain Map 的 groups 选择本请求接下来可能需要的最多四个工具组；不填 all，不代表授权，不需要工具时留空。")
 
 
 ROUTE_SCHEMA: dict[str, Any] = {
@@ -72,6 +75,7 @@ class CognitiveRouter:
         "历史 assistant 回复仅证明说过什么，不能据其声称无能力而忽略当前可用能力。"
         "不要选择 DIRECT 后声称稍后检查。"
         "简单请求禁止选择 PLAN。"
+        "TOOL/PLAN 同次预测接下来可能需要的工具组到 preload_tool_groups；只选择实际可用的组，不加载无关领域。"
     )
 
     def __init__(
@@ -157,12 +161,20 @@ class CognitiveRouter:
             try:
                 value = RouteInput.model_validate(call.arguments)
                 required_tool = value.required_tool if value.required_tool in self.available_tool_names else None
-                return self._guard_simple_request(
+                decision = self._guard_simple_request(
                     user_message, RouteDecision(route=value.route, reason=value.reason,
                         requires_tool_call=value.requires_tool_call, required_tool=required_tool,
                         workflow_id=value.workflow_id, workflow_inputs=value.workflow_inputs),
                     recent_context=recent_context,
                 )
+                groups = {str(item["group"]) for item in self.tool_catalog if item.get("group")}
+                accepted = list(dict.fromkeys(g for g in value.preload_tool_groups if g in groups and g != "all"))
+                rejected = [g for g in value.preload_tool_groups if g not in accepted]
+                if trace := current_trace():
+                    trace.emit("router_tools_predicted", "routing", "info", "已预测本轮工具组",
+                               metadata={"groups": accepted, "rejected_groups": rejected})
+                return decision.model_copy(update={"preload_tool_groups": accepted
+                    if decision.route in {CognitiveRoute.TOOL, CognitiveRoute.PLAN} else []})
             except ValidationError:
                 break
         return self._guard_simple_request(user_message, self._fallback(user_message), recent_context=recent_context)

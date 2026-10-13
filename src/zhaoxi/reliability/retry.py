@@ -295,6 +295,8 @@ def record_provider_tokens(tokens: int, *, input_tokens: int | None = None,
 
 
 def record_context_diagnostics(report: dict[str, object]) -> None:
+    from zhaoxi.observability import record_llm_context
+    record_llm_context(report.get("context_breakdown", {}))
     budget = current_budget()
     if budget is None:
         return
@@ -303,6 +305,7 @@ def record_context_diagnostics(report: dict[str, object]) -> None:
     entry = {"step": trace.current_step if trace else None,
              "stage": current_budget_stage(),
              "estimated": report.get("context_tokens_estimate", {}),
+             "context_breakdown": report.get("context_breakdown", {}),
              "actual_input_tokens": None, "total_input_tokens": None}
     budget.context_reports.append(entry)
     budget.context_reports[:] = budget.context_reports[-30:]

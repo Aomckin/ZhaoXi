@@ -7,6 +7,9 @@ from dashboard_fixture import dashboard_core
 from zhaoxi.observability import current_trace
 from zhaoxi.models.resilient import ResilientProvider
 from zhaoxi.models.types import ModelResponse
+from zhaoxi.models.prompt_diagnostics import collect_prompt_diagnostics
+from zhaoxi.reliability.retry import record_context_diagnostics
+from zhaoxi.core.message import Message, Role
 from zhaoxi.web.app import create_app
 
 if __name__ == "__main__":
@@ -23,7 +26,8 @@ if __name__ == "__main__":
             model = "synthetic-action-model"
             calls = 0
 
-            async def generate(self, *args, **kwargs):
+            async def generate(self, messages, tools=None, **kwargs):
+                record_context_diagnostics(collect_prompt_diagnostics(messages, tools, model=self.model))
                 self.calls += 1
                 return (ModelResponse(content="我会先核对资料，再汇总结果。", usage={"prompt_tokens": 1200, "completion_tokens": 80})
                         if self.calls == 1 else
@@ -31,9 +35,12 @@ if __name__ == "__main__":
 
         provider = ResilientProvider([SyntheticProvider()])
         trace.emit("model_step_started", "model", "running", "隔离模型正在处理")
-        await provider.generate([])
+        await provider.generate([Message(role=Role.SYSTEM,content="synthetic persona",metadata={
+            "prompt_components":[{"name":"system.personality","chars":17}]}),
+            Message(role=Role.USER,content="synthetic timeline",images=["data:image/png;base64,AAAA"])],
+            [{"type":"function","function":{"name":"synthetic_tool"}}])
         await asyncio.sleep(4)
-        final = await provider.generate([])
+        final = await provider.generate([Message(role=Role.USER,content="confirmed synthetic receipt")])
         trace.mark_final_reply(final)
         trace.emit("model_step_finished", "model", "success", "隔离模型处理完成")
         return await original(message)

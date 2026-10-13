@@ -29,9 +29,14 @@ def collect_prompt_diagnostics(
         if message.role == Role.SYSTEM:
             recorded = message.metadata.get("prompt_components")
             if isinstance(recorded, list):
+                remaining = len(message.content or "")
                 for item in recorded:
                     if isinstance(item, dict) and isinstance(item.get("name"), str):
-                        components.append((item["name"], int(item.get("chars", 0))))
+                        chars = min(remaining, max(0, int(item.get("chars", 0))))
+                        components.append((item["name"], chars))
+                        remaining -= chars
+                if remaining:
+                    components.append(("system.unclassified", remaining))
             else:
                 components.append(("system_prompt", len(message.content or "")))
         else:
@@ -70,12 +75,30 @@ def collect_prompt_diagnostics(
     image_payload_chars = sum(len(url) for url in image_urls if isinstance(url, str))
     categories["recent_messages"] = max(0, categories["recent_messages"] - image_payload_chars)
     estimated = {name: ceil(chars / 4) for name, chars in categories.items()}
+    breakdown_chars = dict.fromkeys(("system", "persona", "tool_schemas", "timeline",
+                                    "tool_results", "images", "memory", "cognition"), 0)
+    for name, chars in components:
+        category = (
+            "persona" if name in {"system.character", "system.persona", "system.personality", "system.expression",
+                                  "system.canine_expression", "system.few_shot_dialogues"} else
+            "memory" if name == "memory.recall" else
+            "cognition" if name == "runtime.current_cognition" else
+            "tool_schemas" if name.startswith("tool_schema.") else
+            "tool_results" if name.startswith("conversation_history.") and name.endswith(".tool") else
+            "timeline" if name.startswith("conversation_history.") or name == "runtime.agenda" else "system")
+        breakdown_chars[category] += chars
+    breakdown_chars["timeline"] -= image_payload_chars
+    breakdown_chars["images"] = image_payload_chars
+    breakdown = {name: {"chars": chars, "estimated_tokens": None if name == "images" else ceil(chars / 4)}
+                 for name, chars in breakdown_chars.items()}
+    breakdown["images"].update(count=len(image_urls), tokens=None)
     return {
         "model": model,
         "input_chars": total_chars,
         "messages_chars": _json_chars(provider_messages),
         "tools_chars": _json_chars(tools or []),
         "tool_router": tool_router,
+        "context_breakdown": breakdown,
         "context_tokens_estimate": {**estimated, "image_tokens": None,
                                     "image_count": len(image_urls),
                                     "image_payload_chars": image_payload_chars,

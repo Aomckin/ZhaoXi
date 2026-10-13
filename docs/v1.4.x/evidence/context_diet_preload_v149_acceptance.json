@@ -1,0 +1,89 @@
+{
+  "date": "2026-10-13",
+  "version": "1.4.9",
+  "tasks": [
+    "V149-08",
+    "V149-09",
+    "V149-10",
+    "V149-11"
+  ],
+  "verification": {
+    "core_full": {
+      "passed": 1628,
+      "skipped": 1,
+      "log": ".pytest_cache/context-diet-core-final.log"
+    },
+    "followup_models_observability_reliability_tools_context_diet": {
+      "passed": 200,
+      "log": ".pytest_cache/diet-accounting-final.log"
+    },
+    "frontend_full": {
+      "passed": 115
+    },
+    "frontend_trace_followup": {
+      "passed": 19
+    },
+    "tool_packages": {
+      "lifehud": 33,
+      "career": 4,
+      "mcp": 8,
+      "markitdown": 2,
+      "career_node_checks": 266,
+      "career_api": "passed"
+    },
+    "browser": {
+      "checks": [
+        "desktop_sidebar_trace",
+        "web_observes_desktop_sse",
+        "reload_mid_request_recovers_snapshot",
+        "terminal_status_both_surfaces",
+        "runtime_metrics_displayed",
+        "navigation_back_restores_completed_trace",
+        "latest_request_snapshot",
+        "no_page_errors",
+        "per_call_tokens",
+        "request_total_tokens",
+        "non_final_body",
+        "final_body_not_duplicated",
+        "eight_categories_per_call",
+        "cumulative_context_breakdown",
+        "breakdown_after_snapshot_reload",
+        "image_usage_unknown_not_zero"
+      ],
+      "desktop_events": 14,
+      "web_events": 14,
+      "real_model_calls": 0,
+      "real_social_send": false,
+      "errors": []
+    }
+  },
+  "measurements": {
+    "synthetic_context_comparison": [
+      {
+        "input_chars": 41083,
+        "tool_schema_chars": 28460,
+        "image_payload_chars": 7782,
+        "system_chars": 4075
+      },
+      {
+        "input_chars": 6665,
+        "tool_schema_chars": 1268,
+        "image_payload_chars": 1751,
+        "system_chars": 2419
+      }
+    ],
+    "actual_provider_tokens_measured": false,
+    "real_model_calls": 0,
+    "real_business_writes": 0
+  },
+  "limits": [
+    "text category tokens are chars/4 estimates, not API allocations",
+    "image tokens remain unknown unless provider reports details",
+    "router prediction only shares existing router calls",
+    "synthetic workload is not production token savings proof"
+  ],
+  "production_model_calls": 0,
+  "production_data_writes": 0,
+  "production_restart": false,
+  "pushed": false
+}

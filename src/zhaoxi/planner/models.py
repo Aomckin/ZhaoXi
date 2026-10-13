@@ -86,6 +86,7 @@ class Observation(BaseModel):
     error: str | None = None
     retryable: bool = False
     unknown_outcome: bool = False
+    confirmed_write: bool = False
     timestamp: datetime = Field(default_factory=utc_now)
 
 
