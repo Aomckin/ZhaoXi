@@ -83,7 +83,7 @@ function renderContextBreakdown(parent,reports,label){
     const chars=values.reduce((n,v)=>n+(v.chars||0),0),known=values.length===reports.length;
     const suffix=known?'':'（已知部分）';
     const imageValues=values.map(v=>v.tokens).filter(Number.isFinite);
-    const imageTokens=imageValues.length?`图片 Token ${imageValues.reduce((a,b)=>a+b,0).toLocaleString('zh-CN')}`+(imageValues.length<values.length?'（已知部分）':''):'图片 Token 未返回';
+    const imageTokens=imageValues.length?`图片 Token ${imageValues.reduce((a,b)=>a+b,0).toLocaleString('zh-CN')}`+(imageValues.length<values.length?'（已知部分）':'')+'（接口报告）':'图片 Token 未返回';
     valueCell.textContent=!values.length?'未返回':key==='images'?`${values.reduce((n,v)=>n+(v.count||0),0)} 张次 · ${chars.toLocaleString('zh-CN')} 载荷字符 · ${imageTokens}${suffix}`:`≈ ${values.reduce((n,v)=>n+(v.estimated_tokens||0),0).toLocaleString('zh-CN')} Token · ${chars.toLocaleString('zh-CN')} 字符${suffix}`;
     row.append(labelCell,valueCell);table.append(row);
   }

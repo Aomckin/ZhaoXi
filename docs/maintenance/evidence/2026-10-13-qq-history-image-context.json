@@ -1,0 +1,38 @@
+{
+  "production_snapshot_match": {
+    "image_count": 8,
+    "image_payload_chars": 261216
+  },
+  "before": {
+    "qq_group_images": 8,
+    "desktop_images": 0,
+    "originals_replayed": 0,
+    "max_thumbnail_edge": 512
+  },
+  "after": {
+    "image_count": 0,
+    "image_payload_chars": 0,
+    "ambient_images_omitted": 8
+  },
+  "actual_provider_token_savings_measured": false,
+  "production_db_writes": 0,
+  "real_model_calls": 0,
+  "date": "2026-10-13",
+  "client_timezone": "Asia/Shanghai",
+  "request_time": "09:19",
+  "verification": {
+    "python_related_passed": 661,
+    "frontend_passed": 115,
+    "python_log": ".pytest_cache/ambient-images-regression.log",
+    "frontend_log": ".pytest_cache/ambient-images-node-full.log"
+  },
+  "actual_input_tokens": {
+    "router": 7640,
+    "main_agent": 21505,
+    "reply_repair": 2407,
+    "total": 31552
+  },
+  "provider_reported_image_tokens": 0,
+  "production_restart": false,
+  "pushed": false
+}

@@ -287,4 +287,15 @@ def cognitive_timeline(
             message.metadata["timeline_scope"] = "attention"
             recent.insert(0, message)
             chars += len(message.content or "")
+    if output_channel in {"desktop", "web"}:
+        from .provenance import from_message
+        for index, message in enumerate(recent):
+            origin = from_message(message)
+            if message.images and origin.channel == "qq" and origin.conversation_kind == "group":
+                # ponytail: ambient cross-channel pixels are retrieved on demand.
+                count = len(message.images)
+                recent[index] = message.model_copy(update={"images": [],
+                    "content": (message.content or "") +
+                        f"\n[QQ 群聊历史附图 {count} 张；本轮未自动携带像素。需要视觉细节时用 read_social_context 回查，不推断画面。]",
+                    "metadata": {**message.metadata, "ambient_images_omitted": count}})
     return recent

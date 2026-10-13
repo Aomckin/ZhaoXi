@@ -297,5 +297,7 @@ test('eight-way context breakdown survives replay and snapshots without altering
   assert.match(s.nodes['#actionModelCalls'].children[0].children[2].textContent,/非 API 实际分项/);
   s.emit('llm_call_finished','model','success','known image tokens',{metadata:{...call,index:2,context_breakdown:{...context_breakdown,images:{chars:1200,count:1,tokens:7}}}});
   assert.match(s.nodes['#actionContextBreakdown'].children[1].children[5].children[1].textContent,/图片 Token 7（已知部分）/);
+  s.emit('llm_call_finished','model','success','reported zero',{metadata:{...call,index:1,context_breakdown:{...context_breakdown,images:{chars:261216,count:8,tokens:0}}}});
+  assert.match(s.nodes['#actionModelCalls'].children[0].children[3].children[5].children[1].textContent,/8 张次.*261,216.*图片 Token 0（接口报告）/);
   s.context.resetActionTrace('next');assert.equal(s.nodes['#actionContextBreakdown'].children.length,0);
 });
