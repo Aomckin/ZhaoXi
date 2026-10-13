@@ -189,10 +189,11 @@ class Interaction:
         self.signals.update(signals, now)
         self._resolve_interruptibility(now)
 
-    def _resolve_interruptibility(self, now: datetime) -> Interruptibility:
+    def _resolve_interruptibility(self, now: datetime, *, ignore_quiet: bool = False) -> Interruptibility:
         input_active = self.signals.resolve("desktop.input_active", now)
         focus = self.signals.resolve("attention.focus", now)
-        manual = self.signals.resolve("interruptibility.manual", now)
+        manual = self.signals.resolve("interruptibility.manual", now,
+                                      exclude_source="quiet_mode" if ignore_quiet else None)
         if (manual and manual.value == "blocked") or self.state in {InteractionState.AWAY, InteractionState.SLEEP} or (self.snapshot and self.snapshot.locked):
             value = Interruptibility.BLOCKED
         elif (input_active and input_active.value) or (self.snapshot and self.snapshot.fullscreen) or (focus and focus.value == "active"):
@@ -202,7 +203,10 @@ class Interaction:
         else:
             value = Interruptibility.NORMAL
         self.interruptibility_reason = (
-            'blocked' if value == Interruptibility.BLOCKED else
+            'screen_locked' if self.snapshot and self.snapshot.locked else
+            'away' if self.state == InteractionState.AWAY else
+            'sleep' if self.state == InteractionState.SLEEP else
+            ('quiet_mode' if manual.source == 'quiet_mode' else 'manual_blocked') if value == Interruptibility.BLOCKED else
             'keyboard_busy' if input_active and input_active.value else
             'fullscreen' if self.snapshot and self.snapshot.fullscreen else
             'focus_active' if focus and focus.value == 'active' else 'available'

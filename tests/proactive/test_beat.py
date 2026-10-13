@@ -440,3 +440,76 @@ async def test_image_only_user_reply_renews_beat_budget_without_fabricated_text(
         await InterfaceGateway(Agent()).chat(UnifiedMessage(channel='web', content='', images=[image]))
     assert not loop.session.awaiting_reply and loop.session.initiative_budget == 2
     assert loop.session.last_user_at == moment and loop.open_thread is None
+
+
+async def test_quiet_off_clears_infinite_signal_and_restores_automatic_beat():
+    loop, worker, provider, state, store = setup()
+    state.quiet_until = datetime.max.replace(tzinfo=UTC)
+    await worker.heartbeat.tick(NOW)
+    assert state.interaction.signals.resolve('interruptibility.manual', NOW).source == 'quiet_mode'
+    state.quiet_until = None
+    # No heartbeat needed between the tray action and a queued decision.
+    assert await worker.tick(NOW + timedelta(minutes=3))
+    assert loop.last_trace['delivered'] and len(provider.calls) == 1
+    assert state.interaction.signals.resolve('interruptibility.manual', NOW) is None
+
+
+async def test_heartbeat_clears_cancelled_quiet_without_removing_other_blocks():
+    loop, worker, provider, state, store = setup()
+    state.quiet_until = datetime.max.replace(tzinfo=UTC)
+    await worker.heartbeat.tick(NOW)
+    state.interaction.observe_signals([StateSignal(type='interruptibility.manual',
+        value='blocked', source='other_provider', observed_at=NOW,
+        expires_at=NOW + timedelta(hours=1))], NOW)
+    state.quiet_until = None
+    await worker.heartbeat.tick(NOW + timedelta(seconds=1))
+    assert state.interaction.signals.resolve('interruptibility.manual', NOW).source == 'other_provider'
+    assert not await worker.tick(NOW + timedelta(minutes=3))
+    assert not provider.calls and loop.last_trace['gate_reason'] == 'manual_blocked'
+
+
+async def test_forced_poke_bypasses_quiet_for_one_delivery_only():
+    loop, worker, provider, state, store = setup()
+    now = datetime.now(UTC)
+    state.quiet_until = datetime.max.replace(tzinfo=UTC)
+    await worker.heartbeat.tick(now)
+    assert await worker.poke()
+    assert len(provider.calls) == 1 and loop.last_trace['delivered']
+    assert state.quiet_until == datetime.max.replace(tzinfo=UTC)
+    assert state.interaction.signals.resolve('interruptibility.manual', now).source == 'quiet_mode'
+    assert loop.gate(now + timedelta(minutes=3), state) == 'quiet_mode'
+
+
+@pytest.mark.parametrize('block', ['locked', 'other_manual', 'busy', 'disabled'])
+async def test_forced_poke_preserves_hard_blocks_even_in_quiet_mode(block):
+    from zhaoxi.proactive.interaction import PresenceSnapshot
+    loop, worker, provider, state, store = setup()
+    now = datetime.now(UTC)
+    state.quiet_until = datetime.max.replace(tzinfo=UTC)
+    await worker.heartbeat.tick(now)
+    reasons = {'locked': 'screen_locked', 'other_manual': 'manual_blocked',
+               'busy': 'request_busy', 'disabled': 'proactive_disabled'}
+    if block == 'locked':
+        state.interaction.observe(PresenceSnapshot(locked=True), now)
+    elif block == 'other_manual':
+        state.interaction.observe_signals([StateSignal(type='interruptibility.manual',
+            value='blocked', source='other_provider', observed_at=now,
+            expires_at=now + timedelta(hours=1))], now)
+    elif block == 'busy':
+        state.interacting = True
+    else:
+        state.enabled = False
+    assert not await worker.poke()
+    assert not provider.calls and loop.last_trace['gate_reason'] == reasons[block]
+
+
+async def test_locking_during_forced_model_call_suppresses_delivery():
+    from zhaoxi.proactive.interaction import PresenceSnapshot
+    loop, worker, provider, state, store = setup()
+    async def generate(*args, **kwargs):
+        state.interaction.observe(PresenceSnapshot(locked=True), datetime.now(UTC))
+        return ModelResponse(content='{"action":"COMMENT","content":"must not deliver","reason":"reaction","confidence":0.8}')
+    provider.generate = generate
+    assert not await worker.poke()
+    assert loop.last_trace['suppression_reason'] == 'conversation_changed'
+    assert not await store.list_deliveries(10)

@@ -106,6 +106,8 @@ class ConversationBeatLoop(ConversationContinuation):
     def gate(self, now, state, last_spoken=None, *, sending=False, forced=False):
         s = self.sync(now)
         reason = None
+        if not state.quiet_until or state.quiet_until <= now:
+            self.interaction.signals.discard("interruptibility.manual", "quiet_mode")
         if s is None:
             return 'not_active'
         if last_spoken and last_spoken > s.last_user_at and (s.last_initiative_at is None or last_spoken > s.last_initiative_at):
@@ -117,8 +119,8 @@ class ConversationBeatLoop(ConversationContinuation):
             reason = 'request_busy'
         elif not forced and state.quiet_until and state.quiet_until > now:
             reason = 'quiet_mode'
-        elif self.interaction._resolve_interruptibility(now) == Interruptibility.BLOCKED:
-            reason = 'blocked'
+        elif self.interaction._resolve_interruptibility(now, ignore_quiet=forced) == Interruptibility.BLOCKED:
+            reason = self.interaction.interruptibility_reason
         elif forced:
             return None
         elif self.desktop_busy(now):

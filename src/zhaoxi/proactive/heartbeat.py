@@ -61,6 +61,8 @@ class TidalHeartbeat:
                 StateSignal(type="interruptibility.manual", value="blocked", source="quiet_mode",
                             observed_at=now, expires_at=self.state.quiet_until, priority="critical"),
             ], now)
+        else:
+            interaction.signals.discard("interruptibility.manual", "quiet_mode")
         interaction.refresh(now)
         # Scheduler already persists its events using unique schedule occurrence keys.
         scheduled = await self.scheduler.tick()

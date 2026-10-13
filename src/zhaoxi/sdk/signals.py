@@ -61,9 +61,13 @@ class SignalAggregator:
             if signal.expires_at > now
         }
 
-    def resolve(self, signal_type: str, now: datetime) -> StateSignal | None:
+    def discard(self, signal_type: str, source: str) -> None:
+        self._signals.pop((signal_type, source), None)
+
+    def resolve(self, signal_type: str, now: datetime, *, exclude_source: str | None = None) -> StateSignal | None:
         self.expire(now)
-        candidates = [signal for signal in self._signals.values() if signal.type == signal_type]
+        candidates = [signal for signal in self._signals.values()
+                      if signal.type == signal_type and signal.source != exclude_source]
         return max(
             candidates,
             key=lambda item: (_PRIORITY_WEIGHT[item.priority], item.confidence, item.observed_at),
