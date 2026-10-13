@@ -1,0 +1,77 @@
+{
+  "window_local": [
+    "2026-10-13 19:19:39",
+    "2026-10-13 19:49:39"
+  ],
+  "source": "read-only production logs, observation and experience databases",
+  "directed_group_messages": [
+    {
+      "received_local": "2026-10-13T19:23:29+08:00",
+      "actor_role": "EXTERNAL",
+      "observation_id": "8e3e5818758c4048953226405cc01c2d",
+      "event_id": "da2ec5d61f4a48329aee245fa617080a",
+      "observation_status": "PROCESSED",
+      "actual_at_target_matches_bot": true,
+      "same_source_guard_replay": "no_explicit_request",
+      "guard_reason_logged_per_observation": false,
+      "assistant_reply_records": []
+    },
+    {
+      "received_local": "2026-10-13T19:31:04+08:00",
+      "actor_role": "EXTERNAL",
+      "observation_id": "229dd1e8744b43f5b18662fcb832d13b",
+      "event_id": "f5c1295dbb8f4b86b774b9a5820ae1bf",
+      "observation_status": "PROCESSED",
+      "actual_at_target_matches_bot": true,
+      "same_source_guard_replay": "no_explicit_request",
+      "guard_reason_logged_per_observation": false,
+      "assistant_reply_records": []
+    },
+    {
+      "received_local": "2026-10-13T19:44:46+08:00",
+      "actor_role": "OWNER",
+      "observation_id": "80a9028a3f7847e1a270ead4116c0393",
+      "event_id": "0a258a2cf2494a4db601f34e71f81a67",
+      "observation_status": "PROCESSED",
+      "actual_at_target_matches_bot": true,
+      "same_source_guard_replay": null,
+      "guard_reason_logged_per_observation": false,
+      "assistant_reply_records": [
+        {
+          "event_id": "4668545157de45e4acb9cf36988ac0c3",
+          "at": "2026-10-13T11:45:45.830075+00:00",
+          "text_length": 117
+        }
+      ]
+    },
+    {
+      "received_local": "2026-10-13T19:45:54+08:00",
+      "actor_role": "EXTERNAL",
+      "observation_id": "441e1e2b1b094edbb5eda02725cebd15",
+      "event_id": "ef03ccb9c91f472688a77e9ecb902220",
+      "observation_status": "PROCESSED",
+      "actual_at_target_matches_bot": true,
+      "same_source_guard_replay": "no_explicit_request",
+      "guard_reason_logged_per_observation": false,
+      "assistant_reply_records": []
+    }
+  ],
+  "qq_external_messages_in_window": 48,
+  "private_replies": 1,
+  "group_replies": 1,
+  "connection_restart_local": [
+    "2026-10-13 19:40:59",
+    "2026-10-13 19:41:13"
+  ],
+  "owner_group_reply_elapsed_seconds": 59.830075,
+  "owner_group_reply_models": {
+    "planner": 1,
+    "agent": 2,
+    "successful_read_social_context_calls": 2
+  },
+  "send_confirmation_boundary": "reply_sent is recorded only after OneBot status ok; client-visible receipt not independently verified",
+  "real_model_calls_by_audit": 0,
+  "external_sends_by_audit": 0,
+  "reply_policy_modified": false,
+  "test_cases_used": false
+}
