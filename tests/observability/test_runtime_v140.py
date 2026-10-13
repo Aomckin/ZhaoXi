@@ -371,3 +371,62 @@ async def test_actual_agent_final_call_is_counted_without_body_repetition(fast):
         assert trace.llm_calls[0]["process_text"] == ""
         import json
         assert "最终验收文本" not in json.dumps(trace.metrics(), ensure_ascii=False)
+
+
+@pytest.mark.parametrize("owner,text,visible,event_expected", [
+    ("router", "", False, False),
+    ("router", '{"route":"direct"}', False, True),
+    ("agent", "我先核对一下这个时间。", True, True),
+    ("planner", "我先把这几个步骤理清楚。", True, True),
+    ("auto_memory", "后台记录候选", False, True),
+    ("agent", '{"awareness":"private"}', False, True),
+])
+async def test_real_process_body_is_sent_to_chat_but_empty_control_and_hidden_reasoning_are_not(owner,text,visible,event_expected):
+    from conftest import FakeProvider
+    from zhaoxi.observability import llm_owner_scope
+    events=[]
+    provider=ResilientProvider([FakeProvider([
+        ModelResponse(content=text,raw_metadata={"reasoning_content":"hidden-canary"}),
+        ModelResponse(content="最终正文")])])
+    with correlation_scope(CorrelationContext(trace_id="process",request_id="process")), action_trace_scope(events.append) as trace:
+        trace.interim_threshold_seconds=1000
+        with llm_owner_scope(owner,"synthetic"):
+            await provider.generate([])
+        final=await provider.generate([])
+        trace.mark_final_reply(final);trace.finish()
+    chat=[e for e in events if e["type"]=="interim_reply"]
+    assert bool(chat)==visible
+    if visible: assert chat[0]["content"]==text and not chat[0]["terminates_turn"]
+    assert any(e.event_type=="llm_process_reply" for e in trace.events)==event_expected
+    assert "hidden-canary" not in str(events) and "最终正文" not in str(events)
+    assert len(trace.llm_calls)==2
+
+
+async def test_action_body_is_not_repeated_when_next_call_confirms_it_is_a_process_reply():
+    from conftest import FakeProvider
+    events=[]
+    provider=ResilientProvider([FakeProvider([
+        ModelResponse(content="我先核对这条记录。",tool_calls=[ToolCall(id="one",name="echo",arguments={})]),
+        ModelResponse(content="最终正文")])])
+    with correlation_scope(CorrelationContext(trace_id="once",request_id="once")), action_trace_scope(events.append) as trace:
+        trace.interim_threshold_seconds=1000
+        action=await provider.generate([])
+        assert trace.emit_action_text(action)
+        final=await provider.generate([]);trace.mark_final_reply(final);trace.finish()
+    assert len([e for e in events if e["type"]=="interim_reply"])==1
+    assert trace.llm_calls[0]["interim_delivered"]
+
+
+async def test_validated_reply_envelope_becomes_only_its_natural_process_body():
+    import json
+    from conftest import FakeProvider
+    events=[]
+    raw=json.dumps({"reply":"我先核对一下日程。","awareness":{"mode":"NONE","decision_kind":"NONE","decision_question":""}})
+    provider=ResilientProvider([FakeProvider([ModelResponse(content=raw),ModelResponse(content="最终正文")])])
+    agent=ZhaoxiAgent(provider=provider,registry=ToolRegistry(),context_builder=ContextBuilder("persona"))
+    with correlation_scope(CorrelationContext(trace_id="decoded",request_id="decoded")), action_trace_scope(events.append) as trace:
+        first=await provider.generate([]);agent._decode_main_reply(first)
+        final=await provider.generate([]);trace.mark_final_reply(final)
+    chat=[e for e in events if e["type"]=="interim_reply"]
+    assert len(chat)==1 and chat[0]["content"]=="我先核对一下日程。"
+    assert 'awareness' not in chat[0]["content"] and len(trace.llm_calls)==2

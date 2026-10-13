@@ -201,6 +201,9 @@ class ZhaoxiAgent:
                                         "input_chars": len(response.content or "")}
             raise
         self.last_reply_protocol = decoded.raw_metadata.get("main_reply_protocol", {})
+        index = decoded.raw_metadata.get("action_trace_call_index")
+        if not fast and index is not None and (trace := current_trace()):
+            trace.llm_calls[index - 1]["_response_text"] = decoded.content or ""
         return decoded
 
     def _commit_model_reply(self, raw_reply: str) -> str:

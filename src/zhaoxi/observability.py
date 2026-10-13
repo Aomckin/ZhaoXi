@@ -266,8 +266,15 @@ class ActionTrace:
             if call.get("status") == "success" and call.get("reply_kind") == "pending":
                 call["reply_kind"] = "process"
                 call["process_text"] = call.pop("_response_text", "")
-                self.emit("llm_process_reply", "model", "info", "模型返回了过程回复",
+                if not call["process_text"]:
+                    continue
+                conversational = call.get("owner") in {"agent", "planner"}
+                self.emit("llm_process_reply", "model", "info",
+                          "模型返回了过程回复" if conversational else "模型返回了调用说明",
                           metadata={key: value for key, value in call.items() if not key.startswith("_")})
+                if conversational and self.finished_at is None and not call.get("interim_delivered"):
+                    call["interim_delivered"] = self.emit_interim(call["process_text"],
+                        reason="model_process", progress=f"model:{call['index']}")
 
     def discard_model_reply(self, response, reason: str) -> None:
         index = response.raw_metadata.get("action_trace_call_index")
@@ -306,7 +313,11 @@ class ActionTrace:
         if not response.tool_calls or not (response.content or "").strip():
             return False
         progress = repr([(call.name, call.arguments) for call in response.tool_calls])
-        return self.emit_interim(response.content, reason="action_content", progress=progress)
+        emitted = self.emit_interim(response.content, reason="action_content", progress=progress)
+        index = response.raw_metadata.get("action_trace_call_index")
+        if emitted and index is not None:
+            self.llm_calls[index - 1]["interim_delivered"] = True
+        return emitted
 
     def emit_interim(self, content: str, *, reason: str = "agent", progress: str = "") -> bool:
         content = content.strip()
@@ -321,7 +332,7 @@ class ActionTrace:
                 why = "delivery_unavailable"
             elif self.interim_replies >= limit:
                 why = "max_count"
-            elif time.monotonic() - self.started_monotonic < self.interim_threshold_seconds:
+            elif reason not in {"action_content", "model_process"} and time.monotonic() - self.started_monotonic < self.interim_threshold_seconds:
                 why = "too_fast"
             elif not content:
                 why = "no_progress"
@@ -336,7 +347,7 @@ class ActionTrace:
             elif self.interim_replies and SequenceMatcher(None, content, self._last_interim_content).ratio() >= .85:
                 why = "duplicate"
             elif self.interim_replies and (not progress.strip() or progress.strip() == self._last_interim_progress
-                    or (reason != "action_content" and self.planner_progress_version <= self._last_interim_progress_version)):
+                    or (reason not in {"action_content", "model_process"} and self.planner_progress_version <= self._last_interim_progress_version)):
                 why = "no_progress"
             if why:
                 diagnostic("interim_candidate_suppressed", why)

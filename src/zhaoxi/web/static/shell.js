@@ -6,8 +6,9 @@ const $=s=>{const found=document.querySelector(s);if(found)return found;
   return shellInertNodes.get(s)}, messages=$('#messages'), input=$('#input'), send=$('#send'), mic=$('#mic'), activity=$('#activity'), debug=$('#debug'), voiceReview=$('#voiceReview'), voiceText=$('#voiceText');let busy=false,voiceEnabled=false,voiceRecording=false,speechActive=false,normalRegenerationEnabled=false;
 let activeTraceId=null,traceTerminated=false,traceRevision=0;
 const actionModelCalls=new Map();let actionTokenUsage=null;
-const retiredTraceIds=new Set();
+const retiredTraceIds=new Set(),interimSequences=new Set();
 function resetActionTrace(requestId){
+  if(activeTraceId!==requestId)interimSequences.clear();
   if(activeTraceId&&activeTraceId!==requestId){retiredTraceIds.add(activeTraceId);if(retiredTraceIds.size>20)retiredTraceIds.delete(retiredTraceIds.values().next().value)}
   activeTraceId=requestId;traceTerminated=false;traceRevision++;
   actionModelCalls.clear();actionTokenUsage=null;
@@ -35,7 +36,8 @@ async function setupActionTrace(){
   }catch(e){if(revision===traceRevision&&!activeTraceId)$('#actionTraceSummary').textContent='行动记录 · 读取失败，可刷新重试'}
 }
 function renderInterimReply(event){
-  if(!busy||!event||event.request_id!==activeTraceId||!event.content)return;
+  if(actionTraceMonitor()||traceTerminated||!event||event.request_id!==activeTraceId||!event.content||interimSequences.has(event.sequence))return;
+  interimSequences.add(event.sequence);
   addMessage('assistant',event.content,'interim',[],event.emitted_at);
   activity.textContent='行动 · 正在继续处理…';
 }
@@ -115,7 +117,7 @@ function renderModelCalls(usage=null){
     if(call.context_breakdown)renderContextBreakdown(card,[call.context_breakdown],'本次输入构成');
     if(call.reply_kind==='process'&&!call.final_reply&&call.process_text){
       const details=document.createElement('details'),label=document.createElement('summary'),body=document.createElement('pre');
-      label.textContent='过程回复（非最终正文）';body.textContent=call.process_text;
+      label.textContent=['agent','planner'].includes(call.owner||'agent')?'过程回复（非最终正文）':'调用说明（非聊天正文）';body.textContent=call.process_text;
       details.append(label,body);card.append(details);
     }
     container.append(card);

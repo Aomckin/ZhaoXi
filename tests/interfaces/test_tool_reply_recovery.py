@@ -320,7 +320,7 @@ async def test_reply_repair_does_not_upgrade_failed_action_to_partial_success():
     assert response.activity["response_status"] == "succeeded"
 
 
-@pytest.mark.parametrize("enabled,threshold,sent", [(True, 0, True), (False, 0, False), (True, 1000, False)])
+@pytest.mark.parametrize("enabled,threshold,sent", [(True, 0, True), (False, 0, False), (True, 1000, True)])
 async def test_same_action_call_carries_personal_interim_without_extra_round(enabled, threshold, sent):
     text = "唔，暗苟，刚才那条留好了，我再核对一下时间呀。"
     follow = ModelResponse(content=text,

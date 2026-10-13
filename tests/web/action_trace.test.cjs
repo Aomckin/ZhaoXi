@@ -301,3 +301,22 @@ test('eight-way context breakdown survives replay and snapshots without altering
   assert.match(s.nodes['#actionModelCalls'].children[0].children[3].children[5].children[1].textContent,/8 张次.*261,216.*图片 Token 0（接口报告）/);
   s.context.resetActionTrace('next');assert.equal(s.nodes['#actionContextBreakdown'].children.length,0);
 });
+
+
+test('approved process replies render on chat even for an observing idle main window, once per sequence',()=>{
+  const s=setup(),chat=[];s.context.addMessage=(...args)=>chat.push(args);
+  s.context.busy=false;s.context.beginActionTrace();
+  const event={request_id:'request-1',sequence:1,content:'我先核对一下时间。',emitted_at:'2026-10-13T02:00:00Z'};
+  s.context.renderInterimReply(event);s.context.renderInterimReply(event);
+  assert.equal(chat.length,1);assert.equal(chat[0][0],'assistant');assert.equal(chat[0][2],'interim');
+  s.context.renderInterimReply({...event,request_id:'old'});assert.equal(chat.length,1);
+  s.emit('runtime_finished','runtime','success','done');s.context.renderInterimReply({...event,sequence:2});assert.equal(chat.length,1);
+  s.context.resetActionTrace('request-2');s.context.renderInterimReply({...event,request_id:'request-2'});assert.equal(chat.length,2);
+});
+
+test('the engineering monitor never creates chat bubbles from process events',()=>{
+  const s=setup(),chat=[];s.context.addMessage=(...args)=>chat.push(args);
+  s.context.document.body={dataset:{traceMonitor:'true'}};s.context.beginActionTrace();
+  s.context.renderInterimReply({request_id:'request-1',sequence:1,content:'natural process'});
+  assert.equal(chat.length,0);
+});

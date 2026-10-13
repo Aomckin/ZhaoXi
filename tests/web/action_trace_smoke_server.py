@@ -29,6 +29,8 @@ if __name__ == "__main__":
             async def generate(self, messages, tools=None, **kwargs):
                 record_context_diagnostics(collect_prompt_diagnostics(messages, tools, model=self.model))
                 self.calls += 1
+                if self.calls > 1:
+                    await asyncio.sleep(1.5)  # Keep the final call in flight while chat receives the process body.
                 return (ModelResponse(content="我会先核对资料，再汇总结果。", usage={"prompt_tokens": 1200, "completion_tokens": 80})
                         if self.calls == 1 else
                         ModelResponse(content="你好，暗苟酱。", usage={"prompt_tokens": 1600, "completion_tokens": 120}))

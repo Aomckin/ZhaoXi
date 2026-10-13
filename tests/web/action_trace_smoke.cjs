@@ -23,6 +23,8 @@ try{
  await dashboard.reload();
  await dashboard.frameLocator('iframe').locator('#actionTraceEvents').getByText('隔离模型正在处理',{exact:true}).waitFor();
  assert.equal(await dashboard.frameLocator('iframe').locator('#actionTraceSummary').textContent(),'行动记录 · 进行中');
+ await desktop.locator('#messages .row.assistant.interim').filter({hasText:'我会先核对资料，再汇总结果。'}).waitFor();
+ assert.equal(await desktop.locator('#messages .row.assistant.interim').count(),1);
  await desktop.locator('#actionTraceSummary').filter({hasText:'已完成'}).waitFor();
  await dashboard.frameLocator('iframe').locator('#actionTraceSummary').filter({hasText:'已完成'}).waitFor();
  await dashboard.frameLocator('iframe').locator('#actionRuntimeSummary').filter({hasText:'总耗时'}).waitFor();
@@ -50,7 +52,9 @@ try{
  assert.equal(snapshot.request_id,requestId);assert(snapshot.events.some(e=>e.event_type==='runtime_finished'));
  await desktop.locator('#actionTrace').scrollIntoViewIfNeeded();await desktop.screenshot({path:path.join(output,'action-trace-desktop.png'),fullPage:true});
  await dashboard.screenshot({path:path.join(output,'action-trace-web.png'),fullPage:true});
+ assert.equal(await desktop.locator('#messages .row.assistant.interim').count(),1);
+ assert.equal(await dashboard.frameLocator('iframe').locator('.row.assistant.interim').count(),0);
  assert.deepEqual(errors,[]);
- const evidence={checks:['desktop_sidebar_trace','web_observes_desktop_sse','reload_mid_request_recovers_snapshot','terminal_status_both_surfaces','runtime_metrics_displayed','navigation_back_restores_completed_trace','latest_request_snapshot','no_page_errors','per_call_tokens','request_total_tokens','non_final_body','final_body_not_duplicated','eight_categories_per_call','cumulative_context_breakdown','breakdown_after_snapshot_reload','image_usage_unknown_not_zero'],desktop_events:desktopEvents.length,web_events:observed.length,real_model_calls:0,real_social_send:false,errors};
+ const evidence={checks:['desktop_sidebar_trace','web_observes_desktop_sse','reload_mid_request_recovers_snapshot','terminal_status_both_surfaces','runtime_metrics_displayed','navigation_back_restores_completed_trace','latest_request_snapshot','no_page_errors','per_call_tokens','request_total_tokens','non_final_body','final_body_not_duplicated','eight_categories_per_call','cumulative_context_breakdown','breakdown_after_snapshot_reload','image_usage_unknown_not_zero','process_body_in_main_chat_before_final','process_body_not_duplicated_in_main_chat','monitor_does_not_render_chat'],desktop_events:desktopEvents.length,web_events:observed.length,real_model_calls:0,real_social_send:false,errors};
  fs.writeFileSync(path.join(output,'action-trace-monitor-acceptance.json'),JSON.stringify(evidence,null,2));console.log(JSON.stringify(evidence));
 }finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});
