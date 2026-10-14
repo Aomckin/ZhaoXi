@@ -27,6 +27,7 @@ class CognitiveResponse:
     permission_confirmation: PendingConfirmation | None = None
     workflow_run_id: str | None = None
     reply_sequence: ReplySequence | None = None
+    result_status: str = "completed"
 
 
 class CognitiveCoordinator:
@@ -71,6 +72,18 @@ class CognitiveCoordinator:
             trace.route_source = "scoped_tool_retry"
             trace.emit("tool_retry_resumed", "routing", "info", "正在重试未执行的任务",
                        metadata={"previous_request_id": retry.request_id})
+        unified = bool(getattr(getattr(self.agent, "settings", None), "unified_reply_enabled", False)
+                       and getattr(self.agent, "decision_mode", "legacy") == "agency")
+        if unified:
+            if decision is None:
+                from zhaoxi.tools.manifest import requires_tool_result
+                action = requires_tool_result(user_message)
+                decision = self.router._hint_decision(user_message) or RouteDecision(
+                    route=CognitiveRoute.TOOL if images or action else CognitiveRoute.DIRECT,
+                    requires_tool_call=action, reason="unified_reply")
+            if trace:
+                trace.route_source = "unified_reply"
+                trace.runtime_lane = "standard"
         result = None
         gate = None
         fast_escalation_kind = None
@@ -285,6 +298,7 @@ class CognitiveCoordinator:
             permission_confirmation=getattr(result, "permission_confirmation", None),
             workflow_run_id=workflow_run_id,
             reply_sequence=getattr(result, "reply_sequence", None),
+            result_status=getattr(result, "result_status", "completed"),
         )
 
     @staticmethod

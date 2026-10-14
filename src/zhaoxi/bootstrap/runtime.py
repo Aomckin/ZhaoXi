@@ -51,6 +51,14 @@ def build_agent(settings: Settings) -> ZhaoxiAgent:
     )
     runtime = agent.runtime
     runtime.settings = settings
+    import hashlib
+    package = Path(__file__).resolve().parents[1]
+    source_hash = hashlib.sha256()
+    for source in sorted(path for path in package.rglob("*")
+                         if path.suffix in {".py", ".js", ".css", ".html", ".yaml", ".yml"}):
+        source_hash.update(source.relative_to(package).as_posix().encode())
+        source_hash.update(source.read_bytes())
+    runtime.build_id = source_hash.hexdigest()[:16]
     runtime.experience_stream = ExperienceStream(settings.experience_db_path, media_directory=settings.media_directory)
     agent.experience_stream.clear_expired()
     from zhaoxi.tools.builtin.social_context import ReadSocialContextTool

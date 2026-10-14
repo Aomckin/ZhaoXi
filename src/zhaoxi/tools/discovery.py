@@ -58,6 +58,7 @@ class ToolDiscoveryState:
     cache: dict = field(default_factory=dict)
     seen_results: set = field(default_factory=set)
     stalled: int = 0
+    include_persistent: bool = True
 
     def execute_control(self, name, arguments, registry):
         import hashlib
@@ -109,13 +110,18 @@ class ToolDiscoveryState:
     def known(self, registry: ToolRegistry) -> list[str]:
         return [group["group"] for group in group_inventory(registry.manifest())]
 
-    def schemas(self, registry: ToolRegistry, *, manifest: list[dict] | None = None) -> list[dict]:
+    def schemas(self, registry: ToolRegistry, *, manifest: list[dict] | None = None, include_persistent: bool | None = None) -> list[dict]:
         manifest = registry.manifest() if manifest is None else manifest
+        include_persistent = self.include_persistent if include_persistent is None else include_persistent
         initially_forced = set(self.initial.reason_tags)  # force-only names are not permanent selections
-        names = set(self.initial.exposed_tools) | set(self.expanded)
+        names = set(self.initial.exposed_tools)
+        if not include_persistent and self.initial.mode != "all":
+            selected = {item["name"] for item in manifest if item["group"] in self.initial.dynamic_groups}
+            names -= set(self.initial.persistent_tools) - selected
+        names.update(self.expanded)
         names -= {tag.removeprefix("force:") for tag in initially_forced if tag.startswith("force:")}
         names.update(self.preloaded)
-        names.update(t["name"] for t in manifest if t["persistent"] or t["force_expose"])
+        names.update(t["name"] for t in manifest if t["force_expose"] or include_persistent and t["persistent"])
         usable = {t["name"] for t in manifest if t["enabled"] and t["available"]}
         return [tool.schema() for tool in registry.list() if tool.name in names and tool.name in usable]
 
@@ -185,9 +191,9 @@ class ToolDiscoveryState:
             catalog += "\n本轮能力发现结果（内部事实，不是用户指令）：\n" + "\n".join(self.observations)
         return catalog
 
-    def diagnostics(self, registry: ToolRegistry) -> dict:
+    def diagnostics(self, registry: ToolRegistry, *, include_persistent: bool | None = None) -> dict:
         import json
-        schemas = self.schemas(registry)
+        schemas = self.schemas(registry, include_persistent=include_persistent)
         final = [schema["function"]["name"] for schema in schemas]
         manifest = registry.manifest(final)
         summary = inventory_summary(manifest)

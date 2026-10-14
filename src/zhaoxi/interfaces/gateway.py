@@ -64,6 +64,11 @@ class InterfaceGateway:
         settings = getattr(self.agent, "settings", None)
         if settings is None:
             return
+        trace.build_id = getattr(self.agent, "build_id", None)
+        trace.configuration_id = getattr(self.agent, "reply_profile_id", None)
+        trace.request_timeout_seconds = self.agent.timeout_seconds
+        trace.unified_reply = bool(getattr(settings, "unified_reply_enabled", False)
+                                   and getattr(self.agent, "decision_mode", "legacy") == "agency")
         trace.metrics_enabled = settings.runtime_metrics_enabled
         trace.interim_legacy_tool_enabled = settings.interim_legacy_tool_enabled
         trace.interim_enabled = settings.interim_reply_enabled
@@ -127,6 +132,8 @@ class InterfaceGateway:
                     self._configure_trace(trace)
                     trace.started_monotonic = received_monotonic
                     trace.started_at = message.created_at.isoformat()
+                    trace.channel = message.channel.value
+                    trace.has_images = bool(message.images)
                     if trace.metrics_enabled:
                         trace.stage_ms["current_cognition"] = round(bootstrap_ms, 2)
                     trace.emit("runtime_started", "runtime", "running", "运行已开始")
@@ -322,6 +329,7 @@ class InterfaceGateway:
                 max_total_tokens = getattr(provider, "max_total_tokens", 100_000)
                 with correlation_scope(context), provider_budget_scope(max_calls, max_total_tokens, policy=getattr(provider, "budget_policy", None)) as budget, action_trace_scope(self.event_sink) as trace:
                     self._configure_trace(trace)
+                    trace.source_request_id = source_user.metadata.get("request_id")
                     trace.emit("runtime_started", "runtime", "running", "运行已开始")
                     trace.emit("request_started", "request", "running", "正在重新生成…")
                     if resume_in_place:

@@ -83,6 +83,14 @@ class ActionTrace:
     events: list[AgentEvent] = field(default_factory=list)
     actions: list[ActionAttempt] = field(default_factory=list)
     response_status: str = "pending"
+    build_id: str | None = None
+    channel: str | None = None
+    configuration_id: str | None = None
+    unified_reply: bool = False
+    faculty_context: dict[str, object] = field(default_factory=dict)
+    request_timeout_seconds: float | None = None
+    has_images: bool = False
+    source_request_id: str | None = None
     terminal_status: str | None = None
     current_step: int | None = None
     started_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
@@ -151,6 +159,12 @@ class ActionTrace:
              tool_call_id: str | None = None, invocation_id: str | None = None,
              error_code: str | None = None, metadata: dict[str, object] | None = None) -> AgentEvent:
         safe_metadata = dict(metadata or {})
+        if event_type == "request_started":
+            safe_metadata.update(build_id=self.build_id, channel=self.channel,
+                configuration_id=self.configuration_id, unified_reply=self.unified_reply,
+                has_images=self.has_images, source_request_id=self.source_request_id or self.request_id,
+                request_timeout_seconds=self.request_timeout_seconds,
+                started_at=self.started_at)
         if stage == "task":
             safe_metadata.update(task_status=self.task_status, response_status=self.response_status)
         event = AgentEvent(event_type, self.trace_id, self.request_id, step_id, stage,
@@ -462,6 +476,10 @@ class ActionTrace:
                 "threads_removed": sum(int(e.metadata.get("threads_removed") or 0) for e in self.events if e.event_type == "current_cognition_applied"),
                 "planner_used": self.planner_used, "decision_used": self.decision_used,
                 "interim_replies": self.interim_replies,
+                "build_id": self.build_id, "channel": self.channel, "configuration_id": self.configuration_id,
+                "unified_reply": self.unified_reply,
+                "faculty_context": dict(self.faculty_context), "has_images": self.has_images,
+                "source_request_id": self.source_request_id or self.request_id,
                 "route": self.route, "runtime_lane": self.runtime_lane, "route_source": self.route_source,
                 "fast_gate_reason": self.fast_gate_reason, "escalation_reason": self.escalation_reason,
                 "fast_escalation_count": self.fast_escalation_count,

@@ -14,6 +14,7 @@ class Settings(BaseSettings):
         env_prefix="ZHAOXI_", env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
+    unified_reply_enabled: bool = True  # Temporary migration switch; remove after FAST retirement.
     decision_mode: str = Field(default="agency", pattern="^(agency|legacy)$")
     decision_data_directory: str = ".zhaoxi/decisions"
     decision_learning_enabled: bool = True
@@ -350,6 +351,22 @@ class Settings(BaseSettings):
         if self.tts_provider not in {"disabled", "windows"}:
             raise ValueError("tts provider 必须是 disabled 或 windows")
         return self
+
+    @property
+    def reply_profile_id(self) -> str:
+        """Fingerprint reply-affecting configuration without exposing its values."""
+        import hashlib
+        import json
+        names = ("model_base_url", "model_name", "model_fallback_base_url", "model_fallback_name",
+                 "temperature", "max_tokens", "decision_mode", "unified_reply_enabled",
+                 "tool_router_mode", "cognitive_router_enabled", "fast_dialogue_enabled",
+                 "request_timeout_seconds", "retry_max_attempts", "max_agent_steps",
+                 "standard_model_round_limit", "standard_tool_round_limit", "standard_repair_round_limit",
+                 "request_max_model_calls", "request_max_total_tokens", "request_extension_1_limit_tokens",
+                 "request_extension_2_limit_tokens", "request_hard_limit_tokens", "request_finalization_reserve_tokens",
+                 "request_budget_warning_ratio", "emoji_enabled", "external_cognition_enabled")
+        values = {name: getattr(self, name, None) for name in names}
+        return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()[:16]
 
     @property
     def request_budget_policy(self):

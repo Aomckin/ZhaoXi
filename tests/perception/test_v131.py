@@ -112,11 +112,13 @@ async def test_third_party_candidate_rejected_and_ambient_once(tmp_path):
     calls = []
     async def generate(messages, tools):
         calls.append(messages)
-        return ModelResponse(content='{"reply":false,"cognition_candidate":"暗苟明天去深圳","memory_candidates":["暗苟明天去深圳"],"reason":"claim"}')
+        if "外部认知 Planner" in messages[0].content:
+            return ModelResponse(content='{"reply":false,"cognition_candidate":"暗苟明天去深圳","memory_candidates":["暗苟明天去深圳"],"reason":"claim"}')
+        return ModelResponse(content="第三方的说法不能当成 Owner 确认的行程。")
     runtime, agent = make_runtime(tmp_path, generate)
     group = decode(qq_event(5, text="@朝汐 暗苟明天去深圳", kind="group"), self_id="42")
     group.directed_to_zhaoxi = True
-    assert await runtime.ingest(group) is None
+    assert await runtime.ingest(group) == "第三方的说法不能当成 Owner 确认的行程。"
     assert runtime.planner.rejected_candidate_count == 0
     assert agent.memory_service is None
     runtime.settings.perception_batch_max_messages = 2
@@ -214,9 +216,9 @@ async def test_owner_image_survives_malformed_planner_json(tmp_path):
     item = decode(qq_event(10, text="这张图里有什么？", image="base64://" + png),
                   self_id="42", owner_id="8")
     assert await runtime.ingest(item) == "图里是一只猫"
-    assert len(seen) == 2
+    assert len(seen) == 1
     assert all(any(m.images for m in call) for call in seen)
-    assert "已按配置核验为暗苟本人" not in seen[1][0].content
+    assert "已按配置核验为暗苟本人" not in seen[0][0].content
     assert runtime.planner.cognition_candidate_count == 0
     assert runtime.planner.memory_candidate_count == 0
     assert runtime.store.counts().get("FAILED", 0) == 0
@@ -238,7 +240,7 @@ async def test_owner_adjacent_image_and_text_use_same_visual_input(tmp_path):
     text = decode(qq_event(12, text="这张图里有什么？"), self_id="42", owner_id="8")
     assert await runtime.ingest(image) == "一只猫"
     assert await runtime.ingest(text) == "一只猫"
-    assert len(seen) == 4
+    assert len(seen) == 2
     assert all(any(message.images for message in call) for call in seen)
     assert any(message.role == Role.USER and message.images for message in seen[-1])
     assert "昵称 A 就是暗苟的 QQ 昵称" not in seen[-1][0].content
@@ -384,29 +386,29 @@ async def test_non_owner_first_reply_then_bot_loop_stops(tmp_path):
     assert agent.experience_stream.query_refs([bot_followup.raw_ref])
 
     greeting = decode(qq_event(203, text="你好", user_id=10), self_id="42", owner_id="8")
-    assert await runtime.ingest(greeting) is None
-    assert runtime.last_reply_gate["reason"] == "no_explicit_request"
-    assert len(seen) == 1
+    assert await runtime.ingest(greeting) == "这是一次答复"
+    assert runtime.last_reply_gate["blocked"] is False
+    assert len(seen) == 2
 
     question = decode(qq_event(204, text="请问你能解释一下吗？", user_id=10),
                       self_id="42", owner_id="8")
     assert await runtime.ingest(question) == "这是一次答复"
-    assert len(seen) == 2
+    assert len(seen) == 3
     await runtime.reply_sent(question, "这是一次答复", 1)
     followup = decode(qq_event(205, text="那请问下一题呢？", user_id=10),
                       self_id="42", owner_id="8")
-    assert await runtime.ingest(followup) is None
-    assert runtime.last_reply_gate["reason"] == "recent_external_reply"
-    assert len(seen) == 2
+    assert await runtime.ingest(followup) == "这是一次答复"
+    assert runtime.last_reply_gate["blocked"] is False
+    assert len(seen) == 4
 
     owner = decode(qq_event(206, text="请问下一题呢？", user_id=8),
                    self_id="42", owner_id="8")
     assert await runtime.ingest(owner) == "这是一次答复"
     assert runtime.last_reply_gate["blocked"] is False
-    assert len(seen) == 4
+    assert len(seen) == 5
 
 
-def test_non_owner_cooldown_is_actor_and_short_session_window(tmp_path):
+def test_human_direct_reply_bypasses_prior_external_cooldowns(tmp_path):
     from datetime import timedelta
     from zhaoxi.cognitive_stream import CognitiveIngress, ExperienceStream, CognitiveEventType
     from zhaoxi.perception.reply_guard import non_owner_reply_block_reason
@@ -425,12 +427,12 @@ def test_non_owner_cooldown_is_actor_and_short_session_window(tmp_path):
                            metadata={"external_reply": True, "external_actor_id": first.actor_id})
     other = group_question(302, 10)
     assert non_owner_reply_block_reason(other, stream,
-        now=reply.received_at + timedelta(seconds=30)) == "recent_external_reply"
+        now=reply.received_at + timedelta(seconds=30)) is None
     assert non_owner_reply_block_reason(other, stream,
         now=reply.received_at + timedelta(seconds=46)) is None
     same = group_question(303, 9)
     assert non_owner_reply_block_reason(same, stream,
-        now=reply.received_at + timedelta(minutes=4)) == "recent_external_reply"
+        now=reply.received_at + timedelta(minutes=4)) is None
     assert non_owner_reply_block_reason(same, stream,
         now=reply.received_at + timedelta(minutes=6)) is None
 
@@ -611,18 +613,18 @@ async def test_owner_direct_planner_failure_still_generates_restricted_reply(tmp
     item = decode(qq_event(581, text="朝汐在吗？", kind=kind), self_id="42", owner_id="8")
     item.directed_to_zhaoxi = True
     assert await runtime.ingest(item) == "标准频道回复。"
-    runtime.planner.decide.assert_awaited_once()
+    runtime.planner.decide.assert_not_awaited()
     runtime.planner.apply_candidates.assert_not_awaited()
     assert len(seen) == 1 and "外部频道输出边界" in seen[0][0][0].content
     assert not seen[0][1]
-    assert runtime.last_error == type(failure).__name__
+    assert runtime.last_error is None
     assert runtime.store.counts().get("PROCESSED") == 1
 
 
-async def test_owner_group_planner_can_still_decline_reply_with_debug_non_fast(tmp_path):
+async def test_owner_group_reply_does_not_consult_planner_with_debug_non_fast(tmp_path):
     from zhaoxi.perception.planner import ExternalCognitionDecision
     async def generate(messages, tools):
-        raise AssertionError("Planner declined; no reply model call expected")
+        return ModelResponse(content="收到。")
     runtime, agent = make_runtime(tmp_path, generate)
     agent.cognitive = CognitiveCoordinator(agent=agent, router=CognitiveRouter(agent.provider), fast_gate=FastDialogueGate())
     agent.cognitive.force_non_fast_chat = True
@@ -630,5 +632,5 @@ async def test_owner_group_planner_can_still_decline_reply_with_debug_non_fast(t
     runtime.planner.decide = AsyncMock(return_value=ExternalCognitionDecision(reply=False))
     item = decode(qq_event(582, text="谢谢", kind="group"), self_id="42", owner_id="8")
     item.directed_to_zhaoxi = True
-    assert await runtime.ingest(item) is None
-    runtime.planner.decide.assert_awaited_once()
+    assert await runtime.ingest(item) == "收到。"
+    runtime.planner.decide.assert_not_awaited()

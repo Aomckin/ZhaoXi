@@ -85,7 +85,9 @@ class ChoiceHistory:
             'follow_up_after': trace.follow_up_after.isoformat() if trace.follow_up_after else None,
             'follow_up_status': 'PENDING', 'reflected': False, 'reflection_id': None}
         with self._lock:
-            if self.get(decision_id):
+            if existing := self.get(decision_id):
+                if source_message_id and existing.get('source_message_id') == source_message_id and existing['scope'] == scope:
+                    return existing
                 raise ValueError('Duplicate decision')
             self._append(row)
         return row
@@ -148,7 +150,7 @@ class ChoiceHistory:
             if not original or row.get('scope') != original.get('scope'):
                 continue
             fields = {'choice': ('user_final_choice', 'overridden'),
-                'feedback': ('user_final_choice', 'overridden', 'outcome', 'feedback', 'reflected', 'reflection_id', 'follow_up_status'),
+                'feedback': ('user_final_choice', 'overridden', 'outcome', 'feedback', 'feedback_source_message_id', 'reflected', 'reflection_id', 'follow_up_status'),
                 'follow_up': ('follow_up_status', 'asked_at'),
                 'reflection': ('reflected', 'reflection_id'), 'reflection_request': ('reflection_requested_at',),
                 'journal_link': ('journal_ids',),
@@ -196,18 +198,23 @@ class ChoiceHistory:
             return row
 
     def feedback(self, decision_id, final=None, *, scope, overridden=False, outcome=None,
-                 outcome_label=None, outcome_text=None, feedback_source='explicit'):
+                 outcome_label=None, outcome_text=None, feedback_source='explicit', source_message_id=None):
         require_owner()
         with self._lock:
             original = self.get(decision_id, scope=scope)
             if not original:
                 raise ValueError('Unknown choice in this conversation')
+            if source_message_id and (original.get('feedback_source_message_id') == source_message_id or
+                    (original.get('feedback') or {}).get('source_message_id') == source_message_id):
+                return original
             label = FeedbackLabel(outcome_label) if outcome_label else None
             if label is None and outcome in FeedbackLabel.__members__:
                 label = FeedbackLabel(outcome)
             if feedback_source not in {'explicit', 'natural', 'follow_up'}:
                 raise ValueError('Invalid feedback source')
             fields = {'overridden': True} if overridden else {}
+            if source_message_id:
+                fields['feedback_source_message_id'] = source_message_id
             if final is not None:
                 fields.update(user_final_choice=final[:200], overridden=overridden)
             if outcome is not None:
@@ -215,7 +222,8 @@ class ChoiceHistory:
             if label is not None:
                 fields.update(feedback={'id': 'DF-' + uuid4().hex, 'label': label.value,
                     'text': (outcome_text or outcome or '')[:1200], 'source': feedback_source,
-                    'timestamp': datetime.now(UTC).isoformat()}, outcome=label.value,
+                    'timestamp': datetime.now(UTC).isoformat(),
+                    **({'source_message_id': source_message_id} if source_message_id else {})}, outcome=label.value,
                     follow_up_status='ANSWERED', reflected=False, reflection_id=None)
             return self.event(decision_id, 'feedback', scope=scope, **fields)
 

@@ -182,10 +182,15 @@ class EmojiService:
         self.last_selected = chosen.emoji_id
         return EmojiResult(status="matched", emoji_id=chosen.emoji_id, path=chosen.path, score=chosen.score)
 
-    def build_context(self) -> str:
+    def build_context(self, *, lightweight: bool = False) -> str:
         """Expose enabled expression attributes without internal IDs or file paths."""
         if not self.enabled or not any(item.enabled for item in self.entries):
             return ""
+        if lightweight:
+            combinations = dict.fromkeys(tuple(item.tags) for item in self.entries if item.enabled)
+            return ("\n可用表情组合：" + "；".join("、".join(tags) for tags in combinations)
+                + "。可用 [emoji:属性1,属性2] 选择一组中1~3个贴切属性发送图片，无合适表情就省略；"
+                "严肃或技术回复少用。不输出图片ID、属性清单或DSL说明，表情表达不需工具。")
         catalog = "\n".join(f"- 属性：{'、'.join(item.tags)}" for item in self.entries if item.enabled)
         return (
             "\n\n当前可用表情：\n" + catalog + "\n\n"

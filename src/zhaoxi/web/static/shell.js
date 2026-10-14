@@ -1,5 +1,5 @@
 
-const FRONTEND_BUILD_ID='v1.4.9-call-tokens-20261012',FRONTEND_LOADED_AT=new Date().toISOString();
+const FRONTEND_BUILD_ID='v1.4.9-phase3-unified-20261014',FRONTEND_LOADED_AT=new Date().toISOString();
 const shellInertNodes=new Map();
 const $=s=>{const found=document.querySelector(s);if(found)return found;
   if(!shellInertNodes.has(s)){const node=document.createElement('div');node.value='';node.checked=false;shellInertNodes.set(s,node)}
@@ -131,6 +131,8 @@ function renderRuntimeMetrics(m){
   const stages={routing_ms:'路由',memory_retrieval_ms:'记忆检索',decision_ms:'决策',planner_ms:'规划',workflow_ms:'工作流',tool_ms_total:'工具合计',response_generation_ms:'回复生成',auto_memory_ms:'记忆整理',current_cognition_ms:'近期状态',other_ms:'其他'};
   const lane={fast:'FAST / 轻量对话',standard:'STANDARD / 标准',deep:'DEEP / 深度'}[m.runtime_lane]||m.runtime_lane||'未标记';
   node.textContent=[`运行通道 ${lane} · 来源 ${m.route_source||'未记录'}`,
+    ...(m.build_id?[`运行构建 ${m.build_id} · 配置 ${m.configuration_id||"未报告"} · ${m.unified_reply?'统一回复路径':'迁移回滚路径'}`]:[]),
+    ...Object.entries(m.faculty_context||{}).map(([name,value])=>`本轮 ${name}：${value.active?'按需启用':'未激活'} · ${value.chars||0} 字符（已包含在原分类中）`),
     `前台模型 ${m.foreground_llm_calls||0} · 后台模型 ${m.background_llm_calls||0} · Router ${m.router_llm_calls||0} · Agent ${m.agent_llm_calls||0} · Planner ${m.planner_llm_calls||0}`,
     `记忆检索 ${m.memory_search_count||0} · 工具轮次 ${m.tool_rounds||0} · 目录检查 ${m.catalog_inspections||0}`,
     ...[m.fast_gate_reason?`Fast Gate：${m.fast_gate_reason}`:null,m.escalation_reason?`升级：${m.escalation_reason}`:null,m.extra_round_reason?`额外轮次：${m.extra_round_reason}`:null].filter(Boolean),

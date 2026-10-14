@@ -3,7 +3,8 @@
 import json
 import logging
 import re
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
 from zhaoxi.models.types import ModelResponse
 from .models import DecisionAwarenessTrace
@@ -23,6 +24,32 @@ _MAIN_SCHEMA["$defs"]["DecisionAwarenessTrace"]["required"] = ["mode", "decision
 REPLY_FORMAT = {"type":"json_schema","json_schema":{
     "name":"main_reply","schema":_MAIN_SCHEMA}}
 
+
+class ReplyControl(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["tool", "recall", "decision"]
+    reason: str = Field(min_length=1, max_length=240)
+    trigger_span: str = Field(min_length=1, max_length=500)
+    group: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+# A common control contract, not a second decision engine.
+BASIC_REPLY_FORMAT = {"type": "json_schema", "json_schema": {"name": "main_reply", "schema": {
+    "type": "object", "properties": {"reply": {"type": "string"},
+    "escalation": {"type": ["object", "null"]}}, "required": ["reply"]}}}
+
+LIGHT_CONTROL_PROMPT = (
+    'JSON回复：{"reply":"正文"}，普通闲聊省略 awareness。'
+    '缺能力时 reply=""，escalation={"kind":"tool","reason":"缺资料",'
+    '"trigger_span":"本轮连续原文","group":"实际组"}；kind 可用 tool/recall/decision，group 按清单。'
+    '加载不是执行，不假称行动成功。'
+)
+LIGHT_REPLY_PROMPT = LIGHT_CONTROL_PROMPT + (
+    '新取舍必附 awareness={"mode":"PICK","decision_kind":"NEW",'
+    '"decision_question":"自足抽象问题","agent_recommendation":"建议"}；'
+    '小且可逆用PICK，能给方向用ADVISE，高影响用FRAME保留最后价值判断。纠正/执行/承接不新建；'
+    '旧选择反馈先decision升级取真实ID，不猜对象或假称保存。'
+)
 
 class ReplyRepair(BaseModel):
     reply: str = Field(description="以当前人格给出完整自然正文，仅依据已确认结果；不附决策分析或工具参数。")
@@ -88,7 +115,7 @@ def _finish(response: ModelResponse, body: str, *, encoding: str,
         "raw_metadata": {**response.raw_metadata, "main_reply_protocol": protocol}})
 
 
-def decode_main_reply(response: ModelResponse, *, fast: bool = False) -> ModelResponse:
+def decode_main_reply(response: ModelResponse, *, fast: bool = False, controls: bool = False, allow_awareness: bool = True, basic: bool = False) -> ModelResponse:
     if response.tool_calls:
         return response
     if response.finish_reason in {"length", "max_tokens", "content_filter"}:
@@ -125,7 +152,7 @@ def decode_main_reply(response: ModelResponse, *, fast: bool = False) -> ModelRe
             return _finish(response, "", encoding="mixed_json", error_code="invalid_reply_protocol")
         else:
             return _decode_unparsed_reply(response, raw)
-    return _decode_reply_object(response, arguments, raw, fast=fast, encoding=encoding)
+    return _decode_reply_object(response, arguments, raw, fast=fast, encoding=encoding, controls=controls, allow_awareness=allow_awareness, basic=basic)
 
 
 def _decode_unparsed_reply(response: ModelResponse, raw: str) -> ModelResponse:
@@ -149,7 +176,7 @@ def _decode_unparsed_reply(response: ModelResponse, raw: str) -> ModelResponse:
     return _finish(response, raw, encoding="text")
 
 
-def _decode_reply_object(response: ModelResponse, arguments, raw: str, *, fast: bool, encoding: str) -> ModelResponse:
+def _decode_reply_object(response: ModelResponse, arguments, raw: str, *, fast: bool, encoding: str, controls: bool = False, allow_awareness: bool = True, basic: bool = False) -> ModelResponse:
     if not isinstance(arguments, dict) or "reply" not in arguments:
         # A complete JSON value is not necessarily a complete reply envelope.
         # In particular, response-format/config echoes must enter bounded repair,
@@ -169,15 +196,20 @@ def _decode_reply_object(response: ModelResponse, arguments, raw: str, *, fast: 
     if fast and isinstance(arguments.get("escalation"), dict):
         return _finish(response, "", encoding="fast_escalation", content=
             "[escalate:" + json.dumps(arguments["escalation"], ensure_ascii=False) + "]")
-    if response.raw_metadata.get("main_reply_contract") and (
-            "awareness" not in arguments or arguments["awareness"] is None
-            or set(arguments) - {"reply", "awareness", "escalation"}):
+    if response.raw_metadata.get("main_reply_contract") and set(arguments) - {"reply", "awareness", "escalation"}:
+        return _finish(response, "", encoding=encoding, error_code="invalid_reply_protocol")
+    if controls and isinstance(arguments.get("escalation"), dict):
+        controlled = response.model_copy(update={"raw_metadata": {
+            **response.raw_metadata, "reply_control": arguments["escalation"]}})
+        return _finish(controlled, "", encoding="runtime_control")
+    if not basic and response.raw_metadata.get("main_reply_contract") and (
+            "awareness" not in arguments or arguments["awareness"] is None):
         return _finish(response, "", encoding=encoding, error_code="invalid_reply_protocol")
     body = arguments.get("reply")
     if not isinstance(body, str) or not body.strip():
         return _finish(response, "", encoding="json", error_code="empty_model_reply")
     content, awareness_state, mode = body, "missing", None
-    if arguments.get("awareness") is not None:
+    if allow_awareness and arguments.get("awareness") is not None:
         try:
             awareness = DecisionAwarenessTrace.from_reply(arguments["awareness"])
             awareness_state, mode = "valid", awareness.mode.value

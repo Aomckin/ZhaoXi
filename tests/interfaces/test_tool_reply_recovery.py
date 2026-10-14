@@ -20,7 +20,7 @@ def final(text="25 分钟番茄钟已经开启，先把这段代码写完。"):
     return ModelResponse(content=json.dumps({"reply": text, "awareness": {"mode": "NONE"}}, ensure_ascii=False))
 
 
-def setup(responses, *, model_limit=3, server_status=200):
+def setup(responses, *, model_limit=3, server_status=200, unified=False):
     seen = []
     def handler(request):
         seen.append((request.method, request.url.path))
@@ -49,7 +49,7 @@ def setup(responses, *, model_limit=3, server_status=200):
                                              "title": "代码开发"}})]), *responses])
     agent = ZhaoxiAgent(provider=provider, registry=registry, context_builder=ContextBuilder("朝汐"),
                         decision_mode="agency")
-    agent.settings = Settings(_env_file=None, standard_model_round_limit=model_limit, standard_tool_round_limit=2,
+    agent.settings = Settings(_env_file=None, unified_reply_enabled=unified, standard_model_round_limit=model_limit, standard_tool_round_limit=2,
                               standard_repair_round_limit=1)
     gateway = InterfaceGateway(agent)
     # Keep the test strictly about foreground delivery and retries.
@@ -61,8 +61,9 @@ def setup(responses, *, model_limit=3, server_status=200):
     '{"reply":"","awareness":{"mode":"NONE"}}',
     '<decision-awareness>{"mode":"ADVISE"}</decision-awareness>',
     '[emoji:missing]', '{"reply":"截断'])
-async def test_tool_success_then_missing_reply_uses_one_tool_free_recovery(raw):
-    agent, provider, gateway, seen = setup([ModelResponse(content=raw), final()])
+@pytest.mark.parametrize("unified", [False, True])
+async def test_tool_success_then_missing_reply_uses_one_tool_free_recovery(raw, unified):
+    agent, provider, gateway, seen = setup([ModelResponse(content=raw), final()], unified=unified)
     response = await gateway.chat(UnifiedMessage(channel="web", content="在 LifeHUD 开个25分钟番茄钟", request_id="start-focus"))
     assert response.content.startswith("25 分钟番茄钟已经开启")
     assert seen == [("POST", "/api/focus/start"), ("GET", "/api/focus/current")]
@@ -327,7 +328,7 @@ async def test_same_action_call_carries_personal_interim_without_extra_round(ena
         tool_calls=[ToolCall(id="verify", name="lifehud", arguments={"operation":"focus.current", "arguments":{}})])
     agent, provider, gateway, seen = setup([follow, final()])
     agent.context_builder.personality_prompt = "你是朝汐，对暗苟亲近自然。"
-    agent.settings = Settings(_env_file=None, interim_reply_enabled=enabled, interim_reply_threshold_seconds=threshold)
+    agent.settings = Settings(_env_file=None, unified_reply_enabled=False, interim_reply_enabled=enabled, interim_reply_threshold_seconds=threshold)
     events = []
     gateway.event_sink = events.append
     result = await gateway.chat(UnifiedMessage(channel="web", content="开番茄钟并核对", request_id="inline"))

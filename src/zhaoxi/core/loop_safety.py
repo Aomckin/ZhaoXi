@@ -48,6 +48,7 @@ class LoopSafety:
     locked: set = field(default_factory=set)
     outcomes: list = field(default_factory=list)
     search_cache: list = field(default_factory=list)
+    decision_context_cache: dict = field(default_factory=dict)
     seen_results: set = field(default_factory=set)
     no_progress: int = 0
     progress: bool = False
@@ -90,6 +91,10 @@ class LoopSafety:
             self.seen_results.add(key)
 
     def cached_search(self, call):
+        if call.name == "read_decision_context":
+            key = json.dumps(call.arguments, sort_keys=True, ensure_ascii=False)
+            result = self.decision_context_cache.get(key)
+            return result.model_copy(deep=True) if result is not None else None
         if call.name != "search_memories":
             return None
         query = normalized_query(call.arguments.get("query", ""))
@@ -101,10 +106,16 @@ class LoopSafety:
         return None
 
     def observe(self, call, result, *, mutation=False):
+        if mutation:
+            self.search_cache.clear()
+            self.decision_context_cache.clear()
         self.outcomes.append((call.name, result.model_copy(deep=True)))
         fingerprint = None
         retry = 0
         if result.success:
+            if call.name == "read_decision_context":
+                key = json.dumps(call.arguments, sort_keys=True, ensure_ascii=False)
+                self.decision_context_cache[key] = result.model_copy(deep=True)
             for name, previous in reversed(self.outcomes[:-1]):
                 if name==call.name and previous.error=="tool_validation_error":
                     previous.metadata["resolved_by_retry"]=True

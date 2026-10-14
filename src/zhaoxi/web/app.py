@@ -753,6 +753,8 @@ def create_app(
             "first_render_ms": request.first_render_ms,
             "fully_rendered_ms": request.fully_rendered_ms,
         })
+        logger.info("stage=delivery event=reply_render_confirmed request=%s message_id=%s build_id=%s fully_rendered_ms=%s",
+                    request.request_id, request.message_id, getattr(core, "build_id", None), request.fully_rendered_ms)
         while len(receipts) > 100:
             receipts.popitem(last=False)
         return {"status": "recorded"}

@@ -311,6 +311,7 @@ async def test_history_or_trace_failure_preserves_reply_without_extra_model(tmp_
     from unittest.mock import Mock
     agent, provider = make_agent(tmp_path,[reply("两瓶。","PICK",agent_recommendation="两瓶")],fast=True)
     agent.decision_awareness.history = SimpleNamespace(
+        get=Mock(side_effect=OSError("unavailable")),
         list=Mock(side_effect=OSError("unavailable")),record=Mock(side_effect=OSError("unavailable")))
     result = await agent.run_natural("几瓶？")
     assert result.content == "两瓶。" and len(provider.calls) == 1

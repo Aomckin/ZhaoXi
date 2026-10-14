@@ -1,4 +1,5 @@
 """Workflow registration and static graph validation."""
+from __future__ import annotations
 
 from zhaoxi.tools.registry import ToolRegistry
 from zhaoxi.workflow.expressions import evaluate

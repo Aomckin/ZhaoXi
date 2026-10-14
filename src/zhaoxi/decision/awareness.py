@@ -5,7 +5,7 @@ import json
 import logging
 import re
 from typing import Protocol
-from uuid import uuid4
+from uuid import uuid4, uuid5, NAMESPACE_URL
 
 from .models import DecisionAwarenessTrace, DecisionMode
 from .question import question_issue
@@ -105,12 +105,20 @@ class DecisionAwareness:
         pending = self.pending_choice(conversation)
         return [pending] if pending else []
 
-    def prompt(self, conversation) -> str:
+    def prompt(self, conversation, *, unified=False, slim=False) -> str:
         value = AWARENESS_PROMPT + """
 User Principles 是可修订的准则摘要索引，包含朝汐整理的内容，不等于用户原话或用户确认。实际参考一般先 read_decision_context sources=["user_archive"] 查询 archive/user 原文；user_principles 也优先返回原文。原文与摘要冲突时以当前用户明确表达和原文为准。读到值得复用的原则时，可用 write_user_principle 自己抽象总结、补充或修订对应索引，引用实际读取的 source_ref 和逐字 source_quote，保留条件和例外；不必每轮写，不修改原始 archive。Decision Journal 是你从真实选择和反馈中总结的暂时判断，可参考，不是用户原话或硬规则。Choice History 只作弱证据。当前现实和明确表达优先。需要时 read_decision_context sources 可选 user_principles/decision_journal；不全量预读。
 反馈是同一主回复的旁产物：用户明确承接下面某条选择且谈到实际结果时，必须在 awareness 中填 feedback={decision_id, user_final_choice:null或明确选择, outcome_label:GOOD/BAD/NEUTRAL/MIXED/NO_DIFFERENCE/UNKNOWN, outcome_text:本轮原话, feedback_source:natural或follow_up}。模糊的“挺好”“都一样”、不能唯一确认选择对象时不绑反馈；最终选择不明用 null，不臆造。反馈不直接变用户偏好。先简短自然回应，不在前台声称已经总结出长期经验；后台才反思。只是在接受已发生的结果时 mode=NONE，不把接受反馈改写成新的 ADVISE，也不能用一段安慰或新建议代替 feedback 字段。
 awareness 可填 journal_ids（仅实际读取的日记 ID）、follow_up_policy:NEVER/PASSIVE/OPPORTUNISTIC/SCHEDULED、follow_up_after:含时区ISO时间或null。琐碎菜单 NEVER、饮料小消费 PASSIVE；值得回顾才 OPPORTUNISTIC，明确长期观察时间才 SCHEDULED。不能每个 PICK 都主动问。后台反思不写进本轮 reply schema。
 """
+        if slim:
+            value = (AWARENESS_PROMPT.splitlines()[-1] +
+                '\n只提交本轮已有资料支持的决策或反馈，context_refs/principle_ids/journal_ids 仅填实际读取的 ID；'
+                'mode=NONE 可以接受反馈，outcome_label/outcome_text/feedback_source 必须来自用户本轮真实反馈。')
+        if unified:
+            # Reply/control instructions are supplied once by the common runtime.
+            value = "\n".join(line for line in value.splitlines()
+                              if not line.startswith("最终回复必须输出 JSON"))
         if self.providers:
             value += "\n已注册按需扩展资料来源：" + ", ".join(self.providers)
         if candidates := self.feedback_candidates(conversation):
@@ -155,6 +163,7 @@ awareness 可填 journal_ids（仅实际读取的日记 ID）、follow_up_policy
             available["current_image"] = ["image:" + user.message_id + ":" + str(index)
                                           for index in range(len(user.images))]
         guard_flags = []
+        commit_errors = []
         consulted = {source: list(refs) for source, refs in user.metadata.get("decision_context_sources", {}).items()}
         if user.images:
             consulted["current_image"] = available["current_image"]
@@ -202,10 +211,13 @@ awareness 可填 journal_ids（仅实际读取的日记 ID）、follow_up_policy
                     self.history.feedback(scope=scope, final=trace.feedback.user_final_choice,
                         decision_id=trace.feedback.decision_id, overridden=trace.feedback.overridden,
                         outcome=trace.feedback.outcome, outcome_label=trace.feedback.outcome_label,
-                        outcome_text=trace.feedback.outcome_text, feedback_source=trace.feedback.feedback_source)
+                        outcome_text=trace.feedback.outcome_text, feedback_source=trace.feedback.feedback_source,
+                        source_message_id=user.message_id)
                 except (ValueError, OSError) as exc:
+                    commit_errors.append("feedback_storage_failed")
                     logger.warning("choice feedback not saved: %s", type(exc).__name__)
             else:
+                commit_errors.append("feedback_target_unknown")
                 trace.feedback = None
         if trace.follow_up_asked_id:
             ready = self.follow_up.candidates(scope=scope, opportunistic=True) if self.follow_up else []
@@ -214,14 +226,19 @@ awareness 可填 journal_ids（仅实际读取的日记 ID）、follow_up_policy
                     self.history.event(trace.follow_up_asked_id, 'follow_up', scope=scope,
                         follow_up_status='ASKED', asked_at=datetime.now(UTC).isoformat())
                 except OSError:
+                    commit_errors.append("follow_up_storage_failed")
                     logger.warning('opportunistic follow-up receipt unavailable')
             else:
                 trace.follow_up_asked_id = None
         issue = question_issue(trace, user.content or "")
-        row = {**trace.model_dump(mode="json"), "decision_id": uuid4().hex,
+        identity = uuid5(NAMESPACE_URL, "choice:" + scope + ":" + user.message_id).hex
+        existing = (self.history.get(identity, scope=scope) or next(
+            (item for item in self.history.list(limit=1000, scope=scope)
+             if item.get("source_message_id") == user.message_id), None)) if issue is None and self.history else None
+        row = {**trace.model_dump(mode="json"), "decision_id": existing["decision_id"] if existing else identity,
                "scope": scope, "timestamp": datetime.now(UTC).isoformat(),
                "summary": trace.decision_question or "", "suggestion": trace.agent_recommendation,
-               "registration_status": issue or "recordable"}
+               "registration_status": issue or "recordable", "commit_errors": commit_errors}
         if issue is None and self.history:
             try:
                 self.history.record(row["decision_id"], trace, scope=scope,
@@ -230,6 +247,9 @@ awareness 可填 journal_ids（仅实际读取的日记 ID）、follow_up_policy
             except (OSError, ValueError) as exc:
                 row["registration_status"] = "storage_failed"
                 logger.warning("choice history not saved: %s", type(exc).__name__)
+        elif issue is None:
+            row["registration_status"] = "storage_failed"
+            commit_errors.append("choice_storage_unavailable")
         rejected = issue is not None and trace.mode is not DecisionMode.NONE and trace.decision_kind == "NEW"
         if rejected:
             logger.warning("choice not registered: %s", issue)
@@ -237,6 +257,10 @@ awareness 可填 journal_ids（仅实际读取的日记 ID）、follow_up_policy
         self.recent_traces[:] = self.recent_traces[-20:]
         from zhaoxi.observability import current_trace
         if runtime := current_trace():
+            if commit_errors or rejected or row["registration_status"] == "storage_failed":
+                runtime.terminal_status = "partial"
+                runtime.emit("decision_commit_failed", "decision", "failed", "正文已保留，决策或反馈未完成保存",
+                             error_code=commit_errors[0] if commit_errors else row["registration_status"])
             runtime.decision_used = trace.mode is not DecisionMode.NONE
             runtime.emit("decision_awareness", "decision", "warning" if rejected or row["registration_status"] == "storage_failed" else "success",
                          "问题摘要未通过登记校验" if rejected else "已形成生活判断",

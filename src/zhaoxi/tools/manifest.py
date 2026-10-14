@@ -168,3 +168,14 @@ def resolve_capability(need: str, manifest: list[dict]) -> dict:
 
 def is_action_request(text: str) -> bool:
     return bool(re.search(r"帮我|请.*(?:查|找|读|改|写|发|算|操作|获取|执行)|查一下|找一下|读一下|计算|执行|获取|发送", text))
+
+
+def requires_tool_result(text: str) -> bool:
+    """Require a receipt for explicit operations, not every 'help me' utterance."""
+    text = re.sub(r'“[^”]*”|「[^」]*」|`[^`]*`|"[^"\n]*"', '', text).strip()
+    if re.search(r'(?:不要|不用|不必|无需|先不|不需要).{0,12}(?:查|读|写|记|改|删|发|执行|操作)', text):
+        return False
+    return bool(re.search(
+        r'^(?:请|帮我|替我|麻烦你)?\s*(?:记住|记一下|忘掉|忘记这|遗忘|记录|保存|删除|修改|取消|发送|执行|更新|添加|新建|开个|开启|关闭|设置|设个)'
+        r'|(?:帮我|请|去|把|给我|替我|麻烦|继续|接着).{0,30}(?:查询|查一下|搜索|搜一下|读取|读一下|查|搜|读|找|写入|保存|记下|修改|删除|发送|执行|打开|关闭|计算)'
+        r'|(?:查一下|查询|读取|搜索|检索|写入|保存|更新|修改|删除|发送|计算)', text))

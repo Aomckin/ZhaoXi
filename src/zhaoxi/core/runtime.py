@@ -36,6 +36,7 @@ class AgentRuntime:
     allow_multi_model_calls: bool = False
     tool_retry_context: ToolRetryContext | None = None
     settings: Settings | None = None
+    build_id: str | None = None
     memory_service: MemoryService | None = None
     archive: ArchiveService | None = None
     agenda: AgendaService | None = None

@@ -192,7 +192,7 @@ def cognitive_timeline(
 ) -> list[Message]:
     """L1 recent causal timeline plus L2 older recall; current trigger is separate."""
     cutoff = datetime.now(UTC) - timedelta(hours=recent_hours)
-    candidates = [event for event in stream.recent(max(300, limit * 6))
+    candidates = [event for event in stream.query_since(cutoff, limit=max(300, limit * 6))
                   if event.occurred_at >= cutoff and event.event_id != trigger_id
                   and visible_event(event, output_channel, audience, public_session_id)]
     trigger = stream.get(trigger_id) if trigger_id else None
