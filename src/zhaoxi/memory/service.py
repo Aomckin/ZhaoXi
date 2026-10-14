@@ -221,9 +221,9 @@ class MemoryService:
             raise MemoryNotFoundError(f"记忆不存在：{memory_id}")
         return record
 
-    async def search(self, query: MemoryQuery, *, activate: bool = True) -> list[MemorySearchResult]:
+    async def search(self, query: MemoryQuery, *, activate: bool = True, local_only: bool = False) -> list[MemorySearchResult]:
         from zhaoxi.memory.search import retrieve
-        return await retrieve(self, query, activate)
+        return await retrieve(self, query, activate, local_only=local_only)
 
     async def inspect_retrieval(self, query: MemoryQuery) -> list[dict[str, object]]:
         results = await self.search(query, activate=False)

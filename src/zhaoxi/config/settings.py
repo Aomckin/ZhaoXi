@@ -364,7 +364,8 @@ class Settings(BaseSettings):
                  "standard_model_round_limit", "standard_tool_round_limit", "standard_repair_round_limit",
                  "request_max_model_calls", "request_max_total_tokens", "request_extension_1_limit_tokens",
                  "request_extension_2_limit_tokens", "request_hard_limit_tokens", "request_finalization_reserve_tokens",
-                 "request_budget_warning_ratio", "emoji_enabled", "external_cognition_enabled")
+                 "request_budget_warning_ratio", "emoji_enabled", "external_cognition_enabled",
+                 "memory_retrieval_limit", "memory_context_max_chars")
         values = {name: getattr(self, name, None) for name in names}
         return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()[:16]
 

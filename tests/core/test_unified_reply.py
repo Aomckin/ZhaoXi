@@ -179,3 +179,61 @@ async def test_needed_storage_failure_is_partial_without_observability(tmp_path)
         'agent_recommendation':'rice'})],history=history)
     response=await agent.run_natural('米粉和泡面选一个')
     assert response.content.startswith('rice') and '未保存成功' in response.content and response.result_status=='partial_success'
+
+
+async def test_first_request_preloads_once_and_repair_does_not_repeat():
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from zhaoxi.memory.models import MemoryRecord, MemorySearchResult
+    from zhaoxi.memory.retrieval import MemoryRetriever
+    agent, provider, _, _, gateway = make([ModelResponse(content='{"reply":'), body('restored')])
+    fact = MemorySearchResult(record=MemoryRecord(kind='episodic', content='Orion chosen color is blue.',
+        normalized_content='orionblue', source='user', source_type='user', confidence=1), text_score=1)
+    retriever = MemoryRetriever(SimpleNamespace())
+    retriever.preload = AsyncMock(return_value=[fact])
+    agent.context_builder.memory_retriever = retriever
+    result = await gateway.chat(UnifiedMessage(channel='web', content='Orion color'))
+    assert result.content == 'restored'
+    assert fact.record.content in provider.calls[0][0].content
+    retriever.preload.assert_awaited_once_with('Orion color')
+    metrics = agent.last_action_trace['runtime_metrics']
+    assert metrics['memory_search_count'] == 1 and metrics['memory_hits'] == 1
+    assert len(provider.calls) == 2
+
+
+@pytest.mark.parametrize('audience,privacy,conversation_kind', [
+    ('public', 'SOCIAL', 'group'), ('owner', 'PRIVATE', 'group'), ('owner', 'SOCIAL', 'private')])
+async def test_group_or_social_turn_never_preloads_private_memory(audience,privacy,conversation_kind):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from zhaoxi.memory.retrieval import MemoryRetriever
+    from zhaoxi.cognitive_stream.models import CognitiveEvent
+    from zhaoxi.cognitive_stream.turn import CognitiveTurnContext, set_current_turn, reset_current_turn
+    agent, provider, _, _, _ = make([body()])
+    retriever = MemoryRetriever(SimpleNamespace())
+    retriever.preload = AsyncMock(side_effect=AssertionError('Private read forbidden'))
+    agent.context_builder.memory_retriever = retriever
+    event = CognitiveEvent(source='qq', channel='qq', event_type='USER_MESSAGE', content='Orion',
+        privacy_level=privacy, metadata={'conversation_kind':conversation_kind})
+    token = set_current_turn(CognitiveTurnContext(trigger_event=event, audience=audience, output_channel='qq'))
+    try:
+        agent.conversation.add_user('Orion')
+        await agent._run_loop('public-request', user_intent='Orion', audience=audience, output_channel='qq')
+    finally:
+        reset_current_turn(token)
+    retriever.preload.assert_not_awaited()
+    assert len(provider.calls) == 1
+
+
+async def test_optional_local_database_error_is_visible_and_preserves_reply():
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from zhaoxi.errors import MemoryError
+    from zhaoxi.memory.retrieval import MemoryRetriever
+    agent, provider, _, _, gateway = make([body('hello')])
+    retriever = MemoryRetriever(SimpleNamespace())
+    retriever.preload = AsyncMock(side_effect=MemoryError('database unavailable'))
+    agent.context_builder.memory_retriever = retriever
+    response = await gateway.chat(UnifiedMessage(channel='web', content='Orion'))
+    assert response.content == 'hello' and len(provider.calls) == 1
+    assert any(event['event_type'] == 'memory_search_failed' for event in agent.last_action_trace['runtime_metrics']['timeline'])

@@ -39,7 +39,7 @@ def cluster_limits(query, mode, cluster_scores):
     return limits, focused
 
 
-async def retrieve(service, query, activate=True):
+async def retrieve(service, query, activate=True, *, local_only=False):
     started = perf_counter()
     mode = resolve_mode(query)
     candidate_query = query.model_copy(update={"statuses": allowed_statuses(query, mode)})
@@ -56,18 +56,20 @@ async def retrieve(service, query, activate=True):
     now = query.now or utc_now()
     embedding_error = None
     embedding_started = perf_counter()
-    try:
-        vector = await service.embedding_provider.embed(query.text)
-    except (OSError, ValueError) as error:
-        # Keep lexical/FTS recall available without comparing incompatible vectors.
-        embedding_error = type(error).__name__
-        vector = []
-    except Exception as error:
-        import httpx
-        if not isinstance(error, httpx.HTTPError):
-            raise
-        embedding_error = type(error).__name__
-        vector = []
+    vector = []
+    if not local_only:
+        try:
+            vector = await service.embedding_provider.embed(query.text)
+        except (OSError, ValueError) as error:
+            # Keep lexical/FTS recall available without comparing incompatible vectors.
+            embedding_error = type(error).__name__
+            vector = []
+        except Exception as error:
+            import httpx
+            if not isinstance(error, httpx.HTTPError):
+                raise
+            embedding_error = type(error).__name__
+            vector = []
     embedding_ms = (perf_counter() - embedding_started) * 1000
     space = embedding_space(service.embedding_provider)
     clusters = await service.repository.cluster_candidates(query.text, vector, space)
@@ -141,7 +143,7 @@ async def retrieve(service, query, activate=True):
         "cluster_candidates":[{"cluster_id":c.id,"domain":c.domain,"topic":c.topic,"cluster_score":round(s,4),"cluster_rank":i+1,
                                "why_included":"semantic/text/entity cluster match"} for i,(s,c) in enumerate(cluster_scores)],
         "cluster_diversity":{"focused_cluster":next(iter(limits),None) if focused else None,"limits":limits,"default_limit":default_limit},
-        "embedding_status":"lexical_fallback" if embedding_error else "available",
+        "embedding_status":"local_lexical" if local_only else "lexical_fallback" if embedding_error else "available",
         "embedding_error":embedding_error,"query_embedding_ms":round(embedding_ms,3),"candidate_count":len(candidates),"candidate_generation_ms":round(generation_ms,3),
         "rerank_ms":round((perf_counter()-generation_finished)*1000,3),"excluded":excluded,
         "selected":[{"memory_id":x.record.id,"why_included":x.match_reason,"why_promoted":"query relevance", "candidate_source":x.candidate_source} for x in selected]}

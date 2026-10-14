@@ -202,7 +202,7 @@ class ContextBuilder:
             + "\n[/Desktop Activity]"
         ))
         if audience == "owner" and memories and self.memory_retriever:
-            memory_context = self.memory_retriever.format(memories)
+            memory_context = self.memory_retriever.format(memories, max_chars=1200) if lightweight else self.memory_retriever.format(memories)
             if memory_context:
                 add("memory.recall", f"\n\n长期记忆：\n{memory_context}")
         if planner_context:

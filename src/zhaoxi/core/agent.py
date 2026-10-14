@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import re
+import sqlite3
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -18,7 +19,7 @@ from zhaoxi.cognitive_stream.models import CognitiveEventType
 from zhaoxi.core.conversation import Conversation
 from zhaoxi.core.message import Message, Role, strip_echoed_timeline_header
 from zhaoxi.core.reply import ReplySequence, commit_reply
-from zhaoxi.errors import AgentLoopError, ProviderError
+from zhaoxi.errors import AgentLoopError, MemoryError, ProviderError
 from zhaoxi.models.base import ModelProvider
 from zhaoxi.models.types import ToolCall
 from zhaoxi.observability import current_trace, llm_owner_scope
@@ -1065,6 +1066,28 @@ class ZhaoxiAgent:
         reply_recovery_attempted = False
         reply_recovery_error_code = None
         safety = self._safety_state(discovery,fast_escalated)
+        from zhaoxi.decision.learning_models import private_owner
+        retriever = self.context_builder.memory_retriever
+        budget = current_budget()
+        if (lightweight and not memories and retriever and audience == "owner" and private_owner()
+                and (retry_intent or user_intent).strip()
+                and (not budget or budget.state is BudgetState.NORMAL)):
+            if trace:
+                trace.emit("memory_search_started", "memory_search", "running", "正在本地联想相关记忆…",
+                           metadata={"mode": "preload", "local_only": True})
+            try:
+                memories = await retriever.preload(retry_intent or user_intent)
+            except (OSError, sqlite3.Error, MemoryError) as exc:
+                if trace:
+                    trace.emit("memory_search_failed", "memory_search", "warning", "本地记忆预取失败，继续回复",
+                               error_code="memory_preload_error", metadata={"error_type": type(exc).__name__})
+                log_internal_failure("request=%s local memory preload failed", request_id, exc=exc)
+            else:
+                if trace:
+                    trace.record_memory_candidates(memories)
+                    trace.emit("memory_search_finished", "memory_search", "success", "已完成本地记忆联想",
+                               metadata={"mode": "preload", "local_only": True, "hit_count": len(memories),
+                                         "chars": len(retriever.format(memories, max_chars=1200))})
         for step in range(1, self.max_steps + 1):
             if safety.model_limit_reached:
                 return self._deterministic_final(request_id, step-1, safety, "model_round_limit")

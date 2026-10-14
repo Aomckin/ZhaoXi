@@ -2,7 +2,7 @@
 
 from xml.sax.saxutils import escape, quoteattr
 
-from zhaoxi.memory.models import MemoryQuery, MemorySearchResult, MemoryStatus
+from zhaoxi.memory.models import MemoryKind, MemoryQuery, MemorySearchResult, MemoryStatus, utc_now
 from zhaoxi.memory.service import MemoryService
 
 
@@ -28,7 +28,33 @@ class MemoryRetriever:
         self.service.last_retrieval['artifact_references'] = self.last_artifact_matches
         return results
 
-    def format(self, results: list[MemorySearchResult]) -> str:
+    async def preload(self, text: str) -> list[MemorySearchResult]:
+        """Small local hints; no remote embedding, graph traversal or activation writes."""
+        results = await self.service.search(MemoryQuery(
+            text=text, limit=min(6, self.limit), statuses=[MemoryStatus.ACTIVE, MemoryStatus.COLD],
+            per_cluster_limit=1, max_hops=0,
+        ), activate=False, local_only=True)
+        selected = []
+        context = ""
+        now = utc_now()
+        for item in results:
+            record = item.record
+            if (record.kind in {MemoryKind.STATE, MemoryKind.INTENT}
+                    and record.valid_until and record.valid_until < now):
+                continue
+            if item.text_score < .35:
+                continue
+            expanded = self.format([*selected, item], max_chars=1200)
+            if expanded == context:
+                continue
+            selected.append(item)
+            context = expanded
+            if len(selected) >= min(3, self.limit):
+                break
+        return selected
+
+    def format(self, results: list[MemorySearchResult], *, max_chars: int | None = None) -> str:
+        max_chars = self.max_chars if max_chars is None else min(max_chars, self.max_chars)
         if not results:
             return ""
         header = (
@@ -36,7 +62,7 @@ class MemoryRetriever:
             "不确定或冲突时应向用户核实。event_at 是事件时间；recorded_at/known_at 只表示记录/获知时间，"
             "不得替代缺失的 event_at，也不得据此推断朝汐当时在场、存在或亲历。\n"
         )
-        if len(header) >= self.max_chars:
+        if len(header) >= max_chars:
             return ""
         parts = [header]
         used = len(header)
@@ -66,7 +92,7 @@ class MemoryRetriever:
                     f'source={quoteattr(record.source)}>'
                     f"{escape(record.content)}</memory>\n"
                 )
-                if used + size + len(line) > self.max_chars:
+                if used + size + len(line) > max_chars:
                     continue
                 lines.append(line)
                 size += len(line)
