@@ -118,6 +118,9 @@ class SearchMemoriesTool(Tool):
                 retrieval_mode=arguments.retrieval_mode,
             )
         )
+        from zhaoxi.observability import current_trace
+        if trace := current_trace():
+            trace.record_memory_candidates(results, source="tool", append=True)
         return ToolResult(
             success=True,
             content=f"找到 {len(results)} 条长期记忆。",

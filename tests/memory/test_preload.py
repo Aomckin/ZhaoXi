@@ -39,3 +39,22 @@ async def test_preload_skips_oversize_fact_without_truncating_it(tmp_path):
     await service.remember(MemoryCreate(kind="episodic", content="Orion budget is small", source="user"))
     rows = await MemoryRetriever(service).preload("Orion budget")
     assert len(rows) == 1 and rows[0].record.content == "Orion budget is small"
+
+@pytest.mark.asyncio
+async def test_tool_recall_keeps_preload_candidates_without_duplicates(tmp_path):
+    from zhaoxi.observability import ActionTrace, bind_action_trace
+    from zhaoxi.tools.builtin.memory_tools import SearchMemoriesTool, SearchMemoryInput
+    service = MemoryService(SQLiteMemoryRepository(tmp_path / "memory.db"))
+    await service.remember(MemoryCreate(kind="episodic", content="Orion first fact", source="user"))
+    await service.remember(MemoryCreate(kind="episodic", content="Saturn second fact", source="user"))
+    preloaded = await MemoryRetriever(service).preload("Orion first fact")
+    trace = ActionTrace('memory-trace', 'memory-request')
+    with bind_action_trace(trace):
+        trace.record_memory_candidates(preloaded, source="preload")
+        tool = SearchMemoriesTool(service)
+        result = await tool.execute(SearchMemoryInput(query="Saturn second fact"))
+        assert result.success
+        await tool.execute(SearchMemoryInput(query="Saturn second fact"))
+        candidates = trace.metrics()["memory_candidates"]
+        assert len(candidates) == 2 and {x['retrieval_source'] for x in candidates} == {'preload','tool'}
+        assert [x['rank'] for x in candidates] == [1,2]

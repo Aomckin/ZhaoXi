@@ -10,6 +10,7 @@ async function checkEngineeringPanels(page) {
   };
   for (const [mode, panels] of Object.entries(modes)) {
     await page.goto('http://127.0.0.1:18765/dashboard#' + mode);
+    if (mode === 'memory') await page.getByText('记忆检索检查器与维护诊断', {exact: true}).click();
     const frame = page.frameLocator('iframe');
     await frame.locator('#' + panels[0]).waitFor();
     assert.equal(await frame.locator('#desk').evaluate(n => getComputedStyle(n).pointerEvents), 'auto');

@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException
 
 
-def memory_api_router(core, configured):
+def memory_api_router(core, configured, gateway):
     router = APIRouter()
 
     @router.get("/api/debug/memory-retrieval")
@@ -54,6 +54,29 @@ def memory_api_router(core, configured):
         if not service: raise HTTPException(status_code=409,detail="Memory not ready")
         return {"clusters":[c.model_dump(mode='json',exclude={'centroid_embedding'}) for c in await service.repository.list_clusters()],
                 "diagnostics":await service.diagnostics()}
+
+
+    @router.get("/api/dashboard/memory")
+    async def dashboard_memory():
+        overview = await debug_memory_clusters()
+        session_id = getattr(getattr(core, "session_record", None), "id", "local")
+        response = next((r for r in reversed(gateway._responses.values()) if r.session_id == session_id), None)
+        retrieval = None
+        if response:
+            metrics = response.activity.get("runtime_metrics", {})
+            last = getattr(core, "last_action_trace", {}) or {}
+            if last.get("request_id") == response.request_id:
+                metrics = last.get("runtime_metrics", metrics)
+            retrieval = {
+                "request_id": response.request_id, "session_id": session_id,
+                "started_at": metrics.get("started_at") or response.timestamp.isoformat(),
+                "channel": metrics.get("channel"), "status": response.status,
+                "candidates": metrics.get("memory_candidates", []),
+                "preload_count": sum(e["event_type"] == "memory_search_started" and
+                    e.get("metadata", {}).get("mode") == "preload" for e in metrics.get("timeline", [])),
+                "tool_search_count": sum(t["tool_name"] == "search_memories" for t in metrics.get("tool_calls", [])),
+            }
+        return {**overview, "session_id": session_id, "retrieval": retrieval}
 
 
     @router.get("/api/debug/database-maintenance")

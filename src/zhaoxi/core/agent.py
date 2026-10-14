@@ -1084,7 +1084,7 @@ class ZhaoxiAgent:
                 log_internal_failure("request=%s local memory preload failed", request_id, exc=exc)
             else:
                 if trace:
-                    trace.record_memory_candidates(memories)
+                    trace.record_memory_candidates(memories, source="preload")
                     trace.emit("memory_search_finished", "memory_search", "success", "已完成本地记忆联想",
                                metadata={"mode": "preload", "local_only": True, "hit_count": len(memories),
                                          "chars": len(retriever.format(memories, max_chars=1200))})

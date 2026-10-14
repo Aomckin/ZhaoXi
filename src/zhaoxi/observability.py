@@ -237,7 +237,7 @@ class ActionTrace:
         if stage == "decision":
             self.decision_used = True
 
-    def record_memory_candidates(self, results) -> None:
+    def record_memory_candidates(self, results, *, source: str = "recall", append: bool = False) -> None:
         """Keep a bounded local-debug snapshot of the candidates actually used."""
         candidates = []
         for rank, item in enumerate(list(results)[:20], start=1):
@@ -245,6 +245,7 @@ class ActionTrace:
             content = str(record.content or "")
             candidates.append({
                 "rank": rank,
+                "retrieval_source": source,
                 "id": record.id,
                 "content": content[:500] + ("…" if len(content) > 500 else ""),
                 "kind": getattr(record.kind, "value", str(record.kind)),
@@ -263,6 +264,12 @@ class ActionTrace:
                 "retrieval_mode":str(getattr(item,"retrieval_mode","ASSOCIATIVE")),
                 "cluster_score":getattr(item,"cluster_score",0),"cluster_rank":getattr(item,"cluster_rank",None),
             })
+        if append:
+            merged = {item["id"]: item for item in self.memory_candidates}
+            merged.update({item["id"]: item for item in candidates})
+            candidates = list(merged.values())[:20]
+            for rank, item in enumerate(candidates, start=1):
+                item["rank"] = rank
         self.memory_candidates = candidates
 
     def token_usage(self) -> dict[str, object]:

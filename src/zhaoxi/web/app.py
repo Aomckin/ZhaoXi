@@ -203,7 +203,7 @@ def create_app(
     app.include_router(settings_api_router(core, configured, events))
     app.include_router(perception_api_router(core, configured, perception, source_runtime))
     app.include_router(emoji_api_router(core, configured, adapter, delivered))
-    app.include_router(memory_api_router(core, configured))
+    app.include_router(memory_api_router(core, configured, adapter.gateway))
     from .dashboard import dashboard_router
     app.include_router(dashboard_router(core, static_dir, desktop_open_callback=desktop_open_callback))
     from .decision_learning import decision_learning_router
