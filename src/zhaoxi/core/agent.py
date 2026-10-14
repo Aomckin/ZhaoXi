@@ -217,9 +217,6 @@ class ZhaoxiAgent:
                                         "input_chars": len(response.content or "")}
             raise
         self.last_reply_protocol = decoded.raw_metadata.get("main_reply_protocol", {})
-        index = decoded.raw_metadata.get("action_trace_call_index")
-        if not fast and index is not None and (trace := current_trace()):
-            trace.llm_calls[index - 1]["_response_text"] = decoded.content or ""
         return decoded
 
     def _commit_model_reply(self, raw_reply: str) -> str:
@@ -1146,9 +1143,7 @@ class ZhaoxiAgent:
                     schemas = [schema for schema in schemas if schema["function"]["name"] in warning_tools
                                and schema["function"]["name"] not in {"request_tool_group", "inspect_tool_catalog", "search_memories"}]
                 from zhaoxi.observability import ACTION_INTERIM_RULE
-                action_interim_rule = (("\n如需继续动作，可在同一次 response.content 中给一句自然行动台词，"
-                                        "与工具调用同次返回；可留空，不作最终答复。")
-                                       if slim else ACTION_INTERIM_RULE) if schemas else ""
+                action_interim_rule = ACTION_INTERIM_RULE if schemas else ""
                 if schemas and trace and trace.interim_legacy_tool_enabled:
                     from zhaoxi.planner.runtime import control_schemas
                     schemas.extend(schema for schema in control_schemas()

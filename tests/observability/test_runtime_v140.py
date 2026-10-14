@@ -244,7 +244,9 @@ def test_current_cognition_observatory_counters():
 
 
 @pytest.mark.parametrize("text,reason", [
-    ("x" * 181, "too_long"), ("trace_id:private", "unsafe_content"),
+    ("x" * 121, "too_long"), ("trace_id:private", "unsafe_content"),
+    ("先读日程。再读历史。然后分析结论。", "too_many_sentences"),
+    ("# 结论\n我先读日程。", "answer_layout"),
     ('{"reply":"草稿"}', "unsafe_content"), ("任务已经完成", "terminal_claim")])
 def test_native_interim_suppression_is_diagnostic_not_failure(text, reason):
     from zhaoxi.models.types import ModelResponse, ToolCall
@@ -286,7 +288,7 @@ async def test_tokens_count_each_attempt_and_final_reply_is_not_a_process_body()
         first = await provider.generate([])
         provider.providers[0] = FakeProvider([ModelResponse(content="最终正文", usage={"prompt_tokens": 30, "completion_tokens": 4, "total_tokens": 34})])
         final = await provider.generate([])
-        assert trace.llm_calls[1]["reply_kind"] == "process"
+        assert trace.llm_calls[1]["reply_kind"] == "intermediate"
         trace.mark_final_reply(final)
         trace.finish()
         assert [call["index"] for call in trace.llm_calls] == [1, 2, 3]
@@ -295,11 +297,11 @@ async def test_tokens_count_each_attempt_and_final_reply_is_not_a_process_body()
         assert trace.token_usage()["input_tokens"] == 60
         assert trace.token_usage()["output_tokens"] == 9
         assert trace.token_usage()["total_tokens_unreported_calls"] == 0
-        assert trace.llm_calls[-1]["process_text"] == ""
+        assert "process_text" not in trace.llm_calls[-1]
         assert trace.llm_calls[-1]["final_reply"] is True
     import json
     assert "private-reasoning-canary" not in json.dumps(trace.metrics())
-    assert trace.llm_calls[1]["process_text"] == first.content
+    assert "process_text" not in trace.llm_calls[1] and "_response_text" not in trace.llm_calls[1]
 
 
 async def test_missing_and_zero_usage_are_distinct_and_background_updates_same_total():
@@ -319,7 +321,7 @@ async def test_missing_and_zero_usage_are_distinct_and_background_updates_same_t
         assert trace.llm_calls[0]["total_tokens"] == 0
         assert trace.llm_calls[1]["total_tokens"] is None
         assert usage["total_tokens"] == 5 and usage["total_tokens_unreported_calls"] == 1
-        assert trace.llm_calls[2]["reply_kind"] == "process"
+        assert trace.llm_calls[2]["reply_kind"] == "intermediate"
 
 
 async def test_concurrent_model_calls_keep_their_own_indices_and_usage():
@@ -368,20 +370,16 @@ async def test_actual_agent_final_call_is_counted_without_body_repetition(fast):
         assert result.content == "最终验收文本" and len(inner.calls) == 1
         assert trace.token_usage()["total_tokens"] == 10
         assert trace.llm_calls[0]["reply_kind"] == "final"
-        assert trace.llm_calls[0]["process_text"] == ""
+        assert "process_text" not in trace.llm_calls[0]
         import json
         assert "最终验收文本" not in json.dumps(trace.metrics(), ensure_ascii=False)
 
 
-@pytest.mark.parametrize("owner,text,visible,event_expected", [
-    ("router", "", False, False),
-    ("router", '{"route":"direct"}', False, True),
-    ("agent", "我先核对一下这个时间。", True, True),
-    ("planner", "我先把这几个步骤理清楚。", True, True),
-    ("auto_memory", "后台记录候选", False, True),
-    ("agent", '{"awareness":"private"}', False, True),
-])
-async def test_real_process_body_is_sent_to_chat_but_empty_control_and_hidden_reasoning_are_not(owner,text,visible,event_expected):
+@pytest.mark.parametrize("owner,text", [
+    ("router", ""), ("router", '{"route":"direct"}'),
+    ("agent", "我先核对一下这个时间。"), ("planner", "我先把这几个步骤理清楚。"),
+    ("auto_memory", "后台记录候选"), ("agent", '{"awareness":"private"}')])
+async def test_nonfinal_body_is_never_automatically_sent_or_stored(owner,text):
     from conftest import FakeProvider
     from zhaoxi.observability import llm_owner_scope
     events=[]
@@ -389,17 +387,16 @@ async def test_real_process_body_is_sent_to_chat_but_empty_control_and_hidden_re
         ModelResponse(content=text,raw_metadata={"reasoning_content":"hidden-canary"}),
         ModelResponse(content="最终正文")])])
     with correlation_scope(CorrelationContext(trace_id="process",request_id="process")), action_trace_scope(events.append) as trace:
-        trace.interim_threshold_seconds=1000
+        trace.interim_threshold_seconds=0
         with llm_owner_scope(owner,"synthetic"):
             await provider.generate([])
         final=await provider.generate([])
         trace.mark_final_reply(final);trace.finish()
-    chat=[e for e in events if e["type"]=="interim_reply"]
-    assert bool(chat)==visible
-    if visible: assert chat[0]["content"]==text and not chat[0]["terminates_turn"]
-    assert any(e.event_type=="llm_process_reply" for e in trace.events)==event_expected
+    assert not any(e["type"]=="interim_reply" for e in events)
+    assert any(e.event_type=="llm_reply_intermediate" for e in trace.events)
     assert "hidden-canary" not in str(events) and "最终正文" not in str(events)
     assert len(trace.llm_calls)==2
+    assert all("process_text" not in call and "_response_text" not in call for call in trace.llm_calls)
 
 
 async def test_action_body_is_not_repeated_when_next_call_confirms_it_is_a_process_reply():
@@ -411,13 +408,16 @@ async def test_action_body_is_not_repeated_when_next_call_confirms_it_is_a_proce
     with correlation_scope(CorrelationContext(trace_id="once",request_id="once")), action_trace_scope(events.append) as trace:
         trace.interim_threshold_seconds=1000
         action=await provider.generate([])
+        assert not trace.emit_action_text(action)
+        assert trace.events[-1].metadata["reason"]=="too_fast"
+        trace.started_monotonic-=1001
         assert trace.emit_action_text(action)
         final=await provider.generate([]);trace.mark_final_reply(final);trace.finish()
     assert len([e for e in events if e["type"]=="interim_reply"])==1
     assert trace.llm_calls[0]["interim_delivered"]
 
 
-async def test_validated_reply_envelope_becomes_only_its_natural_process_body():
+async def test_validated_final_draft_never_becomes_a_process_message():
     import json
     from conftest import FakeProvider
     events=[]
@@ -428,5 +428,17 @@ async def test_validated_reply_envelope_becomes_only_its_natural_process_body():
         first=await provider.generate([]);agent._decode_main_reply(first)
         final=await provider.generate([]);trace.mark_final_reply(final)
     chat=[e for e in events if e["type"]=="interim_reply"]
-    assert len(chat)==1 and chat[0]["content"]=="我先核对一下日程。"
-    assert 'awareness' not in chat[0]["content"] and len(trace.llm_calls)==2
+    assert chat == [] and len(trace.llm_calls)==2
+    assert all("process_text" not in call for call in trace.llm_calls)
+
+
+@pytest.mark.parametrize("reason", ["action_content", "agent", "planner"])
+def test_every_interim_path_respects_long_task_threshold(reason):
+    events=[]
+    trace=ActionTrace("threshold", "threshold", events.append, interim_threshold_seconds=10)
+    assert not trace.emit_interim("我先核对这两条记录。", reason=reason, progress="read")
+    assert trace.events[-1].metadata["reason"]=="too_fast"
+    trace.started_monotonic-=11
+    assert trace.emit_interim("我先核对这两条记录。还有一处出处需要确认。", reason=reason, progress="read")
+    chat=[e for e in events if e["type"]=="interim_reply"]
+    assert len(chat)==1 and not chat[0]["terminates_turn"]

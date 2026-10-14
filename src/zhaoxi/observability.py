@@ -18,10 +18,10 @@ from zhaoxi.reliability import current_correlation
 logger = logging.getLogger("OBSERVABILITY")
 
 ACTION_INTERIM_RULE = (
-    "\n决定下一步工具行动时，可在同一次 response.content 中顺便说一句符合当前人格的短台词，"
-    "同时输出 tool_calls；用自然文本，不包 JSON，不调用额外回复工具。没话说可以留空。"
-    "这句只说明正在做什么或接下来做什么，不是最终回复，不宣布尚未完成的结果。"
-    "没有工具调用时，仍按原有最终回复要求回答。"
+    "\n仅在长任务仍需继续工具行动时，可在同一次 response.content 中顺带说一两句自然进度台词，"
+    "最多120字符，同时输出 tool_calls；不为台词另开模型调用或回复工具。普通短任务或没有进展时留空。"
+    "只说明正在核对什么或下一步做什么，不提前展开答案、分析、建议、标题或清单，不包 JSON/awareness。"
+    "没有工具调用时按最终回复格式独立完整回答，不把待采用的最终草稿当作过程消息。"
 )
 
 
@@ -281,41 +281,30 @@ class ActionTrace:
         return {**totals, "call_count": len(self.llm_calls),
                 "running_calls": sum(call.get("status") == "running" for call in self.llm_calls)}
 
-    def reveal_process_replies(self) -> None:
-        """A subsequent call or settled request confirms these replies are intermediate."""
+    def mark_intermediate_calls(self) -> None:
+        """Classify non-final calls for accounting; never turn their drafts into chat."""
         for call in self.llm_calls:
             if call.get("status") == "success" and call.get("reply_kind") == "pending":
-                call["reply_kind"] = "process"
-                call["process_text"] = call.pop("_response_text", "")
-                if not call["process_text"]:
-                    continue
-                conversational = call.get("owner") in {"agent", "planner"}
-                self.emit("llm_process_reply", "model", "info",
-                          "模型返回了过程回复" if conversational else "模型返回了调用说明",
-                          metadata={key: value for key, value in call.items() if not key.startswith("_")})
-                if conversational and self.finished_at is None and not call.get("interim_delivered"):
-                    call["interim_delivered"] = self.emit_interim(call["process_text"],
-                        reason="model_process", progress=f"model:{call['index']}")
+                call["reply_kind"] = "intermediate"
+                self.emit("llm_reply_intermediate", "model", "info", "该调用未用于最终回复",
+                          metadata={"index": call["index"], "reply_kind": "intermediate"})
 
     def discard_model_reply(self, response, reason: str) -> None:
         index = response.raw_metadata.get("action_trace_call_index")
         if index is None:
             return
         call = self.llm_calls[index - 1]
-        call.pop("_response_text", None)
-        call.update(process_text="", reply_kind="discarded")
+        call.update(reply_kind="discarded")
         self.emit("llm_reply_discarded", "model", "info", "模型草稿未采用",
-                  metadata={"index": index, "reply_kind": "discarded", "process_text": "", "discard_reason": reason})
+                  metadata={"index": index, "reply_kind": "discarded", "discard_reason": reason})
 
     def mark_final_reply(self, response) -> None:
         index = response.raw_metadata.get("action_trace_call_index")
         if index is None:
             return  # Providers without call instrumentation have no corresponding record.
         call = self.llm_calls[index - 1]
-        call.pop("_response_text", None)
         call["final_reply"] = True
         call["reply_kind"] = "final"
-        call["process_text"] = ""
         self.emit("llm_reply_committed", "model", "success", "本次模型调用用于最终回复",
                   metadata={"index": index, "final_reply": True, "reply_kind": "final"})
 
@@ -353,12 +342,17 @@ class ActionTrace:
                 why = "delivery_unavailable"
             elif self.interim_replies >= limit:
                 why = "max_count"
-            elif reason not in {"action_content", "model_process"} and time.monotonic() - self.started_monotonic < self.interim_threshold_seconds:
+            elif time.monotonic() - self.started_monotonic < self.interim_threshold_seconds:
                 why = "too_fast"
             elif not content:
                 why = "no_progress"
-            elif len(content) > 180:
+            elif len(content) > 120:
                 why = "too_long"
+            elif len([part for part in re.split(r"[。！？!?]+|(?<!\d)\.(?!\d)|\n+", content)
+                      if part.strip(" \t\r\n\"'”’")]) > 2:
+                why = "too_many_sentences"
+            elif re.search(r"(?m)^\s*(?:#{1,6}\s|[-*]\s|\d+[.)、]\s)", content):
+                why = "answer_layout"
             elif any(term in content.lower() for term in (
                     "goal_id", "trace_id", "invocation_id", "token", "llm #", "step_id",
                     "tool_calls", "awareness", "<function", "dsml", "```")) or content.startswith(("{", "[")):
@@ -368,7 +362,7 @@ class ActionTrace:
             elif self.interim_replies and SequenceMatcher(None, content, self._last_interim_content).ratio() >= .85:
                 why = "duplicate"
             elif self.interim_replies and (not progress.strip() or progress.strip() == self._last_interim_progress
-                    or (reason not in {"action_content", "model_process"} and self.planner_progress_version <= self._last_interim_progress_version)):
+                    or (reason != "action_content" and self.planner_progress_version <= self._last_interim_progress_version)):
                 why = "no_progress"
             if why:
                 diagnostic("interim_candidate_suppressed", why)
@@ -410,7 +404,7 @@ class ActionTrace:
         self.finished_at = datetime.now(UTC).isoformat()
         self.final_response_ms = round((time.monotonic() - self.started_monotonic) * 1000, 2)
         self.first_reply()
-        self.reveal_process_replies()
+        self.mark_intermediate_calls()
         public_metrics = {
             key: value for key, value in self.metrics().items()
             if key not in {"timeline", "memory_candidates"}

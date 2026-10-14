@@ -81,7 +81,7 @@ class ResilientProvider(ModelProvider):
                 started = monotonic()
                 item = None
                 if trace and trace.metrics_enabled:
-                    trace.reveal_process_replies()
+                    trace.mark_intermediate_calls()
                     item = {"index": len(trace.llm_calls) + 1, "owner": owner, "stage": stage,
                             "model": getattr(provider, "model", type(provider).__name__),
                             "started_at": started_at, "status": "running", "reply_kind": "pending",
@@ -115,12 +115,10 @@ class ResilientProvider(ModelProvider):
                                     duration_ms=round((monotonic() - started) * 1000, 2),
                                     status="success" if response is not None else "failed",
                                     tool_call_count=len(response.tool_calls) if response is not None else 0,
-                                    finish_reason=response.finish_reason if response is not None else None,
-                                    _response_text=(response.content or "").strip() if response is not None else "")
+                                    finish_reason=response.finish_reason if response is not None else None)
                         if response is not None:
                             if trace.finished_at is not None:
-                                item["reply_kind"] = "process"
-                                item["process_text"] = item.pop("_response_text", "")
+                                item["reply_kind"] = "intermediate"
                             item["model"] = response.raw_metadata.get("model") or item["model"]
                             response.raw_metadata["action_trace_call_index"] = item["index"]
                         trace.emit("llm_call_finished", "model", item["status"],

@@ -71,7 +71,7 @@ function renderMemoryCandidates(items){
 function recordModelCall(call){
   if(!Number.isInteger(call.index))return;
   const saved={...actionModelCalls.get(call.index),...call};
-  if(saved.final_reply)saved.process_text='';
+  delete saved.process_text;delete saved._response_text;
   actionModelCalls.set(call.index,saved);
 }
 function renderContextBreakdown(parent,reports,label){
@@ -110,16 +110,11 @@ function renderModelCalls(usage=null){
   for(const call of calls){
     const card=document.createElement('article'),title=document.createElement('strong'),info=document.createElement('p');
     card.className='trace-model-call';
-    const state=call.status==='running'?'进行中':call.status==='failed'?'失败':call.final_reply?'最终回复':call.reply_kind==='discarded'?'草稿未采用':'已返回';
+    const state=call.status==='running'?'进行中':call.status==='failed'?'失败':call.final_reply?'最终回复':call.reply_kind==='discarded'?'草稿未采用':call.reply_kind==='intermediate'?'非最终调用':'已返回';
     title.textContent=`调用 #${call.index} · ${call.model||'模型未标记'} · ${call.owner||'agent'} / ${call.stage||'model'} · ${state}`;
     info.textContent=`Token ${tokens(call.total_tokens)} · 输入 ${tokens(call.prompt_tokens)} · 输出 ${tokens(call.output_tokens)}`+(Number.isFinite(call.duration_ms)?` · ${call.duration_ms.toFixed(2)} ms`:'');
     card.append(title,info);
     if(call.context_breakdown)renderContextBreakdown(card,[call.context_breakdown],'本次输入构成');
-    if(call.reply_kind==='process'&&!call.final_reply&&call.process_text){
-      const details=document.createElement('details'),label=document.createElement('summary'),body=document.createElement('pre');
-      label.textContent=['agent','planner'].includes(call.owner||'agent')?'过程回复（非最终正文）':'调用说明（非聊天正文）';body.textContent=call.process_text;
-      details.append(label,body);card.append(details);
-    }
     container.append(card);
   }
 }
@@ -159,7 +154,7 @@ function renderAgentEvent(event,replay=false){
   $('#actionTraceDebug').textContent+=`${event.timestamp||''} ${type} ${JSON.stringify(event)}\n`;
   if(event.stage==='context')return;
   const meta=event.metadata||{};
-  if(type==='llm_call_started'||type==='llm_call_finished'||type==='llm_reply_committed'||type==='llm_process_reply'||type==='llm_reply_discarded'){
+  if(type==='llm_call_started'||type==='llm_call_finished'||type==='llm_reply_committed'||type==='llm_process_reply'||type==='llm_reply_intermediate'||type==='llm_reply_discarded'){
     recordModelCall({...meta,...(type==='llm_call_started'?{status:'running'}:type==='llm_call_finished'?{status:outcome}:{})});
     renderModelCalls(meta.token_usage);
   }

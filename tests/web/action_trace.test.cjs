@@ -246,8 +246,8 @@ test('per-call tokens and known request total are accurate and replay-safe',()=>
   const card=s.nodes['#actionModelCalls'].children[0];
   assert.match(card.children[0].textContent,/synthetic-model.*planner/);
   assert.match(card.children[1].textContent,/Token 17.*输入 12.*输出 5/);
-  assert.equal(card.children[2].children[1].textContent,first.process_text);
-  assert.equal(card.children[2].children[1].innerHTML,undefined);
+  assert.equal(card.children.length,2); // Older snapshots must not restore a draft panel.
+  assert.equal(vm.runInContext("actionModelCalls.get(1).process_text",s.context),undefined);
   s.emit('llm_call_finished','model','failed','模型调用失败',{metadata:{index:2,prompt_tokens:null,output_tokens:null,total_tokens:null}});
   assert.match(s.nodes['#actionTokenSummary'].textContent,/17（已知）.*1 次用量未返回/);
   assert.match(s.nodes['#actionModelCalls'].children[1].children[1].textContent,/Token 未返回/);
@@ -267,14 +267,14 @@ test('final call remains counted but its body is not repeated; new requests clea
   assert.match(s.nodes['#actionTokenSummary'].textContent,/等待模型返回用量/);
 });
 
-test('final runtime snapshot restores all call bodies and authoritative token totals',()=>{
+test('runtime snapshot restores token totals without rendering nonfinal bodies',()=>{
   const s=setup();s.context.beginActionTrace();
   s.context.renderRuntimeMetrics({llm_calls:[
     {index:1,model:'first',prompt_tokens:10,output_tokens:2,total_tokens:12,reply_kind:'process',process_text:'公开的规划说明'},
     {index:2,model:'final',prompt_tokens:20,output_tokens:3,total_tokens:23,process_text:'不重复显示',final_reply:true},
   ],token_usage:{call_count:2,input_tokens:30,output_tokens:5,total_tokens:35}});
   assert.match(s.nodes['#actionTokenSummary'].textContent,/Token 合计 35.*输入 30.*输出 5.*2 次调用/);
-  assert.equal(s.nodes['#actionModelCalls'].children[0].children[2].children[1].textContent,'公开的规划说明');
+  assert.equal(s.nodes['#actionModelCalls'].children[0].children.length,2);
   assert.equal(s.nodes['#actionModelCalls'].children[1].children.length,2);
 });
 

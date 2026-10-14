@@ -62,7 +62,7 @@ class FinishTaskInput(BaseModel):
 
 
 class InterimReplyInput(BaseModel):
-    content: str = Field(min_length=1, max_length=180)
+    content: str = Field(min_length=1, max_length=120, description="长任务途中顺带给一两句自然进度台词，不写最终答案、分析或清单。")
     progress: str = Field(default="", max_length=160)
 
 

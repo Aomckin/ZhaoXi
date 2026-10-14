@@ -39,7 +39,7 @@ BASIC_REPLY_FORMAT = {"type": "json_schema", "json_schema": {"name": "main_reply
     "escalation": {"type": ["object", "null"]}}, "required": ["reply"]}}}
 
 LIGHT_CONTROL_PROMPT = (
-    'JSON回复：{"reply":"正文"}，普通闲聊省略 awareness。'
+    '无工具调用的最终回复用JSON：{"reply":"正文"}，普通闲聊省略 awareness。'
     '缺能力时 reply=""，escalation={"kind":"tool","reason":"缺资料",'
     '"trigger_span":"本轮连续原文","group":"实际组"}；kind 可用 tool/recall/decision，group 按清单。'
     '加载不是执行，不假称行动成功。'
