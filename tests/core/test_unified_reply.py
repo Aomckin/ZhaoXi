@@ -237,3 +237,87 @@ async def test_optional_local_database_error_is_visible_and_preserves_reply():
     response = await gateway.chat(UnifiedMessage(channel='web', content='Orion'))
     assert response.content == 'hello' and len(provider.calls) == 1
     assert any(event['event_type'] == 'memory_search_failed' for event in agent.last_action_trace['runtime_metrics']['timeline'])
+
+
+@pytest.mark.parametrize("failure", ["body", "tool_arguments"])
+async def test_unexecuted_action_recovers_through_discovery_then_executes_once(failure):
+    from zhaoxi.errors import ProviderError
+    text = "执行 sample 操作"
+    agent, provider, _, tool, gateway = make([
+        ModelResponse(content='{"reply":'),
+        body('', escalation={'kind': 'tool', 'group': 'sample', 'reason': 'perform request', 'trigger_span': text}),
+        ModelResponse(tool_calls=[ToolCall(id='write', name='sample_action', arguments={})]), body('saved')])
+    if failure == "tool_arguments":
+        generate = provider.generate
+        async def invalid_first(*args, **kwargs):
+            response = await generate(*args, **kwargs)
+            if len(provider.calls) == 1:
+                raise ProviderError('invalid arguments', code='provider_tool_arguments_invalid')
+            return response
+        provider.generate = invalid_first
+    response = await gateway.chat(UnifiedMessage(channel='web', content=text))
+    assert response.content == 'saved' and response.activity['result_status'] == 'completed'
+    assert tool.calls == 1 and len(provider.calls) == 4
+    assert 'reply_repair' not in str(provider.options[1])
+    assert any(schema['function']['name'] == 'sample_action' for schema in provider.tool_schemas[2])
+    timeline = agent.last_action_trace['runtime_metrics']['timeline']
+    recovery = [event for event in timeline if event['event_type'] == 'reply_recovery_requested']
+    assert len(recovery) == 1 and recovery[0]['metadata']['mode'] == 'action'
+    assert agent.last_action_trace['runtime_metrics']['repair_round'] == 1
+
+
+async def test_protocol_failure_after_write_repairs_body_without_replaying_write():
+    text = '执行 sample 操作'
+    agent, provider, _, tool, gateway = make([
+        body('', escalation={'kind':'tool', 'group':'sample', 'reason':'perform request', 'trigger_span':text}),
+        ModelResponse(tool_calls=[ToolCall(id='write', name='sample_action', arguments={})]),
+        ModelResponse(content='{"reply":'), body('saved')])
+    response = await gateway.chat(UnifiedMessage(channel='web', content=text))
+    assert response.content == 'saved' and tool.calls == 1 and len(provider.calls) == 4
+    assert provider.tool_schemas[-1] is None
+    assert provider.options[-1]['response_format']['json_schema']['name'] == 'reply_repair'
+    assert 'saved-id' in provider.calls[-1][-1].content
+
+
+async def test_action_recovery_still_requires_a_real_receipt():
+    agent, provider, _, tool, gateway = make([ModelResponse(content='{"reply":'), body('saved')])
+    response = await gateway.chat(UnifiedMessage(channel='web', content='执行 sample 操作'))
+    assert response.activity['result_status'] == 'failed' and tool.calls == 0
+    assert '未完成任何工具操作' in response.content and len(provider.calls) <= 4
+
+
+async def test_action_protocol_recovery_is_bounded():
+    from zhaoxi.errors import AgentLoopError
+    agent, provider, _, tool, _ = make([ModelResponse(content='{"reply":')])
+    with pytest.raises(AgentLoopError):
+        await agent.run_natural('执行 sample 操作')
+    assert len(provider.calls) == 2 and tool.calls == 0
+
+
+@pytest.mark.parametrize('restriction', ['danger', 'final_only', 'existing_outcome', 'forced', 'last_round', 'last_call'])
+def test_action_recovery_cannot_reopen_finalization_or_existing_outcomes(restriction):
+    from zhaoxi.errors import AgentLoopError
+    from zhaoxi.reliability.retry import BudgetPolicy, provider_budget_scope, record_provider_tokens
+    agent, _, _, _, _ = make([])
+    safety = LoopSafety(model_round=1)
+    if restriction == 'existing_outcome':
+        safety.outcomes.append(('sample_action', ToolResult(success=False, content='unknown', metadata={'unknown_outcome':True})))
+    if restriction == 'forced':
+        safety.force('tool_failure_limit')
+    with provider_budget_scope(10, policy=BudgetPolicy(1000,300,0,1300,200)) as budget:
+        if restriction == 'last_call':
+            budget.calls = 9
+        if restriction == 'danger':
+            record_provider_tokens(850)
+        mode = agent._recover_missing_reply('guard', agent.max_steps-1 if restriction == 'last_round' else 1,
+            safety, AgentLoopError('invalid', code='invalid_reply_protocol'), tool_called=False,
+            attempted=False, final_only=restriction == 'final_only', recover_action=True)
+    assert mode == 'reply'
+
+
+async def test_restricted_turn_cannot_use_action_recovery():
+    agent, provider, _, tool, _ = make([ModelResponse(content='{"reply":'), body('unavailable')])
+    result = await agent.run('执行 sample 操作', require_tool_call=True, no_tools=True)
+    assert result.result_status == 'failed' and tool.calls == 0
+    assert provider.tool_schemas == [None, None]
+    assert provider.options[-1]['response_format']['json_schema']['name'] == 'reply_repair'

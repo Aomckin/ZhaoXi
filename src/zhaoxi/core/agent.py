@@ -873,28 +873,36 @@ class ZhaoxiAgent:
             used_tool_path=True, result_status=result_status,
         )
 
-    def _recover_missing_reply(self, request_id, step, safety, exc, *, tool_called, attempted, final_only):
+    def _recover_missing_reply(self, request_id, step, safety, exc, *, tool_called, attempted, final_only, recover_action=False) -> str | AgentResponse:
+        """Return the permitted recovery mode, or a factual degraded response."""
         if exc.code not in {"empty_model_reply", "invalid_reply_protocol", "provider_tool_arguments_invalid", "provider_response_invalid"}:
             raise exc
         trace, budget = current_trace(), current_budget()
         if trace:
             trace.emit("response_generation_failed", "response_generation", "failed",
                        "模型回复格式异常，正在检查可用恢复预算", step_id=step, error_code=exc.code)
-        # One tool-free repair has its own round credit, but shares the repair
-        # limit and all provider call/token/time limits. DANGER permits only
-        # finalization from the existing reserve, never a budget extension.
+        # Protocol recovery shares one repair credit and all provider budgets.
+        # Only a pending, unexecuted action may retain tools; DANGER and existing
+        # outcomes always use body-only repair, without replaying actions.
         if (not attempted and step < self.max_steps and safety.repair_round < safety.repair_limit
                 and (budget is None or (budget.state is not BudgetState.EXHAUSTED
                                        and budget.calls < budget.max_calls))):
             safety.repair_round += 1
             safety.reply_repair_round += 1
-            safety.force("reply_protocol_recovery")
+            action_recovery = (recover_action and not tool_called and not safety.outcomes
+                and not final_only and not safety.forced_reason and step + 2 <= self.max_steps
+                and safety.tool_round < safety.tool_limit
+                and (budget is None or (budget.state in {BudgetState.NORMAL, BudgetState.WARNING}
+                                       and budget.calls + 2 <= budget.max_calls)))
+            if not action_recovery:
+                safety.force("reply_protocol_recovery")
             self._sync_safety(safety)
             if trace:
                 trace.response_status = "pending"
                 trace.emit("reply_recovery_requested", "response_generation", "info",
-                           "仅补生成回复，不重复工具操作", step_id=step)
-            return None
+                           "尚未执行行动，恢复原请求的工具调用" if action_recovery else "仅补生成回复，不重复工具操作",
+                           step_id=step, metadata={"mode": "action" if action_recovery else "reply"})
+            return "action" if action_recovery else "reply"
         if trace:
             trace.response_status = "failed"
         if not tool_called:
@@ -1061,6 +1069,7 @@ class ZhaoxiAgent:
         trace = current_trace()
         response_started = False
         reply_recovery_attempted = False
+        reply_body_repair = False
         reply_recovery_error_code = None
         safety = self._safety_state(discovery,fast_escalated)
         from zhaoxi.decision.learning_models import private_owner
@@ -1255,7 +1264,12 @@ class ZhaoxiAgent:
                         + "request_tool_group、inspect_tool_catalog 等能力发现操作不算完成任务。"
                     )
                 self.last_tool_diagnostics = discovery.diagnostics(self.registry)
-                if reply_recovery_attempted:
+                if reply_recovery_attempted and not reply_body_repair and not tool_called and not final_only:
+                    messages[0].content += (
+                        "\n上一尝试协议无效，未执行任何业务操作。继续原请求，使用原生工具调用；"
+                        "需要加载能力时返回合法的 escalation 控制对象。不得声称操作已完成。"
+                    )
+                if reply_body_repair:
                     # Repair body only, with the actual character and confirmed
                     # receipts. Do not replay the large tool/domain/awareness prompt.
                     results = [{"tool": name, "success": result.success, "content": result.content,
@@ -1306,11 +1320,11 @@ class ZhaoxiAgent:
                            if forced_tool else {"tool_choice": "required"}
                            if require_tool_call and corrective_retry and not tool_called and schemas else {}),
                         **({"response_format": repair_format}
-                           if reply_recovery_attempted and reply_format else
+                           if reply_body_repair and reply_format else
                            {"response_format": reply_format} if reply_format and not schemas else {}),
                         **({"thinking": {"type": "disabled"}, "max_tokens": 2048,
                             "reasoning_budget_tokens": 2000}
-                           if reply_recovery_attempted else {}),
+                           if reply_body_repair else {}),
                     )
                 self.last_tool_diagnostics["prompt_tokens"] = response.usage.get("prompt_tokens", response.usage.get("input_tokens"))
                 if trace:
@@ -1318,14 +1332,16 @@ class ZhaoxiAgent:
                                metadata={"tool_call_count": len(response.tool_calls)})
             except ProviderError as exc:
                 if exc.code in {"provider_tool_arguments_invalid", "provider_response_invalid"}:
-                    if trace and exc.code == "provider_tool_arguments_invalid":
-                        trace.terminal_status = "partial" if any(
-                            action.status == "completed" for action in trace.actions) else "failed"
                     recovered = self._recover_missing_reply(request_id, step, safety, exc,
-                        tool_called=tool_called, attempted=reply_recovery_attempted, final_only=final_only)
-                    if recovered is not None:
+                        tool_called=tool_called, attempted=reply_recovery_attempted, final_only=final_only,
+                        recover_action=require_tool_call and not no_tools and not rejected_capability)
+                    if isinstance(recovered, AgentResponse):
                         return recovered
                     reply_recovery_attempted = True
+                    reply_body_repair = recovered == "reply"
+                    if trace and reply_body_repair and exc.code == "provider_tool_arguments_invalid":
+                        trace.terminal_status = "partial" if any(
+                            action.status == "completed" for action in trace.actions) else "failed"
                     reply_recovery_error_code = exc.code
                     continue
                 error_code = (
@@ -1387,12 +1403,12 @@ class ZhaoxiAgent:
 
             if lightweight or getattr(self, "decision_mode", "legacy") == "agency" and audience == "owner":
                 try:
-                    if reply_format and not reply_recovery_attempted and not response.tool_calls:
+                    if reply_format and not reply_body_repair and not response.tool_calls:
                         # Action calls use native speech rather than JSON mode, but
                         # their final response still obeys the original main contract.
                         response = response.model_copy(update={"raw_metadata": {
                             **response.raw_metadata, "main_reply_contract": True}})
-                    response = self._decode_main_reply(response, repair=reply_recovery_attempted,
+                    response = self._decode_main_reply(response, repair=reply_body_repair,
                         controls=lightweight and not final_only, allow_awareness=audience == "owner", basic=lightweight)
                     protocol = response.raw_metadata.get("main_reply_protocol", {})
                     if not response.tool_calls:
@@ -1458,10 +1474,12 @@ class ZhaoxiAgent:
                                        error_code="owner_only")
                         exc = AgentLoopError("能力请求不符合频道边界，仅补写限制说明。", code="invalid_reply_protocol")
                     recovered = self._recover_missing_reply(request_id, step, safety, exc,
-                        tool_called=tool_called, attempted=reply_recovery_attempted, final_only=final_only)
-                    if recovered is not None:
+                        tool_called=tool_called, attempted=reply_recovery_attempted, final_only=final_only,
+                        recover_action=require_tool_call and not no_tools and not rejected_capability)
+                    if isinstance(recovered, AgentResponse):
                         return recovered
                     reply_recovery_attempted = True
+                    reply_body_repair = recovered == "reply"
                     continue
             # Providers can emit calls despite tools=None; final-only is enforced
             # by the runtime, not just by the schema or prompt.
@@ -1524,9 +1542,10 @@ class ZhaoxiAgent:
                     if isinstance(exc, AgentLoopError):
                         recovered = self._recover_missing_reply(request_id, step, safety, exc,
                             tool_called=tool_called, attempted=reply_recovery_attempted, final_only=final_only)
-                        if recovered is not None:
+                        if isinstance(recovered, AgentResponse):
                             return recovered
                         reply_recovery_attempted = True
+                        reply_body_repair = recovered == "reply"
                         if trace:
                             trace.response_status = "pending"
                         continue
